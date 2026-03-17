@@ -37,13 +37,15 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   const SingleReceipt = () => (
     <div style={{ 
       width: '100%',
-      height: '48vh', // Approx half page
-      border: '0px solid #ddd', // Removed border to match clean look, or keep minimal
+      height: '148mm', // Exactly half of A4 page (297mm)
+      border: '0px solid #ddd',
       padding: '20px',
       fontFamily: '"Calibri", "Arial", sans-serif',
       fontSize: '11px',
       boxSizing: 'border-box',
-      position: 'relative'
+      position: 'relative',
+      WebkitPrintColorAdjust: 'exact',
+      printColorAdjust: 'exact'
     }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>

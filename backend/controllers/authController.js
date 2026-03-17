@@ -86,7 +86,7 @@ const loginUser = asyncHandler(async (req, res) => {
         generateToken(res, user._id);
         
         // Populate branch details if user has a branch
-        const populatedUser = await User.findById(user._id).populate('branchId', 'name shortCode');
+        const populatedUser = await User.findById(user._id).populate('branchId', 'name shortCode address phone mobile email city state');
 
         // Check if branch name needs sync (Self-Correction on Login)
         let currentBranchName = user.branchName;

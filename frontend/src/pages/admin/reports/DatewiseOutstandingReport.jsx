@@ -36,7 +36,7 @@ const DatewiseOutstandingReport = () => {
         // Only fetch if date range is set (optional, but good practice for reports)
         // For now, fetch on load or filter change similar to other reports
         dispatch(fetchStudents({ ...appliedFilters, pageSize: 1000 })); // Fetch larger page size for report
-        
+
         return () => {
             dispatch(resetStatus());
         }
@@ -62,18 +62,18 @@ const DatewiseOutstandingReport = () => {
     };
 
     useEffect(() => {
-            const originalTitle = document.title;
-            document.title = `Datewise_Outstanding_Report_${moment().format('YYYY-MM-DD')}`;
-            return () => {
-                document.title = originalTitle;
-            };
-        }, []);
-    
-        const handlePrint = useReactToPrint({
-            content: () => componentRef.current,
-            documentTitle: `Datewise_Outstanding_Report_${moment().format('YYYY-MM-DD')}`,
-            onAfterPrint: () => toast.success("Report Sent to Printer"),
-        });
+        const originalTitle = document.title;
+        document.title = `Datewise_Outstanding_Report_${moment().format('YYYY-MM-DD')}`;
+        return () => {
+            document.title = originalTitle;
+        };
+    }, []);
+
+    const handlePrint = useReactToPrint({
+        content: () => componentRef.current,
+        documentTitle: `Datewise_Outstanding_Report_${moment().format('YYYY-MM-DD')}`,
+        onAfterPrint: () => toast.success("Report Sent to Printer"),
+    });
 
     // Helper to get branch details for header
     const getBranchDetails = () => {
@@ -81,14 +81,29 @@ const DatewiseOutstandingReport = () => {
             const branch = branches.find(b => b._id === appliedFilters.branchId);
             if (branch) return branch;
         }
-        
+
+        if (user?.role === 'Super Admin') {
+            return {
+                name: "Main Branch",
+                address: "Smart Institute",
+                phone: "96017-49300",
+                mobile: "98988-30409",
+                email: "smartinstitutes@gmail.com"
+            };
+        }
+
+        // Use logged-in user's branch details if available
+        if (user && user.branchDetails && user.branchDetails.address) {
+            return user.branchDetails;
+        }
+
         // Fallback to Main / Default
         return {
             name: "Bhestan Branch",
             address: "309-A, 309-B, 3rd Floor, Sai Square Building, Bhestan Circle, Bhestan Surat Gujarat-395023 (INDIA)",
-            phone: "96017-49300", 
+            phone: "96017-49300",
             mobile: "98988-30409",
-            email: "smartinstitutes@gmail.com" 
+            email: "smartinstitutes@gmail.com"
         };
     };
 
@@ -96,8 +111,8 @@ const DatewiseOutstandingReport = () => {
 
     return (
         <div className="container mx-auto p-4 max-w-7xl">
-             <h1 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2 print:hidden">
-                <FileText className="text-primary"/> Datewise OutStanding For Students
+            <h1 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2 print:hidden">
+                <FileText className="text-primary" /> Datewise OutStanding For Students
             </h1>
 
             {/* --- Filter Section (Hidden in Print) --- */}
@@ -105,13 +120,13 @@ const DatewiseOutstandingReport = () => {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                         <label className="text-sm font-semibold text-gray-600 mb-1 block">From Date</label>
-                        <input type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none"/>
+                        <input type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" />
                     </div>
-                     <div>
+                    <div>
                         <label className="text-sm font-semibold text-gray-600 mb-1 block">To Date</label>
-                        <input type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none"/>
+                        <input type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" />
                     </div>
-                     {user?.role === 'Super Admin' && (
+                    {user?.role === 'Super Admin' && (
                         <div>
                             <label className="text-sm font-semibold text-gray-600 mb-1 block">Branch</label>
                             <select name="branchId" value={filters.branchId} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
@@ -121,12 +136,12 @@ const DatewiseOutstandingReport = () => {
                         </div>
                     )}
                 </div>
-                 <div className="flex gap-2 mt-4 justify-end">
+                <div className="flex gap-2 mt-4 justify-end">
                     <button onClick={handleReset} className="bg-gray-100 text-gray-600 px-4 py-2 rounded hover:bg-gray-200 border border-gray-300 font-medium transition flex items-center gap-1">
-                        <RefreshCw size={16}/> Reset
+                        <RefreshCw size={16} /> Reset
                     </button>
                     <button onClick={handleSearch} className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 font-bold shadow transition flex items-center gap-2">
-                         {isLoading ? 'Loading...' : <><Search size={18}/> Show Report</>}
+                        {isLoading ? 'Loading...' : <><Search size={18} /> Show Report</>}
                     </button>
                 </div>
             </div>
@@ -140,7 +155,7 @@ const DatewiseOutstandingReport = () => {
 
             {/* --- Printable Area --- */}
             <div ref={componentRef} className="bg-white rounded-b-lg shadow border border-gray-200 p-8 min-h-[10in] print:shadow-none print:border-none print:p-0 print:w-full">
-                
+
                 {/* Header (Dynamic) */}
                 <div className="flex justify-between items-start mb-6 border-b-2 border-primary pb-4">
                     <div className="flex items-center gap-4">
@@ -152,7 +167,7 @@ const DatewiseOutstandingReport = () => {
                             {branchInfo.address}
                         </div>
                         <p className="font-semibold text-blue-800">
-                             Ph. No. : {branchInfo.phone}, Mob. No. : {branchInfo.mobile}
+                            Ph. No. : {branchInfo.phone}, Mob. No. : {branchInfo.mobile}
                         </p>
                         <p className="text-blue-500 underline">{branchInfo.email}</p>
                     </div>
@@ -163,7 +178,7 @@ const DatewiseOutstandingReport = () => {
                     <h2 className="text-xl font-bold text-blue-500 uppercase tracking-wide inline-block border-b border-blue-200 pb-1">
                         Datewise OutStanding For Students
                     </h2>
-                     <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 mt-1">
                         Date: {moment().format('DD-MMMM-YYYY')}
                     </p>
                 </div>
@@ -203,12 +218,12 @@ const DatewiseOutstandingReport = () => {
                                 <td className="p-2 border text-gray-700">
                                     {std.course?.shortName || std.course?.name || '-'}
                                 </td>
-                                
+
                                 <td className="p-2 border">
                                     {/* Mocking Join Status as Complete if Registered */}
                                     <span className="text-gray-700">{std.isRegistered ? 'Complete' : 'Pending'}</span>
                                 </td>
-                                
+
                                 {/* Fees Columns */}
                                 <td className="p-2 border text-gray-700">
                                     {std.admissionFeeAmount || std.course?.admissionFees || 0}

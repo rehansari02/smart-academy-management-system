@@ -1,15 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 import logo from '../../../assets/logo2.png';
 
 const BlankAdmissionForm = () => {
+    const { user } = useSelector((state) => state.auth);
+
     // Default blank state for printing
     const [branchInfo, setBranchInfo] = useState({
-        name: "JAYESH INSTITUTE BRANCH", 
-        address: "LUDHIANA",
-        phone: "6354116595",
-        mobile: "6354116595", 
+        name: "Bhestan Branch", 
+        address: "309-A, 309-B, 3rd Floor, Sai Square Building, Bhestan Circle, Bhestan Surat Gujarat-395023 (INDIA)",
+        phone: "96017-49300",
+        mobile: "98988-30409", 
         website: "www.smartinstituteonline.com"
     });
+
+    useEffect(() => {
+        if (user?.role === 'Super Admin') {
+            setBranchInfo(prev => ({
+                ...prev,
+                name: "Main Branch",
+                address: "Smart Institute",
+                phone: "96017-49300",
+                mobile: "98988-30409"
+            }));
+        } else if (user && user.branchDetails && user.branchDetails.address) {
+            setBranchInfo(prev => ({
+                ...prev,
+                name: user.branchDetails.name || prev.name,
+                address: user.branchDetails.address || prev.address,
+                phone: user.branchDetails.phone || prev.phone,
+                mobile: user.branchDetails.mobile || prev.mobile
+            }));
+        }
+    }, [user]);
 
     const Editable = ({ value, className = "", tag: Tag = 'span', minWidth = "50px" }) => (
         <Tag 

@@ -14,7 +14,7 @@ const LedgerReport = () => {
     const { ledgerData, isLoading } = useSelector((state) => state.transaction);
     const { branches } = useSelector((state) => state.master);
     const { user } = useSelector((state) => state.auth);
-    
+
     // Filters
     const [searchType, setSearchType] = useState('student'); // 'student' or 'regNo'
     const [selectedStudentId, setSelectedStudentId] = useState('');
@@ -65,8 +65,8 @@ const LedgerReport = () => {
         // 1. Try to find from fetched branches list if available (best source for full details)
         if (branches && branches.length > 0) {
             // Check if branchId is populated object or string ID
-            const branchId = typeof ledgerData.student.branchId === 'object' 
-                ? ledgerData.student.branchId?._id 
+            const branchId = typeof ledgerData.student.branchId === 'object'
+                ? ledgerData.student.branchId?._id
                 : ledgerData.student.branchId;
 
             const foundBranch = branches.find(b => b._id === branchId);
@@ -79,37 +79,37 @@ const LedgerReport = () => {
         }
 
         // 3. Last Resort Fallback (Main / Bhestan)
-        return {
-            name: "Bhestan Branch",
-            address: "309-A, 309-B, 3rd Floor, Sai Square Building, Bhestan Circle, Bhestan Surat Gujarat-395023 (INDIA)",
-            phone: "96017-49300", 
-            mobile: "98988-30409",
-            email: "smartinstitutes@gmail.com" 
-        };
+        return null;
     };
 
-    const branchInfo = getBranchDetails() || {
+    const branchInfo = getBranchDetails() || (user?.role === 'Super Admin' ? {
+        name: "Main Branch",
+        address: "Smart Institute, 309-A, 309-B, 3rd Floor, Sai Square Building, Bhestan Circle, Bhestan Surat Gujarat-395023 (INDIA)",
+        phone: "96017-49300",
+        mobile: "98988-30409",
+        email: "smartinstitutes@gmail.com"
+    } : (user && user.branchDetails && user.branchDetails.address ? user.branchDetails : {
         name: "Bhestan Branch",
         address: "309-A, 309-B, 3rd Floor, Sai Square Building, Bhestan Circle, Bhestan Surat Gujarat-395023 (INDIA)",
-        phone: "96017-49300", 
+        phone: "96017-49300",
         mobile: "98988-30409",
-        email: "smartinstitutes@gmail.com" 
-    };
+        email: "smartinstitutes@gmail.com"
+    }));
 
     return (
         <div className="container mx-auto p-4 max-w-7xl">
             <h1 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2 print:hidden">
-                <FileText className="text-primary"/> Statement of Account (Ledger)
+                <FileText className="text-primary" /> Statement of Account (Ledger)
             </h1>
 
             {/* --- Filter Section (Hidden in Print) --- */}
             <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 mb-8 print:hidden">
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                    
+
                     {/* Search Type Selector */}
                     <div className="md:col-span-2">
                         <label className="block text-sm font-semibold text-gray-600 mb-2">Search By</label>
-                        <select 
+                        <select
                             className="w-full border rounded-md p-2.5 focus:ring-2 focus:ring-primary outline-none bg-gray-50"
                             value={searchType}
                             onChange={(e) => setSearchType(e.target.value)}
@@ -131,8 +131,8 @@ const LedgerReport = () => {
                         ) : (
                             <div>
                                 <label className="block text-sm font-semibold text-gray-600 mb-1">Registration Number</label>
-                                <input 
-                                    type="text" 
+                                <input
+                                    type="text"
                                     className="w-full border rounded-md p-2.5 focus:ring-2 focus:ring-primary outline-none"
                                     placeholder="Enter Reg No (e.g. 1-BHE)"
                                     value={regNoInput}
@@ -144,18 +144,18 @@ const LedgerReport = () => {
 
                     {/* Actions */}
                     <div className="md:col-span-4 flex gap-2">
-                        <button 
-                            onClick={handleShowReport} 
+                        <button
+                            onClick={handleShowReport}
                             disabled={isLoading}
                             className="bg-blue-600 text-white px-6 py-2.5 rounded-md hover:bg-blue-700 font-bold shadow transition flex items-center gap-2 w-full justify-center md:w-auto"
                         >
-                           {isLoading ? 'Loading...' : <><Search size={18}/> Show Report</>}
+                            {isLoading ? 'Loading...' : <><Search size={18} /> Show Report</>}
                         </button>
-                        <button 
-                            onClick={resetFilter} 
+                        <button
+                            onClick={resetFilter}
                             className="bg-gray-100 text-gray-600 px-4 py-2.5 rounded-md hover:bg-gray-200 border border-gray-300 font-medium transition flex items-center gap-1"
                         >
-                            <RefreshCw size={16}/> Reset
+                            <RefreshCw size={16} /> Reset
                         </button>
                     </div>
                 </div>
@@ -167,7 +167,7 @@ const LedgerReport = () => {
                     {/* Toolbar (Hidden in Print) */}
                     <div className="bg-gray-50 p-3 border-b border-gray-200 flex justify-end print:hidden">
                         <button onClick={handlePrint} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 transition font-medium">
-                            <Printer size={18}/> Print Statement
+                            <Printer size={18} /> Print Statement
                         </button>
                     </div>
 
@@ -184,7 +184,7 @@ const LedgerReport = () => {
                                     {branchInfo.address}
                                 </div>
                                 <p className="font-semibold text-blue-800">
-                                     Ph. No. : {branchInfo.phone}, Mob. No. : {branchInfo.mobile}
+                                    Ph. No. : {branchInfo.phone}, Mob. No. : {branchInfo.mobile}
                                 </p>
                                 <p className="text-blue-500 underline">{branchInfo.email}</p>
                             </div>
@@ -197,7 +197,7 @@ const LedgerReport = () => {
 
                         {/* Student Details Grid */}
                         <div className="bg-gray-50/50 p-0 mb-6 text-xs">
-                           <div className="grid grid-cols-2 gap-x-8">
+                            <div className="grid grid-cols-2 gap-x-8">
                                 {/* Left Column */}
                                 <div className="space-y-0">
                                     <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Reg.No. :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.regNo}</span></div>
@@ -221,12 +221,12 @@ const LedgerReport = () => {
                                     <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Admission Fees :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.admissionFeeAmount || ledgerData.course.admissionFees}.00</span></div>
                                     <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Monthly Fees :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.paymentPlan === 'Monthly' ? `${ledgerData.course.monthlyFees}.00` : 'N/A'}</span></div>
                                 </div>
-                           </div>
+                            </div>
                         </div>
 
                         {/* Fees Details Title */}
                         <div className="text-center mb-4">
-                             <h3 className="text-lg font-bold text-blue-500 uppercase">Fees Details</h3>
+                            <h3 className="text-lg font-bold text-blue-500 uppercase">Fees Details</h3>
                         </div>
 
                         {/* Fees Table */}

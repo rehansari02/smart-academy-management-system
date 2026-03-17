@@ -79,7 +79,27 @@ const StudentCompletionReport = () => {
 
     const getBranchInfo = (student) => {
         // Inherit logic from other reports
-        if (!student) return {};
+        if (user?.role === 'Super Admin') {
+            return {
+                name: "Main Branch",
+                address: "Smart Institute",
+                phone: "96017-49300",
+                mobile: "98988-30409",
+                email: "smartinstitutes@gmail.com"
+            };
+        }
+
+        if (user && user.branchDetails && user.branchDetails.address) {
+            return user.branchDetails;
+        }
+
+        if (!student) return {
+            name: "Bhestan Branch", 
+            address: "309-A, 309-B, 3rd Floor, Sai Square Building, Bhestan Circle, Bhestan Surat Gujarat-395023 (INDIA)",
+            phone: "96017-49300", 
+            mobile: "98988-30409",
+            email: "smartinstitutes@gmail.com" 
+        };
         
         let branchId = student.branchId;
         if (typeof branchId === 'object' && branchId !== null) {
@@ -101,8 +121,8 @@ const StudentCompletionReport = () => {
 
          // Fallback default
          return {
-            name: "Smart Institute", 
-            address: "309-A, 309-B, 3rd Floor, Sai Square Building, Bhestan Circle, Bhestan Surat Gujarat-395023",
+            name: "Bhestan Branch", 
+            address: "309-A, 309-B, 3rd Floor, Sai Square Building, Bhestan Circle, Bhestan Surat Gujarat-395023 (INDIA)",
             phone: "96017-49300", 
             mobile: "98988-30409",
             email: "smartinstitutes@gmail.com" 
