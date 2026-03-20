@@ -152,6 +152,14 @@ const StudentWiseOutstanding = () => {
         return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
+    const sortedStudents = students && students.length > 0
+        ? [...students].sort((a, b) => {
+            const dateA = a.admissionDate ? new Date(a.admissionDate).getTime() : 0;
+            const dateB = b.admissionDate ? new Date(b.admissionDate).getTime() : 0;
+            return dateA - dateB;
+        })
+        : [];
+
     return (
         <div className="container mx-auto p-4 max-w-7xl">
             <h1 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2 print:hidden">
@@ -255,7 +263,7 @@ const StudentWiseOutstanding = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {students && students.length > 0 ? students.map((s, index) => {
+                        {sortedStudents.length > 0 ? sortedStudents.map((s, index) => {
                             const summary = paymentSummaryMap[s._id];
                             const outstandingAmount = summary?.outstandingAmount ?? 0;
                             const dueAmount = summary?.dueAmount ?? 0;

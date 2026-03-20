@@ -109,6 +109,14 @@ const DatewiseOutstandingReport = () => {
 
     const branchInfo = getBranchDetails();
 
+    const sortedStudents = students && students.length > 0
+        ? [...students].sort((a, b) => {
+            const dateA = a.admissionDate ? new Date(a.admissionDate).getTime() : 0;
+            const dateB = b.admissionDate ? new Date(b.admissionDate).getTime() : 0;
+            return dateA - dateB;
+        })
+        : [];
+
     return (
         <div className="container mx-auto p-4 max-w-7xl">
             <h1 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2 print:hidden">
@@ -203,7 +211,7 @@ const DatewiseOutstandingReport = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {students && students.length > 0 ? students.map((std, index) => (
+                        {sortedStudents.length > 0 ? sortedStudents.map((std, index) => (
                             <tr key={std._id} className="text-center hover:bg-gray-50 align-middle border-b border-gray-100">
                                 <td className="p-2 border text-gray-700">{index + 1}</td>
                                 <td className="p-2 border whitespace-nowrap text-gray-700">

@@ -141,6 +141,14 @@ const createEmployee = asyncHandler(async (req, res) => {
             console.log("[Debug] User Account Created. ID:", userId);
         } catch (error) {
             console.error("[Debug] User Creation Error:", error);
+            if (error.code === 11000) {
+                if (error.keyPattern && error.keyPattern.email) {
+                    res.status(400); throw new Error('A user account with this email already exists. Please use a different email.');
+                }
+                if (error.keyPattern && error.keyPattern.username) {
+                    res.status(400); throw new Error('A user account with this username already exists. Please try a different username.');
+                }
+            }
             res.status(400); throw new Error('User Login Error: ' + error.message);
         }
     }
@@ -148,8 +156,26 @@ const createEmployee = asyncHandler(async (req, res) => {
     try {
         // Generate regNo if not provided (optional - can be removed if not needed)
         if (!req.body.regNo) {
-            const count = await Employee.countDocuments();
-            req.body.regNo = `EMP${String(count + 1).padStart(4, '0')}`;
+            const lastEmployee = await Employee.findOne({ regNo: { $exists: true, $ne: null } }, { regNo: 1 }).sort({ createdAt: -1 });
+            let nextNum = 1;
+            if (lastEmployee && lastEmployee.regNo) {
+                const match = lastEmployee.regNo.match(/\d+$/);
+                if (match) {
+                    nextNum = parseInt(match[0], 10) + 1;
+                } else {
+                    nextNum = (await Employee.countDocuments()) + 1;
+                }
+            } else {
+                nextNum = (await Employee.countDocuments()) + 1;
+            }
+            
+            let generatedRegNo = `EMP${String(nextNum).padStart(4, '0')}`;
+            // Ensure no duplicate key error even if records were deleted
+            while (await Employee.findOne({ regNo: generatedRegNo })) {
+                nextNum++;
+                generatedRegNo = `EMP${String(nextNum).padStart(4, '0')}`;
+            }
+            req.body.regNo = generatedRegNo;
         }
 
         const employee = await Employee.create({
@@ -178,6 +204,14 @@ const createEmployee = asyncHandler(async (req, res) => {
         if(userId) {
             console.log("[Debug] Rolling back User Account:", userId);
             await User.findByIdAndDelete(userId);
+        }
+        if (error.code === 11000) {
+            if (error.keyPattern && error.keyPattern.email) {
+                res.status(400); throw new Error('Employee with this email already exists');
+            }
+            if (error.keyPattern && error.keyPattern.regNo) {
+                res.status(400); throw new Error('A registration conflict occurred. Please try again.');
+            }
         }
         res.status(400); throw new Error(error.message);
     }
