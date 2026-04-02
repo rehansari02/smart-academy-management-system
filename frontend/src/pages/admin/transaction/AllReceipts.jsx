@@ -26,7 +26,9 @@ const AllReceipts = () => {
         receiptNo: '',
         paymentMode: '',
         studentId: '',
-        search: '' 
+        search: '',
+        studentName: '',
+        reference: ''
     });
 
     const [printingReceipt, setPrintingReceipt] = useState(null);
@@ -57,7 +59,9 @@ const AllReceipts = () => {
             receiptNo: '',
             paymentMode: '',
             studentId: '',
-            search: ''
+            search: '',
+            studentName: '',
+            reference: ''
         });
         dispatch(fetchFeeReceipts({})); 
     };
@@ -118,7 +122,7 @@ const AllReceipts = () => {
                 <h2 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
                     <Search size={16}/> Search Receipt
                 </h2>
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div>
                         <label className="text-xs text-gray-500">From Date</label>
                         <input 
@@ -164,8 +168,30 @@ const AllReceipts = () => {
                             <option value="Online/UPI">Online/UPI</option>
                         </select>
                     </div>
+                    <div>
+                        <label className="text-xs text-gray-500">Student Name</label>
+                        <input 
+                            type="text" 
+                            name="studentName" 
+                            value={filters.studentName || ''} 
+                            onChange={handleFilterChange} 
+                            className="w-full border p-1 rounded text-sm" 
+                            placeholder="Student Name..."
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs text-gray-500">Reference</label>
+                        <input 
+                            type="text" 
+                            name="reference" 
+                            value={filters.reference || ''} 
+                            onChange={handleFilterChange} 
+                            className="w-full border p-1 rounded text-sm" 
+                            placeholder="Reference..."
+                        />
+                    </div>
 
-                    <div className="flex items-end gap-2">
+                    <div className="flex items-end gap-2 md:col-span-2">
                         <button onClick={resetFilters} className="bg-gray-200 p-2 rounded hover:bg-gray-300 text-gray-700 w-full flex justify-center" title="Reset">
                             <RefreshCw size={18}/>
                         </button>

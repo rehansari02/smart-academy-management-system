@@ -12,6 +12,7 @@ const {
     toggleStudentStatus,
     confirmStudentRegistration,
     resetStudentLogin,
+    cancelStudent,
     getNextRegNo
 } = require('../controllers/studentController');
 
@@ -37,5 +38,8 @@ router.route('/:id/toggle')
 
 router.route('/:id/reset-login')
     .put(protect, checkPermission('Student', 'edit'), resetStudentLogin);
+
+router.route('/:id/cancel')
+    .put(protect, checkPermission('Student', 'edit'), cancelStudent);
 
 module.exports = router;

@@ -106,17 +106,7 @@ const PendingAdmissionFees = () => {
             
             <div>
                  <label className="text-xs text-gray-500">Reference</label>
-                 <select
-                    name="reference"
-                    className="w-full border p-1 rounded text-sm"
-                    value={filters.reference}
-                    onChange={handleFilterChange}
-                  >
-                    <option value="">All References</option>
-                    <option value="Faculty A">Faculty A</option>
-                    <option value="Admin">Admin</option>
-                    <option value="Direct">Direct</option>
-                  </select>
+                 <input type="text" name="reference" value={filters.reference} onChange={handleFilterChange} className="w-full border p-1 rounded text-sm" placeholder="Search Reference..."/>
             </div>
 
             <div>

@@ -478,40 +478,25 @@ const FeeCollection = () => {
                                                     <td className="p-3">
                                                        {(() => {
                                                             const remark = (receipt.remarks || '').toLowerCase();
-                                                            const isAdmission = remark.includes('admission');
-                                                            const isRegistration = remark.includes('registration') || remark.includes('registration fees');
                                                             
-                                                            if (isAdmission) {
+                                                            if (remark.includes('admission')) {
                                                                 return (
                                                                     <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] font-bold uppercase tracking-wide border border-purple-200">
                                                                         Admission
                                                                     </span>
                                                                 );
-                                                            } else if (isRegistration) { // Checks 'registration' in remarks
+                                                            } else if (remark.includes('registration')) {
                                                                 return (
                                                                     <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold uppercase tracking-wide border border-indigo-200">
                                                                         Registration
                                                                     </span>
                                                                 );
-                                                            } else if (receipt.installmentNumber === 1) {
-                                                                return (
-                                                                    <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] font-bold uppercase tracking-wide border border-purple-200">
-                                                                        Admission
-                                                                    </span>
-                                                                );
-                                                            } else if (receipt.installmentNumber === 2) {
-                                                                 // Fallback: If installment 2, likely registration if not labeled otherwise? 
-                                                                 // User said "registration fees" is for PendingStudentRegistration. 
-                                                                 // Let's assume Inst 2 is Registration if not otherwise specified.
-                                                                return (
-                                                                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[12px] font-bold uppercase tracking-wide border border-indigo-200">
-                                                                        Registration
-                                                                    </span>
-                                                                );
                                                             } else {
+                                                                // This is a monthly installment payment
+                                                                const installmentNum = (receipt.installmentNumber - 2) > 0 ? receipt.installmentNumber - 2 : 1;
                                                                 return (
                                                                     <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-bold uppercase tracking-wide border border-blue-200">
-                                                                        {receipt.installmentNumber || 1}
+                                                                        {installmentNum}
                                                                     </span>
                                                                 );
                                                             }

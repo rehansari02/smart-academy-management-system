@@ -32,7 +32,7 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
     const { register, handleSubmit, watch } = useForm({ 
         defaultValues: { 
             status: inquiry.status || 'Open', 
-            followUpDetails: inquiry.followUpDetails,
+            newRemarks: '',
             fDate: inquiry.followUpDate ? new Date(inquiry.followUpDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
             fTime: inquiry.followUpDate ? new Date(inquiry.followUpDate).toTimeString().slice(0, 5) : getCurrentTime(),
         } 
@@ -51,18 +51,12 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
              fDate = new Date(`${data.fDate}T${time}`);
         }
 
-        let vDate = null;
-        if(data.vDate && selectedStatus !== 'Close' && selectedStatus !== 'Complete') {
-            const time = data.vTime || '00:00';
-            vDate = new Date(`${data.vDate}T${time}`);
-        }
+        const finalDetails = data.newRemarks ? (inquiry.followUpDetails ? `${inquiry.followUpDetails}\n[${formatDate(fDate)}]: ${data.newRemarks}` : `[${formatDate(fDate)}]: ${data.newRemarks}`) : inquiry.followUpDetails;
 
         const updateData = { 
             status: data.status,
-            followUpDetails: data.followUpDetails,
+            followUpDetails: finalDetails,
             followUpDate: fDate, 
-            nextVisitingDate: vDate,
-            visitReason: (selectedStatus !== 'Close' && selectedStatus !== 'Complete') ? data.visitReason : undefined,
         };
 
         // Save the inquiry update first
@@ -87,8 +81,8 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
     const { isLoading } = useSelector((state) => state.transaction);
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl animate-fadeIn">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl animate-fadeIn max-h-[90vh] overflow-y-auto flex flex-col">
                 <div className="flex justify-between mb-4 border-b pb-2"><h3 className="font-bold text-blue-800">Online Follow Up</h3><button onClick={onClose}><X/></button></div>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                      <div>
@@ -106,19 +100,17 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
                         <div><label className="text-xs font-bold block mb-1">Follow-Up Date (dd-mm-yyyy)</label><input type="date" {...register('fDate')} required className="border p-2 rounded w-full text-sm"/></div>
                         <div><label className="text-xs font-bold block mb-1">Time (12h)</label><input type="time" {...register('fTime')} required className="border p-2 rounded w-full text-sm"/></div>
                     </div>
-                    <div><label className="text-xs font-bold block mb-1">Discussion / Remarks</label><textarea {...register('followUpDetails')} className="border p-2 rounded w-full text-sm" rows="3"></textarea></div>
-                    
-                    {/* Conditional Next Visit Schedule */}
-                    {showNextVisit && (
-                        <div className="bg-gray-50 p-3 rounded mt-2 border border-gray-100">
-                            <p className="font-bold text-xs mb-2 text-purple-700 flex items-center gap-1"><Calendar size={12}/> Next Visit Schedule</p>
-                            <div className="grid grid-cols-2 gap-3 mb-2">
-                                 <input type="date" {...register('vDate')} className="border p-2 rounded w-full text-sm" defaultValue={new Date().toISOString().split('T')[0]}/>
-                                 <input type="time" {...register('vTime')} className="border p-2 rounded w-full text-sm" defaultValue={getCurrentTime()}/>
-                            </div>
-                            <input {...register('visitReason')} placeholder="Reason for visit..." className="border p-2 rounded w-full text-sm"/>
+                    <div>
+                        <label className="text-xs font-bold block mb-1">Previous Remarks</label>
+                        <div className="border p-2 rounded w-full text-sm h-24 overflow-y-auto bg-gray-50 text-gray-700 font-mono whitespace-pre-wrap">
+                            {inquiry.followUpDetails || 'No previous remarks'}
                         </div>
-                    )}
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold block mb-1 mt-2">New Discussion / Remarks</label>
+                        <textarea {...register('newRemarks')} className="border p-2 rounded w-full text-sm" rows="2" placeholder="Enter new remarks..."></textarea>
+                    </div>
+                    
                     <button disabled={isLoading} className="bg-blue-600 text-white w-full py-2 rounded mt-2 hover:bg-blue-700 font-bold shadow-sm disabled:opacity-70 disabled:cursor-not-allowed">
                         {isLoading ? 'Saving...' : 'Update Status'}
                     </button>
@@ -144,7 +136,8 @@ const InquiryOnline = () => {
       endDate: new Date().toISOString().split('T')[0],
       status: '',
       studentName: '',
-      dateFilterType: 'inquiryDate',
+      referenceBy: '',
+      dateFilterType: 'nextVisitingDate',
       source: 'Online' // Locked to Online
   });
 
@@ -172,8 +165,8 @@ const InquiryOnline = () => {
 
   const handleResetFilters = () => {
       const resetState = { 
-          startDate: new Date().toISOString().split('T')[0], endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', 
-          dateFilterType: 'inquiryDate', source: 'Online' 
+          startDate: new Date().toISOString().split('T')[0], endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '',
+          dateFilterType: 'nextVisitingDate', source: 'Online' 
       };
       setFilters(resetState);
       dispatch(fetchInquiries(resetState));
@@ -210,10 +203,12 @@ const InquiryOnline = () => {
       { header: 'Contact (Parent)', render: r => r.contactParent || '-' },
       { header: 'Gender', accessor: 'gender' },
       { header: 'Status', render: r => <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${r.status==='Open'?'bg-green-100 text-green-700': r.status==='Recall' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'}`}>{r.status}</span> },
-      { header: 'Follow Up', render: r => (
+      { header: 'Next Follow Up', render: r => (
           <div className="text-xs">
-              <div className="font-bold">{r.followUpDate ? formatDate(r.followUpDate) : '-'}</div>
-              <div className="text-gray-500 truncate max-w-[100px]">{r.followUpDetails}</div>
+              <div className="font-bold text-blue-600">{r.nextVisitingDate ? formatDate(r.nextVisitingDate) : '-'}</div>
+              <div className="text-gray-500 font-medium">
+                  {r.nextVisitingDate && new Date(r.nextVisitingDate).toTimeString() !== '00:00:00 GMT+0530 (India Standard Time)' && new Date(r.nextVisitingDate).toTimeString() !== '00:00:00 GMT+0000 (Coordinated Universal Time)' ? new Date(r.nextVisitingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+              </div>
           </div>
       )},
       { header: 'Allocated To', render: r => r.allocatedTo?.name || 'Unallocated' },
@@ -272,7 +267,7 @@ const InquiryOnline = () => {
             </div>
 
             {/* Row 2: Status & Student Search */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                  <div>
                     <label className="text-xs text-gray-500 font-semibold mb-1 block">Status</label>
                     <select name="status" onChange={handleFilterChange} value={filters.status} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
@@ -299,6 +294,10 @@ const InquiryOnline = () => {
                         placeholder="Search by Name for Online Inquiries..."
                         className="w-full text-sm"
                     />
+                </div>
+                <div>
+                    <label className="text-xs text-gray-500 font-semibold mb-1 block">Reference By</label>
+                    <input type="text" name="referenceBy" value={filters.referenceBy} onChange={handleFilterChange} placeholder="Search Reference..." className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"/>
                 </div>
             </div>
 

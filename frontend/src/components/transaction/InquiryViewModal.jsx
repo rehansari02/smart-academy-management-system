@@ -166,7 +166,16 @@ const InquiryViewModal = ({ inquiry, onClose }) => {
                                 </div>
                                 <div className="md:col-span-2">
                                     <span className="block text-gray-500 text-xs uppercase font-semibold">Followup Detail</span>
-                                    <span className="font-medium text-gray-900 italic">"{inquiry.followUpDetails || 'No additional details'}"</span>
+                                    <div className="font-medium text-gray-900 italic whitespace-pre-wrap text-sm border p-2 rounded bg-gray-50 mt-1 max-h-40 overflow-y-auto">
+                                        {inquiry.followUpDetails || 'No additional details'}
+                                    </div>
+                                </div>
+                                <div className="md:col-span-2 mt-2 pt-2 border-t">
+                                     <span className="block text-blue-600 text-xs uppercase font-semibold">Next Followup Schedule</span>
+                                     <span className="font-bold text-gray-900">
+                                         {inquiry.nextVisitingDate ? formatDate(inquiry.nextVisitingDate) + (inquiry.nextVisitingDate && new Date(inquiry.nextVisitingDate).toTimeString() !== '00:00:00 GMT+0530 (India Standard Time)' && new Date(inquiry.nextVisitingDate).toTimeString() !== '00:00:00 GMT+0000 (Coordinated Universal Time)' ? ' at ' + new Date(inquiry.nextVisitingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '') : 'Not Scheduled'}
+                                     </span>
+                                     {inquiry.visitReason && <span className="text-gray-500 ml-2">({inquiry.visitReason})</span>}
                                 </div>
                             </div>
                         </div>

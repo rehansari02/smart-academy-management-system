@@ -18,6 +18,8 @@ const StudentFollowingReport = () => {
         startDate: '',
         endDate: new Date().toISOString().split('T')[0],
         branchId: '',
+        studentName: '',
+        referenceBy: '',
         source: 'DSR' //Default to DSR as per request
     });
 
@@ -52,6 +54,8 @@ const StudentFollowingReport = () => {
             startDate: '',
             endDate: new Date().toISOString().split('T')[0],
             branchId: '',
+            studentName: '',
+            referenceBy: '',
             source: 'DSR'
         };
         setFilters(initial);
@@ -137,7 +141,12 @@ const StudentFollowingReport = () => {
                         </div>
                     )}
                     <div>
-                        {/* Placeholder for alignment if needed or extra filter */}
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Student Name</label>
+                        <input type="text" name="studentName" value={filters.studentName || ''} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" placeholder="Search Student..." />
+                    </div>
+                    <div>
+                         <label className="text-sm font-semibold text-gray-600 mb-1 block">Reference</label>
+                         <input type="text" name="referenceBy" value={filters.referenceBy || ''} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" placeholder="Search Reference..." />
                     </div>
                 </div>
                 <div className="flex gap-2 mt-4 justify-end">

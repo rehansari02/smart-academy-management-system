@@ -22,6 +22,7 @@ const StudentList = () => {
     endDate: new Date().toISOString().split('T')[0], // Changed from toDate
     courseFilter: '', // Changed from courseId
     studentName: '',
+    reference: '',
     batch: '',
     branchId: '',
     pageSize: 10,
@@ -90,6 +91,7 @@ const StudentList = () => {
         endDate: new Date().toISOString().split('T')[0], 
         courseFilter: '', 
         studentName: '', 
+        reference: '',
         batch: '', 
         branchId: '',
         pageSize: 10, 
@@ -162,7 +164,7 @@ const StudentList = () => {
             </div>
 
             {/* Row 2: Student Search & Batch */}
-            <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
+            <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
                 <div className="relative z-20"> 
                     <StudentSearch 
                         label="Search Student"
@@ -180,6 +182,17 @@ const StudentList = () => {
                         additionalFilters={{ isRegistered: 'true' }}
                         placeholder="Search by Name/Reg No..."
                         className="w-full text-sm"
+                    />
+                </div>
+                <div>
+                    <label className="text-xs text-gray-500 font-semibold mb-1 block">Reference</label>
+                    <input 
+                        type="text" 
+                        name="reference" 
+                        value={filters.reference} 
+                        onChange={handleFilterChange} 
+                        className="w-full border p-2.5 rounded text-sm focus:ring-2 focus:ring-primary outline-none" 
+                        placeholder="Search Reference..."
                     />
                 </div>
                 <div>

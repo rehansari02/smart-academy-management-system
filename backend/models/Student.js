@@ -7,6 +7,8 @@ const studentSchema = new mongoose.Schema(
     regNo: { type: String }, // CHANGED: Removed unique constraint
     isActive: { type: Boolean, default: true },
     isRegistered: { type: Boolean, default: false },
+    isCancelled: { type: Boolean, default: false },
+    cancelledDate: { type: Date },
     isDeleted: { type: Boolean, default: false },
     
     // --- Document Verification Fields ---

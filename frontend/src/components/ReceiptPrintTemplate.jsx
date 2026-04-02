@@ -139,7 +139,9 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
           <div style={{ flex: 1, padding: '10px', borderRight: '1px solid #fff' }}>
             <div style={{ marginBottom: '6px' }}>
               <span style={{ color: '#0066cc' }}>Received From : </span>
-              <span style={{ textTransform: 'uppercase' }}>{receipt.student?.firstName} {receipt.student?.lastName}</span>
+              <span style={{ textTransform: 'uppercase' }}>
+                  {receipt.student?.firstName} {receipt.student?.middleName} {receipt.student?.lastName}
+              </span>
             </div>
             <div style={{ marginBottom: '6px' }}>
               <span style={{ color: '#0066cc' }}>Course : </span>

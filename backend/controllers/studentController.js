@@ -618,5 +618,17 @@ const resetStudentLogin = asyncHandler(async (req, res) => {
 
     res.json({ message: 'Login details updated successfully', username: user.username });
 });
+const cancelStudent = asyncHandler(async (req, res) => {
+    const student = await Student.findById(req.params.id);
+    if (student) {
+        student.isCancelled = true;
+        student.cancelledDate = new Date();
+        student.isActive = false;
+        await student.save();
+        res.json({ message: 'Student Admission Cancelled Successfully', _id: student._id });
+    } else {
+        res.status(404); throw new Error('Student not found');
+    }
+});
 
-module.exports = { getStudents, getStudentById, createStudent, updateStudent, confirmStudentRegistration, deleteStudent, toggleStudentStatus, resetStudentLogin, getNextRegNo };
+module.exports = { getStudents, getStudentById, createStudent, updateStudent, confirmStudentRegistration, deleteStudent, toggleStudentStatus, resetStudentLogin, getNextRegNo, cancelStudent };

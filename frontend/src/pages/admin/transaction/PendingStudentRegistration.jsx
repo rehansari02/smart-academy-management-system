@@ -84,12 +84,7 @@ const PendingStudentRegistration = () => {
             </div>
             <div>
                 <label className="text-xs text-gray-500">Reference</label>
-                <select name="referenceId" value={filters.referenceId} onChange={handleFilterChange} className="w-full border p-1 rounded text-sm">
-                    <option value="">All References</option>
-                    {employees?.map(emp => (
-                        <option key={emp._id} value={emp._id}>{emp.name}</option>
-                    ))}
-                </select>
+                <input type="text" name="reference" value={filters.reference} onChange={handleFilterChange} className="w-full border p-1 rounded text-sm" placeholder="Search Reference..."/>
             </div>
             <div>
                 <label className="text-xs text-gray-500">From Date</label>

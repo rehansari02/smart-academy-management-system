@@ -10,7 +10,14 @@ export const fetchStudents = createAsyncThunk(
   "students/fetchAll",
   async (params, thunkAPI) => {
     try {
-      const response = await axios.get(API_URL, { params });
+      const queryParams = { ...params };
+      // By default, exclude cancelled students unless explicitly requested
+      if (queryParams.includeCancelled !== true) {
+        queryParams.isCancelled = false;
+      }
+      delete queryParams.includeCancelled; // Remove from params as it's not a backend param
+
+      const response = await axios.get(API_URL, { params: queryParams });
       return response.data;
     } catch (error) {
       return thunkAPI.rejectWithValue(
@@ -158,6 +165,20 @@ export const deleteStudent = createAsyncThunk(
   }
 );
 
+export const cancelStudent = createAsyncThunk(
+  "students/cancel",
+  async (id, thunkAPI) => {
+    try {
+      const response = await axios.put(`${API_URL}${id}/cancel`);
+      return response.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message
+      );
+    }
+  }
+);
+
 const studentSlice = createSlice({
   name: "students",
   initialState: {
@@ -265,6 +286,24 @@ const studentSlice = createSlice({
         );
       })
       .addCase(deleteStudent.rejected, (state, action) => {
+        state.isLoading = false;
+        state.isSuccess = false;
+        state.message = action.payload;
+      })
+      .addCase(cancelStudent.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(cancelStudent.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.isSuccess = true;
+        state.message = "Student Admission Cancelled Successfully";
+        // Optionally update the student in state if needed
+        const student = state.students.find((s) => s._id === action.payload._id);
+        if (student) {
+          student.isCancelled = true;
+        }
+      })
+      .addCase(cancelStudent.rejected, (state, action) => {
         state.isLoading = false;
         state.isSuccess = false;
         state.message = action.payload;

@@ -23,6 +23,8 @@ const StudentWiseOutstanding = () => {
         courseFilter: '',
         batch: '',
         branchId: '',
+        studentName: '',
+        reference: '',
         pageNumber: 1,
         pageSize: 100 // Default to showing more for report
     });
@@ -89,6 +91,8 @@ const StudentWiseOutstanding = () => {
             courseFilter: '',
             batch: '',
             branchId: '',
+            studentName: '',
+            reference: '',
             pageNumber: 1,
             pageSize: 100
         };
@@ -154,9 +158,17 @@ const StudentWiseOutstanding = () => {
 
     const sortedStudents = students && students.length > 0
         ? [...students].sort((a, b) => {
-            const dateA = a.admissionDate ? new Date(a.admissionDate).getTime() : 0;
-            const dateB = b.admissionDate ? new Date(b.admissionDate).getTime() : 0;
-            return dateA - dateB;
+            const dateA = a.admissionDate ? new Date(a.admissionDate) : null;
+            const dateB = b.admissionDate ? new Date(b.admissionDate) : null;
+            if (!dateA && !dateB) return 0;
+            if (!dateA) return 1;
+            if (!dateB) return -1;
+            const dayA = dateA.getDate();
+            const dayB = dateB.getDate();
+            if (dayA !== dayB) return dayA - dayB;
+            const monthA = dateA.getMonth();
+            const monthB = dateB.getMonth();
+            return monthA - monthB;
         })
         : [];
 
@@ -193,6 +205,14 @@ const StudentWiseOutstanding = () => {
                             </select>
                         </div>
                     )}
+                    <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Student Name</label>
+                        <input type="text" name="studentName" value={filters.studentName || ''} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" placeholder="Search Student..." />
+                    </div>
+                    <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Reference</label>
+                        <input type="text" name="reference" value={filters.reference || ''} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" placeholder="Search Reference..." />
+                    </div>
                 </div>
                 <div className="flex gap-2 mt-4 justify-end">
                     <button onClick={handleReset} className="bg-gray-100 text-gray-600 px-4 py-2 rounded hover:bg-gray-200 border border-gray-300 font-medium transition flex items-center gap-1">

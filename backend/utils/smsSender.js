@@ -12,7 +12,7 @@ const sendSMS = async (mobileNumber, message) => {
         const senderId = process.env.SMS_SENDER_ID || 'SMINT';
 
         // Prepare the URL
-        const apiUrl = 'https://api.smartping.ai/fe/api/v1/send';
+        const apiUrl = 'https://pgapi.smartping.io/fe/api/v1/send';
 
         // Make the Request
         const response = await axios.get(apiUrl, {

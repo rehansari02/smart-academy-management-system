@@ -11,7 +11,7 @@ const sendSMS = require("../utils/smsSender"); // Moved to top for global use
 
 // @desc Get Inquiries with Filters
 const getInquiries = asyncHandler(async (req, res) => {
-  const { startDate, endDate, status, studentName, source, dateFilterType } =
+  const { startDate, endDate, status, studentName, referenceBy, source, dateFilterType } =
     req.query;
 
   let query = { isDeleted: false };
@@ -36,6 +36,11 @@ const getInquiries = asyncHandler(async (req, res) => {
       { firstName: { $regex: studentName, $options: "i" } },
       { lastName: { $regex: studentName, $options: "i" } },
     ];
+  }
+
+  // Reference By Filter
+  if (referenceBy) {
+    query.referenceBy = { $regex: referenceBy, $options: "i" };
   }
 
   // --- BRANCH SCOPING ---
@@ -170,7 +175,7 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
 // --- FEES (Standard) ---
 // @desc Get Fee Receipts with Filters
 const getFeeReceipts = asyncHandler(async (req, res) => {
-  const { startDate, endDate, receiptNo, paymentMode, studentId } = req.query;
+  const { startDate, endDate, receiptNo, paymentMode, studentId, studentName, reference } = req.query;
 
   let query = {};
 
@@ -193,6 +198,27 @@ const getFeeReceipts = asyncHandler(async (req, res) => {
   if (receiptNo) query.receiptNo = { $regex: receiptNo, $options: "i" };
   if (paymentMode) query.paymentMode = paymentMode;
   if (studentId) query.student = studentId;
+
+  if (studentName || reference) {
+      let studentQuery = {};
+      if (studentName) {
+           studentQuery.$or = [
+              { firstName: { $regex: studentName, $options: "i" } },
+              { lastName: { $regex: studentName, $options: "i" } },
+              { regNo: { $regex: studentName, $options: "i" } },
+              { enrollmentNo: { $regex: studentName, $options: "i" } }
+           ];
+      }
+      if (reference) {
+           studentQuery.reference = { $regex: reference, $options: 'i' };
+      }
+      const matchingStudents = await Student.find(studentQuery).select('_id');
+      if (query.student) {
+          query.student = { $in: matchingStudents.map(s => s._id).filter(id => id.toString() === query.student.toString()) };
+      } else {
+          query.student = { $in: matchingStudents.map(s => s._id) };
+      }
+  }
 
   const receipts = await FeeReceipt.find(query)
     .populate("student", "firstName lastName regNo enrollmentNo middleName mobileStudent mobileParent batch totalFees pendingFees branchName emiDetails")
@@ -581,7 +607,7 @@ const getStudentPaymentHistory = asyncHandler(async (req, res) => {
 
 // @desc    Generate Receipt Report with Filters
 const generateReceiptReport = asyncHandler(async (req, res) => {
-  const { startDate, endDate, receiptNo, paymentMode, studentId } = req.query;
+  const { startDate, endDate, receiptNo, paymentMode, studentId, studentName, reference } = req.query;
 
   let query = {};
 
@@ -595,6 +621,27 @@ const generateReceiptReport = asyncHandler(async (req, res) => {
   if (receiptNo) query.receiptNo = { $regex: receiptNo, $options: "i" };
   if (paymentMode) query.paymentMode = paymentMode;
   if (studentId) query.student = studentId;
+
+  if (studentName || reference) {
+      let studentQuery = {};
+      if (studentName) {
+           studentQuery.$or = [
+              { firstName: { $regex: studentName, $options: "i" } },
+              { lastName: { $regex: studentName, $options: "i" } },
+              { regNo: { $regex: studentName, $options: "i" } },
+              { enrollmentNo: { $regex: studentName, $options: "i" } }
+           ];
+      }
+      if (reference) {
+           studentQuery.reference = { $regex: reference, $options: 'i' };
+      }
+      const matchingStudents = await Student.find(studentQuery).select('_id');
+      if (query.student) {
+          query.student = { $in: matchingStudents.map(s => s._id).filter(id => id.toString() === query.student.toString()) };
+      } else {
+          query.student = { $in: matchingStudents.map(s => s._id) };
+      }
+  }
 
   const receipts = await FeeReceipt.find(query)
     .populate("student", "firstName lastName regNo enrollmentNo middleName mobileStudent mobileParent batch totalFees pendingFees branchName emiDetails")
