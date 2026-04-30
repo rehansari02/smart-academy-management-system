@@ -72,25 +72,49 @@ const employeeSlice = createSlice({
         employees: [],
         isLoading: false,
         isSuccess: false,
+        isError: false,
         message: ''
     },
     reducers: {
         resetEmployeeStatus: (state) => {
             state.isSuccess = false;
+            state.isError = false;
             state.message = '';
         }
     },
     extraReducers: (builder) => {
         builder
+            .addCase(fetchEmployees.pending, (state) => {
+                state.isLoading = true;
+            })
             .addCase(fetchEmployees.fulfilled, (state, action) => {
+                state.isLoading = false;
                 state.employees = action.payload;
             })
+            .addCase(fetchEmployees.rejected, (state, action) => {
+                state.isLoading = false;
+                state.isError = true;
+                state.message = action.payload;
+            })
+            .addCase(createEmployee.pending, (state) => {
+                state.isLoading = true;
+            })
             .addCase(createEmployee.fulfilled, (state, action) => {
+                state.isLoading = false;
                 state.employees.unshift(action.payload);
                 state.isSuccess = true;
                 state.message = 'Employee Added Successfully';
             })
+            .addCase(createEmployee.rejected, (state, action) => {
+                state.isLoading = false;
+                state.isError = true;
+                state.message = action.payload;
+            })
+            .addCase(updateEmployee.pending, (state) => {
+                state.isLoading = true;
+            })
             .addCase(updateEmployee.fulfilled, (state, action) => {
+                state.isLoading = false;
                 const index = state.employees.findIndex(e => e._id === action.payload._id);
                 if (index !== -1) {
                     state.employees[index] = action.payload;
@@ -98,10 +122,24 @@ const employeeSlice = createSlice({
                 state.isSuccess = true;
                 state.message = 'Employee Updated Successfully';
             })
+            .addCase(updateEmployee.rejected, (state, action) => {
+                state.isLoading = false;
+                state.isError = true;
+                state.message = action.payload;
+            })
+            .addCase(deleteEmployee.pending, (state) => {
+                state.isLoading = true;
+            })
             .addCase(deleteEmployee.fulfilled, (state, action) => {
+                state.isLoading = false;
                 state.employees = state.employees.filter(e => e._id !== action.payload.id);
                 state.isSuccess = true;
                 state.message = 'Employee Deleted Successfully';
+            })
+            .addCase(deleteEmployee.rejected, (state, action) => {
+                state.isLoading = false;
+                state.isError = true;
+                state.message = action.payload;
             });
     }
 });
