@@ -222,7 +222,6 @@ const BlogPage = () => {
                 </motion.div>
               ))}
             </div>
-
             {filteredPosts.length === 0 && (
               <div className="text-center py-12">
                 <BookOpen size={48} className="text-gray-300 mx-auto mb-4" />
