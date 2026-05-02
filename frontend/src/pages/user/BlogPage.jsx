@@ -201,7 +201,6 @@ const BlogPage = () => {
                       {post.title}
                     </h3>
                     <p className="text-gray-600 mb-4 text-sm line-clamp-3">{post.excerpt || (post.content?.substring(0, 100) + '...')}</p>
-                    
                     <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-gray-200 rounded-full overflow-hidden flex items-center justify-center text-[10px] text-primary font-bold">
