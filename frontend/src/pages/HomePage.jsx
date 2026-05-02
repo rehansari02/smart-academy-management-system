@@ -535,7 +535,6 @@ const HomePage = () => {
             </Reveal>
           </div>
         </div>
-  
         {/* 5. Latest News - Carousel */}
         <div className="bg-slate-50 py-20 border-t border-gray-200">
           <div className="container mx-auto px-4">
