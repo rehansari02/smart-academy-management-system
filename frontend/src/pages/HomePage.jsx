@@ -6,6 +6,7 @@ import { createInquiry, createPublicInquiry } from '../features/transaction/tran
 import { toast } from 'react-toastify';
 import { Link, useNavigate } from 'react-router-dom';
 import newsService from '../services/newsService';
+import topperService from '../services/topperService';
 import { ArrowRight, X,Trophy, Calendar, ChevronLeft, ChevronRight, Phone, Mail, MapPin, AlertCircle, Quote, Star, Users, BookOpen, ChevronDown } from 'lucide-react';
 import { formatDate } from '../utils/dateUtils';
 import HeroCarousel from '../components/ui/HeroCarousel';
@@ -106,6 +107,8 @@ const HomePage = () => {
     const [latestNews, setLatestNews] = useState([]); 
     const [newsLoading, setNewsLoading] = useState(true);
     const [selectedNews, setSelectedNews] = useState(null);
+    const [toppers, setToppers] = useState([]);
+    const [toppersLoading, setToppersLoading] = useState(true);
   
     const [formData, setFormData] = useState({
       name: '',
@@ -132,7 +135,19 @@ const HomePage = () => {
       dispatch(getPublicBranches());
       generateCaptcha();
       fetchLatestNews();
+      fetchToppers();
     }, [dispatch]);
+
+    const fetchToppers = async () => {
+        try {
+            const data = await topperService.getPublicToppers();
+            setToppers(data);
+        } catch (error) {
+            console.error("Failed to load toppers", error);
+        } finally {
+            setToppersLoading(false);
+        }
+    };
 
     const fetchLatestNews = async () => {
         try {
@@ -207,16 +222,6 @@ const HomePage = () => {
       { image: HeroImage4},
       { image: HeroImage5},
       { image: HeroImage6}
-    ];
-  
-    // Dummy Data for Toppers - Ideally this should also come from an API
-    const toppers = [
-      { name: "Priya Patel", percentage: "98.5", course: "Full Stack Development", image: "https://placehold.co/600x400/png?text=Priya+Patel" },
-      { name: "Rahul Sharma", percentage: "97.2", course: "Data Science & AI", image: "https://placehold.co/600x400/png?text=Rahul+Sharma" },
-      { name: "Amit Kumar", percentage: "96.8", course: "Cyber Security", image: "https://placehold.co/600x400/png?text=Amit+Kumar" },
-      { name: "Sneha Gupta", percentage: "95.5", course: "UI/UX Design", image: "https://placehold.co/600x400/png?text=Sneha+Gupta" },
-      { name: "Vikram Singh", percentage: "94.9", course: "Digital Marketing", image: "https://placehold.co/600x400/png?text=Vikram+Singh" },
-      { name: "Anjali Mehta", percentage: "93.7", course: "Web Development", image: "https://placehold.co/600x400/png?text=Anjali+Mehta" },
     ];
   
     return (
@@ -520,7 +525,13 @@ const HomePage = () => {
               <h4 className="text-accent font-bold uppercase tracking-widest text-sm mb-3">Hall of Fame</h4>
               <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-4">Student <span className="text-primary">Success Stories</span></h2>
               <p className="text-gray-500 mb-12 max-w-2xl mx-auto text-lg">Celebrating the academic excellence and outstanding achievements of our brilliant students who have made us proud.</p>
-              <Carousel items={toppers} />
+              {toppersLoading ? (
+                  <div className="py-20 text-gray-400 italic">Loading success stories...</div>
+              ) : toppers.length > 0 ? (
+                  <Carousel items={toppers} />
+              ) : (
+                  <div className="py-20 text-gray-400 italic">No success stories to display yet.</div>
+              )}
             </Reveal>
           </div>
         </div>

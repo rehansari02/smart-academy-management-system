@@ -3,19 +3,21 @@ import { useForm } from 'react-hook-form';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchEmployees, createEmployee, updateEmployee, deleteEmployee, resetEmployeeStatus } from '../../../features/employee/employeeSlice';
 import { getBranches } from '../../../features/master/branchSlice'; // Import API
-import { fetchEducations, createEducation } from '../../../features/master/masterSlice';
+import { fetchEducations, createEducation, fetchReferences, createReference } from '../../../features/master/masterSlice';
 import { formatInputText } from '../../../utils/textFormatter';
 import { toast } from 'react-toastify';
-import { Search, Plus, X, Upload, User, Briefcase, Lock, Trash2, Edit, RotateCcw, Loader } from 'lucide-react';
+import { Search, Plus, X, Upload, User, Briefcase, Lock, Trash2, Edit, RotateCcw, Loader, Printer } from 'lucide-react';
 import ProfileImageUploader from '../../../components/common/ProfileImageUploader';
 
 import { useUserRights } from '../../../hooks/useUserRights';
+import { useNavigate } from 'react-router-dom';
 
 const EmployeeMaster = () => {
+  const navigate = useNavigate();
   const dispatch = useDispatch();
   const { employees, isSuccess, isError, message, isLoading } = useSelector((state) => state.employees);
   const { branches } = useSelector((state) => state.branch);
-  const { educations } = useSelector((state) => state.master);
+  const { educations, references } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth); // Get Auth User
   const [showForm, setShowForm] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -26,6 +28,11 @@ const EmployeeMaster = () => {
   const [showEduModal, setShowEduModal] = useState(false);
   const [newEdu, setNewEdu] = useState('');
   const [isEduLoading, setIsEduLoading] = useState(false);
+
+  // Reference States
+  const [showRefModal, setShowRefModal] = useState(false);
+  const [newRef, setNewRef] = useState({ name: '', mobile: '', address: '' });
+  const [isRefLoading, setIsRefLoading] = useState(false);
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm();
   const watchName = watch('name');
@@ -51,6 +58,7 @@ const EmployeeMaster = () => {
   useEffect(() => {
     dispatch(fetchEmployees(filters));
     dispatch(fetchEducations());
+    dispatch(fetchReferences());
     if(user?.role === 'Super Admin') {
         dispatch(getBranches());
     }
@@ -174,6 +182,11 @@ const EmployeeMaster = () => {
       if(window.confirm("Are you sure you want to delete this employee?")) {
           dispatch(deleteEmployee(id));
       }
+  };
+
+  const handlePrint = (emp) => {
+      console.log("Navigating to print with employee:", emp);
+      navigate('/print/employee-joining', { state: { employee: emp } });
   };
 
   const closeForm = () => {
@@ -377,6 +390,9 @@ const EmployeeMaster = () => {
                                             <Edit size={14}/>
                                         </button>
                                     )}
+                                    <button onClick={() => handlePrint(emp)} className="bg-green-50 text-green-600 p-1 rounded border border-green-200 hover:bg-green-100 transition" title="Print Agreement">
+                                        <Printer size={14}/>
+                                    </button>
                                     {canDelete && (
                                         <button onClick={() => handleDelete(emp._id)} className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" title="Delete">
                                             <Trash2 size={14}/>
@@ -397,6 +413,55 @@ const EmployeeMaster = () => {
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
             <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto relative">
+                {/* Reference Modal */}
+                {showRefModal && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 rounded-lg">
+                      <div className="bg-white p-5 rounded-lg shadow-2xl w-96 border animate-fadeIn">
+                          <div className="flex justify-between items-center mb-4 border-b pb-2">
+                              <h4 className="font-bold text-gray-800">Add New Reference</h4>
+                              <button type="button" onClick={() => setShowRefModal(false)}><X size={18} className="text-gray-500 hover:text-red-500"/></button>
+                          </div>
+                          <div className="space-y-3">
+                              <input 
+                                  className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Full Name *"
+                                  value={newRef.name}
+                                  onChange={e => setNewRef({...newRef, name: formatInputText(e.target.value)})}
+                              />
+                              <input 
+                                  className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Mobile Number *"
+                                  value={newRef.mobile}
+                                  onChange={e => setNewRef({...newRef, mobile: e.target.value})}
+                              />
+                              <input 
+                                  className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="City / Address"
+                                  value={newRef.address}
+                                  onChange={e => setNewRef({...newRef, address: formatInputText(e.target.value)})}
+                              />
+                              <button 
+                                  type="button" 
+                                  onClick={() => {
+                                      if(!newRef.name || !newRef.mobile) return toast.error('Name & Mobile required');
+                                      setIsRefLoading(true);
+                                      dispatch(createReference(newRef)).then((res) => {
+                                          setIsRefLoading(false);
+                                          if(!res.error) {
+                                              setValue('referName', newRef.name);
+                                              setValue('referMobile', newRef.mobile);
+                                              setShowRefModal(false);
+                                              toast.success('Reference Added!');
+                                              setNewRef({ name: '', mobile: '', address: '' });
+                                          }
+                                      });
+                                  }}
+                                  disabled={isRefLoading}
+                                  className="w-full py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700 transition flex justify-center items-center gap-2"
+                              >
+                                  {isRefLoading ? 'Saving...' : 'Save Reference'}
+                              </button>
+                          </div>
+                      </div>
+                  </div>
+                )}
                 {/* Education Modal */}
                 {showEduModal && (
                   <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 rounded-lg">
@@ -519,6 +584,39 @@ const EmployeeMaster = () => {
                                     className="w-full border p-2 rounded text-sm mt-1"
                                     onChange={(e) => setValue('address', formatInputText(e.target.value))}
                                 />
+                            </div>
+                             <div>
+                                <label className="block text-xs font-bold text-gray-700">Reference</label>
+                                <div className="flex gap-2 mt-1">
+                                    <select
+                                      {...register("referName")}
+                                      className="w-full border p-2 rounded text-sm"
+                                      onChange={(e) => {
+                                          const selected = references.find(r => r.name === e.target.value);
+                                          if(selected) {
+                                              setValue('referMobile', selected.mobile);
+                                          } else {
+                                              setValue('referMobile', '');
+                                          }
+                                      }}
+                                    >
+                                      <option value="">-- Select Reference --</option>
+                                      {references.map((opt, i) => (
+                                        <option key={opt._id || i} value={opt.name}>
+                                          {opt.name} ({opt.mobile})
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowRefModal(true)}
+                                      className="p-2 bg-blue-50 text-blue-600 rounded border hover:bg-blue-100 flex-shrink-0"
+                                      title="Add New Reference"
+                                    >
+                                      <Plus size={20} />
+                                    </button>
+                                </div>
+                                <input type="hidden" {...register('referMobile')} />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-700">Education</label>

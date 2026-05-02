@@ -21,7 +21,8 @@ export const MENU_CONFIG = [
       { title: 'User Rights', path: '/master/user-rights' },
       { title: 'Material', path: '/master/material' },
       { title: 'Free Learning', path: '/master/free-learning' },
-      { title: 'Manage News', path: '/master/manage-news' }
+      { title: 'Manage News', path: '/master/manage-news' },
+      { title: 'Topper Result', path: '/master/manage-toppers' }
     ]
   },
   {
@@ -104,8 +105,7 @@ export const MENU_CONFIG = [
     path: '/blog',
     type: 'dropdown',
     subItems: [
-      { title: 'Manage Blogs', path: '/blog/manage-blogs' },
-      { title: 'Comments', path: '/blog/comments' }
+      { title: 'Manage Blogs', path: '/blog/manage-blogs' }
     ]
   },
   {

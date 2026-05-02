@@ -82,7 +82,9 @@ app.use("/api/transaction/attendance", require("./routes/attendanceRoutes"));
 app.use("/api/branches", require("./routes/branchRoutes"));
 app.use("/api/cloudinary", require("./routes/cloudinaryRoutes"));
 app.use("/api/materials", require("./routes/materialRoutes")); // Material Routes
+app.use("/api/topper-results", require("./routes/topperResultRoutes")); // Topper Results Routes
 app.use("/api/student-portal", require("./routes/studentPortalRoutes")); // New Student Portal Routes
+app.use("/api/blogs", require("./routes/blogRoutes")); // Blog Routes
 
 // Error Handler
 app.use(errorHandler);

@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate, Link } from 'react-router-dom';
+import { fetchBlogs } from '../../features/blog/blogSlice';
+import moment from 'moment';
 import { 
   Phone, Mail, MapPin, Facebook, Twitter, Instagram, Linkedin, 
   ArrowRight, Calendar, Clock, User, Heart, MessageCircle, Share2,
@@ -12,139 +15,29 @@ import logoImage from '../../assets/logo2.png';
 import Reveal from '../../components/Reveal';
 
 const BlogPage = () => {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { blogs = [] } = useSelector((state) => state.blogs);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   
-  const categories = ['all', 'education', 'technology', 'career', 'campus-life', 'success-stories'];
-  
-  const blogPosts = [
-    {
-      id: 1,
-      title: 'Top 10 Programming Languages to Learn in 2024',
-      excerpt: 'Discover the most in-demand programming languages that will boost your career prospects in the tech industry...',
-      category: 'technology',
-      author: 'Rajesh Kumar',
-      date: '2024-01-15',
-      readTime: '5 min read',
-      image: 'https://placehold.co/800x400/png?text=Programming+Languages+2024',
-      likes: 245,
-      comments: 32,
-      featured: true
-    },
-    {
-      id: 2,
-      title: 'How to Choose the Right Career Path After 12th',
-      excerpt: 'A comprehensive guide to help students make informed decisions about their career choices after completing school...',
-      category: 'career',
-      author: 'Priya Sharma',
-      date: '2024-01-12',
-      readTime: '8 min read',
-      image: 'https://placehold.co/800x400/png?text=Career+Guidance',
-      likes: 189,
-      comments: 28,
-      featured: true
-    },
-    {
-      id: 3,
-      title: 'Digital Marketing Trends That Will Dominate 2024',
-      excerpt: 'Explore the latest digital marketing trends and strategies that businesses are adopting to stay competitive...',
-      category: 'technology',
-      author: 'Amit Patel',
-      date: '2024-01-10',
-      readTime: '6 min read',
-      image: 'https://placehold.co/800x400/png?text=Digital+Marketing+2024',
-      likes: 156,
-      comments: 19,
-      featured: false
-    },
-    {
-      id: 4,
-      title: 'Smart Institute Annual Tech Fest 2024 - A Grand Success',
-      excerpt: 'Relive the amazing moments from our annual tech fest that showcased innovation and creativity...',
-      category: 'campus-life',
-      author: 'Neha Singh',
-      date: '2024-01-08',
-      readTime: '4 min read',
-      image: 'https://placehold.co/800x400/png?text=Tech+Fest+2024',
-      likes: 298,
-      comments: 41,
-      featured: true
-    },
-    {
-      id: 5,
-      title: 'From Student to CEO: Success Story of Our Alumni',
-      excerpt: 'Inspiring journey of our former student who is now leading a successful tech startup in Silicon Valley...',
-      category: 'success-stories',
-      author: 'Vikram Desai',
-      date: '2024-01-05',
-      readTime: '10 min read',
-      image: 'https://placehold.co/800x400/png?text=Success+Story',
-      likes: 412,
-      comments: 67,
-      featured: true
-    },
-    {
-      id: 6,
-      title: 'The Importance of Soft Skills in Today\'s Job Market',
-      excerpt: 'Why soft skills are becoming as important as technical skills for career success in the modern workplace...',
-      category: 'education',
-      author: 'Sanjay Mehta',
-      date: '2024-01-03',
-      readTime: '7 min read',
-      image: 'https://placehold.co/800x400/png?text=Soft+Skills',
-      likes: 134,
-      comments: 22,
-      featured: false
-    },
-    {
-      id: 7,
-      title: 'Web Development Roadmap for Beginners',
-      excerpt: 'A step-by-step guide for aspiring web developers to start their journey in the world of web development...',
-      category: 'education',
-      author: 'Rajesh Kumar',
-      date: '2024-01-01',
-      readTime: '12 min read',
-      image: 'https://placehold.co/800x400/png?text=Web+Development',
-      likes: 278,
-      comments: 35,
-      featured: false
-    },
-    {
-      id: 8,
-      title: 'Campus Placement Drive 2024 - Record Breaking Results',
-      excerpt: 'Our students achieved remarkable success in the recent campus placement drive with top companies...',
-      category: 'campus-life',
-      author: 'Priya Sharma',
-      date: '2023-12-28',
-      readTime: '5 min read',
-      image: 'https://placehold.co/800x400/png?text=Placement+Drive',
-      likes: 367,
-      comments: 48,
-      featured: false
-    },
-    {
-      id: 9,
-      title: 'Data Science vs Machine Learning: What\'s the Difference?',
-      excerpt: 'Understanding the key differences between data science and machine learning to choose the right career path...',
-      category: 'technology',
-      author: 'Dr. Anita Sharma',
-      date: '2023-12-25',
-      readTime: '9 min read',
-      image: 'https://placehold.co/800x400/png?text=Data+Science+vs+ML',
-      likes: 198,
-      comments: 31,
-      featured: false
-    }
-  ];
+  useEffect(() => {
+    dispatch(fetchBlogs());
+  }, [dispatch]);
 
-  const filteredPosts = blogPosts.filter(post => {
+  const categories = ['all', 'Education', 'Tech', 'General', 'News', 'Career', 'Success Stories'];
+  
+  // Only show published and non-deleted blogs
+  const publishedBlogs = blogs.filter(blog => blog.isPublished && !blog.isDeleted);
+
+  const filteredPosts = publishedBlogs.filter(post => {
     const matchesCategory = selectedCategory === 'all' || post.category === selectedCategory;
-    const matchesSearch = post.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         post.excerpt.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (post.title?.toLowerCase() || "").includes(searchTerm.toLowerCase()) || 
+                         (post.content?.toLowerCase() || "").includes(searchTerm.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
-  const featuredPosts = blogPosts.filter(post => post.featured);
+  const featuredPosts = publishedBlogs.filter(post => post.views > 10 || post.isPublished).slice(0, 5); // Fallback for featured
 
   return (
     <div className="min-h-screen bg-white font-sans">
@@ -182,14 +75,18 @@ const BlogPage = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {featuredPosts.slice(0, 2).map((post, index) => (
                 <motion.div 
-                  key={post.id}
+                  key={post._id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: index * 0.1 }}
                   className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all group"
                 >
                   <div className="relative h-64 overflow-hidden">
-                    <img src={post.image} alt={post.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                    <img 
+                      src={post.image ? (post.image.startsWith('http') ? post.image : `http://localhost:5000/${post.image}`) : 'https://placehold.co/800x400/png?text=Smart+Institute'} 
+                      alt={post.title} 
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" 
+                    />
                     <div className="absolute top-4 left-4">
                       <span className="bg-accent text-white px-3 py-1 rounded-full text-sm font-bold">
                         Featured
@@ -201,26 +98,26 @@ const BlogPage = () => {
                       <span className="text-accent font-semibold text-sm">{post.category}</span>
                       <div className="flex items-center gap-2 text-gray-500 text-sm">
                         <Clock size={14} />
-                        <span>{post.readTime}</span>
+                        <span>5 min read</span>
                       </div>
                     </div>
                     <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-4 group-hover:text-primary transition-colors">
                       {post.title}
                     </h3>
-                    <p className="text-gray-600 mb-6 leading-relaxed">{post.excerpt}</p>
+                    <p className="text-gray-600 mb-6 leading-relaxed line-clamp-2">{post.excerpt || (post.content?.substring(0, 150) + '...')}</p>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gray-200 rounded-full overflow-hidden">
-                          <img src={`https://placehold.co/40x40/png?text=${post.author.charAt(0)}`} alt={post.author} className="w-full h-full object-cover" />
+                        <div className="w-10 h-10 bg-gray-200 rounded-full overflow-hidden flex items-center justify-center text-primary font-bold">
+                           {post.authorName?.charAt(0) || 'A'}
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-gray-900">{post.author}</p>
-                          <p className="text-xs text-gray-500">{new Date(post.date).toLocaleDateString()}</p>
+                          <p className="text-sm font-semibold text-gray-900">{post.authorName}</p>
+                          <p className="text-xs text-gray-500">{moment(post.createdAt).format('LL')}</p>
                         </div>
                       </div>
-                      <button className="text-primary font-semibold hover:text-blue-700 flex items-center gap-2">
+                      <Link to={`/blog/${post.slug}`} className="text-primary font-semibold hover:text-blue-700 flex items-center gap-2">
                         Read More <ArrowRight size={16} />
-                      </button>
+                      </Link>
                     </div>
                   </div>
                 </motion.div>
@@ -278,53 +175,47 @@ const BlogPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredPosts.map((post, index) => (
                 <motion.div 
-                  key={post.id}
+                  key={post._id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: index * 0.05 }}
-                  className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-xl transition-all group"
+                  className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-xl transition-all group cursor-pointer"
+                  onClick={() => navigate(`/blog/${post.slug}`)}
                 >
                   <div className="relative h-48 overflow-hidden">
-                    <img src={post.image} alt={post.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
-                    {post.featured && (
-                      <div className="absolute top-4 left-4">
-                        <span className="bg-accent text-white px-2 py-1 rounded-full text-xs font-bold">
-                          Featured
-                        </span>
-                      </div>
-                    )}
+                    <img 
+                      src={post.image ? (post.image.startsWith('http') ? post.image : `http://localhost:5000/${post.image}`) : 'https://placehold.co/800x400/png?text=Smart+Institute'} 
+                      alt={post.title} 
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" 
+                    />
                   </div>
                   <div className="p-6">
                     <div className="flex items-center gap-3 mb-3">
                       <span className="text-accent font-semibold text-xs uppercase">{post.category}</span>
                       <div className="flex items-center gap-1 text-gray-500 text-xs">
                         <Clock size={12} />
-                        <span>{post.readTime}</span>
+                        <span>4 min read</span>
                       </div>
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-primary transition-colors line-clamp-2">
                       {post.title}
                     </h3>
-                    <p className="text-gray-600 mb-4 text-sm line-clamp-3">{post.excerpt}</p>
+                    <p className="text-gray-600 mb-4 text-sm line-clamp-3">{post.excerpt || (post.content?.substring(0, 100) + '...')}</p>
                     
                     <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-gray-200 rounded-full overflow-hidden">
-                          <img src={`https://placehold.co/32x32/png?text=${post.author.charAt(0)}`} alt={post.author} className="w-full h-full object-cover" />
+                        <div className="w-8 h-8 bg-gray-200 rounded-full overflow-hidden flex items-center justify-center text-[10px] text-primary font-bold">
+                           {post.authorName?.charAt(0) || 'A'}
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-gray-900">{post.author}</p>
-                          <p className="text-xs text-gray-500">{new Date(post.date).toLocaleDateString()}</p>
+                          <p className="text-xs font-semibold text-gray-900">{post.authorName}</p>
+                          <p className="text-xs text-gray-500">{moment(post.createdAt).format('ll')}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3 text-gray-500">
                         <div className="flex items-center gap-1">
-                          <Heart size={14} />
-                          <span className="text-xs">{post.likes}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <MessageCircle size={14} />
-                          <span className="text-xs">{post.comments}</span>
+                          <TrendingUp size={14} />
+                          <span className="text-xs">{post.views || 0}</span>
                         </div>
                       </div>
                     </div>

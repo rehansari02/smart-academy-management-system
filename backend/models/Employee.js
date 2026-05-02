@@ -26,6 +26,8 @@ const employeeSchema = new mongoose.Schema({
     qualification: { type: String },
     address: { type: String },
     photo: { type: String }, 
+    referName: { type: String },
+    referMobile: { type: String },
     isActive: { type: Boolean, default: true },
     branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
 

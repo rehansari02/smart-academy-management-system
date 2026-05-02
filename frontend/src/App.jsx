@@ -65,7 +65,8 @@ const ExamRequestList = lazy(() =>
 );
 const ExamSchedule = lazy(() => import("./pages/admin/master/ExamSchedule"));
 const ExamResult = lazy(() => import("./pages/admin/master/ExamResult"));
-const ManageNews = lazy(() => import("./pages/admin/master/ManageNews"));
+const ManageNews = lazy(() => import('./pages/admin/master/ManageNews'));
+const ManageToppers = lazy(() => import('./pages/admin/master/ManageToppers'));
 const ManageTerms = lazy(() => import("./pages/admin/master/ManageTerms"));
 const BranchMaster = lazy(() => import("./pages/admin/master/BranchMaster"));
 const Material = lazy(() => import("./pages/admin/master/Material"));
@@ -111,10 +112,15 @@ const StudentRegistrationProcess = lazy(() =>
 const StudentAttendance = lazy(() => import("./pages/admin/transaction/StudentAttendance"));
 const EmployeeAttendance = lazy(() => import("./pages/admin/transaction/EmployeeAttendance"));
 
+// --- BLOG ---
+const ManageBlogs = lazy(() => import("./pages/admin/blog/ManageBlogs"));
+const BlogDetail = lazy(() => import("./pages/user/BlogDetail"));
+
 // --- REPORTS (Ensure this import is correct) ---
 const LedgerReport = lazy(() => import("./pages/admin/reports/LedgerReport"));
 const StudentWiseOutstanding = lazy(() => import("./pages/admin/reports/StudentWiseOutstanding"));
 const AdmissionFormPrint = lazy(() => import("./pages/admin/reports/AdmissionFormPrint"));
+const EmployeeJoiningPrint = lazy(() => import("./pages/admin/reports/EmployeeJoiningPrint"));
 const StudentFollowingReport = lazy(() => import("./pages/admin/reports/StudentFollowingReport"));
 const DatewiseOutstandingReport = lazy(() => import('./pages/admin/reports/DatewiseOutstandingReport'));
 const StudentAttendanceReport = lazy(() => import('./pages/admin/reports/StudentAttendanceReport'));
@@ -283,6 +289,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <ManageNews />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/manage-toppers"
+                element={
+                  <PrivateRoute>
+                    <ManageToppers />
                   </PrivateRoute>
                 }
               />
@@ -552,6 +566,17 @@ function App() {
               />
               
               <Route
+                path="/print/employee-joining"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <EmployeeJoiningPrint />
+                    </Suspense>
+                  </PrivateRoute>
+                }
+              />
+              
+              <Route
                 path="/utility/cloudinary-manager"
                 element={
                   <PrivateRoute>
@@ -578,6 +603,27 @@ function App() {
                 element={
                   <PrivateRoute>
                     <InquiryPage />
+                  </PrivateRoute>
+                }
+              />
+
+              {/* Blog Management */}
+              <Route
+                path="/blog/manage-blogs"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                      <ManageBlogs />
+                    </Suspense>
+                  </PrivateRoute>
+                }
+              />
+
+              <Route
+                path="/master/employee"
+                element={
+                  <PrivateRoute>
+                      <EmployeeMaster />
                   </PrivateRoute>
                 }
               />
@@ -613,6 +659,7 @@ function App() {
                 <Route path="/franchise" element={<FranchisePage />} />
                 <Route path="/contact" element={<ContactPage />} />
                 <Route path="/blog" element={<BlogPage />} />
+                <Route path="/blog/:slug" element={<BlogDetail />} />
                 <Route path="/feedback" element={<FeedbackPage />} />
                 <Route path="/online-admission" element={<OnlineAdmission />} />
                 <Route path="/terms-and-conditions" element={<TermsAndConditions />} />

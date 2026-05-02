@@ -192,12 +192,17 @@ const AdmissionFormPrint = () => {
                 </div>
 
                 {/* Title & Photo */}
-                <div className="flex justify-between items-start mt-4 mb-4 relative">
-                    <div className="w-3/4 pr-4">
-                        <div className="bg-black text-white inline-block px-4 py-1 font-bold text-sm mb-2 rounded-sm uppercase tracking-wider">
+                <div className="mt-4 mb-4 relative">
+                    {/* Centered Title */}
+                    <div className="absolute left-1/2 -translate-x-1/2 top-0 text-center z-10">
+                        <div className="bg-black text-white inline-block px-8 py-1.5 font-bold text-sm rounded-sm uppercase tracking-wider">
                             Admission Form
                         </div>
-                        <p className="text-[10px] italic font-semibold">(USE CAPITAL LETTERS)</p>
+                    </div>
+
+                    <div className="flex justify-between items-start">
+                        <div className="w-3/4 pr-4">
+                            <p className="text-[10px] italic font-semibold mt-8">(USE CAPITAL LETTERS)</p>
 
                         <div className="flex items-center mt-4 gap-2">
                             <span className="font-bold text-sm text-nowrap">Enrollment Number:</span>
@@ -227,8 +232,9 @@ const AdmissionFormPrint = () => {
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <hr className="border-black mb-4" />
+            <hr className="border-black mb-4" />
 
                 {/* Student Personal Info */}
                 <div className="space-y-3 text-sm">
@@ -392,16 +398,21 @@ const AdmissionFormPrint = () => {
 
                 <div className="mt-6 space-y-4 text-sm">
                     <div className="flex items-end gap-2">
-                        <span className="font-bold w-48 text-nowrap">Executive/Reference Name:</span>
+                        <span className="font-bold min-w-[160px]">Executive/Reference Name:</span>
                         <Editable value={student.reference || ""} className="flex-grow" />
                     </div>
+
                     <div className="flex items-end gap-2">
-                        <span className="font-bold w-48 text-nowrap">Reference Address :</span>
+                        <span className="font-bold min-w-[160px]">Reference Address :</span>
                         <Editable value={referenceAddressDisplay} className="flex-grow" />
                     </div>
+
                     <div className="flex items-end gap-2">
-                        <span className="font-bold w-16">Mr./Mrs./Miss.</span>
-                        <Editable value="" className="flex-grow" />
+                        <span className="font-bold min-w-[140px] pr-2">Mr./Mrs./Miss.</span>
+                        <Editable
+                            value={`${student.firstName || ''} ${student.middleName || ''} ${student.lastName || ''}`.trim().toUpperCase()}
+                            className="flex-grow"
+                        />
                     </div>
 
                     <p className="text-xs text-justify mt-2 leading-relaxed">
