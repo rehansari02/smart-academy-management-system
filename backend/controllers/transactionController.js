@@ -256,10 +256,10 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
       branchId = req.user.branchId;
   }
 
-  // 3. Generate Global Receipt No (Changed from Branch-Scoped)
-  // Find max existing receipt number GLOBALLY
+  // 3. Generate Branch-Scoped Receipt No
+  // Find max existing receipt number for THIS BRANCH
   let receiptNo = "1";
-  const lastReceipt = await FeeReceipt.findOne({}) // Empty query means global
+  const lastReceipt = await FeeReceipt.findOne({ branch: branchId })
     .sort({ receiptNo: -1 })
     .collation({ locale: "en_US", numericOrdering: true });
     
@@ -667,8 +667,8 @@ const getNextReceiptNo = asyncHandler(async (req, res) => {
     }
 
     let nextNum = 1;
-    // Find last receipt globally (removed branch filter)
-    const query = {};
+    // Find last receipt for this branch
+    const query = branchId ? { branch: branchId } : {};
     
     const lastReceipt = await FeeReceipt.findOne(query)
         .sort({ receiptNo: -1 })

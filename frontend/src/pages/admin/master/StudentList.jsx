@@ -26,7 +26,7 @@ const StudentList = () => {
     batch: '',
     branchId: '',
     pageSize: 10,
-    pageNumber: 1,
+    page: 1,
     isRegistered: 'true'
   });
 
@@ -68,20 +68,20 @@ const StudentList = () => {
   };
 
   const handleSearch = () => {
-    setAppliedFilters({ ...filters, pageNumber: 1 });
+    setAppliedFilters({ ...filters, page: 1 });
   };
 
   const handlePageChange = (newPage) => {
-    const updated = { ...filters, pageNumber: newPage };
+    const updated = { ...filters, page: newPage };
     setFilters(updated);
-    setAppliedFilters(prev => ({ ...prev, pageNumber: newPage }));
+    setAppliedFilters(prev => ({ ...prev, page: newPage }));
   };
   
   const handlePageSizeChange = (e) => {
       const size = e.target.value;
-      const updated = { ...filters, pageSize: size, pageNumber: 1 };
+      const updated = { ...filters, pageSize: size, page: 1 };
       setFilters(updated);
-      setAppliedFilters(prev => ({ ...prev, pageSize: size, pageNumber: 1 }));
+      setAppliedFilters(prev => ({ ...prev, pageSize: size, page: 1 }));
   };
 
   const resetFilters = () => {
@@ -95,7 +95,7 @@ const StudentList = () => {
         batch: '', 
         branchId: '',
         pageSize: 10, 
-        pageNumber: 1, 
+        page: 1, 
         isRegistered: 'true'
     };
     setFilters(initial);
@@ -170,11 +170,7 @@ const StudentList = () => {
                         label="Search Student"
                         onSelect={(id, student) => {
                             if (student) {
-                                const newFilters = { ...filters, studentName: student.firstName, pageNumber: 1 };
-                                setFilters(newFilters);
-                                setAppliedFilters(newFilters);
-                            } else {
-                                const newFilters = { ...filters, studentName: '', pageNumber: 1 };
+                                const newFilters = { ...filters, studentName: '', page: 1 };
                                 setFilters(newFilters);
                                 setAppliedFilters(newFilters);
                             }
@@ -341,11 +337,51 @@ const StudentList = () => {
       </div>
       
       {/* Pagination Footer */}
-      <div className="bg-gray-50 px-4 py-3 border-t flex justify-between items-center mt-2 rounded-lg">
-          <span className="text-xs text-gray-500">Page {pagination.page} of {pagination.pages} ({pagination.count} records)</span>
-          <div className="flex gap-1">
-              <button disabled={pagination.page === 1} onClick={() => handlePageChange(pagination.page - 1)} className="px-3 py-1 border rounded bg-white hover:bg-gray-100 disabled:opacity-50 text-xs">Prev</button>
-              <button disabled={pagination.page === pagination.pages} onClick={() => handlePageChange(pagination.page + 1)} className="px-3 py-1 border rounded bg-white hover:bg-gray-100 disabled:opacity-50 text-xs">Next</button>
+      <div className="bg-gray-50 px-4 py-3 border-t flex flex-col md:flex-row justify-between items-center mt-2 rounded-lg gap-4">
+          <span className="text-xs text-gray-500 font-medium">Showing {students.length} of {pagination.count} records (Page {pagination.page} of {pagination.pages})</span>
+          <div className="flex flex-wrap justify-center gap-1">
+              <button 
+                disabled={pagination.page === 1} 
+                onClick={() => handlePageChange(1)} 
+                className="px-2 py-1 border rounded bg-white hover:bg-gray-100 disabled:opacity-50 text-[10px] font-bold uppercase"
+              >First</button>
+              
+              <button 
+                disabled={pagination.page === 1} 
+                onClick={() => handlePageChange(pagination.page - 1)} 
+                className="px-3 py-1 border rounded bg-white hover:bg-gray-100 disabled:opacity-50 text-xs font-bold"
+              >Prev</button>
+
+              {/* Dynamic Page Numbers */}
+              {[...Array(pagination.pages)].map((_, i) => {
+                  const p = i + 1;
+                  // Only show current, 2 before, 2 after
+                  if (p === 1 || p === pagination.pages || (p >= pagination.page - 2 && p <= pagination.page + 2)) {
+                      return (
+                        <button 
+                            key={p} 
+                            onClick={() => handlePageChange(p)} 
+                            className={`px-3 py-1 border rounded text-xs font-bold transition-all ${pagination.page === p ? 'bg-primary text-white border-primary shadow-md scale-110' : 'bg-white hover:bg-gray-100'}`}
+                        >
+                            {p}
+                        </button>
+                      );
+                  }
+                  if (p === pagination.page - 3 || p === pagination.page + 3) return <span key={p} className="px-1 text-gray-400">...</span>;
+                  return null;
+              })}
+
+              <button 
+                disabled={pagination.page === pagination.pages} 
+                onClick={() => handlePageChange(pagination.page + 1)} 
+                className="px-3 py-1 border rounded bg-white hover:bg-gray-100 disabled:opacity-50 text-xs font-bold"
+              >Next</button>
+
+              <button 
+                disabled={pagination.page === pagination.pages} 
+                onClick={() => handlePageChange(pagination.pages)} 
+                className="px-2 py-1 border rounded bg-white hover:bg-gray-100 disabled:opacity-50 text-[10px] font-bold uppercase"
+              >Last</button>
           </div>
       </div>
 

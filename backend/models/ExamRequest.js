@@ -13,6 +13,7 @@ const examRequestSchema = new mongoose.Schema({
         default: 'Pending' 
     },
     requestDate: { type: Date, default: Date.now },
+    cancellationReason: { type: String },
     isDeleted: { type: Boolean, default: false }
 }, { timestamps: true });
 

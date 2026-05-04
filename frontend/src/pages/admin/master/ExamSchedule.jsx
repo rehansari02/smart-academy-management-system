@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchCourses, fetchExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, resetMasterStatus } from '../../../features/master/masterSlice';
 import { useForm } from 'react-hook-form';
@@ -8,6 +9,7 @@ import axios from 'axios'; // For direct detail fetch
 
 const ExamSchedule = () => {
   const dispatch = useDispatch();
+  const location = useLocation();
   const { courses, examSchedules, isSuccess, message, isLoading } = useSelector((state) => state.master);
   
   // Local State
@@ -17,13 +19,22 @@ const ExamSchedule = () => {
   const [detailView, setDetailView] = useState(null); // ID of schedule to show details
   const [detailData, setDetailData] = useState([]);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  
+  // Attendee Selection
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [selectedAttendees, setSelectedAttendees] = useState([]);
+  const [isRequestsLoading, setIsRequestsLoading] = useState(false);
+
+  // Time Table State
+  const [timeTableData, setTimeTableData] = useState([]);
 
   // Pagination
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
 
   // Form Setup
-  const { register, handleSubmit, reset, setValue } = useForm();
+  const { register, handleSubmit, reset, setValue, watch } = useForm();
+  const selectedCourse = watch('course');
 
   useEffect(() => {
     dispatch(fetchCourses());
@@ -36,16 +47,76 @@ const ExamSchedule = () => {
         dispatch(resetMasterStatus());
         if (showForm) setShowForm(false);
         setEditMode(null);
+        setSelectedAttendees([]);
+        setTimeTableData([]);
         reset();
     }
   }, [isSuccess, message, dispatch, showForm, reset]);
+
+  // Handle Navigation State from ExamRequestList
+  useEffect(() => {
+    if (location.state?.fromRequest) {
+        setShowForm(true);
+        setValue('course', location.state.courseId);
+        if (location.state.selectedStudentIds) {
+            setSelectedAttendees(location.state.selectedStudentIds);
+        }
+    }
+  }, [location.state, setValue]);
+
+  // Fetch Pending Requests for selected course
+  useEffect(() => {
+    if (selectedCourse && showForm) {
+        setIsRequestsLoading(true);
+        axios.get(`${import.meta.env.VITE_API_URL}/master/exam-request?courseId=${selectedCourse}`, { withCredentials: true })
+            .then(res => {
+                // Flatten the response to get student data
+                let requests = res.data.map(r => r.student).filter(s => s !== null);
+                
+                // If coming from bulk selection, show ONLY those selected students
+                if (location.state?.fromRequest && location.state.selectedStudentIds) {
+                    requests = requests.filter(s => location.state.selectedStudentIds.includes(s._id));
+                }
+                
+                setPendingRequests(requests);
+            })
+            .catch(err => toast.error("Failed to fetch pending requests"))
+            .finally(() => setIsRequestsLoading(false));
+        
+        // Populate Time Table based on course subjects
+        const course = courses.find(c => c._id === selectedCourse);
+        if (course && course.subjects) {
+            // Only re-populate if it's a new entry (not editing or if course changed)
+            // If editing, the timeTable is usually loaded from the record
+            if (!editMode || timeTableData.length === 0) {
+                const initialTable = course.subjects.map(s => ({
+                    subject: s.subject?._id,
+                    name: s.subject?.name,
+                    date: '',
+                    startTime: '',
+                    endTime: '',
+                    theory: 0,
+                    practical: 0,
+                    total: 0
+                }));
+                setTimeTableData(initialTable);
+            }
+        }
+    } else {
+        setPendingRequests([]);
+        setTimeTableData([]);
+    }
+  }, [selectedCourse, showForm, courses, editMode]); // Removed timeTableData from deps to avoid loop
 
   // Fetch Details when detailView changes
   useEffect(() => {
     if (detailView) {   
         setIsDetailLoading(true);
         axios.get(`${import.meta.env.VITE_API_URL}/master/exam-schedule/${detailView}/details`, { withCredentials: true })
-            .then(res => setDetailData(res.data))
+            .then(res => {
+                // Now returns { attendees, timeTable }
+                setDetailData(res.data);
+            })
             .catch(err => toast.error("Failed to load details"))
             .finally(() => setIsDetailLoading(false));
     }
@@ -58,20 +129,66 @@ const ExamSchedule = () => {
   };
 
   const onSubmit = (data) => {
+    const finalData = { 
+        ...data, 
+        attendees: selectedAttendees,
+        timeTable: timeTableData.map(item => ({
+            subject: item.subject,
+            date: item.date,
+            time: item.time,
+            theory: item.theory,
+            practical: item.practical
+        }))
+    };
     if (editMode) {
-        dispatch(updateExamSchedule({ id: editMode, data }));
+        dispatch(updateExamSchedule({ id: editMode, data: finalData }));
     } else {
-        dispatch(createExamSchedule(data));
+        dispatch(createExamSchedule(finalData));
     }
+  };
+
+  const updateTimeTableField = (index, field, value) => {
+    const newData = [...timeTableData];
+    newData[index][field] = value;
+    
+    // Auto calculate total
+    if (field === 'theory' || field === 'practical') {
+        const t = parseFloat(newData[index].theory) || 0;
+        const p = parseFloat(newData[index].practical) || 0;
+        newData[index].total = t + p;
+    }
+    
+    setTimeTableData(newData);
+  };
+
+  const toggleAttendee = (studentId) => {
+    setSelectedAttendees(prev => 
+        prev.includes(studentId) ? prev.filter(id => id !== studentId) : [...prev, studentId]
+    );
   };
 
   const handleEdit = (schedule) => {
     setEditMode(schedule._id);
     setShowForm(true);
-    setValue('course', schedule.course._id);
+    setValue('course', schedule.course?._id);
     setValue('examName', schedule.examName);
     setValue('remarks', schedule.remarks);
     setValue('isActive', schedule.isActive);
+    setSelectedAttendees(schedule.attendees || []);
+    
+    // Map existing timeTable with names from course
+    if (schedule.timeTable && schedule.timeTable.length > 0) {
+        const course = courses.find(c => c._id === schedule.course?._id);
+        const mapped = schedule.timeTable.map(tt => {
+            const subjectObj = course?.subjects?.find(s => s.subject?._id === (tt.subject?._id || tt.subject));
+            return {
+                ...tt,
+                subject: tt.subject?._id || tt.subject,
+                name: tt.subject?.name || subjectObj?.subject?.name || 'Subject'
+            };
+        });
+        setTimeTableData(mapped);
+    }
   };
 
   const handleDelete = (id) => {
@@ -116,6 +233,152 @@ const ExamSchedule = () => {
                 <div className="flex items-center gap-2">
                     <input type="checkbox" {...register('isActive')} id="isActive" className="h-4 w-4" defaultChecked />
                     <label htmlFor="isActive" className="text-sm font-medium">Is Active</label>
+                </div>
+
+                {/* Attendee Selection List */}
+                <div className="md:col-span-2 mt-4 border rounded p-4 bg-gray-50">
+                    <h4 className="text-sm font-bold text-gray-700 mb-3 border-b pb-2 flex justify-between items-center">
+                        Select Students for this Schedule
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                            {selectedAttendees.length} Selected
+                        </span>
+                    </h4>
+                    
+                    {isRequestsLoading ? (
+                        <div className="text-center py-4 text-sm text-gray-500 italic">Fetching pending requests...</div>
+                    ) : pendingRequests.length > 0 ? (
+                        <div className="max-h-[300px] overflow-y-auto pr-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {pendingRequests.map((student) => (
+                                <div 
+                                    key={student._id} 
+                                    onClick={() => toggleAttendee(student._id)}
+                                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                                        selectedAttendees.includes(student._id) 
+                                        ? 'bg-blue-50 border-blue-200 shadow-sm' 
+                                        : 'bg-white border-gray-200 hover:border-blue-200'
+                                    }`}
+                                >
+                                    <input 
+                                        type="checkbox" 
+                                        checked={selectedAttendees.includes(student._id)} 
+                                        onChange={() => {}} // Controlled by div click
+                                        className="h-4 w-4 rounded border-gray-300 text-primary"
+                                    />
+                                    <div className="flex-1">
+                                        <p className="text-sm font-bold text-gray-800">{student.firstName} {student.lastName}</p>
+                                        <p className="text-[10px] text-gray-500 font-mono">{student.regNo}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[10px] text-gray-400">{new Date(student.admissionDate).toLocaleDateString()}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 text-sm text-gray-500 bg-white rounded border border-dashed border-gray-300">
+                            {selectedCourse 
+                                ? "No pending exam requests found for this course." 
+                                : "Please select a course to see pending requests."}
+                        </div>
+                    )}
+                </div>
+
+                {/* --- Time Table Section --- */}
+                <div className="md:col-span-2 mt-6">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg overflow-hidden">
+                        <div className="bg-blue-600 text-white px-4 py-2 flex justify-between items-center">
+                            <h3 className="font-bold text-sm uppercase tracking-wider">
+                                Time Table Examination {selectedCourse && `- ${courses.find(c => c._id === selectedCourse)?.name}`}
+                            </h3>
+                            <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full">Manual Entry</span>
+                        </div>
+                        
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-blue-100 text-blue-900 uppercase text-[10px] font-bold border-b border-blue-200">
+                                    <tr>
+                                        <th className="px-4 py-2 border-r border-blue-200">Subject</th>
+                                        <th className="px-4 py-2 border-r border-blue-200 w-32">Date</th>
+                                        <th className="px-4 py-2 border-r border-blue-200">Time</th>
+                                        <th className="px-4 py-2 border-r border-blue-200 text-center w-24">Theory</th>
+                                        <th className="px-4 py-2 border-r border-blue-200 text-center w-24">Practical</th>
+                                        <th className="px-4 py-2 text-center w-24">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {timeTableData.length > 0 ? (
+                                        timeTableData.map((item, index) => (
+                                            <tr key={index} className="border-b border-blue-100 bg-white hover:bg-blue-50/30 transition-colors">
+                                                <td className="px-4 py-3 font-bold text-gray-700 border-r border-blue-100">
+                                                    {item.name}
+                                                </td>
+                                                <td className="px-3 py-2 border-r border-blue-100">
+                                                    <input 
+                                                        type="date" 
+                                                        value={item.date ? new Date(item.date).toISOString().split('T')[0] : ''} 
+                                                        onChange={(e) => updateTimeTableField(index, 'date', e.target.value)}
+                                                        className="w-full text-xs border rounded p-1 focus:ring-1 focus:ring-blue-400 outline-none"
+                                                    />
+                                                </td>
+                                                <td className="px-3 py-2 border-r border-blue-100">
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="text-[9px] text-gray-400 w-6">From:</span>
+                                                            <input 
+                                                                type="time" 
+                                                                value={item.startTime || ''} 
+                                                                onChange={(e) => updateTimeTableField(index, 'startTime', e.target.value)}
+                                                                className="flex-1 text-[10px] border rounded p-0.5 focus:ring-1 focus:ring-blue-400 outline-none"
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="text-[9px] text-gray-400 w-6">To:</span>
+                                                            <input 
+                                                                type="time" 
+                                                                value={item.endTime || ''} 
+                                                                onChange={(e) => updateTimeTableField(index, 'endTime', e.target.value)}
+                                                                className="flex-1 text-[10px] border rounded p-0.5 focus:ring-1 focus:ring-blue-400 outline-none"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2 border-r border-blue-100">
+                                                    <input 
+                                                        type="number" 
+                                                        placeholder="0"
+                                                        value={item.theory} 
+                                                        onChange={(e) => updateTimeTableField(index, 'theory', e.target.value)}
+                                                        className="w-full text-xs border rounded p-1 font-bold text-center"
+                                                    />
+                                                </td>
+                                                <td className="px-3 py-2 border-r border-blue-100">
+                                                    <input 
+                                                        type="number" 
+                                                        placeholder="0"
+                                                        value={item.practical} 
+                                                        onChange={(e) => updateTimeTableField(index, 'practical', e.target.value)}
+                                                        className="w-full text-xs border rounded p-1 font-bold text-center"
+                                                    />
+                                                </td>
+                                                <td className="px-3 py-2 text-center font-bold text-blue-700 bg-blue-50/50">
+                                                    {item.total || 0}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan="6" className="px-4 py-8 text-center text-gray-400 italic">
+                                                Select a course to populate subjects...
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="bg-blue-50 px-4 py-2 text-[10px] text-blue-600 italic">
+                            * Note: REGD NO. should be required in the examination at the time of entry.
+                        </div>
+                    </div>
                 </div>
                 
                 <div className="md:col-span-2 flex gap-2 justify-end mt-2">
@@ -205,43 +468,105 @@ const ExamSchedule = () => {
 
       {/* --- DETAILS MODAL / VIEW --- */}
       {detailView && (
-        <div className="bg-white p-6 rounded shadow border-t-4 border-blue-500 animate-fadeIn">
-            <div className="flex justify-between items-center mb-4 border-b pb-2">
-                <h3 className="text-lg font-bold text-gray-800">Exam Attendees Details</h3>
-                <button onClick={() => setDetailView(null)} className="text-gray-500 hover:text-red-500"><X size={24}/></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-4xl rounded-xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="bg-blue-600 text-white p-4 flex justify-between items-center shrink-0">
+                <h3 className="text-lg font-bold">Exam Schedule Details</h3>
+                <button onClick={() => setDetailView(null)} className="bg-white/20 hover:bg-white/30 p-1 rounded-full transition-colors">
+                    <X size={20}/>
+                </button>
             </div>
             
-            {isDetailLoading ? <div className="text-center py-10">Loading details...</div> : (
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 border">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Sr. No.</th>
-                                <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Admission Date</th>
-                                <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Reg Number</th>
-                                <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Student Name</th>
-                                <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Mobile</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {detailData.length > 0 ? detailData.map((d, i) => (
-                                <tr key={d._id}>
-                                    <td className="px-4 py-2 text-sm">{i + 1}</td>
-                                    <td className="px-4 py-2 text-sm text-gray-600">{new Date(d.admissionDate).toLocaleDateString()}</td>
-                                    <td className="px-4 py-2 text-sm font-mono">{d.regNo}</td>
-                                    <td className="px-4 py-2 text-sm font-medium text-primary">{d.studentName}</td>
-                                    <td className="px-4 py-2 text-sm text-gray-600">{d.mobile}</td>
-                                </tr>
-                            )) : (
-                                <tr><td colSpan="5" className="text-center py-4 text-gray-500">No students found for this exam/course.</td></tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            )}
-            <div className="mt-4 flex justify-end">
-                <button onClick={() => setDetailView(null)} className="bg-gray-200 text-gray-700 px-4 py-2 rounded">Close</button>
+            <div className="flex-1 overflow-y-auto p-6">
+                {isDetailLoading ? (
+                    <div className="text-center py-20 italic text-gray-400">Loading schedule details...</div>
+                ) : (
+                    <div className="space-y-8">
+                        {/* 1. Time Table Section */}
+                        <section>
+                            <h4 className="text-sm font-bold text-blue-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <RefreshCw size={16} className="text-blue-500"/>
+                                Examination Time Table
+                            </h4>
+                            <div className="border rounded-lg overflow-hidden shadow-sm">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50 text-[10px] font-bold text-gray-500 uppercase">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left">Subject</th>
+                                            <th className="px-4 py-3 text-left">Date</th>
+                                            <th className="px-4 py-3 text-left">Time</th>
+                                            <th className="px-4 py-3 text-center">Theory</th>
+                                            <th className="px-4 py-3 text-center">Practical</th>
+                                            <th className="px-4 py-3 text-center">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 text-sm">
+                                        {detailData.timeTable?.length > 0 ? detailData.timeTable.map((tt, i) => (
+                                            <tr key={i} className="hover:bg-blue-50/30">
+                                                <td className="px-4 py-3 font-bold text-gray-800">{tt.subject?.name || 'Subject'}</td>
+                                                <td className="px-4 py-3 text-gray-600">
+                                                    {tt.date ? new Date(tt.date).toLocaleDateString() : '-'}
+                                                </td>
+                                                <td className="px-4 py-3 text-gray-600">
+                                                    {tt.startTime && tt.endTime ? `${tt.startTime} To ${tt.endTime}` : tt.startTime || tt.endTime || '-'}
+                                                </td>
+                                                <td className="px-4 py-3 text-center font-medium">{tt.theory || 0}</td>
+                                                <td className="px-4 py-3 text-center font-medium">{tt.practical || 0}</td>
+                                                <td className="px-4 py-3 text-center font-bold text-blue-700">{tt.total || 0}</td>
+                                            </tr>
+                                        )) : (
+                                            <tr><td colSpan="6" className="text-center py-4 text-gray-400 italic">No timetable found.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        {/* 2. Attendees Section */}
+                        <section>
+                            <h4 className="text-sm font-bold text-blue-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <Plus size={16} className="text-blue-500"/>
+                                Student Attendees ({detailData.attendees?.length || 0})
+                            </h4>
+                            <div className="border rounded-lg overflow-hidden shadow-sm">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50 text-[10px] font-bold text-gray-500 uppercase">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left">Sr. No.</th>
+                                            <th className="px-4 py-3 text-left">Reg No</th>
+                                            <th className="px-4 py-3 text-left">Student Name</th>
+                                            <th className="px-4 py-3 text-left">Admission Date</th>
+                                            <th className="px-4 py-3 text-left">Mobile</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 text-sm">
+                                        {detailData.attendees?.length > 0 ? detailData.attendees.map((d, i) => (
+                                            <tr key={d._id} className="hover:bg-blue-50/30">
+                                                <td className="px-4 py-3 text-gray-400">{i + 1}</td>
+                                                <td className="px-4 py-3 font-mono font-medium text-gray-700">{d.regNo}</td>
+                                                <td className="px-4 py-3 font-bold text-primary">{d.studentName}</td>
+                                                <td className="px-4 py-3 text-gray-600">
+                                                    {new Date(d.admissionDate).toLocaleDateString()}
+                                                </td>
+                                                <td className="px-4 py-3 text-gray-600">{d.mobile}</td>
+                                            </tr>
+                                        )) : (
+                                            <tr><td colSpan="5" className="text-center py-4 text-gray-400 italic">No attendees found.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </div>
+                )}
             </div>
+            
+            <div className="bg-gray-50 p-4 border-t flex justify-end shrink-0">
+                <button onClick={() => setDetailView(null)} className="bg-white border border-gray-300 text-gray-700 px-6 py-2 rounded-lg font-bold shadow-sm hover:bg-gray-100 transition-all">
+                    Close Details
+                </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -5,6 +5,8 @@ const Course = require('../models/Course');
 const Batch = require('../models/Batch'); 
 const Branch = require('../models/Branch'); 
 const Inquiry = require('../models/Inquiry');
+const ExamResult = require('../models/ExamResult');
+const ExamRequest = require('../models/ExamRequest');
 const sendSMS = require('../utils/smsSender');
 const asyncHandler = require('express-async-handler');
 const Counter = require('../models/Counter');
@@ -631,4 +633,103 @@ const cancelStudent = asyncHandler(async (req, res) => {
     }
 });
 
-module.exports = { getStudents, getStudentById, createStudent, updateStudent, confirmStudentRegistration, deleteStudent, toggleStudentStatus, resetStudentLogin, getNextRegNo, cancelStudent };
+const getExamPendingStudents = asyncHandler(async (req, res) => {
+    const { page = 1, pageSize = 10, branchId } = req.query;
+    const limit = Number(pageSize) || 10;
+    const skip = limit * (Number(page) - 1);
+
+    let query = { isDeleted: false, isRegistered: true, isCancelled: false };
+
+    if (req.user.role !== 'Super Admin' && req.user.branchId) {
+        query.branchId = req.user.branchId;
+    } else if (branchId) {
+        query.branchId = branchId;
+    }
+
+    // Fetch all relevant students to filter in JS (for complex date logic)
+    const allStudents = await Student.find(query)
+        .populate('course', 'name duration durationType shortName')
+        .lean();
+
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+    // Filter students whose course ends within 30 days or has already ended
+    let pendingStudents = allStudents.filter(student => {
+        if (!student.course || !student.admissionDate) return false;
+
+        const startDate = new Date(student.admissionDate);
+        const duration = student.course.duration || 0;
+        const type = student.course.durationType || 'Month';
+
+        let endDate = new Date(startDate);
+        if (type === 'Month') endDate.setMonth(endDate.getMonth() + duration);
+        else if (type === 'Year') endDate.setFullYear(endDate.getFullYear() + duration);
+        else if (type === 'Days') endDate.setDate(endDate.getDate() + duration);
+
+        student.courseEndDate = endDate;
+        
+        const now = new Date();
+        const thirtyDaysFromNow = new Date();
+        thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+        // Show only if ending in the next 30 days, but hasn't ended yet (before completion)
+        return endDate >= now && endDate <= thirtyDaysFromNow;
+    });
+
+    // Check if exam already taken OR already requested
+    const studentIds = pendingStudents.map(s => s._id);
+    
+    const [results, activeRequests, cancelledRequests] = await Promise.all([
+        ExamResult.find({ student: { $in: studentIds }, isDeleted: false }).lean(),
+        ExamRequest.find({ student: { $in: studentIds }, isDeleted: false, status: { $ne: 'Cancelled' } }).lean(),
+        ExamRequest.find({ student: { $in: studentIds }, isDeleted: false, status: 'Cancelled' }).sort({ updatedAt: -1 }).lean()
+    ]);
+
+    const studentsWhoTookExam = new Set(results.map(r => r.student.toString()));
+    const studentsWhoRequestedExam = new Set(activeRequests.map(r => r.student.toString()));
+    
+    // Map cancellation reasons (latest first)
+    const cancellationMap = {};
+    cancelledRequests.forEach(cr => {
+        if (!cancellationMap[cr.student.toString()]) {
+            cancellationMap[cr.student.toString()] = cr.cancellationReason;
+        }
+    });
+
+    // Keep only those who haven't taken the exam AND haven't requested it yet
+    pendingStudents = pendingStudents.filter(s => 
+        !studentsWhoTookExam.has(s._id.toString()) && 
+        !studentsWhoRequestedExam.has(s._id.toString())
+    ).map(s => ({
+        ...s,
+        cancellationReason: cancellationMap[s._id.toString()] || ''
+    }));
+
+    // Sort by end date (closest first)
+    pendingStudents.sort((a, b) => a.courseEndDate - b.courseEndDate);
+
+    const count = pendingStudents.length;
+    const paginatedStudents = pendingStudents.slice(skip, skip + limit);
+
+    res.json({ 
+        students: paginatedStudents, 
+        page: Number(page), 
+        pages: Math.ceil(count / limit), 
+        count 
+    });
+});
+
+module.exports = { 
+    getStudents, 
+    getStudentById, 
+    createStudent, 
+    updateStudent, 
+    confirmStudentRegistration, 
+    deleteStudent, 
+    toggleStudentStatus, 
+    resetStudentLogin, 
+    getNextRegNo, 
+    cancelStudent,
+    getExamPendingStudents 
+};

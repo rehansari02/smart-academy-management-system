@@ -129,6 +129,7 @@ const BlankAdmissionForm = lazy(() => import('./pages/admin/reports/BlankAdmissi
 const StudentCompletionReport = lazy(() => import('./pages/admin/reports/StudentCompletionReport'));
 const StudentContactReport = lazy(() => import('./pages/admin/reports/StudentContactReport'));
 const StudentRegistrationReport = lazy(() => import('./pages/admin/reports/StudentRegistrationReport'));
+const ExamResultPrint = lazy(() => import('./pages/admin/reports/ExamResultPrint'));
 
 const PrivateRoute = ({ children }) => {
   const { user } = useSelector((state) => state.auth);
@@ -571,6 +572,17 @@ function App() {
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
                         <EmployeeJoiningPrint />
+                    </Suspense>
+                  </PrivateRoute>
+                }
+              />
+
+              <Route
+                path="/print/exam-result/:id"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <ExamResultPrint />
                     </Suspense>
                   </PrivateRoute>
                 }

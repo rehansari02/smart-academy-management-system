@@ -179,10 +179,26 @@ export const cancelStudent = createAsyncThunk(
   }
 );
 
+export const fetchExamPendingStudents = createAsyncThunk(
+  "students/fetchExamPending",
+  async (params, thunkAPI) => {
+    try {
+      const response = await axios.get(`${API_URL}exam-pending`, { params });
+      return response.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message
+      );
+    }
+  }
+);
+
 const studentSlice = createSlice({
   name: "students",
   initialState: {
     students: [],
+    examPendingStudents: [],
+    examPendingPagination: { page: 1, pages: 1, count: 0 },
     currentStudent: null,
     pagination: { page: 1, pages: 1, count: 0 },
     isLoading: false,
@@ -307,6 +323,22 @@ const studentSlice = createSlice({
         state.isLoading = false;
         state.isSuccess = false;
         state.message = action.payload;
+      })
+      .addCase(fetchExamPendingStudents.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(fetchExamPendingStudents.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.examPendingStudents = action.payload.students || [];
+        state.examPendingPagination = {
+          page: action.payload.page || 1,
+          pages: action.payload.pages || 1,
+          count: action.payload.count || 0,
+        };
+      })
+      .addCase(fetchExamPendingStudents.rejected, (state, action) => {
+        state.isLoading = false;
+        state.examPendingStudents = [];
       });
   },
 });

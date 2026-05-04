@@ -19,8 +19,14 @@ const examResultSchema = new mongoose.Schema({
     batch: { type: String, required: true }, // Stored as string in Student model
     
     // Result Specifics
-    somNumber: { type: String },
-    csrNumber: { type: String },
+    somNumber: { type: String, unique: true },
+    csrNumber: { type: String, unique: true },
+    subjectMarks: [{
+        subject: { type: mongoose.Schema.Types.ObjectId, ref: 'Subject' },
+        theory: { type: Number, default: 0 },
+        practical: { type: Number, default: 0 },
+        total: { type: Number, default: 0 }
+    }],
     marksObtained: { type: Number, required: true },
     totalMarks: { type: Number, required: true },
     grade: { type: String },

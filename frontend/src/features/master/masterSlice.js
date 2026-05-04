@@ -139,9 +139,16 @@ export const fetchExamRequests = createAsyncThunk('master/fetchExamRequests', as
     } catch (error) { return thunkAPI.rejectWithValue(error.message); }
 });
 
-export const cancelExamRequest = createAsyncThunk('master/cancelExamRequest', async (id, thunkAPI) => {
+export const createExamRequest = createAsyncThunk('master/createExamRequest', async (data, thunkAPI) => {
     try {
-        await axios.put(`${API_URL}exam-request/${id}/cancel`);
+        const response = await axios.post(API_URL + 'exam-request', data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+});
+
+export const cancelExamRequest = createAsyncThunk('master/cancelExamRequest', async ({ id, data }, thunkAPI) => {
+    try {
+        await axios.put(`${API_URL}exam-request/${id}/cancel`, data);
         return id;
     } catch (error) { return thunkAPI.rejectWithValue(error.message); }
 });
@@ -174,6 +181,13 @@ export const deleteExamSchedule = createAsyncThunk('master/deleteExamSchedule', 
     } catch (error) { return thunkAPI.rejectWithValue(error.message); }
 });
 
+export const fetchExamScheduleDetails = createAsyncThunk('master/fetchExamScheduleDetails', async (id, thunkAPI) => {
+    try {
+        const response = await axios.get(`${API_URL}exam-schedule/${id}/details`);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+});
+
 export const fetchExamResults = createAsyncThunk('master/fetchExamResults', async (params, thunkAPI) => {
     try {
         const response = await axios.get(API_URL + 'exam-result', { params });
@@ -198,6 +212,20 @@ export const createExamResult = createAsyncThunk('master/createExamResult', asyn
 export const updateExamResult = createAsyncThunk('master/updateExamResult', async ({ id, data }, thunkAPI) => {
     try {
         const response = await axios.put(`${API_URL}exam-result/${id}`, data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+});
+
+export const deleteExamResult = createAsyncThunk('master/deleteExamResult', async (id, thunkAPI) => {
+    try {
+        const response = await axios.delete(`${API_URL}exam-result/${id}`);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+});
+
+export const fetchNextResultNumbers = createAsyncThunk('master/fetchNextResultNumbers', async (_, thunkAPI) => {
+    try {
+        const response = await axios.get(API_URL + 'exam-result/next-numbers');
         return response.data;
     } catch (error) { return thunkAPI.rejectWithValue(error.message); }
 });
@@ -340,6 +368,7 @@ const masterSlice = createSlice({
         examRequests: [],
         studentsList: [],
         examSchedules: [],
+        examScheduleDetails: null,
         examResults: [],
         pendingExams: [],
         references: [],
@@ -348,6 +377,7 @@ const masterSlice = createSlice({
         freeLearningQuestions: [],
         states: [],
         cities: [],
+        nextResultNumbers: { somNumber: '', csrNumber: '' },
         isLoading: false,
         isSuccess: false,
         message: ''
@@ -468,6 +498,12 @@ const masterSlice = createSlice({
                 state.isLoading = false;
                 state.examRequests = action.payload;
             })
+            .addCase(createExamRequest.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.isSuccess = true;
+                state.message = 'Exam Request Created Successfully';
+                state.examRequests.unshift(action.payload);
+            })
             .addCase(cancelExamRequest.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
@@ -495,6 +531,9 @@ const masterSlice = createSlice({
                 state.isSuccess = true;
                 state.message = 'Exam Schedule Deleted';
             })
+            .addCase(fetchExamScheduleDetails.fulfilled, (state, action) => {
+                state.examScheduleDetails = action.payload;
+            })
 
             // --- Exam Results ---
             .addCase(fetchExamResults.fulfilled, (state, action) => {
@@ -510,6 +549,14 @@ const masterSlice = createSlice({
                 if (index !== -1) state.examResults[index] = action.payload;
                 state.isSuccess = true;
                 state.message = 'Result Updated Successfully';
+            })
+            .addCase(deleteExamResult.fulfilled, (state, action) => {
+                state.examResults = state.examResults.filter(r => r._id !== action.payload.id);
+                state.isSuccess = true;
+                state.message = 'Result Deleted Successfully';
+            })
+            .addCase(fetchNextResultNumbers.fulfilled, (state, action) => {
+                state.nextResultNumbers = action.payload;
             })
             
             // --- Dashboard/Pending ---

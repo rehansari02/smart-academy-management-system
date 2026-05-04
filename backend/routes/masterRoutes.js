@@ -12,7 +12,7 @@ const {
 } = require('../controllers/masterController');
 const { getExamRequests, cancelExamRequest, createExamRequest, getPendingExams } = require('../controllers/examController');
 const { getExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, getExamScheduleDetails } = require('../controllers/examScheduleController');
-const { getExamResults, createExamResult, updateExamResult } = require('../controllers/examResultController');
+const { getExamResults, createExamResult, updateExamResult, deleteExamResult, getExamResultById, getNextResultNumbers } = require('../controllers/examResultController');
 const { createQuestion, getQuestions, updateQuestion, deleteQuestion } = require('../controllers/freeLearningController');
 const locationRoutes = require('./locationRoutes');
 
@@ -80,9 +80,15 @@ router.route('/exam-schedule/:id')
 router.get('/exam-schedule/:id/details', protect, getExamScheduleDetails);
 
 // --- Exam Results ---
+router.get('/exam-result/next-numbers', protect, getNextResultNumbers);
 router.route('/exam-result')
     .get(protect, getExamResults) 
     .post(protect, createExamResult); 
+
+router.route('/exam-result/:id')
+    .get(protect, getExamResultById)
+    .put(protect, updateExamResult)
+    .delete(protect, deleteExamResult);
 
 // --- Free Learning Routes ---
 router.route('/free-learning')

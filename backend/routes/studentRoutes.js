@@ -13,8 +13,12 @@ const {
     confirmStudentRegistration,
     resetStudentLogin,
     cancelStudent,
-    getNextRegNo
+    getNextRegNo,
+    getExamPendingStudents
 } = require('../controllers/studentController');
+
+router.route('/exam-pending')
+    .get(protect, checkPermission('Student', 'view'), getExamPendingStudents);
 
 router.route('/')
     .get(protect, checkPermission('Student', 'view'), getStudents)

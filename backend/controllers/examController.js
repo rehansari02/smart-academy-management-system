@@ -7,7 +7,7 @@ const Student = require('../models/Student');
 const getExamRequests = asyncHandler(async (req, res) => {
     const { studentId, courseId } = req.query;
 
-    let query = { isDeleted: false, status: { $ne: 'Cancelled' } };
+    let query = { isDeleted: false, status: 'Pending' };
 
     // Filter by Student directly
     if (studentId) {
@@ -78,9 +78,11 @@ const getPendingExams = asyncHandler(async (req, res) => {
 // @desc    Cancel Exam Request
 // @route   PUT /api/master/exam-request/:id/cancel
 const cancelExamRequest = asyncHandler(async (req, res) => {
+    const { reason } = req.body;
     const request = await ExamRequest.findById(req.params.id);
     if (request) {
         request.status = 'Cancelled';
+        request.cancellationReason = reason;
         await request.save();
         res.json({ message: 'Exam request cancelled successfully', id: req.params.id });
     } else {
@@ -91,9 +93,19 @@ const cancelExamRequest = asyncHandler(async (req, res) => {
 // @desc    Create Manual Request (Helper for testing)
 // @route   POST /api/master/exam-request
 const createExamRequest = asyncHandler(async (req, res) => {
-    const { studentId } = req.body;
-    const request = await ExamRequest.create({ student: studentId });
-    res.status(201).json(request);
+    const { studentId, studentIds } = req.body;
+    
+    if (studentIds && Array.isArray(studentIds)) {
+        const requests = [];
+        for (const id of studentIds) {
+            const req = await ExamRequest.create({ student: id });
+            requests.push(req);
+        }
+        res.status(201).json(requests);
+    } else {
+        const request = await ExamRequest.create({ student: studentId });
+        res.status(201).json(request);
+    }
 });
 
 module.exports = { getExamRequests, cancelExamRequest, createExamRequest,getPendingExams };

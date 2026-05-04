@@ -60,7 +60,6 @@ app.use(
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
-// CORS was here - moved up
 
 // Static Folder for Uploads
 app.use("/uploads", express.static("uploads"));
