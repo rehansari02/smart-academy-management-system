@@ -129,6 +129,7 @@ const BlankAdmissionForm = lazy(() => import('./pages/admin/reports/BlankAdmissi
 const StudentCompletionReport = lazy(() => import('./pages/admin/reports/StudentCompletionReport'));
 const StudentContactReport = lazy(() => import('./pages/admin/reports/StudentContactReport'));
 const StudentRegistrationReport = lazy(() => import('./pages/admin/reports/StudentRegistrationReport'));
+const BatchWiseRegister = lazy(() => import('./pages/admin/reports/BatchWiseRegister'));
 const ExamResultPrint = lazy(() => import('./pages/admin/reports/ExamResultPrint'));
 
 const PrivateRoute = ({ children }) => {
@@ -551,6 +552,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <StudentRegistrationReport />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/reports/general/batch-wise-register"
+                element={
+                  <PrivateRoute>
+                    <BatchWiseRegister />
                   </PrivateRoute>
                 }
               />

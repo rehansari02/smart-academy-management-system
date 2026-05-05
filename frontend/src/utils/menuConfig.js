@@ -96,6 +96,7 @@ export const MENU_CONFIG = [
               { title: 'Student Completion Report', path: '/reports/general/student-completion' },
               { title: 'Student Contact Report', path: '/reports/general/student-contact' },
               { title: 'Student Registration Report', path: '/reports/general/student-registration' },
+              { title: 'Batch Wise Register', path: '/reports/general/batch-wise-register' },
           ]
       }
     ]
