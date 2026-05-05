@@ -34,13 +34,22 @@ const getStudents = asyncHandler(async (req, res) => {
     // Other filters
     if (courseFilter) query.course = courseFilter;
     if (studentName) {
-        const nameRegex = new RegExp(studentName, 'i');
-        query.$or = [
-            { firstName: nameRegex },
-            { lastName: nameRegex },
-            { regNo: nameRegex },
-            { enrollmentNo: nameRegex }
-        ];
+        const parts = studentName.trim().split(/\s+/);
+        if (parts.length > 1) {
+            // Search for full name combinations
+            query.$or = [
+                { $and: [{ firstName: { $regex: parts[0], $options: 'i' } }, { lastName: { $regex: parts[parts.length - 1], $options: 'i' } }] },
+                { $and: [{ firstName: { $regex: parts[parts.length - 1], $options: 'i' } }, { lastName: { $regex: parts[0], $options: 'i' } }] }
+            ];
+        } else {
+            const nameRegex = new RegExp(studentName, 'i');
+            query.$or = [
+                { firstName: nameRegex },
+                { lastName: nameRegex },
+                { regNo: nameRegex },
+                { enrollmentNo: nameRegex }
+            ];
+        }
     }
     if (hasPendingFees === 'true') query.pendingFees = { $gt: 0 };
     if (reference) query.reference = { $regex: reference, $options: 'i' };
@@ -57,6 +66,17 @@ const getStudents = asyncHandler(async (req, res) => {
 
     if (isAdmissionFeesPaid !== undefined) {
         query.isAdmissionFeesPaid = isAdmissionFeesPaid === 'true';
+    }
+
+    // New: Handle isCancelled filter (Default: exclude cancelled students)
+    const { isCancelled } = req.query;
+    if (isCancelled === 'true') {
+        query.isCancelled = true;
+    } else if (isCancelled === 'all') {
+        // Include both active and cancelled (no filter on isCancelled)
+    } else {
+        // Default: only show active students (isCancelled: false)
+        query.isCancelled = false;
     }
 
     const limit = Number(pageSize) || 10;
@@ -633,6 +653,19 @@ const cancelStudent = asyncHandler(async (req, res) => {
     }
 });
 
+const reactivateStudent = asyncHandler(async (req, res) => {
+    const student = await Student.findById(req.params.id);
+    if (student) {
+        student.isCancelled = false;
+        student.cancelledDate = null;
+        student.isActive = true;
+        await student.save();
+        res.json({ message: 'Student Admission Reactivated Successfully', _id: student._id });
+    } else {
+        res.status(404); throw new Error('Student not found');
+    }
+});
+
 const getExamPendingStudents = asyncHandler(async (req, res) => {
     const { page = 1, pageSize = 10, branchId } = req.query;
     const limit = Number(pageSize) || 10;
@@ -731,5 +764,6 @@ module.exports = {
     resetStudentLogin, 
     getNextRegNo, 
     cancelStudent,
+    reactivateStudent,
     getExamPendingStudents 
 };

@@ -2,15 +2,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchInquiries, resetTransaction } from '../../../features/transaction/transactionSlice';
 import { fetchBranches } from '../../../features/master/masterSlice';
+import { fetchEmployees } from '../../../features/employee/employeeSlice';
 import { Search, Printer, FileText, RefreshCw, PhoneCall } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
+import StudentSearch from '../../../components/StudentSearch';
 
 const StudentFollowingReport = () => {
     const dispatch = useDispatch();
     const { inquiries, isLoading } = useSelector((state) => state.transaction);
     const { branches } = useSelector((state) => state.master);
+    const { employees } = useSelector((state) => state.employees);
     const { user } = useSelector((state) => state.auth);
 
     // Filter State
@@ -33,6 +36,11 @@ const StudentFollowingReport = () => {
         }
     }, [dispatch, user]);
 
+    // Fetch Employees based on selected branch
+    useEffect(() => {
+        dispatch(fetchEmployees(filters.branchId ? { branchId: filters.branchId } : {}));
+    }, [dispatch, filters.branchId]);
+
     // Fetch Report Data
     useEffect(() => {
         dispatch(fetchInquiries(appliedFilters));
@@ -40,6 +48,13 @@ const StudentFollowingReport = () => {
             dispatch(resetTransaction());
         }
     }, [dispatch, appliedFilters]);
+
+    const handleStudentSelect = (id, item) => {
+        setFilters({ 
+            ...filters, 
+            studentName: item ? `${item.firstName} ${item.lastName}`.trim() : '' 
+        });
+    };
 
     const handleFilterChange = (e) => {
         setFilters({ ...filters, [e.target.name]: e.target.value });
@@ -141,12 +156,23 @@ const StudentFollowingReport = () => {
                         </div>
                     )}
                     <div>
-                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Student Name</label>
-                        <input type="text" name="studentName" value={filters.studentName || ''} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" placeholder="Search Student..." />
+                        <StudentSearch 
+                            mode="inquiry"
+                            label="Student Name"
+                            placeholder="Search by name..."
+                            onSelect={handleStudentSelect}
+                            displayField="name"
+                            additionalFilters={{ branchId: filters.branchId }}
+                        />
                     </div>
                     <div>
-                         <label className="text-sm font-semibold text-gray-600 mb-1 block">Reference</label>
-                         <input type="text" name="referenceBy" value={filters.referenceBy || ''} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" placeholder="Search Reference..." />
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Reference By (Employee)</label>
+                        <select name="referenceBy" value={filters.referenceBy} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                            <option value="">All Employees</option>
+                            {employees && employees.map(emp => (
+                                <option key={emp._id} value={emp.name}>{emp.name}</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
                 <div className="flex gap-2 mt-4 justify-end">

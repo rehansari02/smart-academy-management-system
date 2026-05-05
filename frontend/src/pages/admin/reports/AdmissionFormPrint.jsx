@@ -93,33 +93,21 @@ const AdmissionFormPrint = () => {
     };
 
     const getBranchInfo = () => {
-        if (user?.role === 'Super Admin') {
-            return {
-                name: "Main Branch",
-                address: "Smart Institute",
-                phone: "96017-49300",
-                mobile: "98988-30409",
-                website: "www.smartinstituteonline.com"
-            };
+        // 1. Try to match student's branch from the branches list
+        if (student && branches && branches.length > 0) {
+            const branchObj = branches.find(b => b._id === student.branch || b.name === student.branchName);
+            if (branchObj) return branchObj;
         }
-        if (user && user.branchDetails && user.branchDetails.address) {
+
+        // 2. Fallback to logged-in user's branch if they are not Super Admin
+        if (user && user.role !== 'Super Admin' && user.branchDetails && user.branchDetails.address) {
             return user.branchDetails;
         }
 
-        if (!student || !branches) return {
-            name: "Bhestan Branch",
-            address: "309-A, 309-B, 3rd Floor, Sai Square Building, Bhestan Circle, Bhestan Surat Gujarat-395023 (INDIA)",
-            phone: "96017-49300",
-            mobile: "98988-30409",
-            website: "www.smartinstituteonline.com"
-        };
-        // Match by ID (student.branch) or Name (student.branchName)
-        const branchObj = branches.find(b => b._id === student.branch || b.name === student.branchName);
-        if (branchObj) return branchObj;
-
+        // 3. Fallback to hardcoded Main Branch (for Super Admin or if no match found)
         return {
-            name: "Bhestan Branch",
-            address: "309-A, 309-B, 3rd Floor, Sai Square Building, Bhestan Circle, Bhestan Surat Gujarat-395023 (INDIA)",
+            name: "Main Branch",
+            address: "Smart Institute",
             phone: "96017-49300",
             mobile: "98988-30409",
             website: "www.smartinstituteonline.com"
@@ -175,10 +163,10 @@ const AdmissionFormPrint = () => {
                         <img src={logo} alt="Logo" className="h-16 object-contain" />
                     </div>
                     <div className="w-2/3 text-right">
-                        <h1 className="text-xl font-bold uppercase tracking-wide">
+                        <h1 className="text-xl font-bold uppercase tracking-wide underline">
                             {branchInfo.name || student.branchName || "Bhestan Branch"}
                         </h1>
-                        <p className="text-xs font-semibold mt-1">
+                        <p className="text-xs font-semibold mt-1 max-w-[300px] ml-auto">
                             {branchInfo.address || student.branchLocation || "309-A, 309-B, 3rd Floor, Sai Square Building, Bhestan Circle, Bhestan Surat Gujarat-395023 (INDIA)"}
                         </p>
                         <p className="text-xs">

@@ -11,7 +11,9 @@ const StudentSearch = ({
     required = false,
     error,
     additionalFilters = {}, // Allow passing extra filters like { isRegistered: 'false' }
-    mode = 'student' // 'student' or 'inquiry'
+    mode = 'student', // 'student' or 'inquiry'
+    displayField = 'name', // 'name' or 'regNo'
+    includeCancelled = false
 }) => {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
@@ -82,13 +84,14 @@ const StudentSearch = ({
         if (!initialLoadDone && !defaultSelectedId) {
             loadAllStudents();
         }
-    }, []);
+    }, [JSON.stringify(additionalFilters)]);
 
     const loadAllStudents = async () => {
         setLoading(true);
         try {
             const params = {
                 pageSize: 50, // Show more students initially
+                isCancelled: includeCancelled ? 'all' : 'false',
                 ...additionalFilters
             };
             
@@ -115,6 +118,7 @@ const StudentSearch = ({
             const params = {
                 studentName: query,
                 pageSize: query ? 10 : 50, // Show more when no search query
+                isCancelled: includeCancelled ? 'all' : 'false',
                 ...additionalFilters
             };
             
@@ -138,8 +142,13 @@ const StudentSearch = ({
     const handleSelect = (item) => {
         setSelectedStudent(item);
         
-        // Name only selection
-        const labelText = `${item.firstName} ${item.middleName || ''} ${item.lastName}`.trim().replace(/\s+/g, ' ');
+        // Custom label based on displayField
+        let labelText = '';
+        if (displayField === 'regNo') {
+            labelText = item.regNo || '';
+        } else {
+            labelText = `${item.firstName} ${item.middleName || ''} ${item.lastName}`.trim().replace(/\s+/g, ' ');
+        }
         
         setQuery(labelText);
         setIsOpen(false);
@@ -238,6 +247,11 @@ const StudentSearch = ({
                                         <p className="font-medium text-gray-800 text-sm">
                                             {item.firstName} {item.middleName} {item.lastName}
                                         </p>
+                                        {item.regNo && (
+                                            <p className="text-[10px] text-blue-600 font-bold font-mono">
+                                                Ref: {item.regNo}
+                                            </p>
+                                        )}
                                     </div>
                                     {selectedStudent && selectedStudent._id === item._id && (
                                         <Check size={16} className="text-blue-600" />

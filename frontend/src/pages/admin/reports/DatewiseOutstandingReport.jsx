@@ -2,15 +2,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchStudents, resetStatus } from '../../../features/student/studentSlice';
 import { fetchBranches } from '../../../features/master/masterSlice';
+import { fetchEmployees } from '../../../features/employee/employeeSlice';
 import { Search, Printer, FileText, RefreshCw } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
+import StudentSearch from '../../../components/StudentSearch';
 
 const DatewiseOutstandingReport = () => {
     const dispatch = useDispatch();
     const { students, isLoading } = useSelector((state) => state.students);
     const { branches } = useSelector((state) => state.master);
+    const { employees } = useSelector((state) => state.employees);
     const { user } = useSelector((state) => state.auth);
 
     // Filter State
@@ -33,6 +36,11 @@ const DatewiseOutstandingReport = () => {
         }
     }, [dispatch, user]);
 
+    // Fetch Employees based on selected branch
+    useEffect(() => {
+        dispatch(fetchEmployees(filters.branchId ? { branchId: filters.branchId } : {}));
+    }, [dispatch, filters.branchId]);
+
     // Fetch Report Data
     useEffect(() => {
         // Only fetch if date range is set (optional, but good practice for reports)
@@ -43,6 +51,13 @@ const DatewiseOutstandingReport = () => {
             dispatch(resetStatus());
         }
     }, [dispatch, appliedFilters]);
+
+    const handleStudentSelect = (id, student) => {
+        setFilters({ 
+            ...filters, 
+            studentName: student ? `${student.firstName} ${student.middleName || ''} ${student.lastName}`.trim() : '' 
+        });
+    };
 
     const handleFilterChange = (e) => {
         setFilters({ ...filters, [e.target.name]: e.target.value });
@@ -156,12 +171,22 @@ const DatewiseOutstandingReport = () => {
                         </div>
                     )}
                     <div>
-                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Student Name</label>
-                        <input type="text" name="studentName" value={filters.studentName || ''} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" placeholder="Student Name..." />
+                        <StudentSearch 
+                            label="Student Name"
+                            placeholder="Search by name..."
+                            onSelect={handleStudentSelect}
+                            displayField="name"
+                            additionalFilters={{ isRegistered: 'true', branchId: filters.branchId }}
+                        />
                     </div>
                     <div>
-                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Reference</label>
-                        <input type="text" name="reference" value={filters.reference || ''} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" placeholder="Reference..." />
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Reference By (Employee)</label>
+                        <select name="reference" value={filters.reference} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                            <option value="">All Employees</option>
+                            {employees && employees.map(emp => (
+                                <option key={emp._id} value={emp.name}>{emp.name}</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
                 <div className="flex gap-2 mt-4 justify-end">

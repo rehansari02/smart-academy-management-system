@@ -137,7 +137,7 @@ const InquiryOnline = () => {
       status: '',
       studentName: '',
       referenceBy: '',
-      dateFilterType: 'nextVisitingDate',
+      dateFilterType: 'followUpDate',
       source: 'Online' // Locked to Online
   });
 
@@ -166,7 +166,7 @@ const InquiryOnline = () => {
   const handleResetFilters = () => {
       const resetState = { 
           startDate: new Date().toISOString().split('T')[0], endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '',
-          dateFilterType: 'nextVisitingDate', source: 'Online' 
+          dateFilterType: 'followUpDate', source: 'Online' 
       };
       setFilters(resetState);
       dispatch(fetchInquiries(resetState));
@@ -253,7 +253,6 @@ const InquiryOnline = () => {
                     <select name="dateFilterType" onChange={handleFilterChange} value={filters.dateFilterType} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                         <option value="inquiryDate">Inquiry Date</option>
                         <option value="followUpDate">Follow-up Date</option>
-                        <option value="createdAt">Allocation Date</option>
                     </select>
                 </div>
                 <div>

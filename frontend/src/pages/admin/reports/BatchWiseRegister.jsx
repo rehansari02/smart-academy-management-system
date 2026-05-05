@@ -1,44 +1,98 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchStudents } from '../../../features/student/studentSlice';
-import { fetchBatches } from '../../../features/master/masterSlice';
+import moment from 'moment';
 import { useReactToPrint } from 'react-to-print';
-import { Printer, FileText, Search, Loader2, ChevronDown, Filter } from 'lucide-react';
+import { fetchStudents, resetStatus } from '../../../features/student/studentSlice';
+import { fetchBatches, fetchBranches, fetchCourses } from '../../../features/master/masterSlice';
+import { fetchEmployees } from '../../../features/employee/employeeSlice';
+import { Printer, FileText, Search, Loader2, ChevronDown, Filter, RefreshCw } from 'lucide-react';
+import StudentSearch from '../../../components/StudentSearch';
 import logo from '../../../assets/logo2.png';
+import { toast } from 'react-toastify';
 
 const BatchWiseRegister = () => {
     const dispatch = useDispatch();
     const componentRef = useRef();
     
     const { students, isLoading: studentsLoading } = useSelector((state) => state.students);
-    const { batches, isLoading: batchesLoading } = useSelector((state) => state.master);
+    const { batches, branches, courses, isLoading: batchesLoading } = useSelector((state) => state.master);
+    const { employees } = useSelector((state) => state.employees);
     const { user } = useSelector((state) => state.auth);
 
+    const [filters, setFilters] = useState({
+        startDate: '',
+        endDate: moment().format('YYYY-MM-DD'),
+        courseFilter: '',
+        branchId: user?.branchId || '',
+        studentName: '',
+        batch: 'All',
+        reference: '',
+        isRegistered: 'true'
+    });
+
+    const [showReport, setShowReport] = useState(true);
+
     const [selectedBatch, setSelectedBatch] = useState('All');
-    const [groupedData, setGroupedData] = useState({});
+    const [groupedData, setGroupedData] = useState([]);
     const [summaryData, setSummaryData] = useState([]);
 
     useEffect(() => {
-        dispatch(fetchStudents({ pageSize: 1000 })); // Fetch many students for report
         dispatch(fetchBatches());
-    }, [dispatch]);
+        dispatch(fetchCourses());
+        dispatch(fetchEmployees({ pageSize: 1000 }));
+        if (user?.role === 'Super Admin') {
+            dispatch(fetchBranches());
+        }
+        // Initial search to show all data
+        dispatch(fetchStudents({ 
+            ...filters,
+            isActive: true,
+            pageSize: 3000
+        }));
+    }, [dispatch, user]);
+
+    const handleFilterChange = (e) => {
+        setFilters({ ...filters, [e.target.name]: e.target.value });
+    };
+
+    const handleStudentSelect = (id, student) => {
+        setFilters(prev => ({ ...prev, studentName: student ? `${student.firstName} ${student.lastName}` : '' }));
+    };
+
+    const handleReset = () => {
+        setFilters({
+            startDate: '',
+            endDate: moment().format('YYYY-MM-DD'),
+            courseFilter: '',
+            branchId: user?.branchId || '',
+            studentName: '',
+            batch: 'All',
+            reference: '',
+            isRegistered: 'true'
+        });
+        setShowReport(false);
+    };
+
+    const handleSearch = () => {
+        dispatch(fetchStudents({ 
+            ...filters,
+            batch: filters.batch === 'All' ? undefined : filters.batch,
+            pageSize: 3000
+        }));
+        setShowReport(true);
+    };
 
     useEffect(() => {
         if (students && students.length > 0) {
-            // Filter students by selected batch if not 'All'
-            const filteredStudents = selectedBatch === 'All' 
-                ? students 
-                : students.filter(s => s.batch === selectedBatch);
-
             // Group by batch
             const groups = {};
-            filteredStudents.forEach(student => {
+            students.forEach(student => {
                 const bName = student.batch || 'Unassigned';
                 if (!groups[bName]) groups[bName] = [];
                 groups[bName].push(student);
             });
 
-            // Sort groups (General Batch at end if possible)
+            // Sort groups
             const sortedGroups = {};
             Object.keys(groups).sort((a, b) => {
                 if (a.toLowerCase().includes('general')) return 1;
@@ -56,8 +110,11 @@ const BatchWiseRegister = () => {
                 count: groups[batchName].length
             })).sort((a, b) => a.name.localeCompare(b.name));
             setSummaryData(summary);
+        } else {
+            setGroupedData({});
+            setSummaryData([]);
         }
-    }, [students, selectedBatch]);
+    }, [students]);
 
     const handlePrint = useReactToPrint({
         content: () => componentRef.current,
@@ -72,6 +129,41 @@ const BatchWiseRegister = () => {
         return batchName;
     };
 
+    const getBranchInfo = () => {
+        let branchId = user?.branchId;
+
+        if (user?.role === 'Super Admin') {
+            return {
+                name: "Main Branch",
+                address: "Smart Institute",
+                phone: "96017-49300",
+                mobile: "98988-30409",
+                email: "smartinstitutes@gmail.com"
+            };
+        }
+
+        if (user && user.branchDetails && user.branchDetails.address) {
+            return user.branchDetails;
+        }
+
+        if (branchId) {
+             if (branches && branches.length > 0) {
+                 const found = branches.find(b => b._id === branchId || b._id === branchId?._id);
+                 if (found) return found;
+             }
+        }
+
+         return {
+            name: user?.branchName || "Main Branch", 
+            address: "Smart Institute",
+            phone: "96017-49300", 
+            mobile: "98988-30409",
+            email: "smartinstitutes@gmail.com" 
+        };
+    };
+
+    const headerBranch = getBranchInfo();
+
     if (studentsLoading || batchesLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -83,60 +175,88 @@ const BatchWiseRegister = () => {
 
     return (
         <div className="container mx-auto p-4 max-w-7xl">
-            {/* --- Control Panel --- */}
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 mb-8 no-print animate-fadeIn">
-                <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div className="flex items-center gap-4">
-                        <div className="bg-primary/10 p-3 rounded-lg text-primary">
-                            <FileText size={24} />
-                        </div>
+            {/* Filter Section */}
+            <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 mb-8 print:hidden">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">From Date</label>
+                        <input type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" />
+                    </div>
+                    <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">To Date</label>
+                        <input type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" />
+                    </div>
+                    <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Course</label>
+                        <select name="courseFilter" value={filters.courseFilter} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                            <option value="">All Courses</option>
+                            {courses && courses.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                        </select>
+                    </div>
+                    {user?.role === 'Super Admin' && (
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-800">Batch-Wise Register</h1>
-                            <p className="text-gray-500 text-sm">General Student Reports</p>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-4">
-                        <div className="relative">
-                            <select
-                                className="appearance-none bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer font-medium"
-                                value={selectedBatch}
-                                onChange={(e) => setSelectedBatch(e.target.value)}
-                            >
-                                <option value="All">All Batches</option>
-                                {[...new Set(students?.map(s => s.batch).filter(Boolean))].sort().map(b => (
-                                    <option key={b} value={b}>{b}</option>
-                                ))}
+                            <label className="text-sm font-semibold text-gray-600 mb-1 block">Branch</label>
+                            <select name="branchId" value={filters.branchId} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                                <option value="">All Branches</option>
+                                {branches && branches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
                             </select>
-                            <Filter className="absolute left-3 top-3 text-gray-400" size={18} />
-                            <ChevronDown className="absolute right-3 top-3 text-gray-400 pointer-events-none" size={18} />
                         </div>
-
-                        <button
-                            onClick={handlePrint}
-                            className="bg-primary hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg flex items-center gap-2 font-bold shadow-lg shadow-blue-200 transition-all active:scale-95"
-                        >
-                            <Printer size={18} /> Print Report
-                        </button>
+                    )}
+                    <div>
+                        <StudentSearch 
+                            label="Student Name"
+                            placeholder="Search by name..."
+                            onSelect={handleStudentSelect}
+                            displayField="name"
+                            additionalFilters={{ isRegistered: 'true', branchId: filters.branchId }}
+                        />
                     </div>
+                    <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Batch</label>
+                        <select name="batch" value={filters.batch} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                            <option value="All">All Batches</option>
+                            {batches && batches.map(b => <option key={b._id} value={b.name}>{b.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Reference By (Employee)</label>
+                        <select name="reference" value={filters.reference} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                            <option value="">All Employees</option>
+                            {employees && employees.map(emp => (
+                                <option key={emp._id} value={emp.name}>{emp.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+                <div className="flex gap-2 mt-4 justify-end">
+                    <button onClick={handleReset} className="bg-gray-100 text-gray-600 px-4 py-2 rounded hover:bg-gray-200 border border-gray-300 font-medium transition flex items-center gap-1">
+                        <RefreshCw size={16} /> Reset
+                    </button>
+                    <button onClick={handleSearch} className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 font-bold shadow transition flex items-center gap-2">
+                        {studentsLoading ? 'Loading...' : <><Search size={18} /> Show Report</>}
+                    </button>
                 </div>
             </div>
 
-            {/* --- Report Content --- */}
-            <div ref={componentRef} className="print-container bg-white p-4 sm:p-8 rounded-lg shadow-sm border border-gray-100">
+            {/* {showReport && ( */}
+                <div ref={componentRef} className="print-container bg-white p-4 sm:p-8 rounded-lg shadow-sm border border-gray-100">
                 {/* Report Header */}
-                <div className="flex justify-between items-start border-b-2 border-primary pb-6 mb-8">
+                <div className="flex justify-between items-start border-b-2 border-primary pb-4 mb-8">
                     <div className="flex items-center gap-4">
                         <img src={logo} alt="Institute Logo" className="h-20 w-auto object-contain" />
-                        <div>
-                            <h2 className="text-3xl font-black text-primary tracking-tight">SMART INSTITUTE</h2>
-                            <p className="text-gray-600 font-bold uppercase tracking-widest text-sm">{user?.branchName || 'Main Branch'}</p>
-                        </div>
                     </div>
-                    <div className="text-right">
-                        <div className="bg-gray-100 px-4 py-2 rounded-lg inline-block">
-                            <p className="text-xs font-bold text-gray-500 uppercase">Report Date</p>
-                            <p className="text-sm font-black text-gray-800">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                    <div className="text-right text-xs space-y-1">
+                        <h2 className="text-xl font-bold text-blue-600 mb-1">{headerBranch.name}</h2>
+                        <div className="text-gray-600 max-w-xs ml-auto font-medium">
+                            {headerBranch.address}
+                        </div>
+                        <p className="font-bold text-blue-800">
+                             Ph. No. : {headerBranch.phone}, Mob. No. : {headerBranch.mobile}
+                        </p>
+                        <p className="text-blue-500 underline font-medium">{headerBranch.email}</p>
+                        <div className="mt-2 inline-block bg-gray-100 px-3 py-1 rounded-md border border-gray-200">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase block leading-tight">Report Date</span>
+                            <span className="text-xs font-black text-gray-800">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
                         </div>
                     </div>
                 </div>
@@ -247,6 +367,7 @@ const BatchWiseRegister = () => {
                     </div>
                 </div>
             </div>
+
 
             <style dangerouslySetInnerHTML={{ __html: `
                 @media print {

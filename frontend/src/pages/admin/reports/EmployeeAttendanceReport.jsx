@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchBranches } from '../../../features/master/masterSlice';
 import { fetchEmployeeAttendanceHistory } from '../../../features/transaction/attendanceSlice';
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
-import { FileText, Printer, Search } from 'lucide-react';
+import { FileText, Printer, Search, RefreshCw } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
@@ -19,12 +19,13 @@ const EmployeeAttendanceReport = () => {
 
     const [filters, setFilters] = useState({
         month: moment().format('YYYY-MM'),
-        employeeId: ''
+        employeeId: '',
+        branchId: user?.branchId || ''
     });
 
     const [reportData, setReportData] = useState([]);
     const [daysInMonth, setDaysInMonth] = useState([]);
-    const [showReport, setShowReport] = useState(false);
+    const [showReport, setShowReport] = useState(true);
     const componentRef = useRef(null);
 
     // Initial Data Fetch
@@ -32,6 +33,11 @@ const EmployeeAttendanceReport = () => {
         if (user?.role === 'Super Admin') {
             dispatch(fetchBranches());
         }
+        // Initial search
+        dispatch(fetchEmployeeAttendanceHistory({ 
+            ...filters,
+            pageSize: 3000
+        }));
     }, [dispatch, user]);
 
     // Generate Month Days Helper
@@ -51,6 +57,16 @@ const EmployeeAttendanceReport = () => {
         return daysArray;
     };
 
+    const handleReset = () => {
+        setFilters({
+            month: moment().format('YYYY-MM'),
+            employeeId: '',
+            branchId: user?.branchId || ''
+        });
+        setShowReport(false);
+        setReportData([]);
+    };
+
     const handleSearch = () => {
         if (!filters.month) {
             toast.error('Please select a month');
@@ -64,26 +80,16 @@ const EmployeeAttendanceReport = () => {
         dispatch(fetchEmployeeAttendanceHistory({
             fromDate: startDate,
             toDate: endDate,
-            // If specific employee selected, we could filter on backend if supported, 
-            // but attendanceSlice usually fetches based on range. 
-            // If backend supports employeeId param:
-            employeeId: filters.employeeId || undefined
+            employeeId: filters.employeeId || undefined,
+            branchId: filters.branchId || undefined
         }));
 
         // Fetch Employees
         const employeeParams = {
             isActive: true,
-            // If searching specific employee, we might want to fetch just that one or filter the list differently
-            // For now, let's fetch all or filter by search if needed.
-            // If employeeId is set, let's try to fetch just that one, BUT fetchEmployees takes 'searchValue'/'searchBy'.
-            // However, if we just fetch all (or large page size) and then filter in memory, that works too for typical employee counts.
+            branchId: filters.branchId || undefined,
             pageSize: 2000
         };
-
-        // Note: fetchEmployees expects 'searchValue' if we want to search. 
-        // But here we have ID. If we selected from dropdown, we know which one.
-        // It's safer to fetch all active employees to map the attendance history to them properly, 
-        // unless the list is huge. If specific employee is selected, we filter the displayed list later.
 
         dispatch(fetchEmployees(employeeParams));
 
@@ -269,7 +275,21 @@ const EmployeeAttendanceReport = () => {
                         />
                     </div>
 
-                    <div className="md:col-span-2">
+                    {user?.role === 'Super Admin' && (
+                        <div>
+                            <label className="text-sm font-semibold text-gray-600 mb-1 block">Branch</label>
+                            <select 
+                                className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none"
+                                value={filters.branchId}
+                                onChange={(e) => setFilters({ ...filters, branchId: e.target.value })}
+                            >
+                                <option value="">All Branches</option>
+                                {branches && branches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    <div className={user?.role === 'Super Admin' ? 'md:col-span-1' : 'md:col-span-2'}>
                         {/* Employee Search Dropdown */}
                         <EmployeeSearch
                             label="Employee Name"
@@ -278,13 +298,14 @@ const EmployeeAttendanceReport = () => {
                             className="w-full"
                         />
                     </div>
-
-                    <div>
-                        <label className="block text-sm font-semibold text-white mb-1">Action</label>
-                        <button onClick={handleSearch} className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 font-bold shadow transition flex items-center gap-2 w-full justify-center">
-                            {attendanceLoading ? 'Loading...' : <><Search size={18} /> Show Report</>}
-                        </button>
-                    </div>
+                </div>
+                <div className="flex gap-2 mt-4 justify-end">
+                    <button onClick={handleReset} className="bg-gray-100 text-gray-600 px-4 py-2 rounded hover:bg-gray-200 border border-gray-300 font-medium transition flex items-center gap-1">
+                        <RefreshCw size={16} /> Reset
+                    </button>
+                    <button onClick={handleSearch} className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 font-bold shadow transition flex items-center gap-2">
+                        {attendanceLoading ? 'Loading...' : <><Search size={18} /> Show Report</>}
+                    </button>
                 </div>
             </div>
 
@@ -298,7 +319,6 @@ const EmployeeAttendanceReport = () => {
              )} */}
 
             {/* Printable Area */}
-            {showReport && (
                 <div className="overflow-auto bg-gray-50 p-4 print:p-0">
                     <div
                         ref={componentRef}
@@ -409,7 +429,6 @@ const EmployeeAttendanceReport = () => {
                         </div>
                     </div>
                 </div>
-            )}
         </div>
     );
 };

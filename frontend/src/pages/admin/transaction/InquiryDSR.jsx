@@ -125,7 +125,7 @@ const InquiryDSR = () => {
   const { user } = useSelector((state) => state.auth);
   
   // Filter defaults to DSR
-  const [filters, setFilters] = useState({ startDate: '', endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '', source: 'DSR', dateFilterType: 'nextVisitingDate' });
+  const [filters, setFilters] = useState({ startDate: '', endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '', source: 'DSR', dateFilterType: 'followUpDate' });
   const [modal, setModal] = useState({ type: null, data: null });
 
   useEffect(() => { dispatch(fetchInquiries(filters)); dispatch(fetchCourses()); dispatch(fetchEmployees()); }, [dispatch]);
@@ -203,7 +203,14 @@ const InquiryDSR = () => {
         
         <div className="flex flex-col gap-4">
             {/* Row 1: Dates & Status */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label className="text-xs text-gray-500 font-semibold mb-1 block">Date Type</label>
+                    <select value={filters.dateFilterType} onChange={e => setFilters({...filters, dateFilterType: e.target.value})} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="inquiryDate">Inquiry Date</option>
+                        <option value="followUpDate">Follow-up Date</option>
+                    </select>
+                </div>
                 <div>
                     <label className="text-xs text-gray-500 font-semibold mb-1 block">From Date</label>
                     <input type="date" value={filters.startDate} onChange={e => setFilters({...filters, startDate: e.target.value})} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"/>
@@ -253,7 +260,7 @@ const InquiryDSR = () => {
             <div className="grid grid-cols-2 gap-4 pt-2">
                 <button 
                     onClick={() => {
-                        const resetState = { startDate: '', endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '', source: 'DSR', dateFilterType: 'nextVisitingDate' };
+                        const resetState = { startDate: '', endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '', source: 'DSR', dateFilterType: 'followUpDate' };
                         setFilters(resetState);
                         dispatch(fetchInquiries(resetState));
                     }} 

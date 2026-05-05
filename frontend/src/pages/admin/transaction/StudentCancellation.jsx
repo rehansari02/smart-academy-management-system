@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchStudents, cancelStudent, resetStatus } from '../../../features/student/studentSlice';
+import { fetchStudents, cancelStudent, reactivateStudent, resetStatus } from '../../../features/student/studentSlice';
 import { fetchBranches } from '../../../features/master/masterSlice';
-import { XCircle, UserX, Search, Filter, AlertTriangle, CheckCircle } from 'lucide-react';
+import { XCircle, UserX, Search, Filter, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'react-toastify';
+import StudentSearch from '../../../components/StudentSearch';
 
 const StudentCancellation = () => {
   const dispatch = useDispatch();
@@ -11,7 +12,6 @@ const StudentCancellation = () => {
   const { branches } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
 
-  // Filter State
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
@@ -19,20 +19,33 @@ const StudentCancellation = () => {
     studentName: '',
     courseFilter: '',
     pageNumber: 1,
-    pageSize: 1000, // Large page size for all students
-    includeCancelled: true // Include cancelled students in this page
+    pageSize: 10, 
+    includeCancelled: true
   });
+
+  const [searchedStudents, setSearchedStudents] = useState([]);
+  const [initialLoad, setInitialLoad] = useState(false);
 
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  // Fetch Initial Data
+  // Fetch Branches and Cancelled Students
   useEffect(() => {
-    dispatch(fetchStudents({ ...filters, includeCancelled: true })); // Include cancelled for this page
     if (user?.role === 'Super Admin') {
       dispatch(fetchBranches());
     }
-  }, [dispatch, user, filters]);
+    // Fetch all cancelled students for the list
+    dispatch(fetchStudents({ branchId: filters.branchId, isCancelled: 'true', pageSize: 1000 }));
+  }, [dispatch, user, filters.branchId]);
+
+  // Handle Search Result from StudentSearch
+  const handleStudentSelect = (id, student) => {
+    if (student) {
+      setSearchedStudents([student]);
+    } else {
+      setSearchedStudents([]);
+    }
+  };
 
   const handleFilterChange = (e) => {
     setFilters({ ...filters, [e.target.name]: e.target.value, pageNumber: 1 });
@@ -47,12 +60,26 @@ const StudentCancellation = () => {
     setShowConfirmModal(true);
   };
 
+  const handleReactivateClick = (student) => {
+    dispatch(reactivateStudent(student._id)).then((result) => {
+      if (result.meta.requestStatus === 'fulfilled') {
+        toast.success('Student admission reactivated successfully');
+        setSearchedStudents([]); // Clear
+      } else {
+        toast.error('Failed to reactivate student');
+      }
+    });
+  };
+
   const confirmCancellation = () => {
     if (selectedStudent) {
       dispatch(cancelStudent(selectedStudent._id)).then((result) => {
         if (result.meta.requestStatus === 'fulfilled') {
           toast.success('Student admission cancelled successfully');
-          dispatch(fetchStudents({ ...filters, includeCancelled: true })); // Refresh list
+          setSearchedStudents([]); // Clear current selection
+          // Optional: You might want to refresh the cancelled list, 
+          // but since we are not fetching all students, we just clear the active selection.
+          dispatch(fetchStudents({ ...filters, includeCancelled: true, isCancelled: 'true' })); 
         } else {
           toast.error('Failed to cancel student admission');
         }
@@ -77,33 +104,30 @@ const StudentCancellation = () => {
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div>
-            <label className="text-sm font-semibold text-gray-600 mb-1 block">From Date</label>
-            <input type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" />
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-gray-600 mb-1 block">To Date</label>
-            <input type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" />
+        {/* Search */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="md:col-span-1">
+             <StudentSearch 
+               label="Search Student (Active or Cancelled)"
+               placeholder="Type name or reg no..."
+               onSelect={handleStudentSelect}
+               additionalFilters={{ branchId: filters.branchId }}
+               includeCancelled={true}
+             />
           </div>
           {user?.role === 'Super Admin' && (
             <div>
-              <label className="text-sm font-semibold text-gray-600 mb-1 block">Branch</label>
+              <label className="text-sm font-semibold text-gray-600 mb-1 block">Branch Filter (For Search)</label>
               <select name="branchId" value={filters.branchId} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
                 <option value="">All Branches</option>
                 {branches && branches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
               </select>
             </div>
           )}
-          <div>
-            <label className="text-sm font-semibold text-gray-600 mb-1 block">Student Name</label>
-            <input type="text" name="studentName" value={filters.studentName} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" placeholder="Search by name..." />
-          </div>
         </div>
         <div className="flex gap-2 justify-end">
-          <button onClick={handleSearch} className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 font-bold shadow transition flex items-center gap-2">
-            <Search size={18} /> Search
+          <button onClick={() => setSearchedStudents([])} className="bg-gray-100 text-gray-600 px-4 py-2 rounded hover:bg-gray-200 border border-gray-300 font-medium transition flex items-center gap-1">
+            <RefreshCw size={16} /> Reset Search
           </button>
         </div>
       </div>
@@ -111,9 +135,9 @@ const StudentCancellation = () => {
       {/* Active Students Section */}
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
         <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
-          <UserX className="text-orange-500" size={24} /> Active Students
+          <Search className="text-blue-500" size={24} /> Search Results
         </h3>
-        {activeStudents.length > 0 ? (
+        {searchedStudents.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse border border-gray-300 text-sm">
               <thead>
@@ -123,24 +147,41 @@ const StudentCancellation = () => {
                   <th className="p-3 border text-left">Course</th>
                   <th className="p-3 border text-left">Admission Date</th>
                   <th className="p-3 border text-left">Mobile</th>
+                  <th className="p-3 border text-left">Status</th>
                   <th className="p-3 border text-center">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {activeStudents.map((student) => (
+                {searchedStudents.map((student) => (
                   <tr key={student._id} className="hover:bg-gray-50">
                     <td className="p-3 border">{student.regNo || '-'}</td>
                     <td className="p-3 border font-medium">{student.firstName} {student.middleName} {student.lastName}</td>
                     <td className="p-3 border">{student.course?.shortName || student.course?.name || '-'}</td>
                     <td className="p-3 border">{student.admissionDate ? new Date(student.admissionDate).toLocaleDateString() : '-'}</td>
                     <td className="p-3 border">{student.mobileParent || '-'}</td>
+                    <td className="p-3 border">
+                      {student.isCancelled ? (
+                        <span className="px-2 py-1 bg-red-100 text-red-600 rounded-full text-xs font-bold uppercase">Cancelled</span>
+                      ) : (
+                        <span className="px-2 py-1 bg-green-100 text-green-600 rounded-full text-xs font-bold uppercase">Active</span>
+                      )}
+                    </td>
                     <td className="p-3 border text-center">
-                      <button
-                        onClick={() => handleCancelClick(student)}
-                        className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 text-xs font-medium"
-                      >
-                        Cancel Admission
-                      </button>
+                      {student.isCancelled ? (
+                        <button
+                          onClick={() => handleReactivateClick(student)}
+                          className="bg-green-600 text-white px-4 py-1 rounded hover:bg-green-700 text-xs font-bold transition flex items-center gap-1 mx-auto"
+                        >
+                          <CheckCircle size={14} /> Active (Reactivate)
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleCancelClick(student)}
+                          className="bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600 text-xs font-bold transition flex items-center gap-1 mx-auto"
+                        >
+                          <XCircle size={14} /> Cancel Admission
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -148,14 +189,14 @@ const StudentCancellation = () => {
             </table>
           </div>
         ) : (
-          <p className="text-gray-500 text-center py-8">No active students found.</p>
+          <p className="text-gray-500 text-center py-8 italic font-medium">Use the search box above to find a student to manage their admission status.</p>
         )}
       </div>
 
       {/* Cancelled Students Section */}
       <div className="bg-white rounded-lg shadow-md p-6">
         <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
-          <CheckCircle className="text-green-500" size={24} /> Cancelled Students
+          <CheckCircle className="text-green-500" size={24} /> All Cancelled Students
         </h3>
         {cancelledStudents.length > 0 ? (
           <div className="overflow-x-auto">
@@ -165,8 +206,8 @@ const StudentCancellation = () => {
                   <th className="p-3 border text-left">Reg. No.</th>
                   <th className="p-3 border text-left">Name</th>
                   <th className="p-3 border text-left">Course</th>
-                  <th className="p-3 border text-left">Admission Date</th>
                   <th className="p-3 border text-left">Cancellation Date</th>
+                  <th className="p-3 border text-center">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -175,8 +216,15 @@ const StudentCancellation = () => {
                     <td className="p-3 border">{student.regNo || '-'}</td>
                     <td className="p-3 border font-medium">{student.firstName} {student.middleName} {student.lastName}</td>
                     <td className="p-3 border">{student.course?.shortName || student.course?.name || '-'}</td>
-                    <td className="p-3 border">{student.admissionDate ? new Date(student.admissionDate).toLocaleDateString() : '-'}</td>
                     <td className="p-3 border">{student.cancelledDate ? new Date(student.cancelledDate).toLocaleDateString() : 'N/A'}</td>
+                    <td className="p-3 border text-center">
+                       <button
+                          onClick={() => handleReactivateClick(student)}
+                          className="bg-green-600 text-white px-4 py-1 rounded hover:bg-green-700 text-xs font-bold transition flex items-center gap-1 mx-auto"
+                        >
+                          <CheckCircle size={14} /> Active
+                        </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

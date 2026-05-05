@@ -19,9 +19,11 @@ const getInquiries = asyncHandler(async (req, res) => {
   // Date Filters
   if (startDate && endDate) {
     const dateField = dateFilterType || "inquiryDate";
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
-    query[dateField] = { $gte: new Date(startDate), $lte: end };
+    query[dateField] = { $gte: start, $lte: end };
   }
 
   // Status Filter
@@ -30,11 +32,14 @@ const getInquiries = asyncHandler(async (req, res) => {
   // Source Filter
   if (source) query.source = source;
 
-  // Student Name Search (Regex)
-  if (studentName) {
+  // Student Name or Contact Search
+  const searchTerm = studentName || req.query.search;
+  if (searchTerm) {
     query.$or = [
-      { firstName: { $regex: studentName, $options: "i" } },
-      { lastName: { $regex: studentName, $options: "i" } },
+      { firstName: { $regex: searchTerm, $options: "i" } },
+      { lastName: { $regex: searchTerm, $options: "i" } },
+      { contactStudent: { $regex: searchTerm, $options: "i" } },
+      { contactParent: { $regex: searchTerm, $options: "i" } },
     ];
   }
 

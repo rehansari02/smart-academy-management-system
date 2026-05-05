@@ -98,6 +98,15 @@ export const MENU_CONFIG = [
               { title: 'Student Registration Report', path: '/reports/general/student-registration' },
               { title: 'Batch Wise Register', path: '/reports/general/batch-wise-register' },
           ]
+      },
+      { 
+          title: 'Exam Report', 
+          type: 'nested',
+          subItems: [
+              { title: 'Time Table', path: '/reports/exam/time-table' },
+              { title: 'Certificate Issue Register', path: '/reports/exam/certificate-issue-register' },
+              { title: 'Final Result Details', path: '/reports/exam/final-result-details' },
+          ]
       }
     ]
   },

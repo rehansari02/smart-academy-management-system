@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchStudents } from '../../../features/student/studentSlice';
-import { fetchBranches, fetchBatches } from '../../../features/master/masterSlice';
-import { FileText, Printer, Search } from 'lucide-react';
+import { fetchStudents, resetStatus } from '../../../features/student/studentSlice';
+import { fetchBranches, fetchBatches, fetchCourses } from '../../../features/master/masterSlice';
+import { fetchEmployees } from '../../../features/employee/employeeSlice';
+import { FileText, Printer, Search, RefreshCw } from 'lucide-react';
+import StudentSearch from '../../../components/StudentSearch';
 import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
@@ -11,8 +13,22 @@ import { toast } from 'react-toastify';
 const StudentCompletionReport = () => {
     const dispatch = useDispatch();
     const { students, isLoading } = useSelector((state) => state.students);
-    const { branches, batches } = useSelector((state) => state.master);
+    const { branches, batches, courses } = useSelector((state) => state.master);
+    const { employees } = useSelector((state) => state.employees);
     const { user } = useSelector((state) => state.auth);
+
+    const [filters, setFilters] = useState({
+        startDate: '',
+        endDate: moment().format('YYYY-MM-DD'),
+        courseFilter: '',
+        branchId: user?.branchId || '',
+        studentName: '',
+        batch: '',
+        reference: '',
+        isRegistered: 'true'
+    });
+
+    const [showReport, setShowReport] = useState(true);
 
     const [selectedBatch, setSelectedBatch] = useState('');
     const [reportData, setReportData] = useState([]);
@@ -20,16 +36,49 @@ const StudentCompletionReport = () => {
 
     useEffect(() => {
         dispatch(fetchBatches());
+        dispatch(fetchCourses());
+        dispatch(fetchEmployees({ pageSize: 1000 }));
         if (user?.role === 'Super Admin') {
             dispatch(fetchBranches());
         }
-        // Fetch all active students initially or when batch changes
+        // Initial search to show all data
         dispatch(fetchStudents({ 
-            isActive: true, // Only active students usually? Or all? Usually completion report implies active students working towards it.
-            batch: selectedBatch || undefined,
-            pageSize: 3000 // Fetch large number for report
+            ...filters,
+            isActive: true,
+            pageSize: 3000
         }));
-    }, [dispatch, selectedBatch, user]);
+    }, [dispatch, user]);
+
+    const handleFilterChange = (e) => {
+        setFilters({ ...filters, [e.target.name]: e.target.value });
+    };
+
+    const handleStudentSelect = (id, student) => {
+        setFilters(prev => ({ ...prev, studentName: student ? `${student.firstName} ${student.lastName}` : '' }));
+    };
+
+    const handleReset = () => {
+        setFilters({
+            startDate: '',
+            endDate: moment().format('YYYY-MM-DD'),
+            courseFilter: '',
+            branchId: user?.branchId || '',
+            studentName: '',
+            batch: '',
+            reference: '',
+            isRegistered: 'true'
+        });
+        setShowReport(false);
+    };
+
+    const handleSearch = () => {
+        dispatch(fetchStudents({ 
+            ...filters,
+            isActive: true,
+            pageSize: 3000
+        }));
+        setShowReport(true);
+    };
 
     useEffect(() => {
         if (students) {
@@ -155,32 +204,71 @@ const StudentCompletionReport = () => {
                 <FileText className="text-primary"/> Student Completion Report
             </h1>
 
-            {/* Filter */}
-            {/* <div className="bg-white p-4 rounded-lg shadow border border-gray-200 mb-6 print:hidden flex gap-4 items-end"> */}
-                {/* <div className="w-64">
-                    <label className="text-sm font-semibold text-gray-600 mb-1 block">Filter by Batch</label>
-                    <select 
-                        className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none"
-                        value={selectedBatch}
-                        onChange={(e) => setSelectedBatch(e.target.value)}
-                    >
-                        <option value="">All Batches</option>
-                        {batches.map(b => (
-                            <option key={b._id} value={b.name}>{b.name}</option>
-                        ))}
-                    </select>
-                </div> */}
-                {/* Print Button */}
-                 {/* <button 
-                    onClick={handlePrint} 
-                    className="bg-green-600 text-white px-4 py-2 rounded font-bold hover:bg-green-700 transition flex items-center gap-2"
-                >
-                    <Printer size={18}/> Print Report
-                </button> */}
-            {/* </div> */}
+            {/* Filter Section */}
+            <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 mb-8 print:hidden">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">From Date</label>
+                        <input type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" />
+                    </div>
+                    <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">To Date</label>
+                        <input type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none" />
+                    </div>
+                    <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Course</label>
+                        <select name="courseFilter" value={filters.courseFilter} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                            <option value="">All Courses</option>
+                            {courses && courses.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                        </select>
+                    </div>
+                    {user?.role === 'Super Admin' && (
+                        <div>
+                            <label className="text-sm font-semibold text-gray-600 mb-1 block">Branch</label>
+                            <select name="branchId" value={filters.branchId} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                                <option value="">All Branches</option>
+                                {branches && branches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+                    <div>
+                        <StudentSearch 
+                            label="Student Name"
+                            placeholder="Search by name..."
+                            onSelect={handleStudentSelect}
+                            displayField="name"
+                            additionalFilters={{ isRegistered: 'true', branchId: filters.branchId }}
+                        />
+                    </div>
+                    <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Batch</label>
+                        <select name="batch" value={filters.batch} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                            <option value="">All Batches</option>
+                            {batches && batches.map(b => <option key={b._id} value={b.name}>{b.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Reference By (Employee)</label>
+                        <select name="reference" value={filters.reference} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                            <option value="">All Employees</option>
+                            {employees && employees.map(emp => (
+                                <option key={emp._id} value={emp.name}>{emp.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+                <div className="flex gap-2 mt-4 justify-end">
+                    <button onClick={handleReset} className="bg-gray-100 text-gray-600 px-4 py-2 rounded hover:bg-gray-200 border border-gray-300 font-medium transition flex items-center gap-1">
+                        <RefreshCw size={16} /> Reset
+                    </button>
+                    <button onClick={handleSearch} className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 font-bold shadow transition flex items-center gap-2">
+                        {isLoading ? 'Loading...' : <><Search size={18} /> Show Report</>}
+                    </button>
+                </div>
+            </div>
 
-            {/* Component to Print */}
-            <div className="overflow-auto bg-gray-50 p-4 print:p-0 print:bg-white">
+            {/* Printable Report Section */}
+                <div className="overflow-auto bg-gray-50 p-4 print:p-0 print:bg-white">
                 <div 
                     ref={componentRef} 
                     className="bg-white shadow-lg mx-auto p-8 min-h-[297mm] print:shadow-none print:mx-0 print:p-0 print:w-full"
@@ -258,6 +346,8 @@ const StudentCompletionReport = () => {
                      </div>
                 </div>
             </div>
+
+
 
              <style type="text/css" media="print">
                 {`

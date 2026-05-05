@@ -131,6 +131,9 @@ const StudentContactReport = lazy(() => import('./pages/admin/reports/StudentCon
 const StudentRegistrationReport = lazy(() => import('./pages/admin/reports/StudentRegistrationReport'));
 const BatchWiseRegister = lazy(() => import('./pages/admin/reports/BatchWiseRegister'));
 const ExamResultPrint = lazy(() => import('./pages/admin/reports/ExamResultPrint'));
+const TimeTableReport = lazy(() => import('./pages/admin/reports/TimeTableReport'));
+const CertificateIssueRegister = lazy(() => import('./pages/admin/reports/CertificateIssueRegister'));
+const FinalResultDetails = lazy(() => import('./pages/admin/reports/FinalResultDetails'));
 
 const PrivateRoute = ({ children }) => {
   const { user } = useSelector((state) => state.auth);
@@ -560,6 +563,30 @@ function App() {
                 element={
                   <PrivateRoute>
                     <BatchWiseRegister />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/reports/exam/time-table"
+                element={
+                  <PrivateRoute>
+                    <TimeTableReport />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/reports/exam/certificate-issue-register"
+                element={
+                  <PrivateRoute>
+                    <CertificateIssueRegister />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/reports/exam/final-result-details"
+                element={
+                  <PrivateRoute>
+                    <FinalResultDetails />
                   </PrivateRoute>
                 }
               />

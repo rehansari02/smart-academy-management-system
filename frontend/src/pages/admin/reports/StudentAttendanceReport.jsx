@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchBatches, fetchBranches } from '../../../features/master/masterSlice';
+import { fetchBatches, fetchBranches, fetchCourses } from '../../../features/master/masterSlice';
 import { fetchStudentAttendanceHistory } from '../../../features/transaction/attendanceSlice';
 import { fetchStudents } from '../../../features/student/studentSlice';
-import { FileText, Printer, Search } from 'lucide-react';
+import { fetchEmployees } from '../../../features/employee/employeeSlice';
+import { FileText, Printer, Search, RefreshCw } from 'lucide-react';
+import StudentSearch from '../../../components/StudentSearch';
 import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
@@ -11,29 +13,41 @@ import { toast } from 'react-toastify';
 
 const StudentAttendanceReport = () => {
     const dispatch = useDispatch();
-    const { batches, branches } = useSelector((state) => state.master);
+    const { batches, branches, courses } = useSelector((state) => state.master);
     const { attendanceList, isLoading: attendanceLoading } = useSelector((state) => state.attendance);
     const { students } = useSelector((state) => state.students);
+    const { employees } = useSelector((state) => state.employees);
     const { user } = useSelector((state) => state.auth);
 
     const [filters, setFilters] = useState({
         month: moment().format('YYYY-MM'),
         batch: '',
-        studentName: ''
+        studentName: '',
+        courseFilter: '',
+        branchId: user?.branchId || '',
+        reference: '',
+        isRegistered: 'true'
     });
 
     const [reportData, setReportData] = useState([]);
     const [daysInMonth, setDaysInMonth] = useState([]);
     const componentRef = useRef(null);
 
-    const [showReport, setShowReport] = useState(false);
+    const [showReport, setShowReport] = useState(true);
 
     // Initial Data Fetch
     useEffect(() => {
         dispatch(fetchBatches());
+        dispatch(fetchCourses());
+        dispatch(fetchEmployees({ pageSize: 1000 }));
         if (user?.role === 'Super Admin') {
             dispatch(fetchBranches());
         }
+        // Initial search to show all data
+        dispatch(fetchStudentAttendanceHistory({ 
+            ...filters,
+            pageSize: 3000
+        }));
     }, [dispatch, user]);
 
     // Generate Month Days Helper
@@ -53,6 +67,28 @@ const StudentAttendanceReport = () => {
         return daysArray;
     };
 
+    const handleFilterChange = (e) => {
+        setFilters({ ...filters, [e.target.name]: e.target.value });
+    };
+
+    const handleStudentSelect = (id, student) => {
+        setFilters(prev => ({ ...prev, studentName: student ? `${student.firstName} ${student.lastName}` : '' }));
+    };
+
+    const handleReset = () => {
+        setFilters({
+            month: moment().format('YYYY-MM'),
+            batch: '',
+            studentName: '',
+            courseFilter: '',
+            branchId: user?.branchId || '',
+            reference: '',
+            isRegistered: 'true'
+        });
+        setShowReport(false);
+        setReportData([]);
+    };
+
     const handleSearch = () => {
         if (!filters.month) {
             toast.error('Please select a month');
@@ -66,13 +102,17 @@ const StudentAttendanceReport = () => {
         dispatch(fetchStudentAttendanceHistory({
             fromDate: startDate,
             toDate: endDate,
-            batch: filters.batch || undefined
+            batch: filters.batch || undefined,
+            branchId: filters.branchId || undefined
         }));
 
         // Fetch Students
         const studentParams = {
             isActive: true,
-            pageSize: 2000
+            pageSize: 2000,
+            branchId: filters.branchId || undefined,
+            courseFilter: filters.courseFilter || undefined,
+            reference: filters.reference || undefined
         };
 
         if (filters.batch) studentParams.batch = filters.batch;
@@ -95,8 +135,10 @@ const StudentAttendanceReport = () => {
 
                 if (record.records) {
                     record.records.forEach(studentRec => {
-                        const sid = studentRec.studentId._id || studentRec.studentId;
-                        attendanceMap[dateKey][sid] = studentRec.isPresent ? 'P' : 'A';
+                        if (studentRec.studentId) {
+                            const sid = studentRec.studentId._id || studentRec.studentId;
+                            attendanceMap[dateKey][sid] = studentRec.isPresent ? 'P' : 'A';
+                        }
                     });
                 }
             });
@@ -246,6 +288,31 @@ const StudentAttendanceReport = () => {
                         />
                     </div>
                     <div>
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Course</label>
+                        <select name="courseFilter" value={filters.courseFilter} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                            <option value="">All Courses</option>
+                            {courses && courses.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                        </select>
+                    </div>
+                    {user?.role === 'Super Admin' && (
+                        <div>
+                            <label className="text-sm font-semibold text-gray-600 mb-1 block">Branch</label>
+                            <select name="branchId" value={filters.branchId} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                                <option value="">All Branches</option>
+                                {branches && branches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+                    <div>
+                        <StudentSearch 
+                            label="Student Name"
+                            placeholder="Search by name..."
+                            onSelect={handleStudentSelect}
+                            displayField="name"
+                            additionalFilters={{ isRegistered: 'true', branchId: filters.branchId }}
+                        />
+                    </div>
+                    <div>
                         <label className="text-sm font-semibold text-gray-600 mb-1 block">Batch (Optional)</label>
                         <select
                             className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none"
@@ -259,21 +326,22 @@ const StudentAttendanceReport = () => {
                         </select>
                     </div>
                     <div>
-                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Student Name</label>
-                        <input
-                            type="text"
-                            placeholder="Detailed Search..."
-                            className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none"
-                            value={filters.studentName}
-                            onChange={(e) => setFilters({ ...filters, studentName: e.target.value })}
-                        />
+                        <label className="text-sm font-semibold text-gray-600 mb-1 block">Reference By (Employee)</label>
+                        <select name="reference" value={filters.reference} onChange={handleFilterChange} className="w-full border rounded p-2 focus:ring-2 focus:ring-primary outline-none">
+                            <option value="">All Employees</option>
+                            {employees && employees.map(emp => (
+                                <option key={emp._id} value={emp.name}>{emp.name}</option>
+                            ))}
+                        </select>
                     </div>
-                    <div>
-                        <label className="block text-sm font-semibold text-white mb-1">Action</label>
-                        <button onClick={handleSearch} className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 font-bold shadow transition flex items-center gap-2 w-full justify-center">
-                            {attendanceLoading ? 'Loading...' : <><Search size={18} /> Show Report</>}
-                        </button>
-                    </div>
+                </div>
+                <div className="flex gap-2 mt-4 justify-end">
+                    <button onClick={handleReset} className="bg-gray-100 text-gray-600 px-4 py-2 rounded hover:bg-gray-200 border border-gray-300 font-medium transition flex items-center gap-1">
+                        <RefreshCw size={16} /> Reset
+                    </button>
+                    <button onClick={handleSearch} className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 font-bold shadow transition flex items-center gap-2">
+                        {attendanceLoading ? 'Loading...' : <><Search size={18} /> Show Report</>}
+                    </button>
                 </div>
             </div>
 
@@ -287,7 +355,7 @@ const StudentAttendanceReport = () => {
              )} */}
 
             {/* Printable Area - Optimized for Portrait A4 (Small print font, Normal screen font) */}
-            {showReport && (
+            {/* {showReport && ( */}
                 <div className="overflow-auto bg-gray-50 p-4 print:p-0">
                     <div
                         ref={componentRef}
@@ -398,7 +466,6 @@ const StudentAttendanceReport = () => {
                         </div>
                     </div>
                 </div>
-            )}
         </div>
     );
 };

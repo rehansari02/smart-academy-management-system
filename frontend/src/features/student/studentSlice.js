@@ -179,6 +179,20 @@ export const cancelStudent = createAsyncThunk(
   }
 );
 
+export const reactivateStudent = createAsyncThunk(
+  "students/reactivate",
+  async (id, thunkAPI) => {
+    try {
+      const response = await axios.put(`${API_URL}${id}/reactivate`);
+      return response.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message
+      );
+    }
+  }
+);
+
 export const fetchExamPendingStudents = createAsyncThunk(
   "students/fetchExamPending",
   async (params, thunkAPI) => {
@@ -320,6 +334,23 @@ const studentSlice = createSlice({
         }
       })
       .addCase(cancelStudent.rejected, (state, action) => {
+        state.isLoading = false;
+        state.isSuccess = false;
+        state.message = action.payload;
+      })
+      .addCase(reactivateStudent.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(reactivateStudent.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.isSuccess = true;
+        state.message = "Student Admission Reactivated Successfully";
+        const student = state.students.find((s) => s._id === action.payload._id);
+        if (student) {
+          student.isCancelled = false;
+        }
+      })
+      .addCase(reactivateStudent.rejected, (state, action) => {
         state.isLoading = false;
         state.isSuccess = false;
         state.message = action.payload;
