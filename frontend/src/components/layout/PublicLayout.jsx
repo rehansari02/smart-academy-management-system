@@ -45,15 +45,24 @@ const PublicNavbar = () => {
         { name: 'About Smart', path: '/about-us#smart' },
         { name: 'Mission', path: '/about-us#mission' },
         { name: 'Vision', path: '/about-us#vision' },
+        { name: 'Why Smart', path: '/why-smart' },
+        { name: 'Facilities', path: '/facilities' },
       ]
     },
-    { name: 'Why Smart', path: '/why-smart' },
     {
       name: 'Course',
       isDropdown: true,
       isMegaMenu: true, // Marker for Mega Menu
     },
-    { name: 'Facilities', path: '/facilities' },
+    {
+      name: 'Student Corner',
+      isDropdown: true,
+      subItems: [
+        { name: 'Admission Verify', path: '/verify-student' },
+        { name: 'Student Login', path: '/login' },
+        { name: 'Result View', path: '/result' },
+      ]
+    },
     { name: 'Gallery', path: '/gallery' },
     { name: 'Franchise', path: '/franchise' },
     { name: 'Contact', path: '/contact' },
@@ -348,17 +357,13 @@ const PublicLayout = () => {
 
             {/* Slogan */}
             <div className="flex-grow flex flex-col items-center justify-center text-center space-y-1">
-              <h3 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">
-                <span className="text-gray-800">सपने जो</span> <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600 text-3xl md:text-5xl font-extrabold mx-1 font-sans">SMART</span> <span className="text-gray-800">बना दे</span>
+              <h3 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tight">
+                <span className="text-gray-800">सपने जो</span> <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600 font-extrabold mx-1 font-sans">SMART</span> <span className="text-gray-800">बना दे</span>
               </h3>
             </div>
 
             {/* Right Side Visual/CTA (Optional) */}
             <div className="hidden md:flex items-center gap-3">
-              <div className="text-right hidden lg:block">
-                <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Admissions Open</p>
-                <p className="text-lg font-bold text-gray-900">2026-2027 Batch</p>
-              </div>
               <Link to="/online-admission" className="bg-primary text-white px-6 py-3.5 rounded-xl font-bold uppercase tracking-wider shadow-lg hover:shadow-primary/30 hover:-translate-y-1 transition-all flex items-center gap-2 text-sm animate-pulse-subtle">
                 <UserPlus size={18} /> Enroll Now
               </Link>

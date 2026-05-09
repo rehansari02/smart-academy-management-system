@@ -84,6 +84,8 @@ app.use("/api/materials", require("./routes/materialRoutes")); // Material Route
 app.use("/api/topper-results", require("./routes/topperResultRoutes")); // Topper Results Routes
 app.use("/api/student-portal", require("./routes/studentPortalRoutes")); // New Student Portal Routes
 app.use("/api/blogs", require("./routes/blogRoutes")); // Blog Routes
+app.use("/api/banners", require("./routes/bannerRoutes")); // Banner Routes
+app.use("/api/galleries", require("./routes/galleryRoutes")); // Gallery Routes
 
 // Error Handler
 app.use(errorHandler);

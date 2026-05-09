@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../../utils/dateUtils';
+import Swal from 'sweetalert2';
 
 // Follow Up Modal (Specific to Action Button)
 const FollowUpModal = ({ inquiry, onClose, onSave }) => {
@@ -184,7 +185,22 @@ const InquiryOffline = () => {
 
 
   const handleDelete = (id) => {
-      if(window.confirm('Delete this inquiry?')) dispatch(updateInquiry({ id, data: { isDeleted: true } })).then(() => dispatch(fetchInquiries(filters)));
+      Swal.fire({
+          title: 'Are you sure?',
+          text: "You won't be able to revert this inquiry deletion!",
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#d33',
+          cancelButtonColor: '#3085d6',
+          confirmButtonText: 'Yes, delete it!',
+          customClass: {
+              container: 'z-[9999]'
+          }
+      }).then((result) => {
+          if (result.isConfirmed) {
+              dispatch(updateInquiry({ id, data: { isDeleted: true } })).then(() => dispatch(fetchInquiries(filters)));
+          }
+      }).catch(err => console.error("Swal Error:", err));
   };
 
   const columns = [

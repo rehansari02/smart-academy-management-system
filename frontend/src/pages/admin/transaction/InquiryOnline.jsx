@@ -14,6 +14,7 @@ import { useForm } from 'react-hook-form';
 
 // --- SUB-COMPONENT: Follow Up Form ---
 import { formatDate } from '../../../utils/dateUtils';
+import Swal from 'sweetalert2';
 
 // ... (imports remain)
 
@@ -187,9 +188,22 @@ const InquiryOnline = () => {
   };
 
   const handleDelete = (id) => {
-      if(window.confirm("Are you sure you want to delete this inquiry?")) {
-          dispatch(updateInquiry({ id, data: { isDeleted: true } })).then(() => dispatch(fetchInquiries(filters)));
-      }
+      Swal.fire({
+          title: 'Are you sure?',
+          text: "You won't be able to revert this inquiry deletion!",
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#d33',
+          cancelButtonColor: '#3085d6',
+          confirmButtonText: 'Yes, delete it!',
+          customClass: {
+              container: 'z-[9999]'
+          }
+      }).then((result) => {
+          if (result.isConfirmed) {
+              dispatch(updateInquiry({ id, data: { isDeleted: true } })).then(() => dispatch(fetchInquiries(filters)));
+          }
+      }).catch(err => console.error("Swal Error:", err));
   };
 
   // --- Table Columns ---

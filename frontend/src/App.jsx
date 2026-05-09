@@ -68,6 +68,8 @@ const ExamResult = lazy(() => import("./pages/admin/master/ExamResult"));
 const ManageNews = lazy(() => import('./pages/admin/master/ManageNews'));
 const ManageToppers = lazy(() => import('./pages/admin/master/ManageToppers'));
 const ManageTerms = lazy(() => import("./pages/admin/master/ManageTerms"));
+const ManageBanners = lazy(() => import("./pages/admin/master/ManageBanners"));
+const ManageGallery = lazy(() => import("./pages/admin/master/ManageGallery"));
 const BranchMaster = lazy(() => import("./pages/admin/master/BranchMaster"));
 const Material = lazy(() => import("./pages/admin/master/Material"));
 const FreeLearning = lazy(() => import("./pages/admin/master/FreeLearning"));
@@ -310,6 +312,22 @@ function App() {
                 element={
                   <PrivateRoute>
                     <ManageTerms />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/manage-banners"
+                element={
+                  <PrivateRoute>
+                    <ManageBanners />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/gallery"
+                element={
+                  <PrivateRoute>
+                    <ManageGallery />
                   </PrivateRoute>
                 }
               />

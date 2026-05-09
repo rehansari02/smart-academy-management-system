@@ -7,6 +7,7 @@ import { toast } from 'react-toastify';
 import { Link, useNavigate } from 'react-router-dom';
 import newsService from '../services/newsService';
 import topperService from '../services/topperService';
+import bannerService from '../services/bannerService';
 import { ArrowRight, X,Trophy, Calendar, ChevronLeft, ChevronRight, Phone, Mail, MapPin, AlertCircle, Quote, Star, Users, BookOpen, ChevronDown } from 'lucide-react';
 import { formatDate } from '../utils/dateUtils';
 import HeroCarousel from '../components/ui/HeroCarousel';
@@ -109,6 +110,12 @@ const HomePage = () => {
     const [selectedNews, setSelectedNews] = useState(null);
     const [toppers, setToppers] = useState([]);
     const [toppersLoading, setToppersLoading] = useState(true);
+    const [heroImages, setHeroImages] = useState([
+      { image: HeroImage3 },
+      { image: HeroImage4 },
+      { image: HeroImage5 },
+      { image: HeroImage6 }
+    ]);
   
     const [formData, setFormData] = useState({
       name: '',
@@ -136,7 +143,19 @@ const HomePage = () => {
       generateCaptcha();
       fetchLatestNews();
       fetchToppers();
+      fetchBanners();
     }, [dispatch]);
+
+    const fetchBanners = async () => {
+        try {
+            const data = await bannerService.getPublicBanners();
+            if (data && data.length > 0) {
+                setHeroImages(data);
+            }
+        } catch (error) {
+            console.error("Failed to load banners", error);
+        }
+    };
 
     const fetchToppers = async () => {
         try {
@@ -216,13 +235,6 @@ const HomePage = () => {
         setFormLoading(false);
       }
     };
-  
-    const heroImages = [
-      { image: HeroImage3 },
-      { image: HeroImage4},
-      { image: HeroImage5},
-      { image: HeroImage6}
-    ];
   
     return (
       <div className="w-full">

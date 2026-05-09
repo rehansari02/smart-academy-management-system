@@ -2,8 +2,12 @@ export const MENU_CONFIG = [
   {
     title: 'Home',
     path: '/home',
-    type: 'single', // For sidebar
-    subItems: [{ title: 'Admin Home', path: '/admin-dashboard' }] // Added for User Rights mapping (see getMenuSections)
+    type: 'dropdown',
+    subItems: [
+      { title: 'Admin Home', path: '/home' },
+      { title: 'Banner Home', path: '/master/manage-banners' },
+      { title: 'Gallery Manage', path: '/master/gallery' }
+    ]
   },
   {
     title: 'Master',

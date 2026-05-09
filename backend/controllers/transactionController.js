@@ -147,6 +147,15 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
       "referenceDetail",
     ];
 
+    // Reference Lock Logic
+    // If user is not Super Admin, and the inquiry ALREADY has a reference, prevent changing it
+    if (req.user && req.user.role !== 'Super Admin') {
+        if (inquiry.referenceBy && inquiry.referenceBy.trim() !== '') {
+            if (req.body.referenceBy !== undefined) delete req.body.referenceBy;
+            if (req.body.referenceDetail !== undefined) delete req.body.referenceDetail;
+        }
+    }
+
     fields.forEach((field) => {
       if (req.body[field] !== undefined) {
         if (

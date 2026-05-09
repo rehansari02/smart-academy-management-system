@@ -44,6 +44,9 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
     if (mode === 'Online') fixedSource = 'Online';
     if (mode === 'Edit') fixedSource = initialData?.source || 'Walk-in';
 
+    // Lock reference if already saved and user is not Super Admin
+    const isReferenceLocked = initialData?.referenceBy && user?.role !== 'Super Admin';
+
     const { register, handleSubmit, reset, setValue, watch, getValues } = useForm({
         defaultValues: {
             city: '',
@@ -422,7 +425,11 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                             <div className="relative">
                                 <label className="block text-xs font-bold text-gray-700">Reference</label>
                                 <div className="flex gap-1">
-                                    <select {...register('referenceBy')} className="w-full border p-2 rounded text-sm">
+                                    <select 
+                                        {...register('referenceBy')} 
+                                        className="w-full border p-2 rounded text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                        disabled={isReferenceLocked}
+                                    >
                                         <option value="">-- Select Reference --</option>
                                         <optgroup label="Staff">
                                             {employees.map(e => <option key={e._id} value={e.name}>{e.name}</option>)}
@@ -431,9 +438,11 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                                             {references.map((r, i) => <option key={r._id || i} value={r.name}>{r.name}</option>)}
                                         </optgroup>
                                     </select>
-                                    <button type="button" onClick={() => setShowRefModal(true)} className="p-2 bg-blue-50 text-blue-600 rounded border hover:bg-blue-100" title="Add New Reference">
-                                        <Plus size={16}/>
-                                    </button>
+                                    {!isReferenceLocked && (
+                                        <button type="button" onClick={() => setShowRefModal(true)} className="p-2 bg-blue-50 text-blue-600 rounded border hover:bg-blue-100" title="Add New Reference">
+                                            <Plus size={16}/>
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
