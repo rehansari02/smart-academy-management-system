@@ -62,10 +62,11 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
         <div style={{ textAlign: 'right', width: '40%', paddingLeft: '20px' }}>
           <h2 style={{
             margin: '0 0 5px 0',
-            // color: '#0070c0', // Blue from image
             color: '#0066cc',
             fontSize: '24px',
-            fontWeight: 'bold'
+            fontWeight: 'bold',
+            textDecoration: 'underline',
+            textUnderlineOffset: '6px'
           }}>
             {receipt.student?.branchId?.name || (receipt.student?.branchName ? (receipt.student.branchName.endsWith(' Branch') ? receipt.student.branchName : `${receipt.student.branchName} Branch`) : 'Main')}          </h2>
           <p style={{ margin: '2px 0', fontSize: '11px', color: '#444', fontWeight: '500' }}>
@@ -202,7 +203,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
       </div>
 
       {/* Bottom Details */}
-      <div style={{ display: 'flex', marginBottom: '40px' }}>
+      <div style={{ display: 'flex', marginBottom: '55px' }}>
         <div style={{ width: '60%' }}>
           <div style={{ marginBottom: '5px', padding: '4px 10px', backgroundColor: '#f2f2f2' }}>
             <span style={{ color: '#0066cc' }}>THROUGH : </span>
@@ -219,8 +220,8 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
         </div>
 
         <div style={{ flex: 1, position: 'relative' }}>
-          {/* Signature Area */}
-          <div style={{ position: 'absolute', bottom: '20px', right: '10px', textAlign: 'right' }}>
+          {/* Signature Area - pushed to bottom to leave stamp space above */}
+          <div style={{ position: 'absolute', bottom: '0px', right: '10px', textAlign: 'right' }}>
             <div style={{ marginBottom: '4px', fontWeight: 'bold' }}>
               {user?.name || 'Admin'}
             </div>

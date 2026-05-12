@@ -143,9 +143,9 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                 inquiryDate: new Date().toISOString().split('T')[0],
                 source: fixedSource,
                 relationType: 'Father',
-                contactHome: '-',
-                contactParent: '-',
-                contactStudent: '-'
+                contactHome: '',
+                contactParent: '',
+                contactStudent: ''
             });
         }
     }, [initialData, reset, mode, user, states, cities, branches]);

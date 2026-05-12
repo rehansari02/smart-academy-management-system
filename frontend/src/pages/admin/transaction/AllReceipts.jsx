@@ -212,6 +212,7 @@ const AllReceipts = () => {
                     <table className="w-full border-collapse min-w-[1000px]">
                         <thead>
                             <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
+                                <th className="p-2 border font-semibold w-12 text-center">Sr No</th>
                                 <th className="p-2 border font-semibold">Receipt Date</th>
                                 <th className="p-2 border font-semibold">Receipt Number</th>
                                 <th className="p-2 border font-semibold">Student Name</th>
@@ -224,8 +225,9 @@ const AllReceipts = () => {
                         </thead>
                         <tbody className="text-gray-700 text-xs">
                              {receipts && receipts.length > 0 ? (
-                                receipts.map((receipt) => (
+                                receipts.map((receipt, index) => (
                                     <tr key={receipt._id} className="group hover:bg-blue-50 border-b border-gray-100 transition-colors">
+                                        <td className="p-2 border text-center">{index + 1}</td>
                                         <td className="p-2 border whitespace-nowrap">{moment(receipt.date).format('DD/MM/YYYY')}</td>
                                         <td className="p-2 border font-mono text-blue-600">{receipt.receiptNo}</td>
                                         <td className="p-2 border font-medium text-gray-900">

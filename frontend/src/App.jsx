@@ -20,6 +20,7 @@ import Loading from "./components/Loading"; // Import Loading Component
 const HomePage = lazy(() => import("./pages/HomePage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+const StudentLoginPage = lazy(() => import("./pages/StudentLoginPage"));
 const AdminHome = lazy(() => import("./pages/admin/AdminHome"));
 const AboutUsPage = lazy(() => import("./pages/user/AboutUsPage"));
 const WhySmartPage = lazy(() => import("./pages/user/WhySmartPage"));
@@ -70,6 +71,7 @@ const ManageToppers = lazy(() => import('./pages/admin/master/ManageToppers'));
 const ManageTerms = lazy(() => import("./pages/admin/master/ManageTerms"));
 const ManageBanners = lazy(() => import("./pages/admin/master/ManageBanners"));
 const ManageGallery = lazy(() => import("./pages/admin/master/ManageGallery"));
+const ManageFeedback = lazy(() => import("./pages/admin/master/ManageFeedback"));
 const BranchMaster = lazy(() => import("./pages/admin/master/BranchMaster"));
 const Material = lazy(() => import("./pages/admin/master/Material"));
 const FreeLearning = lazy(() => import("./pages/admin/master/FreeLearning"));
@@ -323,14 +325,8 @@ function App() {
                   </PrivateRoute>
                 }
               />
-              <Route
-                path="/master/gallery"
-                element={
-                  <PrivateRoute>
-                    <ManageGallery />
-                  </PrivateRoute>
-                }
-              />
+              <Route path="/master/gallery" element={<PrivateRoute><ManageGallery /></PrivateRoute>} />
+              <Route path="/master/feedback" element={<PrivateRoute><ManageFeedback /></PrivateRoute>} />
               <Route
                 path="/master/branch"
                 element={
@@ -698,6 +694,10 @@ function App() {
               <Route
                 path="/login"
                 element={user ? <Navigate to={getHomeRoute()} replace /> : <LoginPage />}
+              />
+              <Route
+                path="/student-login"
+                element={user ? <Navigate to={getHomeRoute()} replace /> : <StudentLoginPage />}
               />
               <Route
                 path="/register-admin-zyx"

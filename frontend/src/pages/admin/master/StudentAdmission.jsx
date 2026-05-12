@@ -1773,7 +1773,7 @@ const StudentAdmission = () => {
                               <img 
                                   src={previewImage || watch('studentPhoto')} 
                                   alt="Student" 
-                                  className="w-24 h-24 rounded-md object-cover bg-gray-100"
+                                  className="w-24 h-24 rounded-md object-contain bg-white border border-gray-200"
                               />
                            ) : (
                                <div className="w-24 h-24 bg-gray-200 rounded-md flex items-center justify-center text-gray-400 text-xs text-center p-2">

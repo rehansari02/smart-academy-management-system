@@ -21,15 +21,17 @@ const LoginPage = () => {
     if (isError) {
       toast.error(message);
     }
-    if (isSuccess || user) {
-        if (!user) return; // Wait for user to be populated
-        if (user?.role === 'Student') {
+    if (isSuccess && user) {
+        if (user.role === 'Student') {
+            toast.success(`Welcome back, ${user.name || 'Student'}! 🎓`);
             navigate('/student/home');
         } else {
+            toast.success(`Welcome back, ${user.name}!`);
             navigate('/');
         }
     }
-    dispatch(reset());  }, [user, isError, isSuccess, message, navigate, dispatch]);
+    dispatch(reset());
+  }, [user, isError, isSuccess, message, navigate, dispatch]);
 
   const onSubmit = (data) => {
     dispatch(login(data));

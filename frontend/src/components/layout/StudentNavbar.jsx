@@ -6,6 +6,7 @@ import { Menu, X, ChevronDown, LogOut, User as UserIcon } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import ProfileSettingsModal from '../user/ProfileSettingsModal';
 import logoImage from '../../assets/logo2.png';
+import { toast } from 'react-toastify';
 
 const StudentNavbar = () => {
     const { user } = useSelector((state) => state.auth);
@@ -18,7 +19,8 @@ const StudentNavbar = () => {
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
     const handleLogout = async () => {
-        dispatch(logout());
+        await dispatch(logout());
+        toast.success('Logged out successfully. See you soon! 👋');
         navigate('/');
     };
 

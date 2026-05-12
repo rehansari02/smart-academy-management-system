@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MENU_CONFIG } from '../../utils/menuConfig';
 import ProfileSettingsModal from '../user/ProfileSettingsModal';
 import logoImage from '../../assets/logo2.png';
+import { toast } from 'react-toastify';
 
 const Navbar = () => {
     const { user } = useSelector((state) => state.auth);
@@ -27,6 +28,7 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     await dispatch(logout());
+    toast.success('Logged out successfully. See you soon!');
     navigate('/');
   };
 

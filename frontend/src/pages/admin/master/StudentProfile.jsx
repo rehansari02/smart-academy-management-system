@@ -87,9 +87,9 @@ const StudentProfile = () => {
                 {/* Header Profile Section */}
                 <div className="flex flex-col md:flex-row gap-8 border-b border-gray-100 pb-8 mb-8 items-center md:items-start">
                      {/* Image */}
-                     <div className="w-32 h-32 md:w-40 md:h-40 bg-gray-100 rounded-lg overflow-hidden border-4 border-white shadow flex-shrink-0">
+                     <div className="w-32 h-32 md:w-40 md:h-40 bg-white rounded-lg overflow-hidden border-4 border-white shadow flex-shrink-0">
                         {student.studentPhoto ? (
-                            <img src={getStudentPhotoUrl(student.studentPhoto)} alt="Student" className="w-full h-full object-cover" />
+                            <img src={getStudentPhotoUrl(student.studentPhoto)} alt="Student" className="w-full h-full object-contain" />
                         ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-400">
                                 <User size={48} />

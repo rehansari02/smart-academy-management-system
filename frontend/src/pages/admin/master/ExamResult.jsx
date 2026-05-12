@@ -323,6 +323,7 @@ const ExamResult = () => {
             <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                     <tr className="text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                        <th className="px-4 py-4 w-12 text-center">Sr No</th>
                         <th className="px-6 py-4">Enrollment / Reg</th>
                         <th className="px-6 py-4">SOM / CSR</th>
                         <th className="px-6 py-4">Student Name</th>
@@ -333,8 +334,9 @@ const ExamResult = () => {
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100">
-                    {paginatedData.length > 0 ? paginatedData.map((res) => (
+                    {paginatedData.length > 0 ? paginatedData.map((res, index) => (
                         <tr key={res._id} className="hover:bg-blue-50/30 transition-colors group">
+                            <td className="px-4 py-4 text-center text-sm font-bold text-gray-500">{(page - 1) * pageSize + index + 1}</td>
                             <td className="px-6 py-4">
                                 <div className="text-sm font-bold text-gray-900">{res.student?.enrollmentNo}</div>
                                 <div className="text-[10px] font-mono text-gray-400">{res.student?.regNo}</div>

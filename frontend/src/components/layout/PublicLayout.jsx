@@ -59,7 +59,7 @@ const PublicNavbar = () => {
       isDropdown: true,
       subItems: [
         { name: 'Admission Verify', path: '/verify-student' },
-        { name: 'Student Login', path: '/login' },
+        { name: 'Student Login', path: '/student-login' },
         { name: 'Result View', path: '/result' },
       ]
     },

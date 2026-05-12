@@ -125,6 +125,7 @@ const PendingStudentRegistration = () => {
         <table className="w-full border-collapse min-w-[1200px]">
           <thead>
             <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
+              <th className="p-2 border font-semibold w-12 text-center">Sr No</th>
               <th className="p-2 border font-semibold">Enroll No</th>
               <th className="p-2 border font-semibold">Adm Date</th>
               <th className="p-2 border font-semibold">Student Name</th>
@@ -144,8 +145,9 @@ const PendingStudentRegistration = () => {
           <tbody>
             {isLoading ? (
                 <tr><td colSpan={user?.role === 'Super Admin' ? "12" : "11"} className="p-4 text-center">Loading...</td></tr>
-            ) : students.length > 0 ? students.map((s) => (
+            ) : students.length > 0 ? students.map((s, index) => (
               <tr key={s._id} className="group hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
+                <td className="p-2 border text-center">{(filters.pageNumber - 1) * filters.pageSize + index + 1}</td>
                 <td className="p-2 border font-bold text-gray-700">{s.enrollmentNo || '-'}</td>
                 <td className="p-2 border whitespace-nowrap">{moment(s.admissionDate).format('DD/MM/YYYY')}</td>
                 

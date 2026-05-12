@@ -89,16 +89,18 @@ const ExamSchedule = () => {
             // Only re-populate if it's a new entry (not editing or if course changed)
             // If editing, the timeTable is usually loaded from the record
             if (!editMode || timeTableData.length === 0) {
-                const initialTable = course.subjects.map(s => ({
-                    subject: s.subject?._id,
-                    name: s.subject?.name,
-                    date: '',
-                    startTime: '',
-                    endTime: '',
-                    theory: 0,
-                    practical: 0,
-                    total: 0
-                }));
+                const initialTable = [...course.subjects]
+                    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+                    .map(s => ({
+                        subject: s.subject?._id,
+                        name: s.subject?.name,
+                        date: '',
+                        startTime: '',
+                        endTime: '',
+                        theory: s.subject?.theoryMarks || 0,
+                        practical: s.subject?.practicalMarks || 0,
+                        total: s.subject?.totalMarks || 0
+                    }));
                 setTimeTableData(initialTable);
             }
         }

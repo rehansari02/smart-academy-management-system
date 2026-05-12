@@ -260,6 +260,7 @@ const BatchMaster = () => {
         <table className="w-full border-collapse min-w-[1200px]">
             <thead>
                 <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
+                    <th className="p-2 border font-semibold w-12 text-center">Sr No</th>
                     <th className="p-2 border font-semibold">Batch Name</th>
                     {user?.role === 'Super Admin' && (
                         <th className="p-2 border font-semibold">Branch</th>
@@ -272,8 +273,9 @@ const BatchMaster = () => {
                 </tr>
             </thead>
             <tbody>
-                {paginatedBatches && paginatedBatches.length > 0 ? paginatedBatches.map((batch) => (
+                {paginatedBatches && paginatedBatches.length > 0 ? paginatedBatches.map((batch, index) => (
                     <tr key={batch._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
+                        <td className="p-2 border text-center">{(currentPage - 1) * pageSize + index + 1}</td>
                         <td className="p-2 border font-medium text-gray-900">
                             {batch.name}
                         </td>

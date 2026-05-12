@@ -182,6 +182,7 @@ const ManageToppers = () => {
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-gray-100 text-left text-sm text-gray-600 uppercase tracking-wider">
+                                <th className="p-3 border-b w-12 text-center">Sr No</th>
                                 <th className="p-3 border-b">Image</th>
                                 <th className="p-3 border-b">Student Name</th>
                                 <th className="p-3 border-b">Course</th>
@@ -196,8 +197,9 @@ const ManageToppers = () => {
                             ) : filteredToppers.length === 0 ? (
                                 <tr><td colSpan="6" className="text-center p-8 text-gray-500">No results found.</td></tr>
                             ) : (
-                                filteredToppers.map((topper) => (
+                                filteredToppers.map((topper, index) => (
                                     <tr key={topper._id} className="hover:bg-gray-50 text-sm border-b transition-colors">
+                                        <td className="p-3 text-center font-medium text-gray-500">{index + 1}</td>
                                         <td className="p-3">
                                             <div className="w-12 h-12 rounded-full overflow-hidden border">
                                                 <img src={topper.image || 'https://via.placeholder.com/150'} alt={topper.name} className="w-full h-full object-cover" />

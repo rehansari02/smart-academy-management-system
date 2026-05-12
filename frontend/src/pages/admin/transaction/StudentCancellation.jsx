@@ -35,7 +35,7 @@ const StudentCancellation = () => {
       dispatch(fetchBranches());
     }
     // Fetch all cancelled students for the list
-    dispatch(fetchStudents({ branchId: filters.branchId, isCancelled: 'true', pageSize: 1000 }));
+    dispatch(fetchStudents({ branchId: filters.branchId, includeCancelled: true, isCancelled: 'true', pageSize: 1000 }));
   }, [dispatch, user, filters.branchId]);
 
   // Handle Search Result from StudentSearch
@@ -52,7 +52,7 @@ const StudentCancellation = () => {
   };
 
   const handleSearch = () => {
-    dispatch(fetchStudents({ ...filters, includeCancelled: true }));
+    dispatch(fetchStudents({ ...filters, includeCancelled: true, isCancelled: 'true' }));
   };
 
   const handleCancelClick = (student) => {
@@ -79,7 +79,7 @@ const StudentCancellation = () => {
           setSearchedStudents([]); // Clear current selection
           // Optional: You might want to refresh the cancelled list, 
           // but since we are not fetching all students, we just clear the active selection.
-          dispatch(fetchStudents({ ...filters, includeCancelled: true, isCancelled: 'true' })); 
+          dispatch(fetchStudents({ branchId: filters.branchId, includeCancelled: true, isCancelled: 'true', pageSize: 1000 })); 
         } else {
           toast.error('Failed to cancel student admission');
         }

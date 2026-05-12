@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { useForm } from 'react-hook-form';
 import { fetchInquiries, createInquiry, updateInquiry, resetTransaction } from '../../../features/transaction/transactionSlice';
-import { fetchCourses } from '../../../features/master/masterSlice';
+import { fetchCourses, fetchReferences } from '../../../features/master/masterSlice';
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
 import SmartTable from '../../../components/ui/SmartTable';
 import InquiryForm from '../../../components/transaction/InquiryForm'; // Imported reusable form
@@ -124,12 +124,17 @@ const InquiryDSR = () => {
   const { inquiries, isSuccess, message } = useSelector((state) => state.transaction);
   const { employees } = useSelector((state) => state.employees);
   const { user } = useSelector((state) => state.auth);
+
+  // Only show reference names that actually exist in loaded DSR inquiries
+  const activeReferences = [...new Set(
+    inquiries.map(i => i.referenceBy).filter(Boolean)
+  )].sort();
   
   // Filter defaults to DSR
   const [filters, setFilters] = useState({ startDate: '', endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '', source: 'DSR', dateFilterType: 'followUpDate' });
   const [modal, setModal] = useState({ type: null, data: null });
 
-  useEffect(() => { dispatch(fetchInquiries(filters)); dispatch(fetchCourses()); dispatch(fetchEmployees()); }, [dispatch]);
+  useEffect(() => { dispatch(fetchInquiries(filters)); dispatch(fetchCourses()); dispatch(fetchEmployees()); dispatch(fetchReferences()); }, [dispatch]);
   useEffect(() => { 
       if (isSuccess && message) { 
           toast.success(message); 
@@ -268,7 +273,12 @@ const InquiryDSR = () => {
                 </div>
                 <div>
                     <label className="text-xs text-gray-500 font-semibold mb-1 block">Reference By</label>
-                    <input type="text" name="referenceBy" value={filters.referenceBy} onChange={e => setFilters({...filters, referenceBy: e.target.value})} placeholder="Search Reference..." className="w-full border p-2.5 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"/>
+                    <select value={filters.referenceBy} onChange={e => setFilters({...filters, referenceBy: e.target.value})} className="w-full border p-2.5 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">All References</option>
+                        {activeReferences.map(name => (
+                            <option key={name} value={name}>{name}</option>
+                        ))}
+                    </select>
                 </div>
             </div>
 
@@ -321,9 +331,9 @@ const InquiryDSR = () => {
                         <td className="p-2 border text-gray-700">{formatDate(inquiry.inquiryDate)}</td>
                         {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{inquiry.branchId?.name || '-'}</td>}
                         <td className="p-2 border font-bold text-gray-800">{inquiry.firstName} {inquiry.lastName}</td>
-                        <td className="p-2 border text-gray-600">{inquiry.contactHome || '-'}</td>
-                        <td className="p-2 border text-gray-600">{inquiry.contactStudent || '-'}</td>
-                        <td className="p-2 border text-gray-600">{inquiry.contactParent || '-'}</td>
+                        <td className="p-2 border text-gray-600">{inquiry.contactHome || ''}</td>
+                        <td className="p-2 border text-gray-600">{inquiry.contactStudent || ''}</td>
+                        <td className="p-2 border text-gray-600">{inquiry.contactParent || ''}</td>
                         <td className="p-2 border text-gray-600">{inquiry.gender || '-'}</td>
                         <td className="p-2 border text-center">
                              <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${

@@ -265,6 +265,7 @@ const StudentList = () => {
         <table className="w-full border-collapse min-w-[1200px]">
           <thead>
             <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
+              <th className="p-2 border font-semibold w-12 text-center">Sr No</th>
               <th className="p-2 border font-semibold">Enroll No</th>
               <th className="p-2 border font-semibold">Reg No</th>
               <th className="p-2 border font-semibold">Admission Date</th>
@@ -283,6 +284,7 @@ const StudentList = () => {
           <tbody>
             {students.length > 0 ? students.map((s, index) => (
               <tr key={s._id} className="group hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
+                <td className="p-2 border text-center font-medium text-gray-500">{(appliedFilters.page - 1) * appliedFilters.pageSize + index + 1}</td>
                 <td className="p-2 border font-bold text-gray-700">{s.enrollmentNo || '-'}</td>
                 <td className="p-2 border text-blue-600 font-mono">{s.regNo || '-'}</td>
                 

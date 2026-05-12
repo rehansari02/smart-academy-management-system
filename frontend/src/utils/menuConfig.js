@@ -128,7 +128,8 @@ export const MENU_CONFIG = [
     type: 'dropdown',
     subItems: [
       { title: 'Video Call', path: '/connect/video-call' },
-      { title: 'Inquiry List', path: '/connect/inquiry-list' }
+      { title: 'Inquiry List', path: '/connect/inquiry-list' },
+      { title: 'Feedback & Support', path: '/master/feedback' }
     ]
   },
   {

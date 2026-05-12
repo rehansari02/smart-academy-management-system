@@ -18,6 +18,7 @@ import HeroImage4 from '../assets/textileDesign_optimized.webp';
 import HeroImage5 from '../assets/GraphicDesigning_optimized.webp';
 import HeroImage6 from '../assets/textileDesign_2_optimized.webp';
 import Reveal from '../components/Reveal';
+import FeedbackSection from '../components/ui/FeedbackSection';
 
 // Keep existing generic Carousel for Toppers/Reviews
 import { Swiper, SwiperSlide } from 'swiper/react';
@@ -660,6 +661,9 @@ const HomePage = () => {
             </Reveal>
           </div>
         </div>
+
+        {/* 6. Feedback Section */}
+        <FeedbackSection />
 
         {/* News Detail Modal */}
         {selectedNews && (

@@ -30,7 +30,7 @@ app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
+
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
@@ -86,6 +86,7 @@ app.use("/api/student-portal", require("./routes/studentPortalRoutes")); // New 
 app.use("/api/blogs", require("./routes/blogRoutes")); // Blog Routes
 app.use("/api/banners", require("./routes/bannerRoutes")); // Banner Routes
 app.use("/api/galleries", require("./routes/galleryRoutes")); // Gallery Routes
+app.use("/api/feedback", require("./routes/feedbackRoutes")); // Feedback Routes
 
 // Error Handler
 app.use(errorHandler);

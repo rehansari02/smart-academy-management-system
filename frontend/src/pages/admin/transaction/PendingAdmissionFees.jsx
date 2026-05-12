@@ -144,6 +144,7 @@ const PendingAdmissionFees = () => {
         <table className="w-full border-collapse min-w-[1200px]">
           <thead>
             <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
+              <th className="p-2 border font-semibold w-12 text-center">Sr No</th>
               <th className="p-2 border font-semibold">Enrl No.</th>
               <th className="p-2 border font-semibold">Admission Date</th>
               <th className="p-2 border font-semibold">Student Name</th>
@@ -161,6 +162,7 @@ const PendingAdmissionFees = () => {
           <tbody>
             {students && students.length > 0 ? students.map((s, index) => (
               <tr key={s._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
+                <td className="p-2 border text-center">{(filters.pageNumber - 1) * filters.pageSize + index + 1}</td>
                 <td className="p-2 border font-bold text-gray-700">{s.enrollmentNo || '-'}</td>
                 <td className="p-2 border whitespace-nowrap">{moment(s.admissionDate).format('DD/MM/YYYY')}</td>
                 <td className="p-2 border font-medium text-gray-900">{s.firstName} {s.middleName} {s.lastName}</td>

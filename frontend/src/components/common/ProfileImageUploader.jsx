@@ -206,12 +206,12 @@ const ProfileImageUploader = ({
                     onMouseLeave={() => setShowHover(false)}
                 >
                     {/* Image or Empty State */}
-                    <div className={`${size} rounded-full overflow-hidden bg-gray-100 border-2 border-gray-300 flex items-center justify-center`}>
+                    <div className={`${size} rounded-full overflow-hidden bg-white border-2 border-gray-300 flex items-center justify-center`}>
                         {preview ? (
                             <img 
                                 src={preview} 
                                 alt="Profile" 
-                                className="w-full h-full object-cover"
+                                className="w-full h-full object-contain"
                             />
                         ) : (
                             <div className="text-gray-400 flex items-center justify-center">

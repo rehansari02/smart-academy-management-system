@@ -141,6 +141,7 @@ const SubjectMaster = () => {
         <table className="w-full border-collapse min-w-[1200px]">
             <thead>
                 <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
+                    <th className="p-2 border font-semibold w-12 text-center">Sr No</th>
                     <th className="p-2 border font-semibold">Subject Name</th>
                     <th className="p-2 border font-semibold">Printed Name</th>
                     <th className="p-2 border font-semibold text-center">Duration</th>
@@ -149,8 +150,9 @@ const SubjectMaster = () => {
                 </tr>
             </thead>
             <tbody>
-                {subjects && subjects.length > 0 ? subjects.map((sub) => (
+                {subjects && subjects.length > 0 ? subjects.map((sub, index) => (
                     <tr key={sub._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
+                        <td className="p-2 border text-center">{index + 1}</td>
                         <td className="p-2 border font-medium text-gray-900">{sub.name}</td>
                         <td className="p-2 border text-gray-600">{sub.printedName}</td>
                         <td className="p-2 border text-gray-600 text-center">
