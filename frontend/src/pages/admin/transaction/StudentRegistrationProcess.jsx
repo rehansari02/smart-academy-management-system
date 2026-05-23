@@ -123,14 +123,37 @@ const StudentRegistrationProcess = () => {
         }
    }, [step, student]);
 
-  const handleContinueFromCredentials = () => {
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+
+  const handleContinueFromCredentials = async () => {
       // Validate credentials before continuing to fees
       if(!regData.username || !regData.password) {
           toast.error("Username and Password are required");
           return;
       }
-      // Go to Step 2 (Fees) for ALL plans now
-      setStep(2); 
+
+      // Check if username is already taken
+      setIsCheckingUsername(true);
+      try {
+          const { data } = await axios.get(
+              `${import.meta.env.VITE_API_URL}/students/check-username/${encodeURIComponent(regData.username)}`,
+              { withCredentials: true }
+          );
+          
+          if (!data.available) {
+              toast.error(`Username "${regData.username}" is already taken. Please choose a different username.`);
+              setIsCheckingUsername(false);
+              return;
+          }
+          
+          // Go to Step 2 (Fees) for ALL plans now
+          setStep(2);
+      } catch (error) {
+          console.error("Error checking username:", error);
+          toast.error("Failed to verify username. Please try again.");
+      } finally {
+          setIsCheckingUsername(false);
+      }
   };
 
   const handleBackFromFees = () => {
@@ -295,8 +318,12 @@ const StudentRegistrationProcess = () => {
             </div>
             
             <div className="mt-6 flex gap-4">
-                <button onClick={handleContinueFromCredentials} className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 flex items-center gap-2">
-                    Continue
+                <button 
+                    onClick={handleContinueFromCredentials} 
+                    disabled={isCheckingUsername}
+                    className={`bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 flex items-center gap-2 ${isCheckingUsername ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                    {isCheckingUsername ? 'Checking...' : 'Continue'}
                 </button>
                 <button onClick={() => navigate(-1)} className="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600">
                     Cancel

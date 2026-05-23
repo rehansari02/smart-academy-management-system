@@ -357,7 +357,7 @@ const PublicLayout = () => {
 
             {/* Slogan */}
             <div className="flex-grow flex flex-col items-center justify-center text-center space-y-1">
-              <h3 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tight">
+              <h3 className="text-2xl md:text-4xl font-black text-gray-900 tracking-tight">
                 <span className="text-gray-800">सपने जो</span> <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600 font-extrabold mx-1 font-sans">SMART</span> <span className="text-gray-800">बना दे</span>
               </h3>
             </div>

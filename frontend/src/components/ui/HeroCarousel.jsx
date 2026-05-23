@@ -9,7 +9,7 @@ const HeroCarousel = ({ items }) => {
   if (!items || items.length === 0) return null;
 
   return (
-    <div className="relative w-full overflow-hidden group h-[250px] sm:h-[400px] md:h-[500px] lg:h-[600px]">
+    <div className="relative w-full overflow-hidden group h-[200px] sm:h-[350px] md:h-[500px] lg:h-[600px] bg-gray-100">
       <style>
         {`
           .swiper-button-next-hero, .swiper-button-prev-hero {
@@ -44,13 +44,13 @@ const HeroCarousel = ({ items }) => {
       >
         {items.map((item, index) => (
           <SwiperSlide key={index} className="w-full h-full relative">
-             <div className="w-full h-full bg-gray-900">
+             <div className="w-full h-full bg-gray-100 flex items-center justify-center">
                <img 
                  src={item.image} 
                  alt={item.alt || item.title || ''} 
-                 className="w-full h-full object-cover opacity-90" 
+                 className="w-full h-full object-contain md:object-cover opacity-95" 
                />               {/* Optional overlay for better text contrast if needed later */}
-               <div className="absolute inset-0 bg-black/10"></div>
+               <div className="absolute inset-0 bg-black/5 md:bg-black/10"></div>
              </div>
           </SwiperSlide>
         ))}

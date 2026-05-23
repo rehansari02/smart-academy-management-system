@@ -17,7 +17,8 @@ const {
     getNextRegNo,
     getExamPendingStudents,
     getUniqueReferences,
-    verifyAdmissionStatus
+    verifyAdmissionStatus,
+    checkUsername
 } = require('../controllers/studentController');
 
 router.route('/exam-pending')
@@ -32,6 +33,10 @@ router.route('/unique-references')
 router.route('/')
     .get(protect, checkPermission('Student', 'view'), getStudents)
     .post(protect, checkPermission('Student', 'add'), upload.single('studentPhoto'), createStudent);
+
+// Check if username is available (MUST be before /:id routes)
+router.route('/check-username/:username')
+    .get(protect, checkPermission('Student', 'view'), checkUsername);
 
 // Preview Next Registration Number (MUST be before /:id routes)
 router.route('/preview-regno')

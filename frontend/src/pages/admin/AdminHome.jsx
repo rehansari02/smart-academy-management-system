@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchInquiries, updateInquiry } from '../../features/transaction/transactionSlice';
-import { fetchExamRequests, fetchCourses, createExamRequest } from '../../features/master/masterSlice';
+import { createExamRequest } from '../../features/master/masterSlice';
 import { fetchExamPendingStudents } from '../../features/student/studentSlice';
+import { getBranches } from '../../features/master/branchSlice';
 import EmployeeDashboard from './EmployeeDashboard';
 import { useUserRights } from '../../hooks/useUserRights';
 import { useNavigate } from 'react-router-dom';
@@ -15,9 +16,10 @@ const AdminHome = () => {
 
     // Redux Data
     const { inquiries } = useSelector((state) => state.transaction);
-    const { pendingExams, courses } = useSelector((state) => state.master);
-    const { examPendingStudents, examPendingPagination, isLoading: isExamLoading } = useSelector((state) => state.students);
+    const { pendingExams } = useSelector((state) => state.master);
+    const { examPendingStudents, examPendingAvailableCourses, examPendingPagination, isLoading: isExamLoading } = useSelector((state) => state.students);
     const { user } = useSelector((state) => state.auth);
+    const { branches } = useSelector((state) => state.branch);
 
     const [activeTab, setActiveTab] = useState('inquiry');
     const [confirmModal, setConfirmModal] = useState({ show: false, student: null, bulk: false });
@@ -27,7 +29,8 @@ const AdminHome = () => {
     // Exam Filters
     const [examFilters, setExamFilters] = useState({
         courseId: '',
-        minPendingDays: ''
+        branchId: '',
+        minPendingDays: 30
     });
 
     // Initial Fetch - Fetch ALL inquiries and filter them client-side
@@ -36,7 +39,7 @@ const AdminHome = () => {
         dispatch(fetchInquiries({}));
         // dispatch(fetchExamRequests()); // OLD
         dispatch(fetchExamPendingStudents({ page: 1, pageSize: 10 }));
-        dispatch(fetchCourses());
+        dispatch(getBranches());
     }, [dispatch]);
 
     // Filter inquiries based on active tab
@@ -44,11 +47,15 @@ const AdminHome = () => {
     const onlineAdmissionInquiries = inquiries?.filter(inq => inq.source === 'OnlineAdmission') || [];
 
     const handleExamFilter = () => {
-        dispatch(fetchExamPendingStudents({ ...examFilters, page: 1 }));
+        const params = { page: 1, pageSize: 10 };
+        if (examFilters.courseId) params.courseId = examFilters.courseId;
+        if (examFilters.branchId) params.branchId = examFilters.branchId;
+        if (examFilters.minPendingDays) params.minPendingDays = examFilters.minPendingDays;
+        dispatch(fetchExamPendingStudents(params));
     };
 
     const handleResetExamFilter = () => {
-        setExamFilters({ courseId: '', minPendingDays: '' });
+        setExamFilters({ courseId: '', branchId: '', minPendingDays: 30 });
         dispatch(fetchExamPendingStudents({ page: 1, pageSize: 10 }));
     };
 
@@ -345,23 +352,53 @@ const AdminHome = () => {
             {/* --- CONTENT: EXAM PENDING LIST (New Logic: Course Duration Ending) --- */}
             {activeTab === 'exam' && (canViewExamList || (user && user.role === 'Super Admin')) && (
                 <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden animate-fadeIn">
-                    <div className="bg-gray-50 px-6 py-4 border-b">
-                        <div className="flex flex-wrap gap-4 items-end justify-between">
-                            <div>
-                                <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-1">
-                                    <Clock size={20} className="text-orange-500" /> Student Exam Pending List
-                                </h3>
-                                <p className="text-xs text-gray-500 italic">Students whose course duration is completing within 30 days or has ended.</p>
-                            </div>
+                    <div className="bg-gray-50 px-6 py-4 border-b space-y-2">
+                        {/* Title Row */}
+                        <div className="flex items-center gap-2">
+                            <Clock size={20} className="text-orange-500 shrink-0" />
+                            <h3 className="text-lg font-bold text-gray-800">Student Exam Pending List</h3>
+                        </div>
 
-                            <div className="flex gap-2 items-center">
+                        {/* Description + Filters Row */}
+                        <div className="flex flex-wrap items-end gap-3">
+                            <p className="text-xs text-gray-500 italic">
+                                Students whose course duration is completing within <span className="font-semibold w-[24px] inline-block text-center">{examFilters.minPendingDays}</span> days or has ended.
+                            </p>
+
+                            <div className="flex flex-wrap gap-2 items-center flex-shrink-0 md:ml-auto">
+                                {/* Branch Filter */}
                                 <select
-                                    className="border rounded px-3 py-2 text-sm focus:ring-primary outline-none bg-white"
+                                    className="border rounded px-3 py-2 text-sm focus:ring-primary outline-none bg-white min-w-[150px]"
+                                    value={examFilters.branchId}
+                                    onChange={(e) => setExamFilters({ ...examFilters, branchId: e.target.value })}
+                                >
+                                    <option value="">-- All Branches --</option>
+                                    {branches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
+                                </select>
+
+                                {/* Course Filter - Only shows courses with pending students */}
+                                <select
+                                    className="border rounded px-3 py-2 text-sm focus:ring-primary outline-none bg-white min-w-[150px]"
                                     value={examFilters.courseId}
                                     onChange={(e) => setExamFilters({ ...examFilters, courseId: e.target.value })}
                                 >
                                     <option value="">-- All Courses --</option>
-                                    {courses.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                                    {examPendingAvailableCourses.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                                </select>
+
+                                {/* Days Filter */}
+                                <select
+                                    className="border rounded px-3 py-2 text-sm focus:ring-primary outline-none bg-white min-w-[120px]"
+                                    value={examFilters.minPendingDays}
+                                    onChange={(e) => setExamFilters({ ...examFilters, minPendingDays: Number(e.target.value) })}
+                                >
+                                    <option value={10}>10 Days</option>
+                                    <option value={15}>15 Days</option>
+                                    <option value={30}>30 Days</option>
+                                    <option value={45}>45 Days</option>
+                                    <option value={60}>60 Days</option>
+                                    <option value={90}>90 Days</option>
+                                    <option value={100}>100 Days</option>
                                 </select>
 
                                 <button onClick={handleResetExamFilter} className="bg-gray-200 text-gray-700 p-2 rounded hover:bg-gray-300 transition-colors" title="Reset Filters">

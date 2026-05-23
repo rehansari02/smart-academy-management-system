@@ -10,7 +10,6 @@ import "./index.css";
 // Set global axios defaults
 axios.defaults.withCredentials = true;
 
-
 // Unregister any existing service workers to clean up PWA cache
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then((registrations) => {

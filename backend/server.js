@@ -121,6 +121,7 @@ app.use("/api/home-sections", require("./routes/homeSectionRoutes")); // Home Se
 app.use("/api/galleries", require("./routes/galleryRoutes")); // Gallery Routes
 app.use("/api/feedback", require("./routes/feedbackRoutes")); // Feedback Routes
 app.use("/api/sms", require("./routes/smsRoutes")); // SMS Routes
+app.use("/api/contact", require("./routes/contactRoutes")); // Contact Routes
 
 // Error Handler
 app.use(errorHandler);

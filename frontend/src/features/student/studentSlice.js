@@ -227,6 +227,7 @@ const studentSlice = createSlice({
     students: [],
     uniqueReferences: [],
     examPendingStudents: [],
+    examPendingAvailableCourses: [],
     examPendingPagination: { page: 1, pages: 1, count: 0 },
     currentStudent: null,
     pagination: { page: 1, pages: 1, count: 0 },
@@ -379,6 +380,7 @@ const studentSlice = createSlice({
       .addCase(fetchExamPendingStudents.fulfilled, (state, action) => {
         state.isLoading = false;
         state.examPendingStudents = action.payload.students || [];
+        state.examPendingAvailableCourses = action.payload.availableCourses || [];
         state.examPendingPagination = {
           page: action.payload.page || 1,
           pages: action.payload.pages || 1,

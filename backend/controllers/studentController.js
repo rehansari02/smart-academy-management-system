@@ -331,11 +331,17 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
             console.log(`[DEBUG] Registration Attempt ${attempts}: StudentID=${id}, Generated RegNo=${finalRegNo}`);
             
             try {
-                const existingUser = await User.findOne({ 
-                    $or: [{ username: username }, { email: student.email || `${finalRegNo}@institute.com` }] 
-                });
+                // Check if username is already taken by ANOTHER student's user
+                const existingUser = await User.findOne({ username });
         
                 if (existingUser) {
+                    // Username already taken - check if this user is already linked to a different student
+                    const linkedStudent = await Student.findOne({ userId: existingUser._id, _id: { $ne: student._id }, isDeleted: { $ne: true } });
+                    if (linkedStudent) {
+                        res.status(400);
+                        throw new Error('Username already exists. Please choose a different username.');
+                    }
+                    // If the same student already has this user (e.g., retry), reuse it
                     newUser = existingUser;
                 } else {
                     newUser = await User.create({
@@ -348,6 +354,7 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
                     });
                 }
             } catch (userError) {
+                // Handle duplicate key for username (race condition)
                 if (userError.code === 11000) {
                     console.warn(`[DEBUG] User Duplicate Key in Attempt ${attempts}, Retrying...`);
                     continue; // Retry loop
@@ -656,11 +663,30 @@ const resetStudentLogin = asyncHandler(async (req, res) => {
         res.status(404); throw new Error('Associated User account not found');
     }
 
+    // Check if the new username already exists (excluding this user)
+    if (username && username !== user.username) {
+        const existingUser = await User.findOne({ username, _id: { $ne: user._id } });
+        if (existingUser) {
+            res.status(400);
+            throw new Error('Username already exists. Please choose a different username.');
+        }
+    }
+
     user.username = username || user.username;
     if (password) {
         user.password = password; 
     }
-    await user.save();
+    
+    try {
+        await user.save();
+    } catch (saveError) {
+        // Handle MongoDB duplicate key error (e.g., race condition)
+        if (saveError.code === 11000 && saveError.keyPattern?.username) {
+            res.status(400);
+            throw new Error('Username already exists. Please choose a different username.');
+        }
+        throw saveError;
+    }
 
     if (student.mobileStudent) {
         const msg = `Dear ${student.firstName}, your login details have been updated. User ID: ${user.username}, Password: ${password || '(Unchanged)'}. Smart Institute.`;
@@ -696,9 +722,10 @@ const reactivateStudent = asyncHandler(async (req, res) => {
 });
 
 const getExamPendingStudents = asyncHandler(async (req, res) => {
-    const { page = 1, pageSize = 10, branchId } = req.query;
+    const { page = 1, pageSize = 10, branchId, courseId, minPendingDays = 30 } = req.query;
     const limit = Number(pageSize) || 10;
     const skip = limit * (Number(page) - 1);
+    const pendingDays = Number(minPendingDays) || 30;
 
     let query = { isDeleted: false, isRegistered: true, isCancelled: false };
 
@@ -708,15 +735,19 @@ const getExamPendingStudents = asyncHandler(async (req, res) => {
         query.branchId = branchId;
     }
 
+    if (courseId) {
+        query.course = courseId;
+    }
+
     // Fetch all relevant students to filter in JS (for complex date logic)
     const allStudents = await Student.find(query)
         .populate('course', 'name duration durationType shortName')
         .lean();
 
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    const targetDateFromNow = new Date();
+    targetDateFromNow.setDate(targetDateFromNow.getDate() + pendingDays);
 
-    // Filter students whose course ends within 30 days or has already ended
+    // Filter students whose course ends within the selected days range or has already ended
     let pendingStudents = allStudents.filter(student => {
         if (!student.course || !student.admissionDate) return false;
 
@@ -732,11 +763,9 @@ const getExamPendingStudents = asyncHandler(async (req, res) => {
         student.courseEndDate = endDate;
         
         const now = new Date();
-        const thirtyDaysFromNow = new Date();
-        thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-        // Show only if ending in the next 30 days, but hasn't ended yet (before completion)
-        return endDate >= now && endDate <= thirtyDaysFromNow;
+        // Show only if ending in the selected days range, but hasn't ended yet (before completion)
+        return endDate >= now && endDate <= targetDateFromNow;
     });
 
     // Check if exam already taken OR already requested
@@ -768,6 +797,18 @@ const getExamPendingStudents = asyncHandler(async (req, res) => {
         cancellationReason: cancellationMap[s._id.toString()] || ''
     }));
 
+    // Extract unique courses from pending students for the course filter dropdown
+    const courseMap = new Map();
+    pendingStudents.forEach(s => {
+        if (s.course && s.course._id) {
+            const cId = s.course._id.toString();
+            if (!courseMap.has(cId)) {
+                courseMap.set(cId, { _id: s.course._id, name: s.course.name });
+            }
+        }
+    });
+    const availableCourses = Array.from(courseMap.values());
+
     // Sort by end date (closest first)
     pendingStudents.sort((a, b) => a.courseEndDate - b.courseEndDate);
 
@@ -778,7 +819,24 @@ const getExamPendingStudents = asyncHandler(async (req, res) => {
         students: paginatedStudents, 
         page: Number(page), 
         pages: Math.ceil(count / limit), 
-        count 
+        count,
+        availableCourses
+    });
+});
+
+const checkUsername = asyncHandler(async (req, res) => {
+    const { username } = req.params;
+    
+    if (!username) {
+        res.status(400);
+        throw new Error('Username is required');
+    }
+
+    const existingUser = await User.findOne({ username });
+    
+    res.json({ 
+        available: !existingUser,
+        message: existingUser ? 'Username already exists' : 'Username is available'
     });
 });
 
@@ -808,7 +866,8 @@ module.exports = {
     cancelStudent,
     reactivateStudent,
     getExamPendingStudents,
-    getUniqueReferences
+    getUniqueReferences,
+    checkUsername
 };
 
 const verifyAdmissionStatus = asyncHandler(async (req, res) => {
@@ -882,5 +941,6 @@ module.exports = {
     reactivateStudent,
     getExamPendingStudents,
     getUniqueReferences,
-    verifyAdmissionStatus
+    verifyAdmissionStatus,
+    checkUsername
 };

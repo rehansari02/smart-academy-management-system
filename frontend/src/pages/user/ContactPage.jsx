@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
+import axios from 'axios';
+import { toast } from 'react-toastify';
 import { fetchStates, fetchCities } from '../../features/master/masterSlice';
 import { 
   Phone, Mail, MapPin, Facebook, Twitter, Instagram, Linkedin, 
@@ -62,37 +64,36 @@ const ContactPage = () => {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (formData.securityCode !== generatedCode) {
-      alert('Invalid Security Code! Please try again.');
+      toast.error('Invalid Security Code! Please try again.');
       setGeneratedCode(Math.floor(1000 + Math.random() * 9000).toString());
       setFormData({...formData, securityCode: ''});
       return;
     }
 
-    const { name, email, phone, state, city, branch, subject, message } = formData;
-    
-    // Construct mailto link
-    const mailtoLink = `mailto:bhestanbranch@smartinstitute.co.in?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(
-      `Name: ${name}\nEmail: ${email}\nPhone: ${phone}\nState: ${state}\nCity: ${city}\nBranch: ${branch}\n\nMessage:\n${message}`
-    )}`;
-    
-    window.location.href = mailtoLink;
-    
-    // Reset form
-    setFormData({
-      name: '',
-      email: '',
-      phone: '',
-      state: '',
-      city: '',
-      branch: '',
-      subject: '',
-      message: '',
-      securityCode: ''
-    });
-    setGeneratedCode(Math.floor(1000 + Math.random() * 9000).toString());
+    try {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/contact`, formData);
+      toast.success('Message sent successfully! We will get back to you soon.');
+      
+      // Reset form
+      setFormData({
+        name: '',
+        email: '',
+        phone: '',
+        state: '',
+        city: '',
+        branch: '',
+        subject: '',
+        message: '',
+        securityCode: ''
+      });
+      setGeneratedCode(Math.floor(1000 + Math.random() * 9000).toString());
+    } catch (error) {
+      console.error('Error submitting contact form:', error);
+      toast.error(error.response?.data?.message || 'Something went wrong. Please try again.');
+    }
   };
 
   const contactInfo = [

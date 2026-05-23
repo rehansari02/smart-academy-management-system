@@ -141,6 +141,7 @@ export const MENU_CONFIG = [
       { title: 'Branch', path: '/master/branch', restricted: true },
       { title: 'Location', path: '/utility/location' },
       { title: 'Manage Terms', path: '/master/manage-terms' },
+      { title: 'Manage Contacts', path: '/utility/contacts' },
       { title: 'Cloudinary Management', path: '/utility/cloudinary-manager' },
       { title: 'SMS Station', path: '/utility/sms-station' },
       { title: 'Downloads', path: '/utility/downloads' },
