@@ -16,6 +16,11 @@ const visitorSchema = new mongoose.Schema({
     
     inTime: { type: String }, // storing as string for 12-hour format e.g. "10:30 AM" or ISO string
     outTime: { type: String },
+    status: {
+        type: String,
+        enum: ["Open", "Close", "Complete", "Recall", "InProgress", "Pending", "Converted"],
+        default: "Open"
+    },
     
     // Employee/User who attended the visitor
     attendedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },

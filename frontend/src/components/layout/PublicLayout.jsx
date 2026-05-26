@@ -13,6 +13,7 @@ const PublicNavbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState(null); // For Mobile
   const [hoverDropdown, setHoverDropdown] = useState(null); // For Desktop
+  const [activeCourseType, setActiveCourseType] = useState('');
   const location = useLocation();
   const dispatch = useDispatch();
 
@@ -35,6 +36,14 @@ const PublicNavbar = () => {
   }, {});
 
   const courseTypes = Object.keys(courseGroups);
+  const selectedCourseType = courseTypes.includes(activeCourseType) ? activeCourseType : courseTypes[0];
+  const selectedCourses = selectedCourseType ? courseGroups[selectedCourseType] || [] : [];
+
+  useEffect(() => {
+    if (courseTypes.length > 0 && !courseTypes.includes(activeCourseType)) {
+      setActiveCourseType(courseTypes[0]);
+    }
+  }, [courseTypes, activeCourseType]);
 
   const menuItems = [
     { name: 'Home', path: '/' },
@@ -125,27 +134,57 @@ const PublicNavbar = () => {
                           style={item.isMegaMenu ? { width: '900px', maxWidth: '90vw' } : {}}
                         >
                           {item.isMegaMenu ? (
-                            // MEGA MENU CONTENT
-                            <div className="p-8 grid grid-cols-4 gap-8 bg-white">
-                              {courseTypes.length > 0 ? courseTypes.map((type, idx) => (
-                                <div key={idx} className="space-y-4">
-                                  <h4 className="font-black text-primary uppercase text-sm border-b-2 border-primary/10 pb-2 tracking-widest">{type}</h4>
-                                  <ul className="space-y-2">
-                                    {courseGroups[type].map(course => (
-                                      <li key={course._id}>
+                            <div className="grid min-h-[360px] grid-cols-[290px_1fr] bg-white">
+                              <div className="border-r border-gray-100 bg-gray-50 p-3">
+                                <Link
+                                  to="/course"
+                                  className="mb-2 flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-black text-primary hover:bg-white"
+                                >
+                                  <BookOpen size={16} /> All Courses
+                                </Link>
+                                {courseTypes.length > 0 ? courseTypes.map((type) => (
+                                  <button
+                                    key={type}
+                                    type="button"
+                                    onMouseEnter={() => setActiveCourseType(type)}
+                                    onFocus={() => setActiveCourseType(type)}
+                                    className={`flex w-full items-center justify-between rounded-lg px-4 py-3 text-left text-sm font-black uppercase tracking-wide transition-colors ${
+                                      selectedCourseType === type
+                                        ? 'bg-primary text-white shadow-sm'
+                                        : 'text-gray-700 hover:bg-white hover:text-primary'
+                                    }`}
+                                  >
+                                    <span className="line-clamp-2">{type}</span>
+                                    <ArrowRight size={15} className="shrink-0" />
+                                  </button>
+                                )) : (
+                                  <div className="px-4 py-8 text-center text-sm font-semibold text-gray-400">Loading courses...</div>
+                                )}
+                              </div>
+
+                              <div className="p-6">
+                                {selectedCourseType ? (
+                                  <>
+                                    <div className="mb-4 border-b border-gray-100 pb-3">
+                                      <p className="text-xs font-black uppercase tracking-widest text-gray-400">Courses</p>
+                                      <h4 className="mt-1 text-xl font-black text-gray-900">{selectedCourseType}</h4>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      {selectedCourses.map(course => (
                                         <Link
+                                          key={course._id}
                                           to={`/course/${course._id}`}
-                                          className="block text-sm text-gray-600 hover:text-accent hover:translate-x-1 transition-all font-medium"
+                                          className="rounded-lg border border-gray-100 px-4 py-3 text-sm font-semibold text-gray-700 hover:border-primary/20 hover:bg-blue-50 hover:text-primary transition-colors"
                                         >
                                           {course.name}
                                         </Link>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )) : (
-                                <div className="col-span-4 text-center py-10 text-gray-400">Loading courses...</div>
-                              )}
+                                      ))}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex h-full items-center justify-center text-sm font-semibold text-gray-400">Loading courses...</div>
+                                )}
+                              </div>
                             </div>
                           ) : (
                             // STANDARD DROPDOWN

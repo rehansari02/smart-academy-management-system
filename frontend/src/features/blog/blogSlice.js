@@ -56,6 +56,7 @@ const blogSlice = createSlice({
     name: 'blogs',
     initialState: {
         blogs: [],
+        comments: {}, // Store comments by blogId: { [blogId]: [] }
         isLoading: false,
         isSuccess: false,
         isError: false,
@@ -93,7 +94,52 @@ const blogSlice = createSlice({
             .addCase(deleteBlog.fulfilled, (state, action) => {
                 state.isSuccess = true;
                 state.blogs = state.blogs.filter(b => b._id !== action.payload);
+            })
+            // Comment cases
+            .addCase(fetchComments.fulfilled, (state, action) => {
+                state.comments[action.payload.blogId] = action.payload.comments;
+            })
+            .addCase(addComment.fulfilled, (state, action) => {
+                const blogId = action.payload.blogId;
+                if (!state.comments[blogId]) state.comments[blogId] = [];
+                state.comments[blogId].unshift(action.payload);
+            })
+            .addCase(deleteComment.fulfilled, (state, action) => {
+                // Find and remove the comment from all blog comment lists (or we could pass blogId)
+                Object.keys(state.comments).forEach(blogId => {
+                    state.comments[blogId] = state.comments[blogId].filter(c => c._id !== action.payload);
+                });
             });
+    }
+});
+
+// --- Comment Actions ---
+export const fetchComments = createAsyncThunk('blogs/fetchComments', async (blogId, thunkAPI) => {
+    try {
+        const response = await axios.get(`${API_URL}/${blogId}/comments`);
+        return { blogId, comments: response.data };
+    } catch (error) {
+        return thunkAPI.rejectWithValue(error.response.data.message);
+    }
+});
+
+export const addComment = createAsyncThunk('blogs/addComment', async ({ blogId, content }, thunkAPI) => {
+    try {
+        const config = { withCredentials: true };
+        const response = await axios.post(`${API_URL}/${blogId}/comments`, { content }, config);
+        return response.data;
+    } catch (error) {
+        return thunkAPI.rejectWithValue(error.response.data.message);
+    }
+});
+
+export const deleteComment = createAsyncThunk('blogs/deleteComment', async (commentId, thunkAPI) => {
+    try {
+        const config = { withCredentials: true };
+        await axios.delete(`${API_URL}/comments/${commentId}`, config);
+        return commentId;
+    } catch (error) {
+        return thunkAPI.rejectWithValue(error.response.data.message);
     }
 });
 

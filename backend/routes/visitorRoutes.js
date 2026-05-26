@@ -10,6 +10,9 @@ router.use(protect); // Protect all visitor routes
 
 router.post('/create', visitorController.createVisitor);
 router.get('/all', visitorController.getAllVisitors);
+router.post('/followups', visitorController.createVisitorFollowUp);
+router.get('/followups', visitorController.getVisitorFollowUps);
+router.delete('/followups/:id', visitorController.deleteVisitorFollowUp);
 router.get('/:id', visitorController.getVisitorById);
 router.put('/:id', visitorController.updateVisitor);
 router.delete('/:id', visitorController.deleteVisitor);

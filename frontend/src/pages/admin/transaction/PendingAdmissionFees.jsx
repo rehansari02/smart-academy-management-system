@@ -5,9 +5,8 @@ import {
   fetchStudents,
   deleteStudent,
 } from "../../../features/student/studentSlice";
-import { fetchEmployees } from "../../../features/employee/employeeSlice";
+import { getBranches } from "../../../features/master/branchSlice";
 import {
-  Filter,
   Search,
   RefreshCw,
   Printer,
@@ -16,8 +15,11 @@ import {
   Trash2,
   Edit,
 } from "lucide-react";
-import StudentSearch from "../../../components/StudentSearch";
+import SearchableFilterInput from "../../../components/SearchableFilterInput";
 import moment from "moment";
+
+const getStudentFullName = (student) => [student.firstName, student.middleName, student.lastName].filter(Boolean).join(" ");
+const getUniqueValues = (values) => [...new Set(values.map(value => String(value || "").trim()).filter(Boolean))];
 
 const PendingAdmissionFees = () => {
   const dispatch = useDispatch();
@@ -26,6 +28,7 @@ const PendingAdmissionFees = () => {
     (state) => state.students
   );
   const { user } = useSelector((state) => state.auth);
+  const { branches } = useSelector((state) => state.branch);
   // Optional: Fetch employees if dynamic reference dropdown is needed, 
   // but for now we'll stick to basic standard fields or existing logic.
 
@@ -35,6 +38,7 @@ const PendingAdmissionFees = () => {
     reference: "",
     startDate: "",
     endDate: "",
+    branchId: "",
     isAdmissionFeesPaid: "false", // Show only those who haven't paid admission fees
     pageNumber: 1,
     pageSize: 10
@@ -44,6 +48,10 @@ const PendingAdmissionFees = () => {
   useEffect(() => {
     dispatch(fetchStudents(filters));
   }, [dispatch, filters.pageNumber, filters.pageSize]); 
+
+  useEffect(() => {
+    if (user?.role === 'Super Admin') dispatch(getBranches());
+  }, [dispatch, user?.role]);
 
   // Handlers
   const handleSearch = () => {
@@ -56,6 +64,7 @@ const PendingAdmissionFees = () => {
       reference: "",
       startDate: "",
       endDate: "",
+      branchId: "",
       isAdmissionFeesPaid: "false",
       pageNumber: 1,
       pageSize: 10
@@ -66,6 +75,25 @@ const PendingAdmissionFees = () => {
     
   const handleFilterChange = (e) => {
       setFilters({ ...filters, [e.target.name]: e.target.value, pageNumber: 1 });
+  };
+
+  const handlePrintAll = async () => {
+    const currentFilters = { ...filters };
+    const printFilters = {
+      ...filters,
+      pageNumber: 1,
+      pageSize: pagination?.count || 10000,
+    };
+
+    await dispatch(fetchStudents(printFilters));
+
+    const restoreList = () => {
+      dispatch(fetchStudents(currentFilters));
+      window.removeEventListener("afterprint", restoreList);
+    };
+
+    window.addEventListener("afterprint", restoreList);
+    setTimeout(() => window.print(), 100);
   };
 
   const handleDelete = (id) => {
@@ -79,48 +107,120 @@ const PendingAdmissionFees = () => {
   };
 
   const isSuperAdmin = user?.role === 'Super Admin';
+  const studentNameOptions = getUniqueValues((students || []).map(getStudentFullName));
+  const referenceOptions = getUniqueValues(["Direct", ...(students || []).map(s => s.reference || "Direct")]);
 
   return (
     <div className="container mx-auto p-4">
-      {/* --- Filter Section (Matching StudentList Style) --- */}
-      <div className="bg-white p-4 rounded-lg shadow mb-6 border border-gray-200">
-        <h2 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
-            <Search size={16}/> Search Pending Admission Fees
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-             <div>
-                <label className="text-xs text-gray-500">Student Name</label>
-                <StudentSearch 
-                    placeholder="Search Student..."
-                    additionalFilters={{ isAdmissionFeesPaid: 'false' }}
-                    onSelect={(id, student) => {
-                    if (student) {
-                        setFilters(prev => ({ ...prev, studentName: student.firstName }));
-                    } else {
-                        setFilters(prev => ({ ...prev, studentName: '' }));
-                    }
-                    }}
-                    className="w-full"
+      <style>{`
+        .print-only-header {
+          display: none !important;
+        }
+        @media print {
+          body {
+            visibility: hidden !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .printable-table-container,
+          .printable-table-container * {
+            visibility: visible !important;
+          }
+          .printable-table-container {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            overflow: visible !important;
+          }
+          .print-only-header {
+            display: block !important;
+          }
+          .printable-table-container th:last-child,
+          .printable-table-container td:last-child {
+            display: none !important;
+          }
+          tr {
+            page-break-inside: avoid !important;
+          }
+        }
+      `}</style>
+
+      <div className="relative flex justify-center items-center mb-4 border-b pb-4">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-800 underline decoration-2 underline-offset-4">Pending Admission Fees</h1>
+          <p className="text-xs text-gray-500 mt-2">Students whose admission fee payment is pending</p>
+        </div>
+        <button
+          onClick={handlePrintAll}
+          disabled={isLoading}
+          className="absolute right-0 bg-green-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 hover:bg-green-700 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Printer size={18} /> Print All
+        </button>
+      </div>
+
+      {/* --- Filter Section --- */}
+      <div className="bg-white p-5 rounded-lg shadow mb-6 border border-gray-200">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
+          <div>
+            <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+              <Search size={18} className="text-primary" /> Search Pending Admission Fees
+            </h2>
+            <p className="text-xs text-gray-500 mt-1">Search by student name, reference, admission date, or branch.</p>
+          </div>
+        </div>
+        <div className={`grid grid-cols-1 ${isSuperAdmin ? 'md:grid-cols-6' : 'md:grid-cols-5'} gap-4`}>
+             <div className="md:col-span-2">
+                <SearchableFilterInput
+                  label="Student Name"
+                  name="studentName"
+                  value={filters.studentName}
+                  options={studentNameOptions}
+                  onChange={handleFilterChange}
+                  placeholder="Type or select student..."
+                  helperText="Click to show student list, or type manually."
                 />
             </div>
             
             <div>
-                 <label className="text-xs text-gray-500">Reference</label>
-                 <input type="text" name="reference" value={filters.reference} onChange={handleFilterChange} className="w-full border p-1 rounded text-sm" placeholder="Search Reference..."/>
+                 <SearchableFilterInput
+                   label="Reference"
+                   name="reference"
+                   value={filters.reference}
+                   options={referenceOptions}
+                   onChange={handleFilterChange}
+                   placeholder="Type or select reference..."
+                 />
             </div>
 
             <div>
-                <label className="text-xs text-gray-500">From Date</label>
-                <input type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange} className="w-full border p-1 rounded text-sm"/>
+                <label className="text-xs font-bold text-gray-600 uppercase">From Date</label>
+                <input type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-blue-100"/>
             </div>
             <div>
-                <label className="text-xs text-gray-500">To Date</label>
-                <input type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="w-full border p-1 rounded text-sm"/>
+                <label className="text-xs font-bold text-gray-600 uppercase">To Date</label>
+                <input type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-blue-100"/>
             </div>
+            {isSuperAdmin && (
+              <div>
+                  <label className="text-xs font-bold text-gray-600 uppercase">Branch</label>
+                  <select name="branchId" value={filters.branchId} onChange={handleFilterChange} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-blue-100">
+                      <option value="">All Branches</option>
+                      {branches?.map((branch) => (
+                          <option key={branch._id} value={branch._id}>{branch.name}</option>
+                      ))}
+                  </select>
+              </div>
+            )}
             
             <div className="flex items-end gap-2">
-                <button onClick={handleReset} className="bg-gray-200 p-2 rounded hover:bg-gray-300 text-gray-700 w-full flex justify-center"><RefreshCw size={18}/></button>
-                <button onClick={handleSearch} className="bg-primary text-white p-2 rounded hover:bg-blue-800 w-full flex justify-center">Search</button>
+                <button onClick={handleReset} className="h-[38px] bg-gray-100 px-4 rounded-lg hover:bg-gray-200 text-gray-700 w-full flex justify-center items-center gap-2 border"><RefreshCw size={16}/> Reset</button>
+                <button onClick={handleSearch} className="h-[38px] bg-primary text-white px-4 rounded-lg hover:bg-blue-800 w-full flex justify-center items-center gap-2"><Search size={16}/> Search</button>
             </div>
         </div>
       </div>
@@ -140,7 +240,11 @@ const PendingAdmissionFees = () => {
       </div>
 
       {/* --- Table Section --- */}
-      <div className="bg-white rounded-lg shadow overflow-x-auto border">
+      <div className="bg-white rounded-lg shadow overflow-x-auto border printable-table-container">
+        <div className="print-only-header mb-6 text-center">
+          <h1 className="text-2xl font-bold text-blue-800 uppercase tracking-wide">Pending Admission Fees</h1>
+          <p className="text-xs text-gray-500 mt-1">Generated on {new Date().toLocaleDateString('en-GB')} | Total Records: {pagination?.count || students?.length || 0}</p>
+        </div>
         <table className="w-full border-collapse min-w-[1200px]">
           <thead>
             <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
@@ -151,9 +255,7 @@ const PendingAdmissionFees = () => {
               {/* <th className="p-2 border font-semibold">Father/Husband</th>
               <th className="p-2 border font-semibold">Last Name</th> */}
               {isSuperAdmin && <th className="p-2 border font-semibold">Branch Name</th>}
-              <th className="p-2 border font-semibold">Contact(Home)</th>
-              <th className="p-2 border font-semibold">Contact(Student)</th>
-              <th className="p-2 border font-semibold">Contact(Guardian)</th>
+              <th className="p-2 border font-semibold">Contact (G/H/S)</th>
               <th className="p-2 border font-semibold">Course Name</th>
               <th className="p-2 border font-semibold">Reference</th>
               <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-40">Actions</th>
@@ -170,15 +272,25 @@ const PendingAdmissionFees = () => {
                 <td className="p-2 border">{s.lastName}</td> */}
                 
                 {isSuperAdmin && <td className="p-2 border text-gray-600">{s.branchName ? (s.branchName.endsWith(' Branch') ? s.branchName : `${s.branchName} Branch`) : 'Main'}</td>}
-                <td className="p-2 border text-gray-600">{s.contactHome || '-'}</td>
-                <td className="p-2 border text-gray-600">{s.mobileStudent || '-'}</td>
-                <td className="p-2 border text-gray-600">{s.mobileParent || '-'}</td>
+                <td className="p-2 border text-gray-600 leading-5">
+                  <div><span className="font-bold text-gray-400">G:</span> {s.mobileParent || '-'}</div>
+                  <div><span className="font-bold text-gray-400">H:</span> {s.contactHome || '-'}</div>
+                  <div><span className="font-bold text-gray-400">S:</span> {s.mobileStudent || '-'}</div>
+                </td>
 
                 <td className="p-2 border font-semibold text-blue-800">{s.course?.name || '-'}</td>
                 <td className="p-2 border">{s.reference || 'Direct'}</td>
 
                 <td className="p-2 border text-center sticky right-0 bg-white">
                    <div className="flex justify-center gap-1">
+                        <Link 
+                            to={`/master/student/view/${s._id}`} 
+                            className="bg-blue-50 text-blue-600 p-1 rounded border border-blue-200 hover:bg-blue-100 transition" 
+                            title="View"
+                        >
+                            <Eye size={14}/>
+                        </Link>
+
                         <button 
                             onClick={() => navigate(`/transaction/admission-payment/${s._id}`)} 
                             className="bg-green-50 text-green-600 p-1 rounded border border-green-200 hover:bg-green-100 transition" 
@@ -218,7 +330,7 @@ const PendingAdmissionFees = () => {
                 </td>
               </tr>
             )) : (
-              <tr><td colSpan={isSuperAdmin ? "12" : "11"} className="text-center py-8 text-gray-500">No pending admission fees found</td></tr>
+              <tr><td colSpan={isSuperAdmin ? "9" : "8"} className="text-center py-8 text-gray-500">No pending admission fees found</td></tr>
             )}
           </tbody>
         </table>

@@ -3,6 +3,70 @@ const ExamResult = require('../models/ExamResult');
 const Student = require('../models/Student');
 const Counter = require('../models/Counter');
 const ExamSchedule = require('../models/ExamSchedule');
+const StudentAttendance = require('../models/StudentAttendance');
+
+const getAttendanceCutoffDate = (exam) => {
+    const examDates = (exam?.timeTable || [])
+        .map(item => item.date ? new Date(item.date) : null)
+        .filter(item => item && !Number.isNaN(item.getTime()))
+        .sort((a, b) => a - b);
+
+    if (examDates.length === 0) return null;
+
+    const cutoff = new Date(examDates[0]);
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setMilliseconds(-1);
+    return cutoff;
+};
+
+const getStudentAttendanceSummary = async (studentId, exam) => {
+    const cutoffDate = getAttendanceCutoffDate(exam);
+
+    const calculateSummary = async (dateFilter = null) => {
+        const match = { 'records.studentId': studentId };
+        if (dateFilter) {
+            match.date = dateFilter;
+        }
+
+        const [summary] = await StudentAttendance.aggregate([
+        { $match: match },
+        { $unwind: '$records' },
+        { $match: { 'records.studentId': studentId } },
+        {
+            $group: {
+                _id: null,
+                totalDays: { $sum: 1 },
+                presentDays: {
+                    $sum: {
+                        $cond: ['$records.isPresent', 1, 0]
+                    }
+                }
+            }
+        }
+        ]);
+
+        return summary || { presentDays: 0, totalDays: 0 };
+    };
+
+    let summary = cutoffDate
+        ? await calculateSummary({ $lte: cutoffDate })
+        : await calculateSummary();
+
+    if (summary.totalDays === 0 && cutoffDate) {
+        summary = await calculateSummary();
+    }
+
+    const presentDays = summary?.presentDays || 0;
+    const totalDays = summary?.totalDays || 0;
+    const percentage = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(2) : '0.00';
+
+    return {
+        presentDays,
+        totalDays,
+        percentage,
+        totalPresentsText: `DAYS ${presentDays} OUT OF ${totalDays} (${percentage})`
+    };
+};
 
 // @desc    Get Exam Results with Filters
 // @route   GET /api/master/exam-result
@@ -46,7 +110,7 @@ const getExamResults = asyncHandler(async (req, res) => {
 // @desc    Create Exam Result
 // @route   POST /api/master/exam-result
 const createExamResult = asyncHandler(async (req, res) => {
-    const { studentId, examId, somNumber, csrNumber, certificateNumber, subjectMarks, grade, isActive } = req.body;
+    const { studentId, examId, somNumber, csrNumber, certificateNumber, issueDate, subjectMarks, grade, isActive } = req.body;
 
     const student = await Student.findById(studentId);
     if (!student) {
@@ -97,6 +161,7 @@ const createExamResult = asyncHandler(async (req, res) => {
         somNumber: finalSom,
         csrNumber: finalCsr,
         certificateNumber: finalCert,
+        issueDate: issueDate ? new Date(issueDate) : new Date(),
         subjectMarks: subjectMarks.map(s => ({
             subject: s.subjectId,
             theory: s.theory,
@@ -149,6 +214,9 @@ const updateExamResult = asyncHandler(async (req, res) => {
         result.somNumber = finalSom;
         result.csrNumber = finalCsr;
         result.certificateNumber = finalCert;
+        if (req.body.issueDate !== undefined) {
+            result.issueDate = req.body.issueDate ? new Date(req.body.issueDate) : result.issueDate;
+        }
         result.grade = req.body.grade || result.grade;
         result.isActive = req.body.isActive !== undefined ? req.body.isActive : result.isActive;
 
@@ -206,7 +274,18 @@ const getExamResultById = asyncHandler(async (req, res) => {
         });
     
     if (result) {
-        res.json(result);
+        const attendanceSummary = await getStudentAttendanceSummary(result.student._id, result.exam);
+        const marksPercentage = result.totalMarks > 0
+            ? ((Number(result.marksObtained || 0) / Number(result.totalMarks)) * 100).toFixed(2)
+            : '0.00';
+
+        res.json({
+            ...result.toObject(),
+            attendanceSummary,
+            totalPresentsText: attendanceSummary.totalPresentsText,
+            attendancePercentage: attendanceSummary.percentage,
+            percentage: marksPercentage
+        });
     } else {
         res.status(404); throw new Error('Result not found');
     }
@@ -281,7 +360,7 @@ const verifyExamResult = asyncHandler(async (req, res) => {
         percentage: res.percentage,
         marksObtained: res.marksObtained,
         totalMarks: res.totalMarks,
-        issueDate: res.createdAt,
+        issueDate: res.issueDate || res.createdAt,
         subjects: res.subjectMarks.map(sm => ({
             name: sm.subject?.name,
             theory: sm.theory,

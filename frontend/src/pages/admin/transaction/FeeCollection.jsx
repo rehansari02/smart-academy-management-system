@@ -13,6 +13,25 @@ import moment from 'moment';
 import EditReceiptModal from '../../../components/transaction/EditReceiptModal';
 import { useLocation } from 'react-router-dom';
 
+const POPULAR_INDIAN_BANKS = [
+    "State Bank of India",
+    "HDFC Bank",
+    "ICICI Bank",
+    "Axis Bank",
+    "Punjab National Bank",
+    "Bank of Baroda",
+    "Canara Bank",
+    "Union Bank of India",
+    "Kotak Mahindra Bank",
+    "IndusInd Bank",
+    "IDFC First Bank",
+    "Yes Bank",
+    "Other",
+];
+
+const ONLINE_PAYMENT_TYPES = ["UPI", "Net Banking", "Bank Transfer", "Other"];
+const UPI_PROVIDERS = ["Google Pay", "PhonePe", "Paytm", "BHIM", "Amazon Pay", "Other"];
+
 const FeeCollection = () => {
     const dispatch = useDispatch();
     const navigate = useNavigate();
@@ -35,10 +54,17 @@ const FeeCollection = () => {
             receiptNo: 'Loading...',
             date: new Date().toISOString().split('T')[0],
             paymentMode: 'Cash',
+            receiptBankOption: '',
+            onlinePaymentType: 'UPI',
+            onlineProviderOption: '',
             chequeDate: new Date().toISOString().split('T')[0], // Default today for UI
             transactionDate: new Date().toISOString().split('T')[0] // Default today for UI
         }
     });
+    const paymentMode = watch('paymentMode');
+    const receiptBankOption = watch('receiptBankOption');
+    const onlinePaymentType = watch('onlinePaymentType');
+    const onlineProviderOption = watch('onlineProviderOption');
 
     // Fetch next receipt number on mount
     useEffect(() => {
@@ -103,8 +129,8 @@ const FeeCollection = () => {
             );
             setPaymentHistory(history);
 
-            // Auto-fill amount with outstanding amount
-            setValue('amountPaid', summary.outstandingAmount || 0);
+            // Auto-fill only the current outstanding amount returned by the backend.
+            setValue('amountPaid', Number(summary.outstandingAmount ?? 0));
         } catch (error) {
             console.error("Failed to fetch student payment data", error);
             toast.error("Failed to load student payment information");
@@ -134,6 +160,9 @@ const FeeCollection = () => {
             receiptNo: 'Loading...',
             date: new Date().toISOString().split('T')[0],
             paymentMode: 'Cash',
+            receiptBankOption: '',
+            onlinePaymentType: 'UPI',
+            onlineProviderOption: '',
             chequeDate: new Date().toISOString().split('T')[0],
             transactionDate: new Date().toISOString().split('T')[0]
         });
@@ -162,10 +191,49 @@ const FeeCollection = () => {
         
         setIsSubmitting(true);
 
+        if (data.paymentMode === 'Cheque') {
+            if (!data.bankName?.trim() || !data.chequeNumber?.trim() || !data.chequeDate) {
+                toast.error('Please enter cheque bank, cheque number, and cheque date');
+                setIsSubmitting(false);
+                return;
+            }
+        }
+
+        if (data.paymentMode === 'Online/UPI') {
+            if (!data.transactionId?.trim() || !data.transactionDate) {
+                toast.error('Please enter transaction number and transaction date');
+                setIsSubmitting(false);
+                return;
+            }
+            if (data.onlinePaymentType === 'UPI') {
+                if (!data.paymentProviderName?.trim()) {
+                    toast.error('Please select UPI app/provider');
+                    setIsSubmitting(false);
+                    return;
+                }
+                if (!data.upiId?.trim()) {
+                    toast.error('Please enter UPI ID / number');
+                    setIsSubmitting(false);
+                    return;
+                }
+            } else if (data.onlinePaymentType === 'Other') {
+                if (!data.paymentProviderName?.trim()) {
+                    toast.error('Please enter online payment name/provider');
+                    setIsSubmitting(false);
+                    return;
+                }
+            } else if (!data.bankName?.trim()) {
+                toast.error('Please select or enter bank name');
+                setIsSubmitting(false);
+                return;
+            }
+        }
+
         const payload = {
             ...data,
             studentId: data.studentId,
             courseId: selectedStudent.course?._id,
+            paymentDetails: data.onlinePaymentType === 'UPI' ? data.upiId : data.paymentDetails,
         };
 
         if (editingReceipt) {
@@ -352,36 +420,166 @@ const FeeCollection = () => {
                         </div>
 
                         {/* Dynamic Fields for Cash/Cheque/UPI in Main Form */}
-                        {watch('paymentMode') === 'Cheque' && (
+                        {paymentMode === 'Cheque' && (
                             <>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1">Bank Name *</label>
-                                    <input {...register('bankName', { required: true })} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base" placeholder="Bank Name"/>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                        {POPULAR_INDIAN_BANKS.map((bank) => (
+                                            <label key={bank} className="flex items-center gap-2 border rounded-lg p-2 text-sm cursor-pointer hover:bg-blue-50">
+                                                <input
+                                                    type="radio"
+                                                    value={bank}
+                                                    {...register('receiptBankOption')}
+                                                    onChange={(e) => {
+                                                        setValue('receiptBankOption', e.target.value);
+                                                        setValue('bankName', e.target.value === 'Other' ? '' : e.target.value);
+                                                    }}
+                                                />
+                                                {bank}
+                                            </label>
+                                        ))}
+                                    </div>
                                 </div>
+                                {receiptBankOption === 'Other' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-600 mb-1">Other Bank Name *</label>
+                                        <input {...register('bankName')} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base" placeholder="Enter bank name"/>
+                                    </div>
+                                )}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1">Cheque Number *</label>
-                                    <input {...register('chequeNumber', { required: true })} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base" placeholder="Cheque No"/>
+                                    <input {...register('chequeNumber')} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base" placeholder="Cheque No"/>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1">Cheque Date *</label>
-                                    <input type="date" {...register('chequeDate', { required: true })} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base"/>
+                                    <input type="date" {...register('chequeDate')} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base"/>
                                 </div>
                             </>
                         )}
 
-                        {watch('paymentMode') === 'Online/UPI' && (
+                        {paymentMode === 'Online/UPI' && (
                             <>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">Bank Name *</label>
-                                    <input {...register('bankName', { required: true })} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base" placeholder="Bank Name"/>
+                                    <label className="block text-sm font-medium text-gray-600 mb-1">Payment Type *</label>
+                                    <select
+                                        {...register('onlinePaymentType')}
+                                        className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base"
+                                        onChange={(e) => {
+                                            setValue('onlinePaymentType', e.target.value);
+                                            setValue('onlineProviderOption', '');
+                                            setValue('receiptBankOption', '');
+                                            setValue('paymentProviderName', '');
+                                            setValue('bankName', '');
+                                            setValue('upiId', '');
+                                        }}
+                                    >
+                                        {ONLINE_PAYMENT_TYPES.map((type) => (
+                                            <option key={type} value={type}>{type}</option>
+                                        ))}
+                                    </select>
                                 </div>
+
+                                {onlinePaymentType === 'UPI' ? (
+                                    <>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-600 mb-1">UPI App / Provider *</label>
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                                {UPI_PROVIDERS.map((provider) => (
+                                                    <label key={provider} className="flex items-center gap-2 border rounded-lg p-2 text-sm cursor-pointer hover:bg-blue-50">
+                                                        <input
+                                                            type="radio"
+                                                            value={provider}
+                                                            {...register('onlineProviderOption')}
+                                                            onChange={(e) => {
+                                                                setValue('onlineProviderOption', e.target.value);
+                                                                setValue('paymentProviderName', e.target.value === 'Other' ? '' : e.target.value);
+                                                                setValue('bankName', e.target.value === 'Other' ? '' : e.target.value);
+                                                            }}
+                                                        />
+                                                        {provider}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        {onlineProviderOption === 'Other' && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-600 mb-1">UPI App Name *</label>
+                                                <input
+                                                    {...register('paymentProviderName')}
+                                                    className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base"
+                                                    placeholder="Enter UPI app name"
+                                                    onChange={(e) => {
+                                                        setValue('paymentProviderName', e.target.value);
+                                                        setValue('bankName', e.target.value);
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
+                                        {onlineProviderOption && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-600 mb-1">UPI ID / Number *</label>
+                                                <input {...register('upiId')} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base" placeholder="example@upi or mobile number"/>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : onlinePaymentType === 'Other' ? (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-600 mb-1">Payment Name *</label>
+                                        <input
+                                            {...register('paymentProviderName')}
+                                            className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base"
+                                            placeholder="Enter payment name"
+                                            onChange={(e) => {
+                                                setValue('paymentProviderName', e.target.value);
+                                                setValue('bankName', e.target.value);
+                                            }}
+                                        />
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-600 mb-1">Bank Name *</label>
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                                {POPULAR_INDIAN_BANKS.map((bank) => (
+                                                    <label key={bank} className="flex items-center gap-2 border rounded-lg p-2 text-sm cursor-pointer hover:bg-blue-50">
+                                                        <input
+                                                            type="radio"
+                                                            value={bank}
+                                                            {...register('receiptBankOption')}
+                                                            onChange={(e) => {
+                                                                setValue('receiptBankOption', e.target.value);
+                                                                setValue('bankName', e.target.value === 'Other' ? '' : e.target.value);
+                                                            }}
+                                                        />
+                                                        {bank}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        {receiptBankOption === 'Other' && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-600 mb-1">Other Bank Name *</label>
+                                                <input {...register('bankName')} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base" placeholder="Enter bank name"/>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+
+                                {onlinePaymentType !== 'UPI' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-600 mb-1">Payment Details</label>
+                                        <input {...register('paymentDetails')} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base" placeholder="Account last 4 digits, note, or extra details"/>
+                                    </div>
+                                )}
+
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1">Transaction Number *</label>
-                                    <input {...register('transactionId', { required: true })} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base" placeholder="Trans ID"/>
+                                    <input {...register('transactionId')} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base" placeholder="UTR / Ref No / Transaction ID"/>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1">Transaction Date *</label>
-                                    <input type="date" {...register('transactionDate', { required: true })} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base"/>
+                                    <input type="date" {...register('transactionDate')} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base"/>
                                 </div>
                             </>
                         )}

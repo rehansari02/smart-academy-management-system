@@ -11,8 +11,20 @@ const {
     checkEmployeeAttendanceStatus,
     saveEmployeeAttendance,
     getEmployeeAttendanceHistory,
-    deleteEmployeeAttendance
+    deleteEmployeeAttendance,
+    getAttendanceCalendar,
+    createAttendanceCalendar,
+    updateAttendanceCalendar,
+    deleteAttendanceCalendar,
+    checkAttendanceCalendarStatus
 } = require('../controllers/attendanceController');
+
+// Attendance Calendar / Closed Dates
+router.get('/manage', protect, getAttendanceCalendar);
+router.post('/manage', protect, createAttendanceCalendar);
+router.put('/manage/:id', protect, updateAttendanceCalendar);
+router.delete('/manage/:id', protect, deleteAttendanceCalendar);
+router.get('/calendar/status', protect, checkAttendanceCalendarStatus);
 
 // Student Routes
 router.get('/student/list', protect, getStudentsForAttendance);

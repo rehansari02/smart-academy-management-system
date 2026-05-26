@@ -24,6 +24,7 @@ const InquiryViewModal = ({ inquiry, onClose }) => {
             date: inquiry.followUpDate,
             remarks: inquiry.followUpDetails || 'Initial follow-up',
             status: inquiry.status || 'Open',
+            followUpBy: inquiry.followUpBy,
             createdAt: inquiry.createdAt || inquiry.inquiryDate || new Date()
           }] : []);
 
@@ -162,7 +163,7 @@ const InquiryViewModal = ({ inquiry, onClose }) => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
                                 <div>
                                     <span className="block text-gray-500 text-xs uppercase font-semibold">Followup By</span>
-                                    <span className="font-medium text-gray-900">{inquiry.allocatedTo?.name || '-'}</span>
+                                    <span className="font-medium text-gray-900">{inquiry.followUpBy?.name || inquiry.followUpBy?.username || inquiry.allocatedTo?.name || '-'}</span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
@@ -240,8 +241,9 @@ const InquiryViewModal = ({ inquiry, onClose }) => {
                                                 </p>
                                                 
                                                 {/* Timestamp */}
-                                                <div className="text-[9px] text-gray-400 mt-2 text-right">
-                                                    Logged: {new Date(hist.createdAt || hist.date).toLocaleString()}
+                                                <div className="text-[9px] text-gray-400 mt-2 flex justify-between gap-2">
+                                                    <span>Followup By: {hist.followUpBy?.name || hist.followUpBy?.username || '-'}</span>
+                                                    <span>Logged: {new Date(hist.createdAt || hist.date).toLocaleString()}</span>
                                                 </div>
                                             </div>
                                         </div>

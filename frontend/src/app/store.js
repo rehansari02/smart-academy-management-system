@@ -10,6 +10,7 @@ import branchReducer from '../features/master/branchSlice';
 import studentPortalReducer from '../features/student/studentPortalSlice';
 import materialReducer from '../features/master/materialSlice';
 import blogReducer from '../features/blog/blogSlice';
+import complainReducer from '../features/transaction/complainSlice';
 
 export const store = configureStore({
   reducer: {
@@ -24,5 +25,6 @@ export const store = configureStore({
     studentPortal: studentPortalReducer,
     materials: materialReducer,
     blogs: blogReducer,
+    complain: complainReducer,
   },
 });

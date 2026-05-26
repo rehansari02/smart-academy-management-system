@@ -186,8 +186,20 @@ const createStudent = asyncHandler(async (req, res) => {
             finalBranchName = branchDoc.name;
         }
 
+        const linkedInquiry = req.body.inquiryId
+            ? await Inquiry.findById(req.body.inquiryId).select('referenceBy referenceDetail').lean()
+            : null;
+        const linkedInquiryReference = (
+            linkedInquiry?.referenceBy ||
+            (linkedInquiry?.referenceDetail && typeof linkedInquiry.referenceDetail === 'object' ? linkedInquiry.referenceDetail.name : '') ||
+            ''
+        ).trim();
+
         const studentData = {
             ...req.body,
+            reference: req.user?.role !== 'Super Admin' && linkedInquiryReference
+                ? linkedInquiryReference
+                : req.body.reference,
             branchId: finalBranchId, 
             branchName: finalBranchName, 
             studentPhoto: req.file ? req.file.path.replace(/\\/g, "/") : (req.body.studentPhoto || null), 
@@ -219,7 +231,15 @@ const createStudent = asyncHandler(async (req, res) => {
                 paymentMode: feeDetails.paymentMode,
                 remarks: receiptRemarks,
                 date: feeDetails.date || new Date(),
-                createdBy: req.user._id
+                createdBy: req.user._id,
+                bankName: feeDetails.bankName,
+                chequeNumber: feeDetails.chequeNumber,
+                chequeDate: feeDetails.chequeDate,
+                transactionId: feeDetails.transactionId,
+                transactionDate: feeDetails.transactionDate,
+                onlinePaymentType: feeDetails.onlinePaymentType,
+                paymentProviderName: feeDetails.paymentProviderName,
+                paymentDetails: feeDetails.paymentDetails
             });
         }
 
@@ -243,7 +263,7 @@ const createStudent = asyncHandler(async (req, res) => {
             // Wait 2 seconds before sending the Fee SMS to ensure Enrollment SMS arrives first
             await new Promise(resolve => setTimeout(resolve, 2000));
             // Send Fee SMS (Admission Fee)
-            const feeSmsMessage = `Dear, ${fullName}. Your Course fees ${feeDetails.amount} has been deposited for Admission Fees, Reg.No. ${student.enrollmentNo || 'N/A'}. Thank you,\nSmart Institute`;
+            const feeSmsMessage = `Dear, ${fullName}. Your Course fees ${feeDetails.amount} has been deposited for Admission Fees. Thank you,\nSmart Institute`;
             console.log(`Sending Admission Fee SMS to: ${contacts.join(', ')} | Msg: ${feeSmsMessage}`);
             await Promise.all(contacts.map(num => sendSMS(num, feeSmsMessage, 'Fees')))
                 .catch(err => console.error('Admission Fee SMS failed', err));
@@ -335,18 +355,24 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
                 const existingUser = await User.findOne({ username });
         
                 if (existingUser) {
-                    // Username already taken - check if this user is already linked to a different student
-                    const linkedStudent = await Student.findOne({ userId: existingUser._id, _id: { $ne: student._id }, isDeleted: { $ne: true } });
-                    if (linkedStudent) {
+                    if (!student.userId || existingUser._id.toString() !== student.userId.toString()) {
                         res.status(400);
                         throw new Error('Username already exists. Please choose a different username.');
                     }
-                    // If the same student already has this user (e.g., retry), reuse it
+
                     newUser = existingUser;
                 } else {
+                    let accountEmail = student.email;
+                    if (accountEmail) {
+                        const emailOwner = await User.findOne({ email: accountEmail }).select('_id');
+                        if (emailOwner) {
+                            accountEmail = null;
+                        }
+                    }
+
                     newUser = await User.create({
                         name: `${student.firstName} ${student.lastName}`,
-                        email: student.email || `${finalRegNo}@institute.com`, 
+                        email: accountEmail || `student-${student._id}@institute.local`,
                         username: username,
                         password: password,
                         role: 'Student',
@@ -356,8 +382,9 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
             } catch (userError) {
                 // Handle duplicate key for username (race condition)
                 if (userError.code === 11000) {
-                    console.warn(`[DEBUG] User Duplicate Key in Attempt ${attempts}, Retrying...`);
-                    continue; // Retry loop
+                    const duplicateField = Object.keys(userError.keyPattern || userError.keyValue || {})[0] || 'user';
+                    res.status(400);
+                    throw new Error(`${duplicateField} already exists. Please use different login details.`);
                 }
                 console.error("[DEBUG] User Creation Failed:", userError);
                 throw new Error('User account creation failed: ' + userError.message);
@@ -391,7 +418,10 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
                         chequeNumber: feeDetails.chequeNumber,
                         chequeDate: feeDetails.chequeDate,
                         transactionId: feeDetails.transactionId,
-                        transactionDate: feeDetails.transactionDate
+                        transactionDate: feeDetails.transactionDate,
+                        onlinePaymentType: feeDetails.onlinePaymentType,
+                        paymentProviderName: feeDetails.paymentProviderName,
+                        paymentDetails: feeDetails.paymentDetails
                     };
         
                     await FeeReceipt.create(receiptData);
@@ -417,21 +447,20 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
             await student.save();
         
             const contacts = [...new Set([student.mobileStudent, student.mobileParent, student.contactHome].filter(Boolean))];
-        
-            if (student.mobileStudent) {
-                const regMessage = `Dear, ${student.firstName} ${student.lastName}. Your Registration process has been successfully completed. Reg.No. ${finalRegNo}, User ID-${username}, Password-${password}, smart institute.`;
-                await sendSMS(student.mobileStudent, regMessage, 'Admission')
-                    .catch(err => console.error('Registration SMS failed', err));
-            }
-        
-            // Send Fee SMS (Registration Fee)
-            if (feeDetails && Number(feeDetails.amount) > 0) {
-                // Wait 2 seconds before sending the Fee SMS to ensure Registration SMS arrives first
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                const feeSmsMessage = `Dear, ${student.firstName} ${student.middleName ? student.middleName + ' ' : ''}${student.lastName}. Your Course fees ${feeDetails.amount} has been deposited for Registration Fees, Reg.No. ${finalRegNo}. Thank you,\nSmart Institute`;
-                await Promise.all(contacts.map(num => sendSMS(num, feeSmsMessage, 'Fees')))
-                    .catch(err => console.error('Registration Fee SMS failed', err));
-            }
+
+            setImmediate(() => {
+                if (student.mobileStudent) {
+                    const regMessage = `Dear, ${student.firstName} ${student.lastName}. Your Registration process has been successfully completed. Reg.No. ${finalRegNo}, User ID-${username}, Password-${password}, smart institute.`;
+                    sendSMS(student.mobileStudent, regMessage, 'Admission')
+                        .catch(err => console.error('Registration SMS failed', err));
+                }
+
+                if (feeDetails && Number(feeDetails.amount) > 0) {
+                    const feeSmsMessage = `Dear, ${student.firstName} ${student.middleName ? student.middleName + ' ' : ''}${student.lastName}. Your Course fees ${feeDetails.amount} has been deposited for Registration Fees, Reg.No. ${finalRegNo}. Thank you,\nSmart Institute`;
+                    Promise.all(contacts.map(num => sendSMS(num, feeSmsMessage, 'Fees')))
+                        .catch(err => console.error('Registration Fee SMS failed', err));
+                }
+            });
         
             res.json({ message: 'Student Registration Completed', student });
             return; // Success, exit function
@@ -616,7 +645,9 @@ const updateStudent = asyncHandler(async (req, res) => {
         student.occupationType = req.body.occupationType || student.occupationType;
         student.occupationName = req.body.occupationName || student.occupationName;
         student.motherName = req.body.motherName || student.motherName;
-        student.reference = req.body.reference || student.reference;
+        if (req.user?.role === 'Super Admin' || !student.reference || !student.reference.trim()) {
+            student.reference = req.body.reference || student.reference;
+        }
         
         if(req.body.course) {
             student.course = req.body.course;

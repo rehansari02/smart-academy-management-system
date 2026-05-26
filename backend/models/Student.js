@@ -80,7 +80,7 @@ const studentSchema = new mongoose.Schema(
     admissionFeeAmount: { type: Number, default: 0 }, // Actual admission fee paid
 
     // Link to User Login
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", unique: true, sparse: true },
 
     // Link to Inquiry (when student created from Admin "Online Admission")
     inquiryId: { type: mongoose.Schema.Types.ObjectId, ref: "Inquiry" },

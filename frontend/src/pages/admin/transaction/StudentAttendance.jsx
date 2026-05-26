@@ -10,6 +10,7 @@ import {
 } from '../../../features/transaction/attendanceSlice';
 import { fetchBatches } from '../../../features/master/masterSlice';
 import { toast } from 'react-toastify';
+import axios from 'axios';
 import { 
     Calendar, Users, Clock, Save, RotateCcw, Eye, Trash2, 
     PlusCircle, X, CheckSquare, Square, Search, Edit
@@ -34,6 +35,7 @@ const StudentAttendance = () => {
     // --- Form State ---
     const [formData, setFormData] = useState({
         date: new Date().toISOString().split('T')[0],
+        batchId: '',
         batchName: '',
         batchTime: '', // Will be auto-populated or selected
         remarks: ''
@@ -43,6 +45,7 @@ const StudentAttendance = () => {
     const [attendanceGrid, setAttendanceGrid] = useState([]);
     const [viewingRecord, setViewingRecord] = useState(null); // For 'view-details'
     const [isEditing, setIsEditing] = useState(false); // Edit Mode Flag
+    const [closedDateStatus, setClosedDateStatus] = useState(null);
 
     useEffect(() => {
         dispatch(fetchBatches());
@@ -63,27 +66,52 @@ const StudentAttendance = () => {
 
     // --- Form Logic ---
     useEffect(() => {
+        if (viewMode !== 'form' || isEditing || !formData.date) return;
+
+        const checkClosedDate = async () => {
+            try {
+                const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/attendance/calendar/status`, {
+                    params: { date: formData.date },
+                    withCredentials: true
+                });
+                setClosedDateStatus(data);
+                if (data.isClosed) {
+                    setAttendanceGrid([]);
+                    dispatch(resetAttendanceState());
+                }
+            } catch (error) {
+                toast.error(error.response?.data?.message || 'Failed to check attendance calendar');
+            }
+        };
+
+        checkClosedDate();
+    }, [formData.date, viewMode, isEditing, dispatch]);
+
+    useEffect(() => {
         // When Batch/Time/Date changes, check status and fetch students
         // Check "isEditing" -> if we are editing, we don't want to re-load "checkStudentAttendance" because we already loaded the record.
         // We only fetch students if we are creating NEW, or if we switched batches in NEW mode.
         // Actually, if editing, we probably already have the grid from the record we loaded.
         
-        if (viewMode === 'form' && !isEditing && formData.batchName && formData.batchTime && formData.date) {
-            
-            // 1. Check if attendance already taken
-            dispatch(checkStudentAttendance({ 
-                date: formData.date, 
-                batch: formData.batchName, 
-                batchTime: formData.batchTime 
+        if (closedDateStatus?.isClosed) return;
+
+        if (viewMode === 'form' && !isEditing && formData.batchName && formData.date) {
+            dispatch(fetchStudentsForAttendance({ 
+                batch: formData.batchName,
+                batchId: formData.batchId,
+                date: formData.date
             }));
 
-            // 2. Fetch students for this batch (if not already fetched or logic requires refresh)
-            dispatch(fetchStudentsForAttendance({ 
-                batch: formData.batchName, 
-                batchTime: formData.batchTime 
-            }));
+            if (formData.batchTime) {
+                // 1. Check if attendance already taken
+                dispatch(checkStudentAttendance({ 
+                    date: formData.date, 
+                    batch: formData.batchName, 
+                    batchTime: formData.batchTime 
+                }));
+            }
         }
-    }, [formData.batchName, formData.batchTime, formData.date, viewMode, isEditing, dispatch]);
+    }, [formData.batchId, formData.batchName, formData.batchTime, formData.date, viewMode, isEditing, closedDateStatus, dispatch]);
 
     // Handle Status Check Result
     useEffect(() => {
@@ -137,12 +165,16 @@ const StudentAttendance = () => {
 
 
     const handleBatchChange = (e) => {
-        const batchName = e.target.value;
-        const selectedBatch = batches.find(b => b.name === batchName);
+        const batchId = e.target.value;
+        const selectedBatch = batches.find(b => b._id === batchId);
+        const batchName = selectedBatch?.name || '';
         const time = selectedBatch ? `${selectedBatch.startTime} - ${selectedBatch.endTime}` : '';
         
+        setAttendanceGrid([]);
+        dispatch(resetAttendanceState());
         setFormData(prev => ({ 
             ...prev, 
+            batchId,
             batchName,
             batchTime: time // Set default time
         }));
@@ -153,6 +185,7 @@ const StudentAttendance = () => {
         setViewMode('form');
         setFormData({
             date: new Date(record.date).toISOString().split('T')[0],
+            batchId: batches.find(b => b.name === record.batchName && `${b.startTime} - ${b.endTime}` === record.batchTime)?._id || '',
             batchName: record.batchName,
             batchTime: record.batchTime,
             remarks: record.remarks
@@ -190,6 +223,10 @@ const StudentAttendance = () => {
     };
 
     const saveAttendance = () => {
+        if (closedDateStatus?.isClosed) {
+            toast.error(`Attendance cannot be taken on this date. ${closedDateStatus.closure?.reason || ''}`);
+            return;
+        }
         if (attendanceStatus?.exists && !isEditing) return; // Block save only if strict "Exists" check and NOT editing
         
         const payload = {
@@ -231,7 +268,7 @@ const StudentAttendance = () => {
                 {viewMode === 'list' && (
                     <button 
                         onClick={() => {
-                            setFormData({ date: new Date().toISOString().split('T')[0], batchName: '', batchTime: '', remarks: '' });
+                            setFormData({ date: new Date().toISOString().split('T')[0], batchId: '', batchName: '', batchTime: '', remarks: '' });
                             setAttendanceGrid([]);
                             dispatch(resetAttendanceState());
                             setIsEditing(false);
@@ -360,13 +397,13 @@ const StudentAttendance = () => {
                                 <label className="block text-sm font-bold text-gray-700 mb-1">Batch Name</label>
                                 <select 
                                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-transparent"
-                                    value={formData.batchName}
+                                    value={formData.batchId}
                                     disabled={isEditing}
                                     onChange={handleBatchChange}
                                 >
                                     <option value="">Select Batch</option>
                                     {batches.map(b => (
-                                        <option key={b._id} value={b.name}>{b.name}</option>
+                                        <option key={b._id} value={b._id}>{b.name}</option>
                                     ))}
                                 </select>
                             </div>
@@ -390,6 +427,13 @@ const StudentAttendance = () => {
                         </div>
 
                         {/* Status Message */}
+                        {closedDateStatus?.isClosed && (
+                            <div className="mb-6 bg-red-50 text-red-800 px-4 py-3 rounded-lg border border-red-200 flex items-center gap-2">
+                                <Calendar size={20} />
+                                <span className="font-medium">Attendance is closed for this date. {closedDateStatus.closure?.reason}</span>
+                            </div>
+                        )}
+
                         {attendanceStatus?.exists && (
                             <div className="mb-6 bg-yellow-50 text-yellow-800 px-4 py-3 rounded-lg border border-yellow-200 flex items-center gap-2">
                                 <Users size={20} />
@@ -478,7 +522,7 @@ const StudentAttendance = () => {
                                     <button onClick={() => setViewMode('list')} className="px-6 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">Cancel</button>
                                     <button 
                                         onClick={() => {
-                                            setFormData({ date: new Date().toISOString().split('T')[0], batchName: '', batchTime: '', remarks: '' });
+                                            setFormData({ date: new Date().toISOString().split('T')[0], batchId: '', batchName: '', batchTime: '', remarks: '' });
                                             setAttendanceGrid([]);
                                             dispatch(resetAttendanceState()); // Reset data
                                         }} // Reset to fresh
@@ -488,8 +532,8 @@ const StudentAttendance = () => {
                                     </button>
                                     {(!attendanceStatus?.exists || isEditing) && (
                                         <button 
-                                            onClick={saveAttendance}
-                                            disabled={isLoading}
+                                        onClick={saveAttendance}
+                                            disabled={isLoading || closedDateStatus?.isClosed}
                                             className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md flex items-center gap-2"
                                         >
                                             <Save size={18} /> {isLoading ? 'Saving...' : 'Save Attendance'}

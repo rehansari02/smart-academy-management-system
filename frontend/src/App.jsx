@@ -22,6 +22,7 @@ const LoginPage = lazy(() => import("./pages/LoginPage"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const StudentLoginPage = lazy(() => import("./pages/StudentLoginPage"));
 const AdminHome = lazy(() => import("./pages/admin/AdminHome"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const AboutUsPage = lazy(() => import("./pages/user/AboutUsPage"));
 const WhySmartPage = lazy(() => import("./pages/user/WhySmartPage"));
 const CoursePage = lazy(() => import("./pages/user/CoursePage"));
@@ -45,6 +46,8 @@ const StudentFreeStudyMaterial = lazy(() => import("./pages/student/FreeStudyMat
 const StudentFreeLearning = lazy(() => import("./pages/student/FreeLearning"));
 const StudentFreeLearningReport = lazy(() => import("./pages/student/FreeLearningReport"));
 const StudentFees = lazy(() => import("./pages/student/StudentFees"));
+const StudentExamSchedule = lazy(() => import("./pages/student/ExamSchedule"));
+const StudentComplain = lazy(() => import("./pages/student/Complain"));
 
 
 // Master Pages
@@ -83,6 +86,7 @@ const CloudinaryManager = lazy(() => import("./pages/admin/utility/CloudinaryMan
 const LocationMaster = lazy(() => import("./pages/admin/utility/LocationMaster"));
 const SmsStation = lazy(() => import("./pages/admin/utility/SmsStation"));
 const ManageContact = lazy(() => import("./pages/admin/utility/ManageContact"));
+const ComplainManagement = lazy(() => import("./pages/admin/utility/ComplainManagement"));
 
 // Transaction Pages
 const InquiryPage = lazy(() => import("./pages/admin/transaction/InquiryPage"));
@@ -121,6 +125,7 @@ const StudentRegistrationProcess = lazy(() =>
 );
 const StudentAttendance = lazy(() => import("./pages/admin/transaction/StudentAttendance"));
 const EmployeeAttendance = lazy(() => import("./pages/admin/transaction/EmployeeAttendance"));
+const ManageAttendance = lazy(() => import("./pages/admin/transaction/ManageAttendance"));
 
 // --- BLOG ---
 const ManageBlogs = lazy(() => import("./pages/admin/blog/ManageBlogs"));
@@ -148,6 +153,16 @@ const FinalResultDetails = lazy(() => import('./pages/admin/reports/FinalResultD
 const PrivateRoute = ({ children }) => {
   const { user } = useSelector((state) => state.auth);
   return user ? children : <Navigate to="/login" />;
+};
+
+const SuperAdminRoute = ({ children }) => {
+  const { user } = useSelector((state) => state.auth);
+
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'Student') return <Navigate to="/student/home" replace />;
+  if (user.role !== 'Super Admin') return <Navigate to="/home" replace />;
+
+  return children;
 };
 
 function App() {
@@ -187,6 +202,8 @@ function App() {
                  <Route path="study/free-learning-report" element={<StudentFreeLearningReport />} />
                  
                  <Route path="fees" element={<StudentFees />} />
+                 <Route path="exam-schedule" element={<StudentExamSchedule />} />
+                 <Route path="complain" element={<StudentComplain />} />
 
                  <Route path="*" element={<Navigate to="home" replace />} />
               </Route>
@@ -199,6 +216,14 @@ function App() {
                   <PrivateRoute>
                      {user?.role === 'Student' ? <Navigate to="/student/home" /> : <AdminHome />}
                   </PrivateRoute>
+                }
+              />
+              <Route
+                path="/dashboard"
+                element={
+                  <SuperAdminRoute>
+                    <AdminDashboard />
+                  </SuperAdminRoute>
                 }
               />
 
@@ -498,6 +523,14 @@ function App() {
                 }
               />
               <Route
+                path="/transaction/attendance/manage"
+                element={
+                  <PrivateRoute>
+                    <ManageAttendance />
+                  </PrivateRoute>
+                }
+              />
+              <Route
                 path="/transaction/attendance/student"
                 element={
                   <PrivateRoute>
@@ -697,6 +730,16 @@ function App() {
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
                         <ManageContact />
+                    </Suspense>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/utility/complains"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <ComplainManagement />
                     </Suspense>
                   </PrivateRoute>
                 }

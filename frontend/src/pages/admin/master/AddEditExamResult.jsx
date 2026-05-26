@@ -17,6 +17,12 @@ import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { ArrowLeft, Save, RefreshCw } from 'lucide-react';
 
+const toDateInputValue = (date) => {
+  if (!date) return new Date().toISOString().split('T')[0];
+  const parsed = new Date(date);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString().split('T')[0] : parsed.toISOString().split('T')[0];
+};
+
 const AddEditExamResult = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -26,6 +32,7 @@ const AddEditExamResult = () => {
   const { 
     examSchedules, 
     examScheduleDetails, 
+    examResults,
     nextResultNumbers, 
     isSuccess, 
     message, 
@@ -50,6 +57,7 @@ const AddEditExamResult = () => {
       somNumber: '',
       csrNumber: '',
       certificateNumber: '',
+      issueDate: new Date().toISOString().split('T')[0],
       grade: '',
       isActive: true,
       subjectMarks: []
@@ -74,6 +82,7 @@ const AddEditExamResult = () => {
   useEffect(() => {
     dispatch(fetchExamSchedules());
     dispatch(fetchBatches());
+    dispatch(fetchExamResults());
     if (!isEditMode) {
       dispatch(fetchNextResultNumbers());
     } else {
@@ -86,6 +95,7 @@ const AddEditExamResult = () => {
           setValue('somNumber', result.somNumber || '');
           setValue('csrNumber', result.csrNumber || '');
           setValue('certificateNumber', result.certificateNumber || '');
+          setValue('issueDate', toDateInputValue(result.issueDate || result.createdAt));
           setValue('grade', result.grade || '');
           setValue('isActive', result.isActive !== undefined ? result.isActive : true);
 
@@ -194,6 +204,33 @@ const AddEditExamResult = () => {
       });
     return Array.from(coursesMap.values());
   }, [selectedExamNameForm, activeExamSchedules]);
+
+  const existingResultStudentIds = useMemo(() => {
+    if (!selectedExamId || isEditMode) return new Set();
+
+    return new Set((examResults || [])
+      .filter(result => {
+        const resultExamId = result.exam?._id || result.exam;
+        return resultExamId === selectedExamId;
+      })
+      .map(result => result.student?._id || result.student)
+      .filter(Boolean));
+  }, [examResults, selectedExamId, isEditMode]);
+
+  const availableAttendees = useMemo(() => {
+    const attendees = examScheduleDetails?.attendees || [];
+    if (isEditMode) return attendees;
+    return attendees.filter(student => !existingResultStudentIds.has(student._id));
+  }, [examScheduleDetails, existingResultStudentIds, isEditMode]);
+
+  const searchedAvailableAttendees = useMemo(() => {
+    const search = formStudentSearch.toLowerCase();
+    return availableAttendees.filter(student => {
+      const name = (student.studentName || '').toLowerCase();
+      const regNo = (student.regNo || '').toLowerCase();
+      return name.includes(search) || regNo.includes(search);
+    });
+  }, [availableAttendees, formStudentSearch]);
 
   // Calculate totals and percentage
   const totals = useMemo(() => {
@@ -389,8 +426,8 @@ const AddEditExamResult = () => {
                           className="border border-slate-200 hover:border-emerald-300 disabled:hover:border-slate-200 p-3.5 rounded-xl w-full bg-white disabled:bg-slate-50 text-left flex justify-between items-center text-sm font-semibold text-slate-700 shadow-sm transition-all focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed"
                       >
                           <span className={selectedStudentId ? 'text-slate-800' : 'text-slate-400'}>
-                              {examScheduleDetails?.attendees?.find(s => s._id === selectedStudentId)?.studentName 
-                                  ? `${examScheduleDetails?.attendees?.find(s => s._id === selectedStudentId)?.studentName} (${examScheduleDetails?.attendees?.find(s => s._id === selectedStudentId)?.regNo})`
+                              {availableAttendees?.find(s => s._id === selectedStudentId)?.studentName 
+                                  ? `${availableAttendees?.find(s => s._id === selectedStudentId)?.studentName} (${availableAttendees?.find(s => s._id === selectedStudentId)?.regNo})`
                                   : 'Choose Student...'}
                           </span>
                           {!isEditMode && <span className="text-slate-400 text-xs">▼</span>}
@@ -408,8 +445,8 @@ const AddEditExamResult = () => {
                                   />
                               </div>
                               <div className="divide-y divide-slate-50 overflow-y-auto max-h-[200px]">
-                                  {examScheduleDetails?.attendees && examScheduleDetails.attendees.filter(s => s.studentName.toLowerCase().includes(formStudentSearch.toLowerCase()) || s.regNo.toLowerCase().includes(formStudentSearch.toLowerCase())).length > 0 ? (
-                                      examScheduleDetails.attendees.filter(s => s.studentName.toLowerCase().includes(formStudentSearch.toLowerCase()) || s.regNo.toLowerCase().includes(formStudentSearch.toLowerCase())).map(student => (
+                                  {searchedAvailableAttendees.length > 0 ? (
+                                      searchedAvailableAttendees.map(student => (
                                           <div 
                                               key={student._id} 
                                               onClick={() => {
@@ -424,7 +461,7 @@ const AddEditExamResult = () => {
                                       ))
                                   ) : (
                                       <div className="p-4 text-xs text-slate-400 text-center font-medium italic">
-                                          No matching students found
+                                          {availableAttendees.length === 0 ? 'All attendees already have exam results' : 'No matching students found'}
                                       </div>
                                   )}
                               </div>
@@ -440,6 +477,7 @@ const AddEditExamResult = () => {
                   <table className="w-full text-sm text-left border-collapse">
                       <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-500 border-b border-slate-100">
                           <tr>
+                              <th className="px-4 py-4 w-16 text-center">Sr No</th>
                               <th className="px-6 py-4">Subject</th>
                               <th className="px-6 py-4 w-36 text-center">Theory Marks</th>
                               <th className="px-6 py-4 w-36 text-center">Practical Marks</th>
@@ -450,6 +488,7 @@ const AddEditExamResult = () => {
                       <tbody className="divide-y divide-slate-100 bg-white">
                           {fields.map((field, index) => (
                               <tr key={field.id} className="hover:bg-slate-50/50 transition-colors">
+                                  <td className="px-4 py-4 text-center font-black text-slate-500">{index + 1}</td>
                                   <td className="px-6 py-4 font-semibold text-slate-700">
                                       {subjectMarksValues[index]?.subjectName}
                                       <input type="hidden" {...register(`subjectMarks.${index}.subjectId`)} />
@@ -480,7 +519,7 @@ const AddEditExamResult = () => {
                       </tbody>
                       <tfoot className="bg-slate-50 font-bold border-t border-slate-100">
                           <tr>
-                              <td className="px-6 py-5 text-right text-slate-500 text-xs font-black uppercase tracking-wider">GRAND TOTAL:</td>
+                              <td colSpan="2" className="px-6 py-5 text-right text-slate-500 text-xs font-black uppercase tracking-wider">GRAND TOTAL:</td>
                               <td colSpan="2"></td>
                               <td className="px-6 py-5 text-center text-xl font-black text-slate-800">{totals.obtained} / {totals.total}</td>
                               <td className="px-6 py-5 text-center text-sm font-black text-emerald-600 bg-emerald-50/50 rounded-lg">{totals.percentage.toFixed(2)}%</td>
@@ -491,24 +530,28 @@ const AddEditExamResult = () => {
           )}
 
           {/* Additional details */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
               <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">SOM Number</label>
-                  <input {...register('somNumber')} className="border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-3 rounded-xl w-full bg-white font-semibold text-slate-800 outline-none transition-all" placeholder="Auto-generates if empty" />
+                  <input {...register('somNumber')} className="border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-3.5 rounded-xl w-full bg-white font-bold text-slate-800 outline-none transition-all" placeholder="SOM-G00007" />
               </div>
               <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">CSR Number</label>
-                  <input {...register('csrNumber')} className="border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-3 rounded-xl w-full bg-white font-semibold text-slate-800 outline-none transition-all" placeholder="Auto-generates if empty" />
+                  <input {...register('csrNumber')} className="border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-3.5 rounded-xl w-full bg-white font-bold text-slate-800 outline-none transition-all" placeholder="CSR-G00007" />
               </div>
               <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Certificate Number</label>
-                  <input {...register('certificateNumber')} className="border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-3 rounded-xl w-full bg-white font-semibold text-slate-800 outline-none transition-all" placeholder="Unique (e.g. 0001)" />
+                  <input {...register('certificateNumber')} className="border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-3.5 rounded-xl w-full bg-white font-bold text-slate-800 outline-none transition-all" placeholder="00007" />
+              </div>
+              <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Date of Issue</label>
+                  <input type="date" {...register('issueDate', { required: true })} className="border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-3.5 rounded-xl w-full bg-white font-bold text-slate-800 outline-none transition-all" />
               </div>
               <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Grade</label>
-                  <input {...register('grade')} className="border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-3 rounded-xl w-full bg-white font-black text-primary outline-none transition-all" placeholder="Auto-calculated (e.g. FIRST)" />
+                  <input {...register('grade')} className="border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-3.5 rounded-xl w-full bg-white font-black text-primary outline-none transition-all" placeholder="FAIL" />
               </div>
-              <div className="flex items-center gap-3 pt-6 pl-2">
+              <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 mt-6 lg:mt-0">
                   <input type="checkbox" {...register('isActive')} id="isActive" className="h-5 w-5 rounded-lg border-slate-300 text-blue-600 focus:ring-blue-500" defaultChecked />
                   <label htmlFor="isActive" className="text-sm font-bold text-slate-700 select-none cursor-pointer">Is Active Result</label>
               </div>

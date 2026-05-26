@@ -43,15 +43,31 @@ import {
   ArrowRight,
   User,
   Eye,
-  History,
-  Calendar,
-  MessageSquare,
+  Lock,
 } from "lucide-react";
 import ProfileImageUploader from "../../../components/common/ProfileImageUploader";
 
 import { FormSkeleton } from "../../../components/common/SkeletonLoader"; // Corrected Import Location
 
 // getUniqueEducation removed - using centralized master list instead
+const POPULAR_INDIAN_BANKS = [
+  "State Bank of India",
+  "HDFC Bank",
+  "ICICI Bank",
+  "Axis Bank",
+  "Punjab National Bank",
+  "Bank of Baroda",
+  "Canara Bank",
+  "Union Bank of India",
+  "Kotak Mahindra Bank",
+  "IndusInd Bank",
+  "IDFC First Bank",
+  "Yes Bank",
+  "Other",
+];
+
+const ONLINE_PAYMENT_TYPES = ["UPI", "Net Banking", "Bank Transfer", "Other"];
+const UPI_PROVIDERS = ["Google Pay", "PhonePe", "Paytm", "BHIM", "Amazon Pay", "Other"];
 
 const StudentAdmission = () => {
   const dispatch = useDispatch();
@@ -84,10 +100,9 @@ const StudentAdmission = () => {
   const [payAdmissionFee, setPayAdmissionFee] = useState(null); 
   const [isNewReference, setIsNewReference] = useState(false);
   const [inquiryIdFromAdmission, setInquiryIdFromAdmission] = useState(null); 
+  const [lockedReferenceValue, setLockedReferenceValue] = useState("");
   const [matches, setMatches] = useState([]);
   const [viewDetailsMatch, setViewDetailsMatch] = useState(null);
-  const [matchHistory, setMatchHistory] = useState([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   // Modal & New Entry States
   const [showRefModal, setShowRefModal] = useState(false);
@@ -115,6 +130,9 @@ const StudentAdmission = () => {
       reference: "Direct",
       receiptPaymentMode: "Cash",
       receiptDate: new Date().toISOString().split("T")[0],
+      receiptBankOption: "",
+      onlinePaymentType: "UPI",
+      onlineProviderOption: "",
       chequeDate: new Date().toISOString().split("T")[0], // Default today for UI
       transactionDate: new Date().toISOString().split("T")[0], // Default today for UI
     },
@@ -128,6 +146,14 @@ const StudentAdmission = () => {
   const watchState = watch("state");
   const watchRelation = watch("relationType");
   const watchBranchId = watch("branchId"); // Watch Branch Selection
+  const receiptPaymentMode = watch("receiptPaymentMode");
+  const receiptBankOption = watch("receiptBankOption");
+  const onlinePaymentType = watch("onlinePaymentType");
+  const onlineProviderOption = watch("onlineProviderOption");
+  const isReferenceLocked = Boolean((lockedReferenceValue || "").trim()) && user?.role !== "Super Admin";
+  const referenceLockTitle = isReferenceLocked
+    ? "Reference is locked because it was fetched from existing inquiry/visitor data. Only Super Admin can change it."
+    : "";
 
   useEffect(() => {
     dispatch(fetchCourses()); // One call only
@@ -179,7 +205,9 @@ const StudentAdmission = () => {
       setValue("pincode", inquiry.pincode || "");
       setValue("education", inquiry.education || "");
       setValue("dob", inquiry.dob ? new Date(inquiry.dob).toISOString().split('T')[0] : "");
-      setValue("reference", inquiry.referenceBy || "Direct");
+      const fetchedReference = inquiry.referenceBy || "Direct";
+      setValue("reference", fetchedReference);
+      setLockedReferenceValue(fetchedReference);
       
       if (inquiry.studentPhoto) {
         setPreviewImage(inquiry.studentPhoto);
@@ -225,7 +253,9 @@ const StudentAdmission = () => {
       setValue("mobileStudent", profile.mobileNumber || "", { shouldValidate: true });
       setValue("mobileParent", profile.contactParent || "", { shouldValidate: true });
       setValue("contactHome", profile.contactHome || "", { shouldValidate: true });
-      setValue("reference", profile.reference || "Direct", { shouldValidate: true });
+      const fetchedReference = profile.reference || "Direct";
+      setValue("reference", fetchedReference, { shouldValidate: true });
+      setLockedReferenceValue(fetchedReference);
       setValue("remarks", profile.remarks || "", { shouldValidate: true });
       setValue("relationType", "Father", { shouldValidate: true });
       setValue("occupationType", "Student", { shouldValidate: true });
@@ -281,6 +311,7 @@ const StudentAdmission = () => {
       setValue("city", currentStudent.city);
       setValue("pincode", currentStudent.pincode);
       setValue("reference", currentStudent.reference);
+      setLockedReferenceValue(currentStudent.reference || "");
       setValue("branchId", currentStudent.branchId);
 
       // Document Verification Fields
@@ -371,6 +402,11 @@ const StudentAdmission = () => {
 
   useEffect(() => {
     const fetchMatches = async () => {
+      if (isUpdateMode || inquiryIdFromAdmission) {
+        setMatches([]);
+        return;
+      }
+
       const name = `${watchFirstName || ''} ${watchLastName || ''}`.trim();
       if (name.length < 3) {
         setMatches([]);
@@ -480,7 +516,7 @@ const StudentAdmission = () => {
     };
     const timer = setTimeout(fetchMatches, 500);
     return () => clearTimeout(timer);
-  }, [watchFirstName, watchLastName]);
+  }, [watchFirstName, watchLastName, isUpdateMode, inquiryIdFromAdmission]);
 
   useEffect(() => {
     if (watchFirstName && watchLastName) {
@@ -540,7 +576,9 @@ const StudentAdmission = () => {
         setValue("mobileStudent", profile.mobileNumber || "", { shouldValidate: true });
         setValue("mobileParent", profile.contactParent || "", { shouldValidate: true });
         setValue("contactHome", profile.contactHome || "", { shouldValidate: true });
-        setValue("reference", profile.reference || "Direct", { shouldValidate: true });
+        const fetchedReference = profile.reference || "Direct";
+        setValue("reference", fetchedReference, { shouldValidate: true });
+        setLockedReferenceValue(fetchedReference);
         setValue("remarks", profile.remarks || "", { shouldValidate: true });
         setValue("relationType", "Father", { shouldValidate: true });
         setValue("occupationType", "Student", { shouldValidate: true });
@@ -595,7 +633,9 @@ const StudentAdmission = () => {
 
         setValue("education", profile.education || "", { shouldValidate: true });
         setValue("dob", profile.dob ? new Date(profile.dob).toISOString().split('T')[0] : "", { shouldValidate: true });
-        setValue("reference", profile.referenceBy || "Direct", { shouldValidate: true });
+        const fetchedReference = profile.referenceBy || "Direct";
+        setValue("reference", fetchedReference, { shouldValidate: true });
+        setLockedReferenceValue(fetchedReference);
         
         if (profile.branchId) {
             setValue("branchId", profile.branchId._id || profile.branchId, { shouldValidate: true });
@@ -619,24 +659,6 @@ const StudentAdmission = () => {
       }
     }
   };
-
-  const fetchInquiryHistory = async (contact) => {
-    if (!contact) return;
-    setIsLoadingHistory(true);
-    try {
-      const res = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry`, {
-        params: { search: contact },
-        withCredentials: true
-      });
-      setMatchHistory(res.data);
-    } catch (err) {
-      console.error("Failed to fetch history", err);
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  };
-
-
 
   const handleAddCourseToList = () => {
     const courseId = getValues("selectedCourseId");
@@ -735,6 +757,42 @@ const StudentAdmission = () => {
     // Ensure we only pay if the User explicitly selected "Yes" (payAdmissionFee === true)
     // Removed fallback to data.amountPaid to prevent bug where stale Step 3 data triggers payment after going back and selecting "No".
     const isPaying = payAdmissionFee === true;
+
+    if (isPaying && data.receiptPaymentMode === "Cheque") {
+      if (!data.bankName?.trim() || !data.chequeNumber?.trim() || !data.chequeDate) {
+        toast.error("Please enter cheque bank, cheque number, and cheque date");
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
+    if (isPaying && data.receiptPaymentMode === "Online/UPI") {
+      if (!data.transactionId?.trim() || !data.transactionDate) {
+        toast.error("Please enter online payment bank/provider, transaction number, and transaction date");
+        setIsSubmitting(false);
+        return;
+      }
+      if (data.onlinePaymentType === "UPI" && !data.paymentProviderName?.trim()) {
+        toast.error("Please select UPI app/provider");
+        setIsSubmitting(false);
+        return;
+      }
+      if (data.onlinePaymentType === "UPI" && !data.upiId?.trim()) {
+        toast.error("Please enter UPI ID / number");
+        setIsSubmitting(false);
+        return;
+      }
+      if (data.onlinePaymentType !== "UPI" && !data.bankName?.trim()) {
+        toast.error("Please enter online payment bank/provider");
+        setIsSubmitting(false);
+        return;
+      }
+      if (data.onlinePaymentType === "Other" && !data.paymentProviderName?.trim()) {
+        toast.error("Please enter online payment name/provider");
+        setIsSubmitting(false);
+        return;
+      }
+    }
       
     const payload = {
       ...data,
@@ -744,7 +802,7 @@ const StudentAdmission = () => {
       totalFees: primaryCourse.fees,
       paymentPlan: primaryCourse.paymentType,
       emiDetails: primaryCourse.emiConfig, // Include EMI details
-      reference: data.reference,
+      reference: isReferenceLocked ? lockedReferenceValue : data.reference,
       // Legacy referenceDetails removed in favor of standardized Reference Master
       referenceDetails: null,
       // Include document verification fields
@@ -767,6 +825,9 @@ const StudentAdmission = () => {
             chequeDate: data.chequeDate,
             transactionId: data.transactionId,
             transactionDate: data.transactionDate,
+            onlinePaymentType: data.onlinePaymentType,
+            paymentProviderName: data.paymentProviderName,
+            paymentDetails: data.onlinePaymentType === "UPI" ? data.upiId : data.paymentDetails,
           }
         : null,
     };
@@ -969,7 +1030,7 @@ const StudentAdmission = () => {
               <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full my-8 overflow-hidden animate-fade-in-up">
                 <div className="bg-orange-600 text-white p-4 flex justify-between items-center sticky top-0 z-10">
                   <h3 className="font-bold text-lg flex items-center gap-2">
-                    <User size={22} /> Student Profile & History
+                    <User size={22} /> Student Profile
                   </h3>
                   <button onClick={() => setViewDetailsMatch(null)} className="hover:bg-white/20 p-1 rounded-full transition">
                     <X size={24} />
@@ -1069,71 +1130,6 @@ const StudentAdmission = () => {
                     </div>
                   </div>
 
-                  {/* Inquiry History Section */}
-                  <div className="p-6">
-                    <div className="flex items-center gap-2 mb-4 border-b pb-2">
-                      <History size={18} className="text-orange-600" />
-                      <h4 className="font-bold text-gray-800 uppercase text-xs tracking-widest">
-                        {viewDetailsMatch.type === 'Visitor' ? 'Visitor History' : 'Inquiry History'} ({matchHistory.length})
-                      </h4>
-                    </div>
-
-                    {isLoadingHistory ? (
-                      <div className="py-8 flex flex-col items-center justify-center gap-3 text-gray-400">
-                        <div className="w-8 h-8 border-4 border-orange-200 border-t-orange-600 rounded-full animate-spin"></div>
-                        <p className="text-sm font-medium">Fetching history...</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {matchHistory.length > 0 ? (
-                          matchHistory.map((hist, idx) => (
-                            <div key={hist._id} className="border border-gray-100 rounded-xl p-4 bg-white shadow-sm hover:border-orange-200 transition-all">
-                              <div className="flex justify-between items-start mb-3">
-                                <div className="flex items-center gap-2">
-                                  <span className="bg-gray-100 text-gray-600 text-[10px] font-black px-2 py-1 rounded">#{matchHistory.length - idx}</span>
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                    hist.status === 'Converted' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
-                                  }`}>
-                                    {hist.status || 'Visitor'}
-                                  </span>
-                                </div>
-                                <span className="text-[11px] text-gray-400 font-medium flex items-center gap-1">
-                                  <Calendar size={12}/> {new Date(hist.inquiryDate || hist.visitingDate || new Date()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-2 gap-4 mb-3">
-                                <div>
-                                  <p className="text-[10px] text-gray-400 font-bold uppercase">Course</p>
-                                  <p className="text-xs font-bold text-gray-700">{hist.interestedCourse?.name || hist.course?.name || 'N/A'}</p>
-                                </div>
-                                <div>
-                                  <p className="text-[10px] text-gray-400 font-bold uppercase">Reference</p>
-                                  <p className="text-xs font-bold text-gray-700">{hist.referenceBy || hist.reference || 'Direct'}</p>
-                                </div>
-                              </div>
-                              
-                              {/* Follow-up Details */}
-                              <div className="bg-gray-50 rounded-lg p-3 border border-dashed border-gray-200">
-                                <p className="text-[10px] text-gray-500 font-bold uppercase mb-1.5 flex items-center gap-1">
-                                  <MessageSquare size={10}/> Follow-up & Remarks
-                                </p>
-                                <p className="text-xs text-gray-600 italic leading-relaxed">
-                                  {hist.followUpDetails || hist.remarks || 'No followup notes available.'}
-                                </p>
-                                {hist.nextVisitingDate && (
-                                  <p className="mt-2 text-[10px] font-bold text-blue-600 flex items-center gap-1">
-                                    <Calendar size={10}/> Next Visit: {new Date(hist.nextVisitingDate).toLocaleDateString()}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="text-center py-6 text-gray-400 italic text-sm">No other records found.</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
                 </div>
 
                 <div className="p-4 bg-gray-50 border-t flex gap-4 sticky bottom-0">
@@ -1487,8 +1483,14 @@ const StudentAdmission = () => {
                 <label className="label text-purple-700">
                   9. Reference Details
                 </label>
-                <div className="flex gap-4 items-center">
-                  <select {...register("reference")} className="input w-full">
+                <div className="flex gap-4 items-start" title={referenceLockTitle}>
+                  <div className="w-full">
+                    <select
+                      {...register("reference")}
+                      className="input w-full disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                      disabled={isReferenceLocked}
+                      title={referenceLockTitle}
+                    >
                     <option value="Direct">Direct / Walk-in</option>
                     <optgroup label="Staff">
                         {employees?.map((e) => (
@@ -1502,15 +1504,23 @@ const StudentAdmission = () => {
                              <option key={r._id || i} value={r.name}>{r.name}</option>
                         ))}
                     </optgroup>
-                  </select>
-                  <button
+                    </select>
+                    {isReferenceLocked && (
+                      <div className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                        <Lock size={12} /> Only Super Admin can change fetched reference.
+                      </div>
+                    )}
+                  </div>
+                  {!isReferenceLocked && (
+                    <button
                       type="button"
                       onClick={() => setShowRefModal(true)}
                       className="p-2 bg-blue-50 text-blue-600 rounded border hover:bg-blue-100 flex-shrink-0"
                       title="Add New Reference"
                     >
                       <Plus size={20} />
-                  </button>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -2151,47 +2161,202 @@ const StudentAdmission = () => {
                   </div>
                   
                   {/* Dynamic Payment Fields */}
-                  {watch("receiptPaymentMode") === "Cheque" && (
+                  {receiptPaymentMode === "Cheque" && (
                      <>
-                        <div className="col-span-2 md:col-span-1">
-                            <label className="label">Bank Name *</label>
-                            <input 
-                                {...register("bankName", { required: true })} 
-                                className="input" 
-                                placeholder="Bank Name" 
-                                onChange={(e) => setValue('bankName', formatInputText(e.target.value))}
-                            />
+                        <div className="col-span-2">
+                          <label className="label">Bank Name *</label>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {POPULAR_INDIAN_BANKS.map((bank) => (
+                              <label key={bank} className="flex items-center gap-2 border rounded p-2 text-sm cursor-pointer hover:bg-blue-50">
+                                <input
+                                  type="radio"
+                                  value={bank}
+                                  {...register("receiptBankOption")}
+                                  onChange={(e) => {
+                                    setValue("receiptBankOption", e.target.value);
+                                    setValue("bankName", e.target.value === "Other" ? "" : e.target.value);
+                                  }}
+                                />
+                                {bank}
+                              </label>
+                            ))}
+                          </div>
                         </div>
+                        {receiptBankOption === "Other" && (
+                          <div className="col-span-2 md:col-span-1">
+                              <label className="label">Other Bank Name *</label>
+                              <input
+                                  {...register("bankName")}
+                                  className="input"
+                                  placeholder="Enter bank name"
+                                  onChange={(e) => setValue('bankName', formatInputText(e.target.value))}
+                              />
+                          </div>
+                        )}
                         <div className="col-span-2 md:col-span-1">
                             <label className="label">Cheque Number *</label>
-                            <input {...register("chequeNumber", { required: true })} className="input" placeholder="Cheque No" />
+                            <input {...register("chequeNumber")} className="input" placeholder="Cheque No" />
                         </div>
                         <div className="col-span-2 md:col-span-1">
                             <label className="label">Cheque Date *</label>
-                            <input type="date" {...register("chequeDate", { required: true })} className="input" />
+                            <input type="date" {...register("chequeDate")} className="input" />
                         </div>
                      </>
                   )}
                   
-                  {watch("receiptPaymentMode") === "Online/UPI" && (
+                  {receiptPaymentMode === "Online/UPI" && (
                      <>
                         <div className="col-span-2 md:col-span-1">
-                            <label className="label">Bank Name *</label>
-                            <input 
-                                {...register("bankName", { required: true })} 
-                                className="input" 
-                                placeholder="Bank Name" 
-                                onChange={(e) => setValue('bankName', formatInputText(e.target.value))}
-                            />
+                          <label className="label">Payment Type *</label>
+                          <select
+                            {...register("onlinePaymentType")}
+                            className="input"
+                            onChange={(e) => {
+                              setValue("onlinePaymentType", e.target.value);
+                              setValue("onlineProviderOption", "");
+                              setValue("paymentProviderName", "");
+                              setValue("bankName", "");
+                            }}
+                          >
+                            {ONLINE_PAYMENT_TYPES.map((type) => (
+                              <option key={type} value={type}>{type}</option>
+                            ))}
+                          </select>
                         </div>
+
+                        {onlinePaymentType === "UPI" ? (
+                          <>
+                            <div className="col-span-2">
+                              <label className="label">UPI App / Provider *</label>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                {UPI_PROVIDERS.map((provider) => (
+                                  <label key={provider} className="flex items-center gap-2 border rounded p-2 text-sm cursor-pointer hover:bg-blue-50">
+                                    <input
+                                      type="radio"
+                                      value={provider}
+                                      {...register("onlineProviderOption")}
+                                      onChange={(e) => {
+                                        setValue("onlineProviderOption", e.target.value);
+                                        setValue("paymentProviderName", e.target.value === "Other" ? "" : e.target.value);
+                                        setValue("bankName", e.target.value === "Other" ? "" : e.target.value);
+                                      }}
+                                    />
+                                    {provider}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                            {onlineProviderOption === "Other" && (
+                              <div className="col-span-2 md:col-span-1">
+                                <label className="label">UPI App Name *</label>
+                                <input
+                                  {...register("paymentProviderName")}
+                                  className="input"
+                                  placeholder="Enter UPI app name"
+                                  onChange={(e) => {
+                                    const value = formatInputText(e.target.value);
+                                    setValue("paymentProviderName", value);
+                                    setValue("bankName", value);
+                                  }}
+                                />
+                              </div>
+                            )}
+                            {onlineProviderOption && (
+                              <div className="col-span-2 md:col-span-1">
+                                <label className="label">UPI ID / Number *</label>
+                                <input
+                                  {...register("upiId")}
+                                  className="input"
+                                  placeholder="example@upi or mobile number"
+                                />
+                              </div>
+                            )}
+                          </>
+                        ) : onlinePaymentType === "Other" ? (
+                          <>
+                            <div className="col-span-2">
+                              <label className="label">Payment Name *</label>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                {["Other"].map((provider) => (
+                                  <label key={provider} className="flex items-center gap-2 border rounded p-2 text-sm cursor-pointer hover:bg-blue-50">
+                                    <input
+                                      type="radio"
+                                      value={provider}
+                                      {...register("onlineProviderOption")}
+                                      onChange={(e) => {
+                                        setValue("onlineProviderOption", e.target.value);
+                                        setValue("paymentProviderName", e.target.value === "Other" ? "" : e.target.value);
+                                        setValue("bankName", e.target.value === "Other" ? "" : e.target.value);
+                                      }}
+                                    />
+                                    {provider}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                            {(onlineProviderOption === "Other" || onlinePaymentType === "Other") && (
+                              <div className="col-span-2 md:col-span-1">
+                                <label className="label">Name *</label>
+                                <input
+                                  {...register("paymentProviderName")}
+                                  className="input"
+                                  placeholder="Enter payment name"
+                                  onChange={(e) => {
+                                    const value = formatInputText(e.target.value);
+                                    setValue("paymentProviderName", value);
+                                    setValue("bankName", value);
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="col-span-2">
+                            <label className="label">Bank Name *</label>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                              {POPULAR_INDIAN_BANKS.map((bank) => (
+                                <label key={bank} className="flex items-center gap-2 border rounded p-2 text-sm cursor-pointer hover:bg-blue-50">
+                                  <input
+                                    type="radio"
+                                    value={bank}
+                                    {...register("receiptBankOption")}
+                                    onChange={(e) => {
+                                      setValue("receiptBankOption", e.target.value);
+                                      setValue("bankName", e.target.value === "Other" ? "" : e.target.value);
+                                    }}
+                                  />
+                                  {bank}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {(onlinePaymentType === "Net Banking" || onlinePaymentType === "Bank Transfer") && receiptBankOption === "Other" && (
+                          <div className="col-span-2 md:col-span-1">
+                              <label className="label">Other Bank Name *</label>
+                              <input
+                                  {...register("bankName")}
+                                  className="input"
+                                  placeholder="Enter bank name"
+                                  onChange={(e) => setValue('bankName', formatInputText(e.target.value))}
+                              />
+                          </div>
+                        )}
                         <div className="col-span-2 md:col-span-1">
                             <label className="label">Transaction Number *</label>
-                            <input {...register("transactionId", { required: true })} className="input" placeholder="Trans ID / Ref No" />
+                            <input {...register("transactionId")} className="input" placeholder="UTR / Ref No / Transaction ID" />
                         </div>
                         <div className="col-span-2 md:col-span-1">
                             <label className="label">Transaction Date *</label>
-                            <input type="date" {...register("transactionDate", { required: true })} className="input" />
+                            <input type="date" {...register("transactionDate")} className="input" />
                         </div>
+                        {onlinePaymentType !== "UPI" && (
+                          <div className="col-span-2">
+                              <label className="label">Payment Details</label>
+                              <input {...register("paymentDetails")} className="input" placeholder="Account last 4 digits, note, or extra details" />
+                          </div>
+                        )}
                      </>
                   )}
                   <div className="col-span-2">
@@ -2280,7 +2445,6 @@ const StudentAdmission = () => {
                         type="button"
                         onClick={() => {
                           setViewDetailsMatch(match);
-                          fetchInquiryHistory(match.type === 'Visitor' ? (match.mobileNumber || match.contactParent) : (match.contactStudent || match.contactParent));
                         }}
                         className="p-1.5 bg-orange-100 text-orange-700 rounded hover:bg-orange-200 transition-colors"
                         title="View Details"

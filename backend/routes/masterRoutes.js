@@ -12,7 +12,7 @@ const {
     getExams, createExam
 } = require('../controllers/masterController');
 const { getExamRequests, cancelExamRequest, createExamRequest, getPendingExams } = require('../controllers/examController');
-const { getExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, getExamScheduleDetails } = require('../controllers/examScheduleController');
+const { getExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, getExamScheduleDetails, getMyExamSchedules } = require('../controllers/examScheduleController');
 const { getExamResults, createExamResult, updateExamResult, deleteExamResult, getExamResultById, getNextResultNumbers, verifyExamResult } = require('../controllers/examResultController');
 const { createQuestion, getQuestions, updateQuestion, deleteQuestion } = require('../controllers/freeLearningController');
 const locationRoutes = require('./locationRoutes');
@@ -84,6 +84,7 @@ router.route('/exam-schedule/:id')
     .delete(protect, deleteExamSchedule);
 
 router.get('/exam-schedule/:id/details', protect, getExamScheduleDetails);
+router.get('/exam-schedule/my', protect, getMyExamSchedules);
 
 // --- Exam Results ---
 router.post('/exam-result/verify', verifyExamResult); // Public Access

@@ -22,19 +22,14 @@ const LoginPage = () => {
       toast.error(message);
     }
     if (isSuccess && user) {
-        if (user.role === 'Student') {
-            toast.success(`Welcome back, ${user.name || 'Student'}! 🎓`);
-            navigate('/student/home');
-        } else {
-            toast.success(`Welcome back, ${user.name}!`);
-            navigate('/');
-        }
+        toast.success(`Welcome back, ${user.name}!`);
+        navigate('/');
     }
     dispatch(reset());
   }, [user, isError, isSuccess, message, navigate, dispatch]);
 
   const onSubmit = (data) => {
-    dispatch(login(data));
+    dispatch(login({ ...data, rejectRole: 'Student' }));
   };
 
   return (

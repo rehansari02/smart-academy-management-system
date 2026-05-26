@@ -32,6 +32,9 @@ const feeReceiptSchema = new mongoose.Schema(
     transactionDate: { type: Date },
     
     transactionId: { type: String }, // For Online/UPI payments
+    onlinePaymentType: { type: String },
+    paymentProviderName: { type: String },
+    paymentDetails: { type: String },
     remarks: { type: String },
     date: { type: Date, default: Date.now },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

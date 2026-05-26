@@ -64,17 +64,37 @@ const registerUser = asyncHandler(async (req, res) => {
 
 // @desc Login
 // @route POST /api/auth/login
-// @route POST /api/auth/login
 const loginUser = asyncHandler(async (req, res) => {
     const { email, password, role } = req.body;
-    // Allow login with either email or username
-    // The 'email' field from request body acts as the identifier
-    const user = await User.findOne({ 
-        $or: [
-            { email: email }, 
-            { username: email }
-        ] 
-    });
+    
+    let user;
+    let studentProfile = null;
+
+    // 1. If role is Student, first try to find by Enrollment Number or Registration Number
+    if (role === 'Student') {
+        const Student = require('../models/Student');
+        studentProfile = await Student.findOne({
+            $or: [
+                { enrollmentNo: email },
+                { regNo: email }
+            ],
+            isDeleted: false
+        }).populate('userId');
+
+        if (studentProfile && studentProfile.userId) {
+            user = studentProfile.userId;
+        }
+    }
+
+    // 2. If not found via student profile (or not a student), try finding by User model (email/username)
+    if (!user) {
+        user = await User.findOne({ 
+            $or: [
+                { email: email }, 
+                { username: email }
+            ] 
+        });
+    }
 
     if (user && (await user.matchPassword(password))) {
         // Enforce Role Check if provided (Security Level)
@@ -114,7 +134,14 @@ const loginUser = asyncHandler(async (req, res) => {
         // --- Student Specific Data Sync ---
         // If role is Student, fetch details from Student model to ensure we have the latest profile info
         if (user.role === 'Student') {
-             const studentProfile = await require('../models/Student').findOne({ userId: user._id }).populate('course');
+             // If we already fetched it during login identification, use it, otherwise fetch now
+             if (!studentProfile) {
+                studentProfile = await require('../models/Student').findOne({ userId: user._id }).populate('course');
+             } else if (!studentProfile.course) {
+                // If we fetched it earlier but didn't populate course, populate it now
+                await studentProfile.populate('course');
+             }
+
              if (studentProfile) {
                  let userNeedsUpdate = false;
                  // Prioritize Student Profile data if User data is empty

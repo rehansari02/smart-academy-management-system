@@ -97,6 +97,46 @@ const ExamSchedule = () => {
   const selectedCourseObj = courses.find(c => c._id === selectedCourse);
   const selectedCourseName = selectedCourseObj ? selectedCourseObj.name : '';
 
+  const buildTimeTableFromCourse = (course, existingTimeTable = []) => {
+    const existingBySubject = new Map(
+        (existingTimeTable || []).map(item => [
+            String(item.subject?._id || item.subject),
+            item
+        ])
+    );
+
+    const courseSubjects = [...(course?.subjects || [])]
+        .filter(item => item.subject)
+        .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+    if (courseSubjects.length === 0) {
+        return (existingTimeTable || []).map(item => ({
+            ...item,
+            subject: item.subject?._id || item.subject,
+            name: item.subject?.name || item.name || 'Subject',
+            total: Number(item.total) || (Number(item.theory) || 0) + (Number(item.practical) || 0)
+        }));
+    }
+
+    return courseSubjects.map(item => {
+        const subject = item.subject;
+        const saved = existingBySubject.get(String(subject._id));
+        const theory = saved?.theory ?? subject.theoryMarks ?? 0;
+        const practical = saved?.practical ?? subject.practicalMarks ?? 0;
+
+        return {
+            subject: subject._id,
+            name: subject.name,
+            date: saved?.date || '',
+            startTime: saved?.startTime || '10:00 AM',
+            endTime: saved?.endTime || '01:00 PM',
+            theory,
+            practical,
+            total: Number(saved?.total) || Number(subject.totalMarks) || ((Number(theory) || 0) + (Number(practical) || 0))
+        };
+    });
+  };
+
   const handleCreateExamName = async () => {
     if (!newExamName.trim()) {
       toast.error('Exam name is required');
@@ -198,19 +238,7 @@ const ExamSchedule = () => {
             // Only re-populate if it's a new entry (not editing or if course changed)
             // If editing, the timeTable is usually loaded from the record
             if (!editMode || timeTableData.length === 0) {
-                const initialTable = [...course.subjects]
-                    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-                    .map(s => ({
-                        subject: s.subject?._id,
-                        name: s.subject?.name,
-                        date: '',
-                        startTime: '10:00 AM',
-                        endTime: '01:00 PM',
-                        theory: s.subject?.theoryMarks || 0,
-                        practical: s.subject?.practicalMarks || 0,
-                        total: s.subject?.totalMarks || 0
-                    }));
-                setTimeTableData(initialTable);
+                setTimeTableData(buildTimeTableFromCourse(course));
             }
         }
     } else {
@@ -251,7 +279,8 @@ const ExamSchedule = () => {
             startTime: item.startTime,
             endTime: item.endTime,
             theory: item.theory,
-            practical: item.practical
+            practical: item.practical,
+            total: item.total || ((Number(item.theory) || 0) + (Number(item.practical) || 0))
         }))
     };
     if (editMode) {
@@ -291,17 +320,11 @@ const ExamSchedule = () => {
     setSelectedAttendees(schedule.attendees || []);
     
     // Map existing timeTable with names from course
-    if (schedule.timeTable && schedule.timeTable.length > 0) {
-        const course = courses.find(c => c._id === schedule.course?._id);
-        const mapped = schedule.timeTable.map(tt => {
-            const subjectObj = course?.subjects?.find(s => s.subject?._id === (tt.subject?._id || tt.subject));
-            return {
-                ...tt,
-                subject: tt.subject?._id || tt.subject,
-                name: tt.subject?.name || subjectObj?.subject?.name || 'Subject'
-            };
-        });
-        setTimeTableData(mapped);
+    const course = courses.find(c => c._id === schedule.course?._id);
+    if (course) {
+        setTimeTableData(buildTimeTableFromCourse(course, schedule.timeTable));
+    } else {
+        setTimeTableData(buildTimeTableFromCourse(null, schedule.timeTable));
     }
   };
 
@@ -513,6 +536,7 @@ const ExamSchedule = () => {
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-blue-100 text-blue-900 uppercase text-[10px] font-bold border-b border-blue-200">
                                     <tr>
+                                        <th className="px-4 py-2 border-r border-blue-200 text-center w-16">Sr. No.</th>
                                         <th className="px-4 py-2 border-r border-blue-200">Subject</th>
                                         <th className="px-4 py-2 border-r border-blue-200 w-32">Date</th>
                                         <th className="px-4 py-2 border-r border-blue-200">Time</th>
@@ -525,6 +549,9 @@ const ExamSchedule = () => {
                                     {timeTableData.length > 0 ? (
                                         timeTableData.map((item, index) => (
                                             <tr key={index} className="border-b border-blue-100 bg-white hover:bg-blue-50/30 transition-colors">
+                                                <td className="px-4 py-3 text-center font-bold text-gray-500 border-r border-blue-100">
+                                                    {index + 1}
+                                                </td>
                                                 <td className="px-4 py-3 font-bold text-gray-700 border-r border-blue-100">
                                                     {item.name}
                                                 </td>
@@ -642,7 +669,7 @@ const ExamSchedule = () => {
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan="6" className="px-4 py-8 text-center text-gray-400 italic">
+                                            <td colSpan="7" className="px-4 py-8 text-center text-gray-400 italic">
                                                 Select a course to populate subjects...
                                             </td>
                                         </tr>
@@ -902,6 +929,7 @@ const ExamSchedule = () => {
                                 <table className="min-w-full divide-y divide-gray-200">
                                     <thead className="bg-gray-50 text-[10px] font-bold text-gray-500 uppercase">
                                         <tr>
+                                            <th className="px-4 py-3 text-left">Sr. No.</th>
                                             <th className="px-4 py-3 text-left">Subject</th>
                                             <th className="px-4 py-3 text-left">Date</th>
                                             <th className="px-4 py-3 text-left">Time</th>
@@ -913,6 +941,7 @@ const ExamSchedule = () => {
                                     <tbody className="divide-y divide-gray-100 text-sm">
                                         {detailData.timeTable?.length > 0 ? detailData.timeTable.map((tt, i) => (
                                             <tr key={i} className="hover:bg-blue-50/30">
+                                                <td className="px-4 py-3 text-gray-400">{i + 1}</td>
                                                 <td className="px-4 py-3 font-bold text-gray-800">{tt.subject?.name || 'Subject'}</td>
                                                 <td className="px-4 py-3 text-gray-600">
                                                     {tt.date ? new Date(tt.date).toLocaleDateString() : '-'}
@@ -925,7 +954,7 @@ const ExamSchedule = () => {
                                                 <td className="px-4 py-3 text-center font-bold text-blue-700">{tt.total || 0}</td>
                                             </tr>
                                         )) : (
-                                            <tr><td colSpan="6" className="text-center py-4 text-gray-400 italic">No timetable found.</td></tr>
+                                            <tr><td colSpan="7" className="text-center py-4 text-gray-400 italic">No timetable found.</td></tr>
                                         )}
                                     </tbody>
                                 </table>

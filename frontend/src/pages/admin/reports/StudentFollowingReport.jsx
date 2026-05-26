@@ -131,8 +131,8 @@ const StudentFollowingReport = () => {
 
     return (
         <div className="container mx-auto p-4 max-w-7xl">
-            <h1 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2 print:hidden">
-                <FileText className="text-primary" /> Student Following Report (DSR)
+            <h1 className="text-2xl font-bold text-gray-800 mb-6 flex items-center justify-center gap-2 underline decoration-2 underline-offset-4 print:hidden">
+                <FileText className="text-primary" /> Student Following Report
             </h1>
 
             {/* --- Filter Section (Hidden in Print) --- */}
@@ -162,7 +162,13 @@ const StudentFollowingReport = () => {
                             placeholder="Search by name..."
                             onSelect={handleStudentSelect}
                             displayField="name"
-                            additionalFilters={{ branchId: filters.branchId }}
+                            additionalFilters={{
+                                branchId: appliedFilters.branchId,
+                                source: appliedFilters.source,
+                                startDate: appliedFilters.startDate,
+                                endDate: appliedFilters.endDate,
+                                referenceBy: appliedFilters.referenceBy
+                            }}
                         />
                     </div>
                     <div>
@@ -215,7 +221,7 @@ const StudentFollowingReport = () => {
                 {/* Report Title */}
                 <div className="text-center mb-6">
                     <h2 className="text-xl font-bold text-blue-500 uppercase tracking-wide inline-block border-b border-blue-200 pb-1">
-                        Student Following Report (DSR)
+                        Student Following Report
                     </h2>
                     <p className="text-xs text-gray-500 mt-1">
                         Report Date: {moment().format('DD-MM-YYYY')}
@@ -226,10 +232,10 @@ const StudentFollowingReport = () => {
                 <table className="w-full border-collapse border border-gray-300 text-xs">
                     <thead>
                         <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
-                            <th className="p-2 border font-semibold w-12 text-center align-middle">Sr</th>
+                            <th className="p-2 border font-semibold w-12 text-center align-middle">Sr No.</th>
                             <th className="p-2 border font-semibold align-middle w-24 text-center">Date</th>
                             <th className="p-2 border font-semibold align-middle text-center w-1/5">Student Name</th>
-                            <th className="p-2 border font-semibold align-middle text-center w-1/4">Contact</th>
+                            <th className="p-2 border font-semibold align-middle text-center w-1/4">Contact (G/H/S)</th>
                             <th className="p-2 border font-semibold align-middle text-center w-1/4">Address</th>
                             <th className="p-2 border font-semibold align-middle text-center w-24">Join Status</th>
                             <th className="p-2 border font-semibold align-middle text-center w-20">Followup Times</th>
@@ -245,7 +251,7 @@ const StudentFollowingReport = () => {
                                     {moment(item.inquiryDate).format('DD-MM-YYYY')}
                                 </td>
                                 <td className="p-2 border font-medium text-gray-900 capitalize">
-                                    {item.firstName} {item.lastName}
+                                    {item.firstName} {item.middleName ? `${item.middleName} ` : ''}{item.lastName || ''}
                                 </td>
 
                                 {/* Contact Column with G/H/S Split */}
@@ -279,8 +285,7 @@ const StudentFollowingReport = () => {
                                 </td>
 
                                 <td className="p-2 border text-gray-700">
-                                    {/* Mocking Follow Up Count if not available from backend */}
-                                    {item.followUpCount || 0}
+                                    {item.followUpCount || item.followUpHistory?.length || 0}
                                 </td>
 
                                 <td className="p-2 border whitespace-nowrap text-gray-700">
@@ -288,7 +293,7 @@ const StudentFollowingReport = () => {
                                 </td>
 
                                 <td className="p-2 border text-left text-gray-600">
-                                    {item.remarks || ''}
+                                    {item.followUpDetails || item.remarks || ''}
                                 </td>
                             </tr>
                         )) : (

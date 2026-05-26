@@ -9,8 +9,7 @@ const Visitors = () => {
     const visitorData = location.state?.visitorData;
 
     const handleSuccess = () => {
-        // After save/update, clear state if needed
-        navigate('/transaction/visitors', { replace: true, state: {} });
+        navigate('/transaction/visitors/todays-list', { replace: true, state: {} });
     };
 
     return (

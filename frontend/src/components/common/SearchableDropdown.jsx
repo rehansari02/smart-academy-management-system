@@ -7,6 +7,7 @@ const SearchableDropdown = ({
     onSelect, 
     placeholder = "Search...", 
     label,
+    clearLabel = "All References",
     className = "" 
 }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -70,9 +71,10 @@ const SearchableDropdown = ({
                     placeholder={placeholder}
                     value={query}
                     onChange={(e) => {
-                        setQuery(e.target.value);
+                        const nextValue = e.target.value;
+                        setQuery(nextValue);
+                        onSelect(nextValue);
                         if (!isOpen) setIsOpen(true);
-                        if (!e.target.value) onSelect('');
                     }}
                 />
                 <div className="absolute right-2 top-2.5 flex items-center gap-1 text-gray-400">
@@ -93,7 +95,7 @@ const SearchableDropdown = ({
                                 onClick={() => handleSelect('')}
                                 className="p-2.5 text-sm hover:bg-gray-100 cursor-pointer text-gray-500 italic border-b"
                             >
-                                All References
+                                {clearLabel}
                             </li>
                             {filteredOptions.map((opt, idx) => (
                                 <li 

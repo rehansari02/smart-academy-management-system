@@ -54,8 +54,8 @@ const ExamResultPrint = () => {
 
     // Full english translation of grand totals
     const fullNumberToWords = (num) => {
-        if (!num || isNaN(num)) return '';
         if (num === 0) return 'ZERO';
+        if (!num || isNaN(num)) return '';
         const ones = ["", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN", "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN", "FIFTEEN", "SIXTEEN", "SEVENTEEN", "EIGHTEEN", "NINETEEN"];
         const tens = ["", "", "TWENTY", "THIRTY", "FORTY", "FIFTY", "SIXTY", "SEVENTY", "EIGHTY", "NINETY"];
 
@@ -190,7 +190,11 @@ const ExamResultPrint = () => {
     const exam = result.exam;
     const course = result.course;
     const subjects = exam?.timeTable || [];
-    const issueDate = moment(result.createdAt);
+    const issueDate = moment(result.issueDate || result.createdAt);
+    const marksObtained = Number(result.marksObtained || 0);
+    const totalMarks = Number(result.totalMarks || 0);
+    const marksPercentage = result.percentage || (totalMarks > 0 ? ((marksObtained / totalMarks) * 100).toFixed(2) : '0.00');
+    const totalPresentsText = result.totalPresentsText || result.attendanceSummary?.totalPresentsText || '';
 
     // Render actual student marks only
     const marksData = result.subjectMarks || [];
@@ -266,7 +270,7 @@ const ExamResultPrint = () => {
                                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
                                         <tr style={{ height: '6.5mm' }}>
-                                            <th rowSpan="2" style={{ width: '8%', border: '1px solid #000', fontWeight: '900', fontSize: '8.8px' }}>NO.</th>
+                                            <th rowSpan="2" style={{ width: '8%', border: '1px solid #000', fontWeight: '900', fontSize: '8.8px' }}>SR NO.</th>
                                             <th rowSpan="2" style={{ width: '30%', border: '1px solid #000', fontWeight: '900', fontSize: '8.8px' }}>NAME OF THE SUBJECT</th>
                                             <th rowSpan="2" style={{ width: '8%', border: '1px solid #000', fontWeight: '900', fontSize: '8.8px' }}>MAX.<br />MARKS</th>
                                             <th colSpan="3" style={{ width: '27%', border: '1px solid #000', fontWeight: '900', fontSize: '9px', padding: '2px 0' }}>OBTAINED MARKS</th>
@@ -320,10 +324,10 @@ const ExamResultPrint = () => {
                                                 GRAND TOTAL OF MARKS OBTAINED OUT OF
                                             </td>
                                             <td colSpan="3" style={{ fontSize: '11px', fontWeight: '900', textAlign: 'center', border: '1px solid #000' }}>
-                                                {result.marksObtained || '483'} / {result.totalMarks || '600'}
+                                                        {marksObtained} / {totalMarks}
                                             </td>
                                             <td colSpan="2" style={{ textAlign: 'right', paddingRight: '8px', fontSize: '9.5px', fontWeight: '900', textTransform: 'uppercase', border: '1px solid #000' }}>
-                                                {fullNumberToWords(result.marksObtained || 483)} ONLY
+                                                        {fullNumberToWords(marksObtained)} ONLY
                                             </td>
                                         </tr>
                                     </tbody>
@@ -349,8 +353,8 @@ const ExamResultPrint = () => {
                                         <tr style={{ height: '10mm' }}>
                                             <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: '9px' }}>{exam?.examName || 'JANUARY - 2019'}</td>
                                             <td className="td-blue" style={{ border: '1px solid #000', fontWeight: '900', fontSize: '9px', color: '#1565C0' }}>{result.somNumber || 'SOM-G0035'}</td>
-                                            <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: '9px' }}>{result.totalPresentsText || 'DAYS 275 OUT OF 307 (89.50)'}</td>
-                                            <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: '9px' }}>{result.percentage || '66.20'}</td>
+                                                        <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: '9px' }}>{totalPresentsText}</td>
+                                                        <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: '9px' }}>{marksPercentage}</td>
                                             <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: '10px' }}>{result.grade || 'DISTINCTION'}</td>
                                         </tr>
                                     </tbody>

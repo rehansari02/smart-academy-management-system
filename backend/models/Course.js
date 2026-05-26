@@ -18,7 +18,8 @@ const courseSchema = new mongoose.Schema({
     
     // --- Configuration ---
     sorting: { type: Number, default: 0 }, // Course display order
-    commission: { type: Number, default: 0 }, // For field employees (%)
+    commissionType: { type: String, enum: ['Percentage', 'Amount'], default: 'Percentage' },
+    commission: { type: Number, default: 0 }, // Commission value; type is defined by commissionType
     
     // --- Duration & Type ---
     duration: { type: Number, required: true },

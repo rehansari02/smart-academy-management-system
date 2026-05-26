@@ -3,6 +3,7 @@ const StudentAttendance = require('../models/StudentAttendance');
 const Course = require('../models/Course');
 const CourseFeedback = require('../models/CourseFeedback');
 const moment = require('moment');
+const ExamSchedule = require('../models/ExamSchedule');
 
 // @desc    Get Student Dashboard Stats (Attendance)
 // @route   GET /api/student-portal/dashboard
@@ -12,10 +13,19 @@ const getDashboardStats = async (req, res) => {
         const userId = req.user._id;
         
         // 1. Find Student Profile linked to this User
-        const student = await Student.findOne({ userId }).populate('course');
-        if (!student) {
+        // Use find().sort() to be deterministic, or ensure uniqueness in the DB
+        const students = await Student.find({ userId, isDeleted: false }).populate('course');
+        
+        if (students.length === 0) {
             return res.status(404).json({ message: 'Student profile not found' });
         }
+
+        if (students.length > 1) {
+            console.warn(`[SECURITY] Multiple student profiles found for userId: ${userId}. Using the most recent active one.`);
+        }
+
+        // Pick the most recent active student if multiple exist
+        const student = students.sort((a, b) => b.updatedAt - a.updatedAt)[0];
 
         // 2. Calculate Total Course Days
         let totalCourseDays = 0;
@@ -93,7 +103,7 @@ const getDashboardStats = async (req, res) => {
 const getCourseDetails = async (req, res) => {
     try {
         const userId = req.user._id;
-        const student = await Student.findOne({ userId }).populate({
+        const student = await Student.findOne({ userId, isDeleted: false }).populate({
             path: 'course',
             populate: {
                 path: 'subjects.subject',
@@ -139,7 +149,7 @@ const submitFeedback = async (req, res) => {
         const userId = req.user._id;
         
         // Find Student to link properly (optional but good for checking validity)
-        const student = await Student.findOne({ userId });
+        const student = await Student.findOne({ userId, isDeleted: false });
 
         const newFeedback = await CourseFeedback.create({
             studentId: student?._id,
@@ -199,7 +209,7 @@ const submitFreeLearning = async (req, res) => {
         const FreeLearning = require('../models/FreeLearning');
         const FreeLearningProgress = require('../models/FreeLearningProgress');
 
-        const student = await Student.findOne({ userId });
+        const student = await Student.findOne({ userId, isDeleted: false });
         if (!student) return res.status(404).json({ message: 'Student not found' });
 
         let totalScore = 0;
@@ -250,7 +260,7 @@ const getFreeLearningReport = async (req, res) => {
         const Student = require('../models/Student');
         const FreeLearningProgress = require('../models/FreeLearningProgress');
 
-        const student = await Student.findOne({ userId });
+        const student = await Student.findOne({ userId, isDeleted: false });
         if (!student) return res.status(404).json({ message: 'Student not found' });
 
         const reports = await FreeLearningProgress.find({ studentId: student._id })
@@ -274,7 +284,7 @@ const getStudentFees = async (req, res) => {
         const Student = require('../models/Student');
         const FeeReceipt = require('../models/FeeReceipt');
 
-        const student = await Student.findOne({ userId });
+        const student = await Student.findOne({ userId, isDeleted: false });
         if (!student) return res.status(404).json({ message: 'Student not found' });
 
         const receipts = await FeeReceipt.find({ student: student._id })
@@ -297,6 +307,75 @@ const getStudentFees = async (req, res) => {
     }
 };
 
+// @desc    Get Student Exam Schedules
+// @route   GET /api/student-portal/exam-schedules
+// @access  Private (Student)
+const getStudentExamSchedules = async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        const student = await Student.findOne({ userId, isDeleted: { $ne: true } }).populate('course', 'name');
+        if (!student) {
+            return res.status(404).json({ message: 'Student not found' });
+        }
+
+        if (!student.course?._id) {
+            return res.json({
+                student: {
+                    _id: student._id,
+                    name: `${student.firstName} ${student.lastName}`.trim(),
+                    courseName: ''
+                },
+                schedules: []
+            });
+        }
+
+        const schedules = await ExamSchedule.find({
+            isDeleted: false,
+            isActive: true,
+            course: student.course._id
+        })
+            .populate('course', 'name')
+            .populate('timeTable.subject', 'name')
+            .sort({ createdAt: -1 });
+
+        const visibleSchedules = schedules.filter((schedule) => {
+            const attendeeIds = (schedule.attendees || []).map(id => String(id));
+            return attendeeIds.length === 0 || attendeeIds.includes(String(student._id));
+        });
+
+        const payload = visibleSchedules.map((schedule) => ({
+            _id: schedule._id,
+            examName: schedule.examName,
+            remarks: schedule.remarks,
+            isActive: schedule.isActive,
+            createdAt: schedule.createdAt,
+            course: schedule.course,
+            timeTable: (schedule.timeTable || []).map((row) => ({
+                subject: row.subject,
+                date: row.date,
+                startTime: row.startTime,
+                endTime: row.endTime,
+                theory: row.theory,
+                practical: row.practical,
+                total: row.total
+            }))
+        }));
+
+        res.json({
+            student: {
+                _id: student._id,
+                name: `${student.firstName} ${student.lastName}`.trim(),
+                courseName: student.course?.name || ''
+            },
+            schedules: payload
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
 module.exports = {
     getDashboardStats,
     getCourseDetails,
@@ -305,5 +384,6 @@ module.exports = {
     getFreeLearningQuestions,
     submitFreeLearning,
     getFreeLearningReport,
-    getStudentFees
+    getStudentFees,
+    getStudentExamSchedules
 };

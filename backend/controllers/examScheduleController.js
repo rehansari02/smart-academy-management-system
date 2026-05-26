@@ -1,7 +1,80 @@
 const asyncHandler = require('express-async-handler');
+const moment = require('moment');
 const ExamSchedule = require('../models/ExamSchedule');
 const Student = require('../models/Student');
 const ExamRequest = require('../models/ExamRequest');
+const Course = require('../models/Course');
+const sendSMS = require('../utils/smsSender');
+
+const formatDate = (value) => {
+    if (!value) return '';
+    const date = moment(value);
+    return date.isValid() ? date.format('DD/MM/YYYY') : '';
+};
+
+const buildExamScheduleMessage = (schedule, courseName) => {
+    const dates = (schedule.timeTable || [])
+        .map(item => item.date)
+        .filter(Boolean)
+        .map(date => new Date(date))
+        .filter(date => !Number.isNaN(date.getTime()))
+        .sort((a, b) => a.getTime() - b.getTime());
+
+    const fromDate = formatDate(dates[0]);
+    const toDate = formatDate(dates[dates.length - 1]);
+    const dateText = fromDate && toDate
+        ? `${fromDate} to ${toDate}`
+        : fromDate || toDate || 'the scheduled dates';
+
+    return `Exam schedule for ${courseName || 'your course'} (${schedule.examName || 'Exam'}) will be conducted from ${dateText}. Please check your exam timetable.`;
+};
+
+const queueExamScheduleSms = (scheduleId) => {
+    setImmediate(async () => {
+        try {
+            const schedule = await ExamSchedule.findById(scheduleId)
+                .populate('course', 'name')
+                .populate({
+                    path: 'attendees',
+                    select: 'firstName lastName mobileStudent mobileParent course isDeleted isCancelled isRegistered'
+                });
+
+            if (!schedule) return;
+
+            const attendeeIds = (schedule.attendees || [])
+                .map(student => student?._id)
+                .filter(Boolean);
+
+            let students = [];
+
+            if (attendeeIds.length > 0) {
+                students = await Student.find({
+                    _id: { $in: attendeeIds },
+                    isDeleted: { $ne: true },
+                    isCancelled: { $ne: true }
+                }).select('firstName lastName mobileStudent mobileParent');
+            } else if (schedule.course) {
+                students = await Student.find({
+                    course: schedule.course._id,
+                    isDeleted: { $ne: true },
+                    isCancelled: { $ne: true },
+                    isRegistered: true
+                }).select('firstName lastName mobileStudent mobileParent');
+            }
+
+            if (!students.length) return;
+
+            const message = buildExamScheduleMessage(schedule, schedule.course?.name);
+            for (const student of students) {
+                const mobile = student.mobileStudent || student.mobileParent;
+                if (!mobile) continue;
+                await sendSMS(mobile, message, 'General');
+            }
+        } catch (error) {
+            console.error('Exam schedule SMS failed:', error.message);
+        }
+    });
+};
 
 // @desc    Get Exam Schedules
 // @route   GET /api/master/exam-schedule
@@ -47,6 +120,7 @@ const createExamSchedule = asyncHandler(async (req, res) => {
 
     // Populate course immediately for frontend return
     const populated = await ExamSchedule.findById(schedule._id).populate('course', 'name');
+    queueExamScheduleSms(schedule._id);
     res.status(201).json(populated);
 });
 
@@ -77,6 +151,7 @@ const updateExamSchedule = asyncHandler(async (req, res) => {
         }
 
         const populated = await ExamSchedule.findById(updated._id).populate('course', 'name');
+        queueExamScheduleSms(updated._id);
         res.json(populated);
     } else {
         res.status(404); throw new Error('Schedule not found');
@@ -110,6 +185,40 @@ const getExamScheduleDetails = asyncHandler(async (req, res) => {
         res.status(404); throw new Error('Schedule not found');
     }
 
+    const course = await Course.findById(schedule.course)
+        .populate({
+            path: 'subjects.subject',
+            select: 'name theoryMarks practicalMarks totalMarks'
+        });
+
+    const savedTimeTable = new Map(
+        (schedule.timeTable || []).map(item => [
+            item.subject?._id?.toString() || item.subject?.toString(),
+            item
+        ])
+    );
+
+    const timeTable = course?.subjects?.length
+        ? [...course.subjects]
+            .filter(item => item.subject)
+            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+            .map(item => {
+                const saved = savedTimeTable.get(item.subject._id.toString());
+                const theory = saved?.theory ?? item.subject.theoryMarks ?? 0;
+                const practical = saved?.practical ?? item.subject.practicalMarks ?? 0;
+
+                return {
+                    subject: item.subject,
+                    date: saved?.date || '',
+                    startTime: saved?.startTime || '10:00 AM',
+                    endTime: saved?.endTime || '01:00 PM',
+                    theory,
+                    practical,
+                    total: saved?.total || item.subject.totalMarks || ((Number(theory) || 0) + (Number(practical) || 0))
+                };
+            })
+        : schedule.timeTable;
+
     // Transform to flat format for table (Students)
     const attendees = (schedule.attendees || []).map(student => ({
         _id: student._id,
@@ -122,7 +231,66 @@ const getExamScheduleDetails = asyncHandler(async (req, res) => {
 
     res.json({
         attendees,
-        timeTable: schedule.timeTable
+        timeTable
+    });
+});
+
+// @desc    Get My Exam Schedules
+// @route   GET /api/master/exam-schedule/my
+const getMyExamSchedules = asyncHandler(async (req, res) => {
+    const student = await Student.findOne({
+        userId: req.user._id,
+        isDeleted: { $ne: true }
+    }).populate('course', 'name');
+
+    if (!student) {
+        res.status(404);
+        throw new Error('Student profile not found');
+    }
+
+    if (!student.course?._id) {
+        return res.json({ student: null, schedules: [] });
+    }
+
+    const schedules = await ExamSchedule.find({
+        isDeleted: false,
+        isActive: true,
+        course: student.course._id
+    })
+        .populate('course', 'name')
+        .populate('timeTable.subject', 'name')
+        .sort({ createdAt: -1 });
+
+    const visibleSchedules = schedules.filter((schedule) => {
+        const attendees = (schedule.attendees || []).map(id => String(id));
+        return attendees.length === 0 || attendees.includes(String(student._id));
+    });
+
+    const payload = visibleSchedules.map((schedule) => ({
+        _id: schedule._id,
+        examName: schedule.examName,
+        remarks: schedule.remarks,
+        isActive: schedule.isActive,
+        createdAt: schedule.createdAt,
+        course: schedule.course,
+        timeTable: (schedule.timeTable || []).map((row) => ({
+            subject: row.subject,
+            date: row.date,
+            startTime: row.startTime,
+            endTime: row.endTime,
+            theory: row.theory,
+            practical: row.practical,
+            total: row.total
+        }))
+    }));
+
+    res.json({
+        student: {
+            _id: student._id,
+            name: `${student.firstName} ${student.lastName}`.trim(),
+            courseName: student.course?.name || ''
+        },
+        schedules: payload
     });
 });
 
@@ -131,5 +299,6 @@ module.exports = {
     createExamSchedule, 
     updateExamSchedule, 
     deleteExamSchedule,
-    getExamScheduleDetails 
+    getExamScheduleDetails,
+    getMyExamSchedules 
 };

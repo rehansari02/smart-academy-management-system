@@ -288,7 +288,7 @@ const StudentLoginPage = () => {
                   {/* Username / Enrollment */}
                   <div className="animate-fade-up" style={{ animationDelay: '0.1s' }}>
                     <label className="block text-sm font-bold text-gray-700 mb-1.5">
-                      Username / Enrollment No.
+                      Username / Enrollment / Reg No.
                     </label>
                     <div className="relative group">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none transition-colors duration-300 group-focus-within:text-blue-600">
@@ -297,14 +297,14 @@ const StudentLoginPage = () => {
                       <input
                         type="text"
                         autoComplete="username"
-                        placeholder="Enter your username"
+                        placeholder="Username, Enrollment or Reg No"
                         className={`w-full pl-10 pr-4 py-3 border-2 rounded-xl text-sm font-medium text-gray-900 placeholder:text-gray-400 outline-none transition-all duration-300
                           ${errors.email
                             ? 'border-red-300 bg-red-50/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/10'
                             : 'border-gray-200 bg-gray-50/80 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
                           }
                           hover:border-gray-300`}
-                        {...register('email', { required: 'Username is required' })}
+                        {...register('email', { required: 'Identifier is required' })}
                       />
                       {/* Focus indicator line */}
                       <div className="absolute bottom-0 left-3 right-3 h-0.5 bg-blue-500 scale-x-0 group-focus-within:scale-x-100 transition-transform duration-300 rounded-full opacity-50" />

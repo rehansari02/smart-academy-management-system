@@ -43,10 +43,16 @@ const StudentNavbar = () => {
                 { title: 'Free Learning Progress Report', path: '/student/study/free-learning-report' },
             ] 
         },
-        { title: 'Blogs', path: '#' },
+        { title: 'Blogs', path: '/blog' },
         { title: 'Fees', path: '/student/fees' },
-        { title: 'Exam', path: '#' },
-        { title: 'Complain', path: '#' },
+        {
+            title: 'Exam',
+            path: '#',
+            subItems: [
+                { title: 'Exam Time Table', path: '/student/exam-schedule' }
+            ]
+        },
+        { title: 'Complain', path: '/student/complain' },
         { title: 'Connect', path: '#' },
     ];
 

@@ -63,6 +63,7 @@ export const MENU_CONFIG = [
         title: 'Attendance',
         type: 'nested',
         subItems: [
+          { title: 'Manage Attendance', path: '/transaction/attendance/manage' },
           { title: 'Student Attendance', path: '/transaction/attendance/student' },
           { title: 'Employee Attendance', path: '/transaction/attendance/employee' }
         ]
@@ -144,6 +145,7 @@ export const MENU_CONFIG = [
       { title: 'Manage Contacts', path: '/utility/contacts' },
       { title: 'Cloudinary Management', path: '/utility/cloudinary-manager' },
       { title: 'SMS Station', path: '/utility/sms-station' },
+      { title: 'Complain Box', path: '/utility/complains' },
       { title: 'Downloads', path: '/utility/downloads' },
     ]
   }

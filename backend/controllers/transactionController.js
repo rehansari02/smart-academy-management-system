@@ -3,6 +3,8 @@ const FeeReceipt = require("../models/FeeReceipt");
 const Student = require("../models/Student");
 const Batch = require("../models/Batch");
 const Counter = require("../models/Counter");
+const Education = require("../models/Education");
+const Reference = require("../models/Reference");
 const asyncHandler = require("express-async-handler");
 const generateEnrollmentNumber = require("../utils/enrollmentGenerator");
 const sendSMS = require("../utils/smsSender"); // Moved to top for global use
@@ -57,11 +59,17 @@ const getInquiries = asyncHandler(async (req, res) => {
       query.branchId = req.query.branchId;
   }
 
+  const sort = dateFilterType === "followUpDate"
+    ? { followUpDate: 1, createdAt: -1 }
+    : { createdAt: -1 };
+
   const inquiries = await Inquiry.find(query)
     .populate("interestedCourse", "name")
     .populate("allocatedTo", "name")
+    .populate("followUpBy", "name username")
+    .populate("followUpHistory.followUpBy", "name username")
     .populate("branchId", "name shortCode")
-    .sort({ createdAt: -1 });
+    .sort(sort);
 
   res.json(inquiries);
 });
@@ -97,14 +105,50 @@ const createInquiry = asyncHandler(async (req, res) => {
     }
   }
 
+  if (!req.user && data.source === "OnlineAdmission") {
+    const educationName = typeof data.education === "string" ? data.education.trim() : "";
+    if (educationName) {
+      await Education.findOneAndUpdate(
+        { name: { $regex: new RegExp(`^${educationName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }, isDeleted: false },
+        { $setOnInsert: { name: educationName } },
+        { upsert: true, new: true }
+      );
+      data.education = educationName;
+    }
+
+    if (data.referenceDetail && typeof data.referenceDetail === "object") {
+      const referenceName = typeof data.referenceDetail.name === "string" ? data.referenceDetail.name.trim() : "";
+      const referenceMobile = typeof data.referenceDetail.mobile === "string" ? data.referenceDetail.mobile.trim() : "";
+      const referenceAddress = typeof data.referenceDetail.address === "string" ? data.referenceDetail.address.trim() : "";
+
+      if (referenceName && referenceMobile) {
+        await Reference.findOneAndUpdate(
+          { name: { $regex: new RegExp(`^${referenceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }, isDeleted: false },
+          { name: referenceName, mobile: referenceMobile, address: referenceAddress },
+          { upsert: true, new: true }
+        );
+        data.referenceBy = referenceName;
+        data.referenceDetail = {
+          name: referenceName,
+          mobile: referenceMobile,
+          address: referenceAddress
+        };
+      }
+    }
+  }
+
   // Handle first follow-up creation history & count
   if (data.followUpDate) {
     const fDate = new Date(data.followUpDate);
     data.followUpCount = 1;
+    if (req.user?._id) {
+      data.followUpBy = req.user._id;
+    }
     data.followUpHistory = [{
       date: fDate,
       remarks: data.followUpDetails || data.remarks || "Inquiry Created (First Follow-up)",
       status: data.status || "Open",
+      followUpBy: req.user?._id,
       createdAt: new Date()
     }];
   }
@@ -121,6 +165,8 @@ const createInquiry = asyncHandler(async (req, res) => {
   await inquiry.populate([
     { path: "branchId", select: "name shortCode" },
     { path: "allocatedTo", select: "name" },
+    { path: "followUpBy", select: "name username" },
+    { path: "followUpHistory.followUpBy", select: "name username" },
     { path: "interestedCourse", select: "name" }
   ]);
 
@@ -210,10 +256,16 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
     // Reference Lock Logic
     // If user is not Super Admin, and the inquiry ALREADY has a reference, prevent changing it
     if (req.user && req.user.role !== 'Super Admin') {
-        if (inquiry.referenceBy && inquiry.referenceBy.trim() !== '') {
-            if (req.body.referenceBy !== undefined) delete req.body.referenceBy;
-            if (req.body.referenceDetail !== undefined) delete req.body.referenceDetail;
-        }
+      const existingReference = (
+        inquiry.referenceBy ||
+        (inquiry.referenceDetail && typeof inquiry.referenceDetail === "object" ? inquiry.referenceDetail.name : "") ||
+        ""
+      ).trim();
+
+      if (existingReference) {
+        if (req.body.referenceBy !== undefined) delete req.body.referenceBy;
+        if (req.body.referenceDetail !== undefined) delete req.body.referenceDetail;
+      }
     }
 
     fields.forEach((field) => {
@@ -244,10 +296,14 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
 
     if (hasFollowUpChanged) {
       const historyRemarks = req.body.newRemarks || req.body.followUpDetails || req.body.remarks || "Follow-up set";
+      if (req.user?._id) {
+        inquiry.followUpBy = req.user._id;
+      }
       inquiry.followUpHistory.push({
         date: newFDate,
         remarks: historyRemarks,
         status: req.body.status || inquiry.status || "Open",
+        followUpBy: req.user?._id,
         createdAt: new Date()
       });
       inquiry.followUpCount = inquiry.followUpHistory.length;
@@ -257,6 +313,8 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
     await inquiry.populate([
       { path: "branchId", select: "name shortCode" },
       { path: "allocatedTo", select: "name" },
+      { path: "followUpBy", select: "name username" },
+      { path: "followUpHistory.followUpBy", select: "name username" },
       { path: "interestedCourse", select: "name" }
     ]);
     res.json(inquiry);
@@ -347,7 +405,8 @@ const getFeeReceipts = asyncHandler(async (req, res) => {
 const createFeeReceipt = asyncHandler(async (req, res) => {
   const { 
     studentId, courseId, amountPaid, paymentMode, remarks, date,
-    bankName, chequeNumber, chequeDate, transactionId, transactionDate 
+    bankName, chequeNumber, chequeDate, transactionId, transactionDate,
+    onlinePaymentType, paymentProviderName, paymentDetails
   } = req.body;
 
   // 1. Parallel Data Fetching
@@ -410,7 +469,10 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
     chequeNumber,
     chequeDate,
     transactionId,
-    transactionDate
+    transactionDate,
+    onlinePaymentType,
+    paymentProviderName,
+    paymentDetails
   });
 
   // 4. Update Student Pending Fees & Status
@@ -456,10 +518,11 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
           var3 = "Registration Fees";
       }
 
-      // Determine var4 (Reg No or Enrollment No)
+      const includeRegNo = !(admissionCompletedNow || (remarks && remarks.toLowerCase().includes('admission')));
       const var4 = student.regNo || student.enrollmentNo || "N/A";
-
-      const smsMessage = `Dear, ${var1}. Your Course fees ${var2} has been deposited for ${var3}, Reg.No. ${var4}. Thank you, Smart Institute`;
+      const smsMessage = includeRegNo
+        ? `Dear, ${var1}. Your Course fees ${var2} has been deposited for ${var3}, Reg.No. ${var4}. Thank you, Smart Institute`
+        : `Dear, ${var1}. Your Course fees ${var2} has been deposited for ${var3}. Thank you, Smart Institute`;
 
       const contacts = [...new Set([student.mobileStudent, student.mobileParent, student.contactHome].filter(Boolean))]; 
       
@@ -526,6 +589,9 @@ const updateFeeReceipt = asyncHandler(async (req, res) => {
     if (req.body.chequeNumber !== undefined) receipt.chequeNumber = req.body.chequeNumber;
     if (req.body.chequeDate !== undefined) receipt.chequeDate = req.body.chequeDate;
     if (req.body.transactionId !== undefined) receipt.transactionId = req.body.transactionId;
+    if (req.body.onlinePaymentType !== undefined) receipt.onlinePaymentType = req.body.onlinePaymentType;
+    if (req.body.paymentProviderName !== undefined) receipt.paymentProviderName = req.body.paymentProviderName;
+    if (req.body.paymentDetails !== undefined) receipt.paymentDetails = req.body.paymentDetails;
     if (req.body.transactionDate !== undefined) receipt.transactionDate = req.body.transactionDate;
 
     await receipt.save();
@@ -650,35 +716,94 @@ const getStudentPaymentSummary = asyncHandler(async (req, res) => {
   let outstandingAmount = 0;
   const feesMethod = student.paymentPlan || "One Time";
   let emiStructure = null;
+  let upcomingEMI = 0;
 
   // 1. Calculate Pending Registration Fees
   // "registration amount is decided in the course"
   const courseRegFees = student.course && student.course.registrationFees ? Number(student.course.registrationFees) : 0;
-  
-  // "when student pays registration fees" - filter receipts by remarks "registration"
-  const regReceipts = receipts.filter(r => {
-      const rem = (r.remarks || "").toLowerCase();
-      return rem.includes("registration");
+  const sortedReceipts = [...receipts].sort((a, b) => {
+      const aTime = new Date(a.date || a.createdAt || 0).getTime();
+      const bTime = new Date(b.date || b.createdAt || 0).getTime();
+      if (aTime !== bTime) return aTime - bTime;
+      return Number(a.receiptNo || 0) - Number(b.receiptNo || 0);
   });
-  const totalRegPaid = regReceipts.reduce((acc, curr) => acc + curr.amountPaid, 0);
+  const receiptRole = new Map();
+  const receiptId = (receipt) => receipt._id.toString();
+  const receiptAmount = (receipt) => Number(receipt.amountPaid || 0);
+  const receiptRemarks = (receipt) => (receipt.remarks || "").toLowerCase();
   
-  // "pending registration fees... is our outstanding amount"
-  const pendingRegFees = Math.max(0, courseRegFees - totalRegPaid);
-
   // 1.5 Calculate Pending Admission Fees
   // courseAdmissionFee is already declared above
   
-  // Calculate total admission fees paid from receipts
-  const admissionReceipts = receipts.filter(r => {
-      const rem = (r.remarks || "").toLowerCase();
-      return rem.includes("admission");
+  // Calculate total admission fees paid from receipts. Older receipts may not
+  // have remarks, so infer the admission receipt from the stored admission
+  // amount when possible.
+  sortedReceipts.forEach(r => {
+      if (receiptRemarks(r).includes("admission")) {
+          receiptRole.set(receiptId(r), "admission");
+      }
   });
-  const totalAdmissionPaid = admissionReceipts.reduce((acc, curr) => acc + curr.amountPaid, 0);
+
+  let totalAdmissionPaid = sortedReceipts
+      .filter(r => receiptRole.get(receiptId(r)) === "admission")
+      .reduce((acc, curr) => acc + receiptAmount(curr), 0);
+
+  const recordedAdmissionPaid = student.admissionFeeAmount || 0;
+  if (recordedAdmissionPaid > totalAdmissionPaid) {
+      for (const receipt of sortedReceipts) {
+          const id = receiptId(receipt);
+          if (receiptRole.has(id)) continue;
+
+          const remainingAdmission = recordedAdmissionPaid - totalAdmissionPaid;
+          if (remainingAdmission <= 0) break;
+
+          if (receiptAmount(receipt) <= remainingAdmission) {
+              receiptRole.set(id, "admission");
+              totalAdmissionPaid += receiptAmount(receipt);
+          }
+      }
+  }
   
   // We also check student.admissionFeeAmount for backward compatibility if needed, 
   // but receipts should cover it. Let's take the max to be safe.
-  const effectiveAdmissionPaid = Math.max(totalAdmissionPaid, student.admissionFeeAmount || 0);
+  const effectiveAdmissionPaid = Math.max(totalAdmissionPaid, recordedAdmissionPaid);
   const pendingAdmissionFees = Math.max(0, courseAdmissionFee - effectiveAdmissionPaid);
+
+  // "when student pays registration fees" - filter receipts by remarks
+  // "registration". Older registration receipts can be blank, so after
+  // admission is removed, assign the earliest remaining receipts to
+  // registration until the course registration fee is covered.
+  sortedReceipts.forEach(r => {
+      if (!receiptRole.has(receiptId(r)) && receiptRemarks(r).includes("registration")) {
+          receiptRole.set(receiptId(r), "registration");
+      }
+  });
+
+  let totalRegPaid = sortedReceipts
+      .filter(r => receiptRole.get(receiptId(r)) === "registration")
+      .reduce((acc, curr) => acc + receiptAmount(curr), 0);
+
+  if (courseRegFees > totalRegPaid) {
+      for (const receipt of sortedReceipts) {
+          const id = receiptId(receipt);
+          if (receiptRole.has(id)) continue;
+
+          const remainingReg = courseRegFees - totalRegPaid;
+          if (remainingReg <= 0) break;
+
+          const looksLikeOldRegistration =
+              !receiptRemarks(receipt) &&
+              Number(receipt.installmentNumber || 1) <= 2;
+
+          if (looksLikeOldRegistration) {
+              receiptRole.set(id, "registration");
+              totalRegPaid += receiptAmount(receipt);
+          }
+      }
+  }
+  
+  // "pending registration fees... is our outstanding amount"
+  const pendingRegFees = Math.max(0, courseRegFees - totalRegPaid);
 
   if (student.paymentPlan === "Monthly") {
       // Monthly Plan Logic:
@@ -691,23 +816,26 @@ const getStudentPaymentSummary = asyncHandler(async (req, res) => {
           emiStructure = `₹${monthlyInstallment} x ${months} months`;
       }
 
-      // Add one installment (Upcoming EMI) if there is any remaining total balance
-      let upcomingEMI = 0;
-      
       const startDate = student.batchStartDate || student.admissionDate || student.createdAt;
       const start = new Date(startDate);
       const now = new Date();
-      
-      // EMI starts from the month AFTER the batch start / admission date
-      // Calculate the end of the starting month
-      const startMonthEnd = new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59, 999);
 
-      if ((student.pendingFees || 0) > 0 && now > startMonthEnd) {
-           upcomingEMI = monthlyInstallment;
-           // Cap EMI at total pending balance to avoid asking for more than due
-           if (upcomingEMI > student.pendingFees) {
-               upcomingEMI = student.pendingFees;
-           }
+      if (monthlyInstallment > 0 && !Number.isNaN(start.getTime())) {
+          const monthlyReceipts = sortedReceipts.filter(r => !receiptRole.has(receiptId(r)));
+          const totalMonthlyPaid = monthlyReceipts.reduce((acc, curr) => acc + receiptAmount(curr), 0);
+
+          // EMI starts from the month after batch/admission month.
+          // Example: April admission makes May the first due month.
+          const dueInstallments = Math.max(
+              0,
+              ((now.getFullYear() - start.getFullYear()) * 12) + (now.getMonth() - start.getMonth())
+          );
+          const monthlyPlanTotal = Math.max(0, (student.totalFees || 0) - courseRegFees);
+          const scheduledMonthlyDue = Math.min(dueInstallments * monthlyInstallment, monthlyPlanTotal);
+          const remainingCourseBalance = Math.max(0, dueAmount - pendingRegFees - pendingAdmissionFees);
+
+          upcomingEMI = Math.max(0, scheduledMonthlyDue - totalMonthlyPaid);
+          upcomingEMI = Math.min(upcomingEMI, remainingCourseBalance);
       }
       
       outstandingAmount = pendingRegFees + pendingAdmissionFees + upcomingEMI;
@@ -726,7 +854,7 @@ const getStudentPaymentSummary = asyncHandler(async (req, res) => {
     pendingAdmissionFees,
     courseFee: student.totalFees || 0,
     admissionFee: effectiveAdmissionFee,
-    upcomingEMI: student.paymentPlan === "Monthly" ? (typeof upcomingEMI !== 'undefined' ? upcomingEMI : 0) : 0,
+    upcomingEMI,
     feesMethod,
     emiStructure,
     totalFees,

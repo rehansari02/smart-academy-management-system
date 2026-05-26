@@ -7,6 +7,25 @@ import { ArrowLeft, Save, X, Eye, EyeOff } from 'lucide-react';
 import axios from 'axios';
 import { generateCredentials } from '../../../utils/credentialGenerator';
 
+const POPULAR_INDIAN_BANKS = [
+    "State Bank of India",
+    "HDFC Bank",
+    "ICICI Bank",
+    "Axis Bank",
+    "Punjab National Bank",
+    "Bank of Baroda",
+    "Canara Bank",
+    "Union Bank of India",
+    "Kotak Mahindra Bank",
+    "IndusInd Bank",
+    "IDFC First Bank",
+    "Yes Bank",
+    "Other",
+];
+
+const ONLINE_PAYMENT_TYPES = ["UPI", "Net Banking", "Bank Transfer", "Other"];
+const UPI_PROVIDERS = ["Google Pay", "PhonePe", "Paytm", "BHIM", "Amazon Pay", "Other"];
+
 const StudentRegistrationProcess = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -18,6 +37,7 @@ const StudentRegistrationProcess = () => {
 
   const [step, setStep] = useState(1); // Always start with Step 1 (Credentials)
   const [showPassword, setShowPassword] = useState(false); // For password visibility toggle
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   
   // Registration Form Data
   const [regData, setRegData] = useState({
@@ -33,13 +53,19 @@ const StudentRegistrationProcess = () => {
     date: new Date().toISOString().split('T')[0],
     amount: '',
     paymentMode: 'Cash',
+    receiptBankOption: '',
+    onlinePaymentType: 'UPI',
+    onlineProviderOption: '',
     remarks: 'Registration Fees', // Default remark for identification
     // Dynamic Fields
     bankName: '',
     chequeNumber: '',
     chequeDate: new Date().toISOString().split('T')[0], // Default today for UI
     transactionId: '',
-    transactionDate: new Date().toISOString().split('T')[0] // Default today for UI
+    transactionDate: new Date().toISOString().split('T')[0], // Default today for UI
+    paymentProviderName: '',
+    paymentDetails: '',
+    upiId: ''
   });
 
   useEffect(() => {
@@ -183,16 +209,51 @@ const StudentRegistrationProcess = () => {
         }
     }
 
-    // CONFIRMATION DIALOG (Added to prevent accidental registration)
-    if (!window.confirm("Are you sure you want to register this student?")) {
-        return;
+    if (feeData.paymentMode === 'Cheque') {
+        if (!feeData.bankName?.trim() || !feeData.chequeNumber?.trim() || !feeData.chequeDate) {
+            toast.error('Please enter cheque bank, cheque number, and cheque date');
+            return;
+        }
     }
 
+    if (feeData.paymentMode === 'Online/UPI') {
+        if (!feeData.transactionId?.trim() || !feeData.transactionDate) {
+            toast.error('Please enter transaction number and transaction date');
+            return;
+        }
+        if (feeData.onlinePaymentType === 'UPI') {
+            if (!feeData.paymentProviderName?.trim()) {
+                toast.error('Please select UPI app/provider');
+                return;
+            }
+            if (!feeData.upiId?.trim()) {
+                toast.error('Please enter UPI ID / number');
+                return;
+            }
+        } else if (feeData.onlinePaymentType === 'Other') {
+            if (!feeData.paymentProviderName?.trim()) {
+                toast.error('Please enter online payment name/provider');
+                return;
+            }
+        } else if (!feeData.bankName?.trim()) {
+            toast.error('Please select or enter bank name');
+            return;
+        }
+    }
+
+    setShowConfirmDialog(true);
+  };
+
+  const submitRegistration = async () => {
     const payload = {
         id: student._id,
         data: {
             ...regData,
-            feeDetails: { ...feeData, amount: Number(feeData.amount) || 0 }
+            feeDetails: {
+                ...feeData,
+                amount: Number(feeData.amount) || 0,
+                paymentDetails: feeData.onlinePaymentType === 'UPI' ? feeData.upiId : feeData.paymentDetails
+            }
         }
     };
 
@@ -203,6 +264,7 @@ const StudentRegistrationProcess = () => {
     
     // Explicit Error Handling with unwrap()
     try {
+        setShowConfirmDialog(false);
         const result = await dispatch(confirmRegistration(payload)).unwrap();
         toast.success(result.message || "Registration Successful");
         setTimeout(() => navigate('/master/student'), 1500);
@@ -223,7 +285,7 @@ const StudentRegistrationProcess = () => {
     return `${baseUrl}/${cleanPath}`;
   };
 
-  if (!student || isLoading) return <div className="p-6 text-center">Loading Data...</div>;
+  if (!student) return <div className="p-6 text-center">Loading Data...</div>;
 
   return (
     <div className="max-w-5xl mx-auto p-6">
@@ -402,7 +464,18 @@ const StudentRegistrationProcess = () => {
                      <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode</label>
                      <select 
                          value={feeData.paymentMode} 
-                         onChange={(e) => setFeeData({...feeData, paymentMode: e.target.value})}
+                         onChange={(e) => setFeeData({
+                            ...feeData,
+                            paymentMode: e.target.value,
+                            receiptBankOption: '',
+                            onlineProviderOption: '',
+                            bankName: '',
+                            chequeNumber: '',
+                            transactionId: '',
+                            paymentProviderName: '',
+                            paymentDetails: '',
+                            upiId: ''
+                         })}
                          className="w-full border rounded px-3 py-2"
                      >
                          <option value="Cash">Cash</option>
@@ -414,16 +487,39 @@ const StudentRegistrationProcess = () => {
                  {/* Dynamic Payment Fields */}
                  {feeData.paymentMode === 'Cheque' && (
                     <>
-                        <div>
+                        <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name *</label>
-                            <input 
-                                type="text"
-                                value={feeData.bankName}
-                                onChange={(e) => setFeeData({...feeData, bankName: e.target.value})}
-                                className="w-full border rounded px-3 py-2"
-                                placeholder="Bank Name"
-                            />
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                {POPULAR_INDIAN_BANKS.map((bank) => (
+                                    <label key={bank} className="flex items-center gap-2 border rounded p-2 text-sm cursor-pointer hover:bg-blue-50">
+                                        <input
+                                            type="radio"
+                                            name="registrationReceiptBank"
+                                            value={bank}
+                                            checked={feeData.receiptBankOption === bank}
+                                            onChange={(e) => setFeeData({
+                                                ...feeData,
+                                                receiptBankOption: e.target.value,
+                                                bankName: e.target.value === 'Other' ? '' : e.target.value
+                                            })}
+                                        />
+                                        {bank}
+                                    </label>
+                                ))}
+                            </div>
                         </div>
+                        {feeData.receiptBankOption === 'Other' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Other Bank Name *</label>
+                                <input 
+                                    type="text"
+                                    value={feeData.bankName}
+                                    onChange={(e) => setFeeData({...feeData, bankName: e.target.value})}
+                                    className="w-full border rounded px-3 py-2"
+                                    placeholder="Enter bank name"
+                                />
+                            </div>
+                        )}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Cheque Number *</label>
                             <input 
@@ -449,23 +545,143 @@ const StudentRegistrationProcess = () => {
                  {feeData.paymentMode === 'Online/UPI' && (
                     <>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name *</label>
-                            <input 
-                                type="text"
-                                value={feeData.bankName}
-                                onChange={(e) => setFeeData({...feeData, bankName: e.target.value})}
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Payment Type *</label>
+                            <select
+                                value={feeData.onlinePaymentType}
+                                onChange={(e) => setFeeData({
+                                    ...feeData,
+                                    onlinePaymentType: e.target.value,
+                                    receiptBankOption: '',
+                                    onlineProviderOption: '',
+                                    bankName: '',
+                                    paymentProviderName: '',
+                                    paymentDetails: '',
+                                    upiId: ''
+                                })}
                                 className="w-full border rounded px-3 py-2"
-                                placeholder="Bank / Wallet Name"
-                            />
+                            >
+                                {ONLINE_PAYMENT_TYPES.map((type) => (
+                                    <option key={type} value={type}>{type}</option>
+                                ))}
+                            </select>
                         </div>
+
+                        {feeData.onlinePaymentType === 'UPI' ? (
+                            <>
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">UPI App / Provider *</label>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                        {UPI_PROVIDERS.map((provider) => (
+                                            <label key={provider} className="flex items-center gap-2 border rounded p-2 text-sm cursor-pointer hover:bg-blue-50">
+                                                <input
+                                                    type="radio"
+                                                    name="registrationUpiProvider"
+                                                    value={provider}
+                                                    checked={feeData.onlineProviderOption === provider}
+                                                    onChange={(e) => setFeeData({
+                                                        ...feeData,
+                                                        onlineProviderOption: e.target.value,
+                                                        paymentProviderName: e.target.value === 'Other' ? '' : e.target.value
+                                                    })}
+                                                />
+                                                {provider}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                                {feeData.onlineProviderOption === 'Other' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Provider Name *</label>
+                                        <input
+                                            type="text"
+                                            value={feeData.paymentProviderName}
+                                            onChange={(e) => setFeeData({...feeData, paymentProviderName: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                            placeholder="Enter provider name"
+                                        />
+                                    </div>
+                                )}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">UPI ID / Number *</label>
+                                    <input
+                                        type="text"
+                                        value={feeData.upiId}
+                                        onChange={(e) => setFeeData({...feeData, upiId: e.target.value})}
+                                        className="w-full border rounded px-3 py-2"
+                                        placeholder="UPI ID / mobile number"
+                                    />
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                {feeData.onlinePaymentType === 'Other' ? (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Payment Name / Provider *</label>
+                                        <input
+                                            type="text"
+                                            value={feeData.paymentProviderName}
+                                            onChange={(e) => setFeeData({...feeData, paymentProviderName: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                            placeholder="Enter provider name"
+                                        />
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name *</label>
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                                {POPULAR_INDIAN_BANKS.map((bank) => (
+                                                    <label key={bank} className="flex items-center gap-2 border rounded p-2 text-sm cursor-pointer hover:bg-blue-50">
+                                                        <input
+                                                            type="radio"
+                                                            name="registrationOnlineBank"
+                                                            value={bank}
+                                                            checked={feeData.receiptBankOption === bank}
+                                                            onChange={(e) => setFeeData({
+                                                                ...feeData,
+                                                                receiptBankOption: e.target.value,
+                                                                bankName: e.target.value === 'Other' ? '' : e.target.value
+                                                            })}
+                                                        />
+                                                        {bank}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        {feeData.receiptBankOption === 'Other' && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Other Bank Name *</label>
+                                                <input
+                                                    type="text"
+                                                    value={feeData.bankName}
+                                                    onChange={(e) => setFeeData({...feeData, bankName: e.target.value})}
+                                                    className="w-full border rounded px-3 py-2"
+                                                    placeholder="Enter bank name"
+                                                />
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Payment Details</label>
+                                    <input
+                                        type="text"
+                                        value={feeData.paymentDetails}
+                                        onChange={(e) => setFeeData({...feeData, paymentDetails: e.target.value})}
+                                        className="w-full border rounded px-3 py-2"
+                                        placeholder="Account last 4 digits, note, or extra details"
+                                    />
+                                </div>
+                            </>
+                        )}
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Transaction ID *</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Transaction Number *</label>
                             <input 
                                 type="text"
                                 value={feeData.transactionId}
                                 onChange={(e) => setFeeData({...feeData, transactionId: e.target.value})}
                                 className="w-full border rounded px-3 py-2"
-                                placeholder="Txn ID / Ref No"
+                                placeholder="UTR / Ref No / Transaction ID"
                             />
                         </div>
                         <div>
@@ -505,6 +721,68 @@ const StudentRegistrationProcess = () => {
            </div>
          )}
       </div>
+
+      {showConfirmDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-xl border border-gray-200">
+            <div className="flex items-start justify-between border-b px-5 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">Confirm Registration</h3>
+                <p className="mt-1 text-sm text-gray-500">Please check details before completing this registration.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConfirmDialog(false)}
+                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Close confirmation"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-3 text-sm">
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500">Student</span>
+                <span className="font-semibold text-gray-800 text-right">{student.firstName} {student.middleName ? `${student.middleName} ` : ''}{student.lastName}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500">Registration No</span>
+                <span className="font-semibold text-gray-800">{regData.regNo}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500">Receipt No</span>
+                <span className="font-semibold text-gray-800">{feeData.receiptNo}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500">Amount</span>
+                <span className="font-semibold text-green-700">₹{Number(feeData.amount || 0).toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500">Payment Mode</span>
+                <span className="font-semibold text-gray-800">{feeData.paymentMode}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t bg-gray-50 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setShowConfirmDialog(false)}
+                className="rounded bg-white border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitRegistration}
+                disabled={isLoading}
+                className="rounded bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+              >
+                {isLoading ? 'Processing...' : 'Yes, Register'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

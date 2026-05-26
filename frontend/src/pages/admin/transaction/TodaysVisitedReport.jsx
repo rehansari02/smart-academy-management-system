@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Search, Edit, Trash2, ArrowRightCircle, Printer, Eye, GraduationCap, PhoneCall, X } from 'lucide-react';
+import { FileText, Search, Edit, Trash2, ArrowRightCircle, Printer, Eye, GraduationCap, CalendarClock, X, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatDate } from '../../../utils/dateUtils';
 import visitorService from '../../../services/visitorService';
@@ -7,10 +7,12 @@ import { toast } from 'react-toastify';
 import { useSelector } from 'react-redux';
 import axios from 'axios';
 import VisitorViewModal from '../../../components/transaction/VisitorViewModal';
+import VisitorFollowUpModal from '../../../components/transaction/VisitorFollowUpModal';
 import InquiryForm from '../../../components/transaction/InquiryForm';
 import InquiryViewModal from '../../../components/transaction/InquiryViewModal';
 import { useForm } from 'react-hook-form';
 import TimePicker12Hour from '../../../components/common/TimePicker12Hour';
+import SearchableDropdown from '../../../components/common/SearchableDropdown';
 
 // --- SUB-COMPONENT: Follow Up Form ---
 const FollowUpForm = ({ inquiry, onClose, onSave }) => {
@@ -128,6 +130,7 @@ const TodaysVisitedReport = () => {
     // View Modal State
     const [showViewModal, setShowViewModal] = useState(false);
     const [viewingVisitor, setViewingVisitor] = useState(null);
+    const [followUpVisitor, setFollowUpVisitor] = useState(null);
     
     // Inquiry Modals State for Follow-ups
     const [editInquiryData, setEditInquiryData] = useState(null);
@@ -137,13 +140,28 @@ const TodaysVisitedReport = () => {
     const [filters, setFilters] = useState({
         fromDate: new Date().toISOString().split('T')[0],
         toDate: new Date().toISOString().split('T')[0],
-        search: '',
+        studentName: '',
+        referenceBy: '',
         limit: 50,
         branchId: '',
+        listType: 'all',
         reportType: 'followup' // Default to follow-up as requested
     });
 
     const [followups, setFollowups] = useState([]);
+    const getRecordName = (item) => {
+        const record = item?.recordType === 'visitor' ? item.visitorId : item;
+        if (!record) return '';
+        if (record.studentName) return record.studentName;
+        return `${record.firstName || ''} ${record.middleName || ''} ${record.lastName || ''}`.trim().replace(/\s+/g, ' ');
+    };
+    const getRecordReference = (item) => {
+        const record = item?.recordType === 'visitor' ? item.visitorId : item;
+        return record?.reference || record?.referenceBy || '';
+    };
+    const filterOptionRows = filters.reportType === 'visited' ? visitors : followups;
+    const activeStudentNames = [...new Set(filterOptionRows.map(getRecordName).filter(Boolean))].sort();
+    const activeReferences = [...new Set(filterOptionRows.map(getRecordReference).filter(Boolean))].sort();
 
     useEffect(() => {
         if (user && user.role === 'Super Admin') {
@@ -153,7 +171,7 @@ const TodaysVisitedReport = () => {
 
     useEffect(() => {
         fetchVisitors();
-    }, [filters.reportType, filters.fromDate, filters.toDate, filters.branchId]);
+    }, [filters.reportType, filters.fromDate, filters.toDate, filters.branchId, filters.listType]);
 
     const fetchBranches = async () => {
         try {
@@ -165,26 +183,57 @@ const TodaysVisitedReport = () => {
     };
 
     // Fetch data based on report type
-    const fetchVisitors = async () => {
+    const fetchVisitors = async (overrideFilters = filters) => {
+        const activeFilters = overrideFilters;
         setLoading(true);
         try {
-            if (filters.reportType === 'visited') {
-                const data = await visitorService.getAllVisitors(filters);
+            if (activeFilters.reportType === 'visited') {
+                const data = await visitorService.getAllVisitors(activeFilters);
                 setVisitors(data);
                 setFollowups([]);
             } else {
-                // Fetch Inquiries for Follow-up
-                const res = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry`, {
-                    params: {
-                        startDate: filters.fromDate,
-                        endDate: filters.toDate,
-                        search: filters.search,
-                        branchId: filters.branchId,
-                        dateFilterType: 'followUpDate'
-                    },
-                    withCredentials: true
-                });
-                setFollowups(res.data);
+                const listType = activeFilters.listType || 'all';
+                const sourceByListType = {
+                    online: 'Online',
+                    offline: 'Walk-in',
+                    dsr: 'DSR'
+                };
+                const shouldFetchVisitorFollowups = listType === 'all' || listType === 'visitor';
+                const shouldFetchInquiryFollowups = listType === 'all' || ['online', 'offline', 'dsr'].includes(listType);
+                const inquiryParams = {
+                    startDate: activeFilters.fromDate,
+                    endDate: activeFilters.toDate,
+                    branchId: activeFilters.branchId,
+                    studentName: activeFilters.studentName,
+                    referenceBy: activeFilters.referenceBy,
+                    dateFilterType: 'followUpDate',
+                    ...(sourceByListType[listType] ? { source: sourceByListType[listType] } : {})
+                };
+
+                const [visitorFollowups, inquiryRes] = await Promise.all([
+                    shouldFetchVisitorFollowups ? visitorService.getVisitorFollowUps(activeFilters) : Promise.resolve([]),
+                    shouldFetchInquiryFollowups
+                        ? axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry`, {
+                            params: inquiryParams,
+                            withCredentials: true
+                        })
+                        : Promise.resolve({ data: [] })
+                ]);
+
+                const visitorRows = visitorFollowups.map(item => ({
+                    ...item,
+                    recordType: 'visitor',
+                    sortDate: item.scheduledDate
+                }));
+                const inquiryRows = (Array.isArray(inquiryRes.data) ? inquiryRes.data : [])
+                    .filter(item => item.followUpDate)
+                    .map(item => ({
+                        ...item,
+                        recordType: 'inquiry',
+                        sortDate: item.followUpDate
+                    }));
+
+                setFollowups([...visitorRows, ...inquiryRows].sort((a, b) => new Date(a.sortDate) - new Date(b.sortDate)));
                 setVisitors([]);
             }
         } catch (error) {
@@ -206,16 +255,20 @@ const TodaysVisitedReport = () => {
     };
 
     const handleReset = () => {
-        setFilters({
+        const resetState = {
             fromDate: new Date().toISOString().split('T')[0],
             toDate: new Date().toISOString().split('T')[0],
-            search: '',
+            studentName: '',
+            referenceBy: '',
             limit: 50,
             branchId: '',
+            listType: 'all',
             reportType: 'followup'
-        });
+        };
+        setFilters(resetState);
         setVisitors([]);
         setFollowups([]);
+        fetchVisitors(resetState);
         toast.info('Filters reset');
     };
 
@@ -238,6 +291,31 @@ const TodaysVisitedReport = () => {
             } catch (error) {
                 console.error("Error deleting visitor:", error);
                 toast.error("Failed to delete visitor");
+            }
+        }
+    };
+
+    const handleSaveVisitorFollowUp = async (id, data) => {
+        try {
+            await visitorService.createVisitorFollowUp(data);
+            toast.success("Visitor follow-up saved");
+            setFollowUpVisitor(null);
+            fetchVisitors();
+        } catch (error) {
+            console.error("Error saving visitor follow-up:", error);
+            toast.error("Failed to save visitor follow-up");
+        }
+    };
+
+    const handleDeleteVisitorFollowUp = async (id) => {
+        if (window.confirm('Are you sure you want to delete this visitor follow-up?')) {
+            try {
+                await visitorService.deleteVisitorFollowUp(id);
+                toast.success('Visitor follow-up deleted successfully');
+                fetchVisitors();
+            } catch (error) {
+                console.error("Error deleting visitor follow-up:", error);
+                toast.error("Failed to delete visitor follow-up");
             }
         }
     };
@@ -355,73 +433,104 @@ const TodaysVisitedReport = () => {
                     </div>
                 </div>
 
-                {/* Filters */}
-                <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                    <div>
-                        <label className="block text-[10px] font-bold text-blue-800 uppercase tracking-wider mb-1">From Date</label>
-                        <input 
-                            type="date" 
-                            name="fromDate" 
-                            value={filters.fromDate}
-                            onChange={handleFilterChange}
-                            className="w-full border-blue-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none h-10 shadow-sm"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-blue-800 uppercase tracking-wider mb-1">To Date</label>
-                        <input 
-                            type="date" 
-                            name="toDate" 
-                            value={filters.toDate}
-                            onChange={handleFilterChange}
-                            className="w-full border-blue-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none h-10 shadow-sm"
-                        />
-                    </div>
-                    
-                    {user?.role === 'Super Admin' && (
-                        <div>
-                            <label className="block text-[10px] font-bold text-blue-800 uppercase tracking-wider mb-1">Branch</label>
-                            <select 
-                                name="branchId" 
-                                value={filters.branchId} 
-                                onChange={handleFilterChange}
-                                className="w-full border-blue-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none h-10 shadow-sm"
-                            >
-                                <option value="">All Branches</option>
-                                {branches.map(b => (
-                                    <option key={b._id} value={b._id}>{b.name}</option>
-                                ))}
-                            </select>
+                {/* Filter Section */}
+                <div className="bg-white p-4 rounded-lg shadow mb-6 border border-gray-200">
+                    <h2 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
+                        <Search size={16} /> Search Visitor Activity
+                    </h2>
+
+                    <div className="flex flex-col gap-4">
+                        <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-3 lg:grid-cols-6' : 'md:grid-cols-2 lg:grid-cols-5'} gap-4`}>
+                            <div>
+                                <label className="text-xs text-gray-500 font-semibold mb-1 block">From Date</label>
+                                <input
+                                    type="date"
+                                    name="fromDate"
+                                    value={filters.fromDate}
+                                    onChange={handleFilterChange}
+                                    className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 font-semibold mb-1 block">To Date</label>
+                                <input
+                                    type="date"
+                                    name="toDate"
+                                    value={filters.toDate}
+                                    onChange={handleFilterChange}
+                                    className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                            </div>
+                            {user?.role === 'Super Admin' && (
+                                <div>
+                                    <label className="text-xs text-gray-500 font-semibold mb-1 block">Branch</label>
+                                    <select
+                                        name="branchId"
+                                        value={filters.branchId}
+                                        onChange={handleFilterChange}
+                                        className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    >
+                                        <option value="">All Branches</option>
+                                        {branches.map(b => (
+                                            <option key={b._id} value={b._id}>{b.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                            {filters.reportType === 'followup' && (
+                                <div>
+                                    <label className="text-xs text-gray-500 font-semibold mb-1 block">Inquiry List</label>
+                                    <select
+                                        name="listType"
+                                        value={filters.listType}
+                                        onChange={handleFilterChange}
+                                        className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    >
+                                        <option value="all">All Lists</option>
+                                        <option value="visitor">Visitors</option>
+                                        <option value="online">Online Inquiry</option>
+                                        <option value="offline">Offline Inquiry</option>
+                                        <option value="dsr">DSR Inquiry</option>
+                                    </select>
+                                </div>
+                            )}
+                            <div>
+                                <SearchableDropdown
+                                    options={activeStudentNames}
+                                    value={filters.studentName}
+                                    onSelect={(val) => setFilters({ ...filters, studentName: val })}
+                                    label="Search Student"
+                                    placeholder="Search or type student name/mobile..."
+                                    clearLabel="All Students"
+                                />
+                            </div>
+                            <div>
+                                <SearchableDropdown
+                                    options={activeReferences}
+                                    value={filters.referenceBy}
+                                    onSelect={(val) => setFilters({ ...filters, referenceBy: val })}
+                                    label="Reference By"
+                                    placeholder="Search or type Reference..."
+                                    clearLabel="All References"
+                                />
+                            </div>
                         </div>
-                    )}
 
-                    <div className="lg:col-span-1">
-                        <label className="block text-[10px] font-bold text-blue-800 uppercase tracking-wider mb-1">Search</label>
-                        <input 
-                            type="text" 
-                            name="search" 
-                            value={filters.search}
-                            onChange={handleFilterChange}
-                            placeholder="Search by name..."
-                            className="w-full border-blue-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none h-10 shadow-sm"
-                        />
+                        <div className="grid grid-cols-2 gap-4 pt-2">
+                            <button
+                                onClick={handleReset}
+                                className="bg-red-100 text-red-700 px-6 py-2.5 rounded hover:bg-red-200 font-medium transition text-sm flex items-center justify-center gap-2"
+                            >
+                                <RefreshCw size={16} /> Reset
+                            </button>
+                            <button
+                                onClick={handleSearch}
+                                className="bg-blue-600 text-white px-6 py-2.5 rounded hover:bg-blue-700 font-medium transition text-sm flex items-center justify-center gap-2"
+                            >
+                                <Search size={16} /> Search
+                            </button>
+                        </div>
                     </div>
-
-                    <div className="flex items-end gap-2">
-                        <button 
-                            onClick={handleSearch}
-                            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-md shadow-blue-200 h-10 flex-1 justify-center"
-                        >
-                            <Search size={16} /> Fetch
-                        </button>
-                        <button 
-                            onClick={handleReset}
-                            className="bg-white text-gray-500 border border-gray-200 px-4 py-2 rounded-lg text-xs font-bold hover:bg-gray-50 h-10 transition-all shadow-sm"
-                        >
-                            Reset
-                        </button>
-                    </div>
-
                 </div>
 
                 {/* Table */}
@@ -452,7 +561,7 @@ const TodaysVisitedReport = () => {
                             <option value="200">200 Records</option>
                         </select>
                     </div>
-                    <table className="w-full border-collapse min-w-[1000px]">
+                    <table className="w-full border-collapse min-w-[1100px]">
                         {filters.reportType === 'visited' ? (
                             <thead>
                                 <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
@@ -461,7 +570,7 @@ const TodaysVisitedReport = () => {
                                     {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
                                     <th className="p-2 border font-semibold">Student Name</th>
                                     <th className="p-2 border font-semibold text-center w-36">Contact</th>
-                                    <th className="p-2 border font-semibold">Gender</th>
+                                    <th className="p-2 border font-semibold">Reference</th>
                                     <th className="p-2 border font-semibold text-center">Status</th>
                                     <th className="p-2 border font-semibold">In Time</th>
                                     <th className="p-2 border font-semibold">Out Time</th>
@@ -473,15 +582,16 @@ const TodaysVisitedReport = () => {
                             <thead>
                                 <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
                                     <th className="p-2 border font-semibold w-12 text-center">Sr. No.</th>
-                                    <th className="p-2 border font-semibold">Inquiry Date</th>
+                                    <th className="p-2 border font-semibold">Visit Date</th>
                                     {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
                                     <th className="p-2 border font-semibold">Student Name</th>
                                     <th className="p-2 border font-semibold text-center w-36">Contact</th>
-                                    <th className="p-2 border font-semibold">Gender</th>
+                                    <th className="p-2 border font-semibold">Reference</th>
                                     <th className="p-2 border font-semibold text-center">Status</th>
                                     <th className="p-2 border font-bold text-blue-800 text-left uppercase tracking-wider">Followup Date</th>
                                     <th className="p-2 border font-bold text-blue-800 text-left uppercase tracking-wider">Followup Time</th>
                                     <th className="p-2 border font-bold text-blue-800 text-left uppercase tracking-wider">Followup Details</th>
+                                    <th className="p-2 border font-bold text-blue-800 text-left uppercase tracking-wider">Followup By</th>
                                     <th className="p-2 border font-bold text-blue-800 text-center uppercase tracking-wider sticky right-0 bg-blue-50/90 print:hidden">Actions</th>
                                 </tr>
                             </thead>
@@ -530,12 +640,16 @@ const TodaysVisitedReport = () => {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="p-2 border text-gray-600">-</td>
+                                            <td className="p-2 border text-gray-600">{visitor.reference || '-'}</td>
                                             <td className="p-2 border text-center">
                                                 <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${
-                                                    visitor.inquiryId ? 'bg-green-100 text-green-700 border-green-200' : 'bg-blue-100 text-blue-700 border-blue-200'
+                                                    visitor.status === 'Open' ? 'bg-green-100 text-green-700 border-green-200' :
+                                                    visitor.status === 'Recall' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                                                    visitor.status === 'Complete' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                                    visitor.status === 'Close' ? 'bg-red-100 text-red-700 border-red-200' :
+                                                    'bg-gray-100 text-gray-600 border-gray-200'
                                                 }`}>
-                                                    {visitor.inquiryId ? 'Converted' : 'Visited'}
+                                                    {visitor.status || 'Open'}
                                                 </span>
                                             </td>
                                             <td className="p-2 border text-center">
@@ -553,8 +667,8 @@ const TodaysVisitedReport = () => {
                                             </td>
                                             <td className="p-2 border text-center sticky right-0 bg-white print:hidden">
                                                 <div className="flex justify-center gap-1">
-                                                    <button onClick={() => window.open(`tel:${visitor.mobileNumber}`, '_self')} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100 transition" title="Call">
-                                                        <PhoneCall size={14} />
+                                                    <button onClick={() => setFollowUpVisitor(visitor)} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100 transition" title="Visitor Follow-up">
+                                                        <CalendarClock size={14} />
                                                     </button>
                                                     <button onClick={() => navigate('/master/student-admission', { state: { visitorData: visitor } })} className="bg-green-50 text-green-600 border border-green-200 p-1.5 rounded hover:bg-green-100 transition" title="Take Admission">
                                                         <GraduationCap size={14} />
@@ -576,72 +690,90 @@ const TodaysVisitedReport = () => {
                             ) : (
                                 followups.length === 0 ? (
                                     <tr>
-                                        <td colSpan={user?.role === 'Super Admin' ? 10 : 9} className="text-center py-8 text-gray-400 italic">
-                                            No student follow-ups scheduled for this period.
+                                        <td colSpan={user?.role === 'Super Admin' ? 11 : 10} className="text-center py-8 text-gray-400 italic">
+                                            No visitor or inquiry follow-ups scheduled for this period.
                                         </td>
                                     </tr>
                                 ) : (
-                                    followups.map((hist, index) => (
+                                    followups.map((hist, index) => {
+                                        const isVisitorFollowUp = hist.recordType === 'visitor';
+                                        const visitor = isVisitorFollowUp ? (hist.visitorId || {}) : {};
+                                        const inquiry = isVisitorFollowUp ? {} : hist;
+                                        const personName = isVisitorFollowUp
+                                            ? (visitor.studentName || '-')
+                                            : `${inquiry.firstName || ''} ${inquiry.lastName || ''}`.trim() || '-';
+                                        const originalDate = isVisitorFollowUp ? visitor.visitingDate : inquiry.inquiryDate;
+                                        const followUpDate = isVisitorFollowUp ? hist.scheduledDate : inquiry.followUpDate;
+                                        const details = isVisitorFollowUp ? hist.remark : inquiry.followUpDetails;
+                                        const followUpBy = isVisitorFollowUp ? hist.followUpBy : inquiry.followUpBy;
+                                        const status = isVisitorFollowUp ? (hist.status || visitor.status) : inquiry.status;
+                                        const branchName = isVisitorFollowUp ? hist.branchId?.name : inquiry.branchId?.name;
+                                        const reference = isVisitorFollowUp ? visitor.reference : inquiry.referenceBy;
+                                        return (
                                         <tr key={hist._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
                                             <td className="p-2 border text-center text-gray-400 font-medium">{index + 1}</td>
-                                            <td className="p-2 border font-semibold text-gray-700">{formatDate(hist.inquiryDate)}</td>
-                                            {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{hist.branchId?.name || '-'}</td>}
-                                            <td className="p-2 border font-bold text-gray-800">{hist.firstName} {hist.lastName}</td>
+                                            <td className="p-2 border font-semibold text-gray-700">{originalDate ? formatDate(originalDate) : '-'}</td>
+                                            {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{branchName || '-'}</td>}
+                                            <td className="p-2 border font-bold text-gray-800">{personName}</td>
                                             <td className="p-0 border align-top w-36">
                                                 <div className="flex border-b border-gray-200 last:border-b-0">
                                                     <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">G</div>
                                                     <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
-                                                        {hist.contactParent || '-'}
+                                                        {(isVisitorFollowUp ? visitor.contactParent : inquiry.contactParent) || '-'}
                                                     </div>
                                                 </div>
                                                 <div className="flex border-b border-gray-200 last:border-b-0">
                                                     <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">H</div>
                                                     <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
-                                                        {hist.contactHome || '-'}
+                                                        {(isVisitorFollowUp ? visitor.contactHome : inquiry.contactHome) || '-'}
                                                     </div>
                                                 </div>
                                                 <div className="flex">
                                                     <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">S</div>
                                                     <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start text-blue-600">
-                                                        {hist.contactStudent || '-'}
+                                                        {(isVisitorFollowUp ? visitor.mobileNumber : inquiry.contactStudent) || '-'}
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="p-2 border text-gray-600">{hist.gender || '-'}</td>
+                                            <td className="p-2 border text-gray-600">{reference || '-'}</td>
                                             <td className="p-2 border text-center">
                                                 <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${
-                                                    hist.status === 'Open' ? 'bg-green-100 text-green-700 border-green-200' :
-                                                    hist.status === 'Recall' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                                                    status === 'Open' ? 'bg-green-100 text-green-700 border-green-200' :
+                                                    status === 'Recall' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                                                    status === 'Complete' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                                    status === 'Close' ? 'bg-red-100 text-red-700 border-red-200' :
                                                     'bg-gray-100 text-gray-600 border-gray-200'
                                                 }`}>
-                                                    {hist.status}
+                                                    {status || 'Open'}
                                                 </span>
                                             </td>
-                                            <td className="p-2 border text-gray-700">{hist.followUpDate ? formatDate(hist.followUpDate) : '-'}</td>
+                                            <td className="p-2 border text-gray-700">{followUpDate ? formatDate(followUpDate) : '-'}</td>
                                             <td className="p-2 border text-gray-700">
-                                                {hist.followUpDate ? new Date(hist.followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                                {followUpDate ? new Date(followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
                                             </td>
-                                            <td className="p-2 border text-gray-600 truncate max-w-xs" title={hist.followUpDetails}>
-                                                {hist.followUpDetails ? (hist.followUpDetails.length > 14 ? `${hist.followUpDetails.substring(0, 14)}...` : hist.followUpDetails) : '-'}
+                                            <td className="p-2 border text-gray-600 truncate max-w-xs" title={details}>
+                                                {details ? (details.length > 14 ? `${details.substring(0, 14)}...` : details) : '-'}
                                             </td>
+                                            <td className="p-2 border text-gray-700">{followUpBy?.name || followUpBy?.username || '-'}</td>
                                             <td className="p-2 border text-center sticky right-0 bg-white print:hidden">
                                                 <div className="flex justify-center gap-1">
-                                                    <button onClick={() => setShowFollowUpModal(hist)} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100 transition" title="Follow Up">
-                                                        <PhoneCall size={14} />
+                                                    <button onClick={() => isVisitorFollowUp ? setFollowUpVisitor({ ...visitor, latestVisitorFollowUp: hist, followUpDetails: hist.remark }) : setShowFollowUpModal(inquiry)} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100 transition" title="Follow Up">
+                                                        <CalendarClock size={14} />
                                                     </button>
-                                                    <button onClick={() => setViewInquiry(hist)} className="bg-indigo-50 text-indigo-600 border border-indigo-200 p-1.5 rounded hover:bg-indigo-100 transition" title="View Details">
+                                                    <button onClick={() => isVisitorFollowUp ? handleView(visitor) : setViewInquiry(inquiry)} className="bg-indigo-50 text-indigo-600 border border-indigo-200 p-1.5 rounded hover:bg-indigo-100 transition" title="View Details">
                                                         <Eye size={14} />
                                                     </button>
-                                                    <button onClick={() => setEditInquiryData(hist)} className="bg-blue-50 text-blue-600 border border-blue-200 p-1.5 rounded hover:bg-blue-100 transition" title="Edit">
+                                                    <button onClick={() => isVisitorFollowUp ? handleEdit(visitor) : setEditInquiryData(inquiry)} className="bg-blue-50 text-blue-600 border border-blue-200 p-1.5 rounded hover:bg-blue-100 transition" title="Edit">
                                                         <Edit size={14} />
                                                     </button>
-                                                    <button onClick={() => handleDeleteInquiry(hist._id)} className="bg-red-50 text-red-600 border border-red-200 p-1.5 rounded hover:bg-red-100 transition" title="Delete">
+                                                    <button onClick={() => isVisitorFollowUp ? handleDeleteVisitorFollowUp(hist._id) : handleDeleteInquiry(inquiry._id)} className="bg-red-50 text-red-600 border border-red-200 p-1.5 rounded hover:bg-red-100 transition" title={isVisitorFollowUp ? 'Delete Follow-up' : 'Delete Inquiry'}>
                                                         <Trash2 size={14} />
                                                     </button>
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))
+                                    );
+                                    })
                                 )
                             )}
                         </tbody>
@@ -656,6 +788,14 @@ const TodaysVisitedReport = () => {
                             setShowViewModal(false);
                             setViewingVisitor(null);
                         }}
+                    />
+                )}
+
+                {followUpVisitor && (
+                    <VisitorFollowUpModal
+                        visitor={followUpVisitor}
+                        onClose={() => setFollowUpVisitor(null)}
+                        onSave={handleSaveVisitorFollowUp}
                     />
                 )}
                 

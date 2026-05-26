@@ -106,6 +106,19 @@ export const fetchStudentFees = createAsyncThunk(
     }
 );
 
+// Fetch Student Exam Schedules
+export const fetchStudentExamSchedules = createAsyncThunk(
+    'studentPortal/fetchStudentExamSchedules',
+    async (_, thunkAPI) => {
+        try {
+            const response = await axios.get(`${API_URL}exam-schedules`);
+            return response.data;
+        } catch (error) {
+            return thunkAPI.rejectWithValue(error.response?.data?.message || error.message);
+        }
+    }
+);
+
 const studentPortalSlice = createSlice({
     name: 'studentPortal',
     initialState: {
@@ -116,6 +129,8 @@ const studentPortalSlice = createSlice({
         quizResult: null,
         quizReports: [],
         fees: [], // Added fees state
+        examSchedules: [],
+        examStudent: null,
         isLoading: false,
         isError: false,
         message: '',
@@ -206,6 +221,18 @@ const studentPortalSlice = createSlice({
                 state.fees = action.payload;
             })
             .addCase(fetchStudentFees.rejected, (state, action) => {
+                state.isLoading = false;
+                state.isError = true;
+                state.message = action.payload;
+            })
+            // Student Exam Schedules
+            .addCase(fetchStudentExamSchedules.pending, (state) => { state.isLoading = true; })
+            .addCase(fetchStudentExamSchedules.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.examSchedules = action.payload?.schedules || [];
+                state.examStudent = action.payload?.student || null;
+            })
+            .addCase(fetchStudentExamSchedules.rejected, (state, action) => {
                 state.isLoading = false;
                 state.isError = true;
                 state.message = action.payload;

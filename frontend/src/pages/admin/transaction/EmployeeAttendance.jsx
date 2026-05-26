@@ -9,10 +9,11 @@ import {
     resetAttendanceState
 } from '../../../features/transaction/attendanceSlice';
 import { toast } from 'react-toastify';
-import { 
+import {
     Calendar, Briefcase, Clock, Save, RotateCcw, Eye, Trash2, 
     PlusCircle, CheckSquare, Square, Edit
 } from 'lucide-react';
+import axios from 'axios';
 
 const EmployeeAttendance = () => {
     const dispatch = useDispatch();
@@ -35,6 +36,7 @@ const EmployeeAttendance = () => {
     const [attendanceGrid, setAttendanceGrid] = useState([]);
     const [viewingRecord, setViewingRecord] = useState(null);
     const [isEditing, setIsEditing] = useState(false);
+    const [closedDateStatus, setClosedDateStatus] = useState(null);
 
     useEffect(() => {
         dispatch(fetchEmployeeAttendanceHistory(filters));
@@ -52,6 +54,30 @@ const EmployeeAttendance = () => {
 
     // --- Form Logic ---
     useEffect(() => {
+        if (viewMode !== 'form' || isEditing || !formData.date) return;
+
+        const checkClosedDate = async () => {
+            try {
+                const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/attendance/calendar/status`, {
+                    params: { date: formData.date },
+                    withCredentials: true
+                });
+                setClosedDateStatus(data);
+                if (data.isClosed) {
+                    setAttendanceGrid([]);
+                    dispatch(resetAttendanceState());
+                }
+            } catch (error) {
+                toast.error(error.response?.data?.message || 'Failed to check attendance calendar');
+            }
+        };
+
+        checkClosedDate();
+    }, [formData.date, viewMode, isEditing, dispatch]);
+
+    useEffect(() => {
+        if (closedDateStatus?.isClosed) return;
+
         if (viewMode === 'form' && !isEditing && formData.date) {
             dispatch(checkEmployeeAttendance({ date: formData.date }));
 
@@ -59,7 +85,7 @@ const EmployeeAttendance = () => {
             // We need to fetch employees to build the grid.
              dispatch(fetchEmployeesForAttendance());
         }
-    }, [formData.date, viewMode, isEditing, dispatch]);
+    }, [formData.date, viewMode, isEditing, closedDateStatus, dispatch]);
 
     useEffect(() => {
         if(viewMode === 'form' && !isEditing && currentAttendanceEmployees.length > 0) {
@@ -114,6 +140,10 @@ const EmployeeAttendance = () => {
     };
 
     const saveAttendance = () => {
+        if (closedDateStatus?.isClosed) {
+            toast.error(`Attendance cannot be taken on this date. ${closedDateStatus.closure?.reason || ''}`);
+            return;
+        }
         if (attendanceStatus?.exists && !isEditing) return;
         
         const payload = {
@@ -292,9 +322,16 @@ const EmployeeAttendance = () => {
                             </div>
                         </div>
 
-                        {attendanceStatus?.exists && (
-                            <div className="mb-6 bg-yellow-50 text-yellow-800 px-4 py-3 rounded-lg border border-yellow-200 flex items-center gap-2">
-                                <Briefcase size={20} />
+                    {closedDateStatus?.isClosed && (
+                        <div className="mb-6 bg-red-50 text-red-800 px-4 py-3 rounded-lg border border-red-200 flex items-center gap-2">
+                            <Calendar size={20} />
+                            <span className="font-medium">Attendance is closed for this date. {closedDateStatus.closure?.reason}</span>
+                        </div>
+                    )}
+
+                    {attendanceStatus?.exists && (
+                        <div className="mb-6 bg-yellow-50 text-yellow-800 px-4 py-3 rounded-lg border border-yellow-200 flex items-center gap-2">
+                            <Briefcase size={20} />
                                 <span className="font-medium">Attendance already taken for this date by {attendanceStatus.takenBy}. Showing in Read-Only mode.</span>
                             </div>
                         )}
@@ -361,11 +398,11 @@ const EmployeeAttendance = () => {
                                 Reset
                             </button>
                             {(!attendanceStatus?.exists || isEditing) && (
-                                <button 
-                                    onClick={saveAttendance}
-                                    disabled={isLoading}
-                                    className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md flex items-center gap-2"
-                                >
+                        <button 
+                            onClick={saveAttendance}
+                            disabled={isLoading || closedDateStatus?.isClosed}
+                            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md flex items-center gap-2"
+                        >
                                     <Save size={18} /> {isLoading ? 'Saving...' : 'Save Attendance'}
                                 </button>
                             )}

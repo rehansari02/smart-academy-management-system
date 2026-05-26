@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useDispatch, useSelector } from 'react-redux';
 import { createPublicInquiry } from '../../features/transaction/transactionSlice';
-import { fetchCourses, fetchBatches, fetchReferences, fetchEducations, createReference, createEducation, fetchStates, fetchCities } from '../../features/master/masterSlice';
+import { fetchCourses, fetchReferences, fetchEducations, fetchStates, fetchCities } from '../../features/master/masterSlice';
 import { getBranches } from '../../features/master/branchSlice';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -30,8 +30,7 @@ const OnlineAdmission = () => {
   const [termsLoading, setTermsLoading] = useState(false);
   
   // Local state for "Add New" inputs
-  const [newRefName, setNewRefName] = useState('');
-  const [newRefMobile, setNewRefMobile] = useState(''); // Optional per schema but good to have
+  const [newRef, setNewRef] = useState({ name: '', mobile: '', address: '' });
   const [newEduName, setNewEduName] = useState('');
   const [filteredCities, setFilteredCities] = useState([]);
 
@@ -98,37 +97,32 @@ const OnlineAdmission = () => {
         }
     });
 
-    // Special handling if using "Add New" fields that weren't saved to master yet?
-    // User requirement: "add new option side of that". 
-    // Ideally we save them to master DB or pass as custom string. 
-    // Inquiry schema supports `customEducation`. 
-    // Let's rely on standard flow: If Create New is used, we save to Master first OR pass as text.
-    // Given the previous code in StudentAdmission, it saves to Master.
-    
-    // Actually, Inquiry.js has `referenceDetail` for new references.
     if (newRefMode) {
-        if(!newRefName.trim()) {
+        const trimmedRef = {
+            name: newRef.name.trim(),
+            mobile: newRef.mobile.trim(),
+            address: newRef.address.trim()
+        };
+
+        if(!trimmedRef.name) {
             toast.error("Please enter reference name");
             return;
         }
-        try {
-            await dispatch(createReference({ name: newRefName, mobile: newRefMobile })).unwrap();
-            formData.set('referenceBy', newRefName);
-        } catch (err) {
-            toast.error("Failed to create reference");
+        if(!/^[0-9]{10}$/.test(trimmedRef.mobile)) {
+            toast.error("Please enter a valid 10 digit reference mobile number");
             return;
         }
+
+        formData.set('referenceBy', trimmedRef.name);
+        formData.set('referenceDetail', JSON.stringify(trimmedRef));
     }
      if (newEduMode) {
-        if(newEduName.trim()) {
-            try {
-                await dispatch(createEducation({ name: newEduName })).unwrap();
-                formData.set('education', newEduName);
-            } catch (err) {
-                toast.error("Failed to create education record");
-                return;
-            }
+        const trimmedEdu = newEduName.trim();
+        if(!trimmedEdu) {
+            toast.error("Please enter education name");
+            return;
         }
+        formData.set('education', trimmedEdu);
     }    
     // Explicitly set Source
     formData.set('source', 'OnlineAdmission');
@@ -373,7 +367,10 @@ const OnlineAdmission = () => {
                        )}
                        <button 
                             type="button" 
-                            onClick={() => setNewEduMode(!newEduMode)}
+                            onClick={() => {
+                                setNewEduMode((current) => !current);
+                                setValue('education', '');
+                            }}
                             className={`p-2 rounded-lg transition-colors ${newEduMode ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}
                             title={newEduMode ? "Cancel Add New" : "Add New Education"}
                        >
@@ -386,22 +383,40 @@ const OnlineAdmission = () => {
                    <label className="block text-sm font-semibold text-gray-700 mb-1">Reference <span className="text-red-500">*</span></label>
                    <div className="flex gap-2">
                        {!newRefMode ? (
-                           <select {...register("reference", { required: "Required" })} className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary outline-none bg-white">
+                           <select {...register("reference", { required: !newRefMode ? "Required" : false })} className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary outline-none bg-white">
                                 <option value="">-- Select Reference --</option>
                                 <option value="Direct">Direct / Walk-in</option>
                                 {references.map(r => <option key={r._id} value={r.name}>{r.name}</option>)}
                            </select>
                        ) : (
-                           <input 
-                                value={newRefName} 
-                                onChange={(e) => setNewRefName(formatInputText(e.target.value))} 
-                                className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary outline-none" 
-                                placeholder="Enter Reference Name"
-                           />
+                           <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2">
+                               <input 
+                                    value={newRef.name} 
+                                    onChange={(e) => setNewRef({ ...newRef, name: formatInputText(e.target.value) })} 
+                                    className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary outline-none" 
+                                    placeholder="Reference Name"
+                               />
+                               <input 
+                                    value={newRef.mobile} 
+                                    onChange={(e) => setNewRef({ ...newRef, mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })} 
+                                    className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary outline-none" 
+                                    placeholder="Mobile Number"
+                                    maxLength={10}
+                               />
+                               <input 
+                                    value={newRef.address} 
+                                    onChange={(e) => setNewRef({ ...newRef, address: formatInputText(e.target.value) })} 
+                                    className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary outline-none" 
+                                    placeholder="Address"
+                               />
+                           </div>
                        )}
                         <button 
                             type="button" 
-                            onClick={() => setNewRefMode(!newRefMode)}
+                            onClick={() => {
+                                setNewRefMode((current) => !current);
+                                setValue('reference', '');
+                            }}
                             className={`p-2 rounded-lg transition-colors ${newRefMode ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}
                             title={newRefMode ? "Cancel Add New" : "Add New Reference"}
                        >

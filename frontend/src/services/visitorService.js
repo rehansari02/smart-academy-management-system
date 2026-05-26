@@ -17,12 +17,16 @@ const createVisitor = async (visitorData) => {
 };
 
 const getAllVisitors = async (filters = {}) => {
-    const { fromDate, toDate, search, limit } = filters;
+    const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, inquirySource } = filters;
     const params = new URLSearchParams();
     if (fromDate) params.append('fromDate', fromDate);
     if (toDate) params.append('toDate', toDate);
     if (search) params.append('search', search);
+    if (searchField) params.append('searchField', searchField);
+    if (studentName) params.append('studentName', studentName);
+    if (referenceBy) params.append('referenceBy', referenceBy);
     if (limit) params.append('limit', limit);
+    if (inquirySource) params.append('inquirySource', inquirySource);
     if (filters.branchId) params.append('branchId', filters.branchId);
 
     const response = await axios.get(`${API_URL}/all?${params.toString()}`);
@@ -39,6 +43,32 @@ const updateVisitor = async (id, visitorData) => {
     return response.data;
 };
 
+const createVisitorFollowUp = async (followUpData) => {
+    const response = await axios.post(`${API_URL}/followups`, followUpData);
+    return response.data;
+};
+
+const getVisitorFollowUps = async (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.fromDate) params.append('fromDate', filters.fromDate);
+    if (filters.toDate) params.append('toDate', filters.toDate);
+    if (filters.search) params.append('search', filters.search);
+    if (filters.searchField) params.append('searchField', filters.searchField);
+    if (filters.studentName) params.append('studentName', filters.studentName);
+    if (filters.referenceBy) params.append('referenceBy', filters.referenceBy);
+    if (filters.limit) params.append('limit', filters.limit);
+    if (filters.branchId) params.append('branchId', filters.branchId);
+    if (filters.visitorId) params.append('visitorId', filters.visitorId);
+
+    const response = await axios.get(`${API_URL}/followups?${params.toString()}`);
+    return response.data;
+};
+
+const deleteVisitorFollowUp = async (id) => {
+    const response = await axios.delete(`${API_URL}/followups/${id}`);
+    return response.data;
+};
+
 const deleteVisitor = async (id) => {
     const response = await axios.delete(`${API_URL}/${id}`);
     return response.data;
@@ -49,5 +79,8 @@ export default {
     getAllVisitors,
     getVisitorById,
     updateVisitor,
+    createVisitorFollowUp,
+    getVisitorFollowUps,
+    deleteVisitorFollowUp,
     deleteVisitor
 };

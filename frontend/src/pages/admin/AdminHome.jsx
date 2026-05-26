@@ -7,8 +7,10 @@ import { getBranches } from '../../features/master/branchSlice';
 import EmployeeDashboard from './EmployeeDashboard';
 import { useUserRights } from '../../hooks/useUserRights';
 import { useNavigate } from 'react-router-dom';
-import { Search, RefreshCw, ExternalLink, Clock, AlertCircle, CheckCircle, UserPlus, XCircle } from 'lucide-react';
+import axios from 'axios';
+import { Search, RefreshCw, ExternalLink, Clock, AlertCircle, CheckCircle, UserPlus, XCircle, BarChart3, Wallet, Users, CalendarDays, Building2 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import Swal from 'sweetalert2';
 
 const AdminHome = () => {
     const dispatch = useDispatch();
@@ -25,6 +27,14 @@ const AdminHome = () => {
     const [confirmModal, setConfirmModal] = useState({ show: false, student: null, bulk: false });
     const [reasonModal, setReasonModal] = useState({ show: false, reason: '', studentName: '' });
     const [selectedStudents, setSelectedStudents] = useState([]);
+    const [dashboardLoading, setDashboardLoading] = useState(false);
+    const [dashboardData, setDashboardData] = useState(null);
+    const [dashboardFilters, setDashboardFilters] = useState({
+        period: 'today',
+        branchId: '',
+        fromDate: '',
+        toDate: ''
+    });
 
     // Exam Filters
     const [examFilters, setExamFilters] = useState({
@@ -62,6 +72,52 @@ const AdminHome = () => {
     const handlePageChange = (newPage) => {
         dispatch(fetchExamPendingStudents({ ...examFilters, page: newPage }));
     };
+
+    const fetchDashboardData = async (override = {}) => {
+        const filters = { ...dashboardFilters, ...override };
+        setDashboardLoading(true);
+        try {
+            const params = {
+                period: filters.period,
+                ...(filters.branchId && { branchId: filters.branchId }),
+                ...(filters.period === 'custom' && filters.fromDate && { fromDate: filters.fromDate }),
+                ...(filters.period === 'custom' && filters.toDate && { toDate: filters.toDate })
+            };
+            const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/admin-dashboard/overview`, {
+                params,
+                withCredentials: true
+            });
+            setDashboardData(data);
+        } catch (error) {
+            console.error('Failed to load dashboard overview', error);
+            toast.error('Failed to load dashboard overview');
+        } finally {
+            setDashboardLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'overview') {
+            fetchDashboardData();
+        }
+    }, [activeTab]);
+
+    const handleDashboardFilterChange = (key, value) => {
+        setDashboardFilters(prev => ({ ...prev, [key]: value }));
+    };
+
+    const applyDashboardFilters = () => {
+        fetchDashboardData();
+    };
+
+    const resetDashboardFilters = () => {
+        const resetFilters = { period: 'today', branchId: '', fromDate: '', toDate: '' };
+        setDashboardFilters(resetFilters);
+        fetchDashboardData(resetFilters);
+    };
+
+    const formatAmount = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
+    const formatDate = (date) => date ? new Date(date).toLocaleDateString('en-GB') : '-';
 
     const handleTakeExam = (student) => {
         setConfirmModal({ show: true, student, bulk: false });
@@ -109,17 +165,32 @@ const AdminHome = () => {
         );
     };
 
-    const handleAddToOnline = (inquiry) => {
-        if (confirm(`Transfer inquiry for ${inquiry.firstName} to Online Inquiry list?`)) {
-            dispatch(updateInquiry({
+    const handleAddToOnline = async (inquiry) => {
+        const studentName = `${inquiry.firstName || ''} ${inquiry.lastName || ''}`.trim() || 'this inquiry';
+        const result = await Swal.fire({
+            title: 'Add to Online Inquiry?',
+            text: `Are you sure you want to transfer ${studentName} to the Online Inquiry list?`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#16a34a',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'Yes, Add to Online',
+            cancelButtonText: 'Cancel',
+            customClass: {
+                container: 'z-[9999]'
+            }
+        });
+
+        if (result.isConfirmed) {
+            const res = await dispatch(updateInquiry({
                 id: inquiry._id,
                 data: { source: 'Online' }
-            })).then((res) => {
-                if (!res.error) {
-                    toast.success("Inquiry transferred to Online Inquiry list");
-                    dispatch(fetchInquiries({})); // Refresh all inquiries
-                }
-            });
+            }));
+
+            if (!res.error) {
+                toast.success("Inquiry transferred to Online Inquiry list");
+                dispatch(fetchInquiries({}));
+            }
         }
     };
 
@@ -140,9 +211,19 @@ const AdminHome = () => {
         <div className="container mx-auto p-6 max-w-7xl animate-fadeIn">
 
             {/* --- Dashboard Header --- */}
-            <div className="mb-8 text-center">
-                <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Admin Dashboard</h1>
-                <p className="text-gray-500 mt-2">Daily Overview & Tasks</p>
+            <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="text-center md:text-left">
+                    <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Admin Dashboard</h1>
+                    <p className="text-gray-500 mt-2">Daily Overview & Tasks</p>
+                </div>
+                <button
+                    onClick={() => navigate('/dashboard')}
+                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition ${
+                        'bg-white text-primary border border-blue-100 hover:bg-blue-50'
+                    }`}
+                >
+                    <BarChart3 size={18} /> Dashboard
+                </button>
             </div>
 
             {/* --- Tab Navigation --- */}
@@ -185,6 +266,235 @@ const AdminHome = () => {
                     )}
                 </div>
             </div>
+
+            {activeTab === 'overview' && (
+                <div className="space-y-6 animate-fadeIn">
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                        <div className="flex flex-wrap items-end gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Date Filter</label>
+                                <select
+                                    value={dashboardFilters.period}
+                                    onChange={(e) => handleDashboardFilterChange('period', e.target.value)}
+                                    className="border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-100 min-w-[150px]"
+                                >
+                                    <option value="today">Today</option>
+                                    <option value="yesterday">Yesterday</option>
+                                    <option value="week">This Week</option>
+                                    <option value="month">This Month</option>
+                                    <option value="year">This Year</option>
+                                    <option value="custom">Custom Range</option>
+                                </select>
+                            </div>
+
+                            {user?.role === 'Super Admin' && (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Branch</label>
+                                    <select
+                                        value={dashboardFilters.branchId}
+                                        onChange={(e) => handleDashboardFilterChange('branchId', e.target.value)}
+                                        className="border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-100 min-w-[180px]"
+                                    >
+                                        <option value="">All Branches</option>
+                                        {branches.map(branch => (
+                                            <option key={branch._id} value={branch._id}>{branch.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {dashboardFilters.period === 'custom' && (
+                                <>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">From</label>
+                                        <input
+                                            type="date"
+                                            value={dashboardFilters.fromDate}
+                                            onChange={(e) => handleDashboardFilterChange('fromDate', e.target.value)}
+                                            className="border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-100"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">To</label>
+                                        <input
+                                            type="date"
+                                            value={dashboardFilters.toDate}
+                                            onChange={(e) => handleDashboardFilterChange('toDate', e.target.value)}
+                                            className="border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-100"
+                                        />
+                                    </div>
+                                </>
+                            )}
+
+                            <button
+                                onClick={resetDashboardFilters}
+                                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-200 flex items-center gap-2"
+                            >
+                                <RefreshCw size={15} /> Reset
+                            </button>
+                            <button
+                                onClick={applyDashboardFilters}
+                                className="bg-primary text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 flex items-center gap-2"
+                            >
+                                <Search size={15} /> Search
+                            </button>
+                        </div>
+                    </div>
+
+                    {dashboardLoading ? (
+                        <div className="bg-white rounded-xl border p-10 text-center text-gray-500 font-semibold">
+                            <RefreshCw className="animate-spin inline-block mr-2" size={18} /> Loading dashboard...
+                        </div>
+                    ) : dashboardData ? (
+                        <>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {[
+                                    { label: 'Inquiries', value: dashboardData.cards.inquiries, icon: <Users size={22} />, tone: 'bg-blue-50 text-blue-700 border-blue-100' },
+                                    { label: 'Admissions', value: dashboardData.cards.admissions, icon: <UserPlus size={22} />, tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+                                    { label: 'Registrations', value: dashboardData.cards.registrations, icon: <CheckCircle size={22} />, tone: 'bg-purple-50 text-purple-700 border-purple-100' },
+                                    { label: 'Visitors', value: dashboardData.cards.visitors, icon: <CalendarDays size={22} />, tone: 'bg-orange-50 text-orange-700 border-orange-100' },
+                                    { label: 'Receipts', value: dashboardData.cards.receipts, icon: <Wallet size={22} />, tone: 'bg-cyan-50 text-cyan-700 border-cyan-100' },
+                                    { label: 'Total Collection', value: formatAmount(dashboardData.cards.collection), icon: <Wallet size={22} />, tone: 'bg-green-50 text-green-700 border-green-100' },
+                                    { label: 'Admission Fees', value: formatAmount(dashboardData.cards.admissionFees), icon: <Building2 size={22} />, tone: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+                                    { label: 'Registration Fees', value: formatAmount(dashboardData.cards.registrationFees), icon: <Building2 size={22} />, tone: 'bg-pink-50 text-pink-700 border-pink-100' }
+                                ].map(card => (
+                                    <div key={card.label} className={`rounded-xl border p-4 ${card.tone}`}>
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-xs font-black uppercase tracking-wide opacity-80">{card.label}</p>
+                                                <p className="mt-2 text-2xl font-black">{card.value}</p>
+                                            </div>
+                                            <div className="rounded-lg bg-white/70 p-2">{card.icon}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                                    <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+                                        <h3 className="font-bold text-gray-800">Recent Inquiries</h3>
+                                        <span className="text-xs font-bold text-gray-500">Total {dashboardData.cards.inquiries}</span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-white text-xs text-gray-500 uppercase">
+                                                <tr>
+                                                    <th className="p-3 text-left">Date</th>
+                                                    <th className="p-3 text-left">Name</th>
+                                                    <th className="p-3 text-left">Source</th>
+                                                    <th className="p-3 text-left">Branch</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y">
+                                                {dashboardData.lists.inquiries.length ? dashboardData.lists.inquiries.map(item => (
+                                                    <tr key={item._id}>
+                                                        <td className="p-3">{formatDate(item.createdAt)}</td>
+                                                        <td className="p-3 font-semibold">{item.firstName} {item.lastName}</td>
+                                                        <td className="p-3">{item.source || '-'}</td>
+                                                        <td className="p-3">{item.branchId?.name || '-'}</td>
+                                                    </tr>
+                                                )) : <tr><td colSpan="4" className="p-6 text-center text-gray-400">No inquiries found.</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                                    <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+                                        <h3 className="font-bold text-gray-800">Recent Admissions</h3>
+                                        <span className="text-xs font-bold text-gray-500">Total {dashboardData.cards.admissions}</span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-white text-xs text-gray-500 uppercase">
+                                                <tr>
+                                                    <th className="p-3 text-left">Date</th>
+                                                    <th className="p-3 text-left">Student</th>
+                                                    <th className="p-3 text-left">Course</th>
+                                                    <th className="p-3 text-left">Branch</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y">
+                                                {dashboardData.lists.admissions.length ? dashboardData.lists.admissions.map(item => (
+                                                    <tr key={item._id}>
+                                                        <td className="p-3">{formatDate(item.admissionDate)}</td>
+                                                        <td className="p-3 font-semibold">{item.firstName} {item.lastName}</td>
+                                                        <td className="p-3">{item.course?.name || '-'}</td>
+                                                        <td className="p-3">{item.branchId?.name || '-'}</td>
+                                                    </tr>
+                                                )) : <tr><td colSpan="4" className="p-6 text-center text-gray-400">No admissions found.</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                                    <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+                                        <h3 className="font-bold text-gray-800">Fee Receipt List</h3>
+                                        <span className="text-xs font-bold text-gray-500">{formatAmount(dashboardData.cards.collection)}</span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-white text-xs text-gray-500 uppercase">
+                                                <tr>
+                                                    <th className="p-3 text-left">Date</th>
+                                                    <th className="p-3 text-left">Receipt</th>
+                                                    <th className="p-3 text-left">Student</th>
+                                                    <th className="p-3 text-right">Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y">
+                                                {dashboardData.lists.receipts.length ? dashboardData.lists.receipts.map(item => (
+                                                    <tr key={item._id}>
+                                                        <td className="p-3">{formatDate(item.date)}</td>
+                                                        <td className="p-3 font-mono">{item.receiptNo}</td>
+                                                        <td className="p-3 font-semibold">{item.student ? `${item.student.firstName || ''} ${item.student.lastName || ''}` : '-'}</td>
+                                                        <td className="p-3 text-right font-bold">{formatAmount(item.amountPaid)}</td>
+                                                    </tr>
+                                                )) : <tr><td colSpan="4" className="p-6 text-center text-gray-400">No receipts found.</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                                    <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+                                        <h3 className="font-bold text-gray-800">Visitor List</h3>
+                                        <span className="text-xs font-bold text-gray-500">Total {dashboardData.cards.visitors}</span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-white text-xs text-gray-500 uppercase">
+                                                <tr>
+                                                    <th className="p-3 text-left">Date</th>
+                                                    <th className="p-3 text-left">Student</th>
+                                                    <th className="p-3 text-left">Contact</th>
+                                                    <th className="p-3 text-left">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y">
+                                                {dashboardData.lists.visitors.length ? dashboardData.lists.visitors.map(item => (
+                                                    <tr key={item._id}>
+                                                        <td className="p-3">{formatDate(item.visitingDate)}</td>
+                                                        <td className="p-3 font-semibold">{item.studentName}</td>
+                                                        <td className="p-3">{item.mobileNumber || item.contactParent || '-'}</td>
+                                                        <td className="p-3">{item.status || 'Open'}</td>
+                                                    </tr>
+                                                )) : <tr><td colSpan="4" className="p-6 text-center text-gray-400">No visitors found.</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="bg-white rounded-xl border p-10 text-center text-gray-500">
+                            Click Search to load dashboard data.
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* --- CONTENT: INQUIRY LIST --- */}
             {activeTab === 'inquiry' && (canViewInquiryList || (user && user.role === 'Super Admin')) && (

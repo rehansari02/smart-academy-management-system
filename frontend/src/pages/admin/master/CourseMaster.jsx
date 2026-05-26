@@ -23,6 +23,7 @@ const CourseMaster = () => {
   const [previewImage, setPreviewImage] = useState(null); // Image Preview State
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm();
+  const commissionType = watch('commissionType') || 'Percentage';
   
   // --- Filter & Pagination State ---
   const [filters, setFilters] = useState({ courseId: '', courseType: '' });
@@ -101,10 +102,11 @@ const CourseMaster = () => {
       // Set Form Fields
       const fields = [
           'name', 'shortName', 'courseFees', 'admissionFees', 'registrationFees', 
-          'monthlyFees', 'totalInstallment', 'sorting', 'commission', 'duration', 
+          'monthlyFees', 'totalInstallment', 'sorting', 'commissionType', 'commission', 'duration', 
           'durationType', 'courseType', 'image', 'smallDescription', 'description', 'isActive'
       ];
       fields.forEach(f => setValue(f, course[f]));
+      setValue('commissionType', course.commissionType || 'Percentage');
 
       // Set Subjects
       const subjMap = {};
@@ -228,7 +230,7 @@ const CourseMaster = () => {
             <label className="text-sm text-gray-600">entries</label>
         </div>
         <button 
-            onClick={() => setShowForm(true)} 
+            onClick={() => { setShowForm(true); setValue('commissionType', 'Percentage'); }} 
             className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-2 shadow text-sm font-medium"
         >
             <Plus size={18}/> Add New Course
@@ -250,6 +252,7 @@ const CourseMaster = () => {
                     <th className="p-2 border font-semibold text-center">Fees</th>
                     <th className="p-2 border font-semibold text-center">Duration</th>
                     <th className="p-2 border font-semibold text-center">Status</th>
+                    <th className="p-2 border font-semibold text-center">Commission</th>
                     <th className="p-2 border font-semibold text-center">Subjects</th>
                     <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-24">Actions</th>
                 </tr>
@@ -267,6 +270,11 @@ const CourseMaster = () => {
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${course.isActive ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'}`}>
                                 {course.isActive ? 'Active' : 'Inactive'}
                             </span>
+                        </td>
+                        <td className="p-2 border text-center text-gray-700">
+                            {course.commissionType === 'Amount'
+                                ? `₹${course.commission ?? 0}`
+                                : `${course.commission ?? 0}%`}
                         </td>
                         <td className="p-2 border text-center">
                             <button 
@@ -289,7 +297,7 @@ const CourseMaster = () => {
                         </td>
                     </tr>
                 )) : (
-                    <tr><td colSpan="8" className="text-center py-8 text-gray-400">No courses found.</td></tr>
+                    <tr><td colSpan="9" className="text-center py-8 text-gray-400">No courses found.</td></tr>
                 )}
             </tbody>
         </table>
@@ -410,8 +418,21 @@ const CourseMaster = () => {
                             <input type="number" {...register('totalInstallment')} className="input-field" placeholder="1"/>
                         </div>
                         <div>
-                            <label className="label">Commission (%)</label>
-                            <input type="number" {...register('commission')} className="input-field" placeholder="0"/>
+                            <label className="label">Commission Type</label>
+                            <select {...register('commissionType')} className="input-field">
+                                <option value="Percentage">Percentage</option>
+                                <option value="Amount">Amount</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="label">Commission {commissionType === 'Amount' ? '(Amount)' : '(%)'}</label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                {...register('commission')}
+                                className="input-field"
+                                placeholder={commissionType === 'Amount' ? '0' : '0'}
+                            />
                         </div>
 
                         {/* Row 3: Duration & Type */}

@@ -62,8 +62,11 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
         course: '',
         inTime: new Date().toTimeString().substring(0, 5),
         outTime: '',
+        status: 'Open',
         attendedBy: '',
         remarks: '',
+        nextVisitingDate: '',
+        followUpDetails: '',
         branchId: user?.branchId || '',
         inquiryId: ''
     });
@@ -104,8 +107,11 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                 course: initialData.course?._id || initialData.course || '',
                 inTime: convertTo24Hour(initialData.inTime),
                 outTime: convertTo24Hour(initialData.outTime),
+                status: initialData.status || initialData.inquiryId?.status || 'Open',
                 attendedBy: initialData.attendedBy?._id || initialData.attendedBy || '',
                 remarks: initialData.remarks || '',
+                nextVisitingDate: initialData.nextVisitingDate || '',
+                followUpDetails: initialData.followUpDetails || '',
                 branchId: initialData.branchId?._id || initialData.branchId || user?.branchId || '',
                 inquiryId: initialData.inquiryId?._id || initialData.inquiryId || ''
             });
@@ -151,8 +157,11 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
             course: '',
             inTime: new Date().toTimeString().substring(0, 5),
             outTime: '',
+            status: 'Open',
             attendedBy: '',
             remarks: '',
+            nextVisitingDate: '',
+            followUpDetails: '',
             branchId: user?.branchId || '',
             inquiryId: ''
         });
@@ -251,6 +260,8 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
     const handleFillDetails = (inquiry) => {
         const fullName = [inquiry.firstName, inquiry.middleName, inquiry.lastName].filter(Boolean).join(' ');
         const matchedCourse = courses.find(c => c._id === inquiry.interestedCourse?._id || c._id === inquiry.interestedCourse);
+        const referenceName = inquiry.referenceDetail?.name || inquiry.referenceBy || 'Direct';
+        const matchedReference = references.find(r => r.name === referenceName);
 
         setFormData(prev => ({
             ...prev,
@@ -258,8 +269,12 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
             mobileNumber: inquiry.contactStudent || inquiry.mobile || '',
             contactParent: inquiry.contactParent || '',
             contactHome: inquiry.contactHome || '',
-            reference: inquiry.source === 'Reference' ? (inquiry.referenceBy || '') : inquiry.source,
+            reference: referenceName,
+            referenceContact: inquiry.referenceDetail?.mobile || matchedReference?.mobile || '',
+            referenceAddress: inquiry.referenceDetail?.address || matchedReference?.address || '',
             course: matchedCourse ? matchedCourse._id : '',
+            status: inquiry.status || 'Open',
+            branchId: inquiry.branchId?._id || inquiry.branchId || prev.branchId,
             inquiryId: inquiry._id
         }));
         
@@ -382,6 +397,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                                     className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500"
                                 >
                                     <option value="">Select Reference</option>
+                                    <option value="Direct">Direct / Walk-in</option>
                                     <optgroup label="Staff">
                                         {employees.map(emp => (
                                             <option key={emp._id} value={emp.name || `${emp.firstName} ${emp.lastName}`}>
@@ -452,6 +468,22 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                                 onChange={handleInputChange}
                                 className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500"
                             />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                            <select
+                                name="status"
+                                value={formData.status}
+                                onChange={handleInputChange}
+                                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500"
+                            >
+                                <option value="Open">Open</option>
+                                <option value="InProgress">InProgress</option>
+                                <option value="Recall">Recall</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Close">Close</option>
+                                <option value="Complete">Complete</option>
+                            </select>
                         </div>
                         <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
@@ -545,6 +577,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                                     <div className="grid grid-cols-1 gap-y-0.5 text-[10px] text-gray-600 mb-2">
                                         <div><span className="text-gray-400">Course:</span> {inquiry.interestedCourse?.name || '-'}</div>
                                         <div><span className="text-gray-400">Mobile:</span> {inquiry.contactStudent || '-'}</div>
+                                        <div><span className="text-gray-400">Reference:</span> {inquiry.referenceDetail?.name || inquiry.referenceBy || 'Direct'}</div>
                                     </div>
     
                                     <div className="flex gap-1 border-t pt-2">

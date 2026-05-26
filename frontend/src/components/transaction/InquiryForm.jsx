@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useSelector, useDispatch } from 'react-redux';
-import { Save, X, Camera, User, Phone, BookOpen, Calendar, Copy, Clipboard, RotateCcw, Plus, Check } from 'lucide-react';
+import { Save, X, Camera, User, Phone, BookOpen, Calendar, Copy, Clipboard, RotateCcw, Plus, Check, Lock } from 'lucide-react';
 import { fetchEmployees, fetchReferences, fetchEducations, createReference, createEducation, fetchBranches, fetchStates, fetchCities } from '../../features/master/masterSlice';
 import { toast } from 'react-toastify';
 import { formatInputText } from '../../utils/textFormatter'; // Imported util
@@ -45,8 +45,16 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
     if (mode === 'Online') fixedSource = 'Online';
     if (mode === 'Edit') fixedSource = initialData?.source || 'Walk-in';
 
-    // Lock reference if already saved and user is not Super Admin
-    const isReferenceLocked = initialData?.referenceBy && user?.role !== 'Super Admin';
+    const savedReferenceName = (
+        initialData?.referenceBy ||
+        (typeof initialData?.referenceDetail === 'object' ? initialData.referenceDetail?.name : '') ||
+        initialData?.reference ||
+        ''
+    ).trim();
+    const isReferenceLocked = Boolean(savedReferenceName) && user?.role !== 'Super Admin';
+    const referenceLockTitle = isReferenceLocked
+        ? 'Reference is locked after first save. Only Super Admin can change it.'
+        : '';
 
     const { register, handleSubmit, reset, setValue, watch, getValues } = useForm({
         defaultValues: {
@@ -440,15 +448,17 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                                 </div>
 
                                 {/* Reference Logic */}
-                                <div className="relative">
+                                <div className="relative" title={referenceLockTitle}>
                                     <label className="block text-xs font-bold text-gray-700">Reference</label>
                                     <div className="flex gap-1">
                                         <select
                                             {...register('referenceBy')}
                                             className="w-full border p-2 rounded text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                                             disabled={isReferenceLocked}
+                                            title={referenceLockTitle}
                                         >
                                             <option value="">-- Select Reference --</option>
+                                            <option value="Direct">Direct / Walk-in</option>
                                             <optgroup label="Staff">
                                                 {employees.map(e => <option key={e._id} value={e.name}>{e.name}</option>)}
                                             </optgroup>
@@ -462,6 +472,11 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                                             </button>
                                         )}
                                     </div>
+                                    {isReferenceLocked && (
+                                        <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                                            <Lock size={12} /> Only Super Admin can change this reference.
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>

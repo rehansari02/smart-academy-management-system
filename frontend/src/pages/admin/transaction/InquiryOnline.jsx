@@ -4,14 +4,16 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchInquiries, updateInquiry, resetTransaction } from '../../../features/transaction/transactionSlice';
 import { fetchCourses } from '../../../features/master/masterSlice';
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
+import { getBranches } from '../../../features/master/branchSlice';
 import InquiryForm from '../../../components/transaction/InquiryForm';
 import StudentSearch from '../../../components/StudentSearch';
 import InquiryViewModal from '../../../components/transaction/InquiryViewModal';
 import SmartTable from '../../../components/ui/SmartTable';
-import { Search, RefreshCw, PhoneCall, Globe, X, Edit, Trash2, Eye, Calendar, Printer } from 'lucide-react';
+import { Search, RefreshCw, CalendarClock, Globe, X, Edit, Trash2, Eye, Calendar, Printer } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useForm } from 'react-hook-form';
 import TimePicker12Hour from '../../../components/common/TimePicker12Hour';
+import SearchableDropdown from '../../../components/common/SearchableDropdown';
 
 // --- SUB-COMPONENT: Follow Up Form ---
 import { formatDate } from '../../../utils/dateUtils';
@@ -59,6 +61,7 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
             status: data.status,
             followUpDetails: finalDetails,
             followUpDate: fDate,
+            nextVisitingDate: fDate,
             newRemarks: data.newRemarks,
         };
 
@@ -131,10 +134,16 @@ const InquiryOnline = () => {
     const { inquiries, isSuccess, message } = useSelector((state) => state.transaction);
     const { employees } = useSelector((state) => state.employees);
     const { user } = useSelector((state) => state.auth);
+    const { branches } = useSelector((state) => state.branch);
+
+    const activeReferences = [...new Set(
+        inquiries.map(i => i.referenceBy).filter(Boolean)
+    )].sort();
 
     const [showFollowUpModal, setShowFollowUpModal] = useState(null);
     const [editModalData, setEditModalData] = useState(null);
     const [viewInquiry, setViewInquiry] = useState(null);
+    const [pendingModalSave, setPendingModalSave] = useState(false);
 
     // Filter State
     const [filters, setFilters] = useState({
@@ -143,6 +152,7 @@ const InquiryOnline = () => {
         status: '',
         studentName: '',
         referenceBy: '',
+        branchId: '',
         dateFilterType: 'followUpDate',
         source: 'Online' // Locked to Online
     });
@@ -158,16 +168,18 @@ const InquiryOnline = () => {
     useEffect(() => {
         dispatch(fetchCourses()); // Required for InquiryForm dropdowns
         dispatch(fetchEmployees());
+        if (user?.role === 'Super Admin') dispatch(getBranches());
     }, [dispatch]);
     useEffect(() => {
-        if (isSuccess && message && (showFollowUpModal || editModalData)) {
+        if (isSuccess && message && pendingModalSave) {
             toast.success(message); // "Inquiry Updated" or "Follow-up Updated"
             dispatch(resetTransaction());
             setShowFollowUpModal(null);
             setEditModalData(null);
-            // fetchInquiries removed to prevent list reset
+            setPendingModalSave(false);
+            dispatch(fetchInquiries(filters));
         }
-    }, [isSuccess, message, dispatch, showFollowUpModal, editModalData]);
+    }, [isSuccess, message, dispatch, pendingModalSave, filters]);
 
     const handleFilterChange = (e) => {
         setFilters({ ...filters, [e.target.name]: e.target.value });
@@ -176,13 +188,14 @@ const InquiryOnline = () => {
     const handleResetFilters = () => {
         const resetState = {
             startDate: new Date().toISOString().split('T')[0], endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '',
-            dateFilterType: 'followUpDate', source: 'Online'
+            branchId: '', dateFilterType: 'followUpDate', source: 'Online'
         };
         setFilters(resetState);
         dispatch(fetchInquiries(resetState));
     };
 
     const handleSaveFollowUp = ({ id, data }) => {
+        setPendingModalSave(true);
         dispatch(updateInquiry({ id, data }));
     };
 
@@ -190,9 +203,15 @@ const InquiryOnline = () => {
         // Check for FormData/File upload support if InquiryForm uses it now
         if (data instanceof FormData) {
             const id = data.get('_id');
-            if (id) dispatch(updateInquiry({ id, data }));
+            if (id) {
+                setPendingModalSave(true);
+                dispatch(updateInquiry({ id, data }));
+            }
         } else {
-            if (data._id) dispatch(updateInquiry({ id: data._id, data }));
+            if (data._id) {
+                setPendingModalSave(true);
+                dispatch(updateInquiry({ id: data._id, data }));
+            }
         }
     };
 
@@ -247,7 +266,7 @@ const InquiryOnline = () => {
             header: 'Action', render: r => (
                 <div className="flex gap-2">
                     <button onClick={() => setShowFollowUpModal(r)} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100" title="Follow Up">
-                        <PhoneCall size={14} />
+                        <CalendarClock size={14} />
                     </button>
                     <button onClick={() => setEditModalData(r)} className="bg-blue-50 text-blue-600 border border-blue-200 p-1.5 rounded hover:bg-blue-100" title="Edit">
                         <Edit size={14} />
@@ -343,7 +362,7 @@ const InquiryOnline = () => {
                     </div>
 
                     {/* Row 2: Status & Student Search */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
                         <div>
                             <label className="text-xs text-gray-500 font-semibold mb-1 block">Status</label>
                             <select name="status" onChange={handleFilterChange} value={filters.status} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
@@ -371,9 +390,25 @@ const InquiryOnline = () => {
                                 className="w-full text-sm"
                             />
                         </div>
+                        {user?.role === 'Super Admin' && (
+                            <div>
+                                <label className="text-xs text-gray-500 font-semibold mb-1 block">Branch</label>
+                                <select name="branchId" onChange={handleFilterChange} value={filters.branchId} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                                    <option value="">All Branches</option>
+                                    {branches?.map((branch) => (
+                                        <option key={branch._id} value={branch._id}>{branch.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                         <div>
-                            <label className="text-xs text-gray-500 font-semibold mb-1 block">Reference By</label>
-                            <input type="text" name="referenceBy" value={filters.referenceBy} onChange={handleFilterChange} placeholder="Search Reference..." className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                            <SearchableDropdown
+                                options={activeReferences}
+                                value={filters.referenceBy}
+                                onSelect={(val) => setFilters({ ...filters, referenceBy: val })}
+                                label="Reference By"
+                                placeholder="Search or type Reference..."
+                            />
                         </div>
                     </div>
 
@@ -401,7 +436,7 @@ const InquiryOnline = () => {
                     <h1 className="text-2xl font-bold text-blue-800 uppercase tracking-wide">Online Inquiry List</h1>
                     <p className="text-xs text-gray-500 mt-1">Generated on {new Date().toLocaleDateString('en-GB')} | Total Inquiries: {inquiries?.length || 0}</p>
                 </div>
-                <table className="w-full border-collapse min-w-[1000px]">
+                <table className="w-full border-collapse min-w-[1100px]">
                     <thead>
                         <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
                             <th className="p-2 border font-semibold w-12">Sr. No.</th>
@@ -414,6 +449,7 @@ const InquiryOnline = () => {
                             <th className="p-2 border font-semibold">Followup Date</th>
                             <th className="p-2 border font-semibold">Followup Time</th>
                             <th className="p-2 border font-semibold w-36">Followup Details</th>
+                            <th className="p-2 border font-semibold">Followup By</th>
                             <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-32">Actions</th>
                         </tr>
                     </thead>
@@ -458,10 +494,11 @@ const InquiryOnline = () => {
                                     {inquiry.followUpDate ? new Date(inquiry.followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
                                 </td>
                                 <td className="p-2 border text-gray-600 truncate max-w-xs" title={inquiry.followUpDetails}>{inquiry.followUpDetails ? (inquiry.followUpDetails.length > 14 ? `${inquiry.followUpDetails.substring(0, 14)}...` : inquiry.followUpDetails) : '-'}</td>
+                                <td className="p-2 border text-gray-700">{inquiry.followUpBy?.name || inquiry.followUpBy?.username || '-'}</td>
                                 <td className="p-2 border text-center sticky right-0 bg-white">
                                     <div className="flex justify-center gap-1">
                                         <button onClick={() => setShowFollowUpModal(inquiry)} className="bg-purple-50 text-purple-600 border border-purple-200 p-1 rounded hover:bg-purple-100 transition" title="Follow Up">
-                                            <PhoneCall size={14} />
+                                            <CalendarClock size={14} />
                                         </button>
                                         <button onClick={() => setViewInquiry(inquiry)} className="bg-teal-50 text-teal-600 border border-teal-200 p-1 rounded hover:bg-teal-100 transition" title="View Print">
                                             <Eye size={14} />
@@ -476,7 +513,7 @@ const InquiryOnline = () => {
                                 </td>
                             </tr>
                         )) : (
-                            <tr><td colSpan={user?.role === 'Super Admin' ? 11 : 10} className="text-center py-8 text-gray-400">No inquiries found</td></tr>
+                            <tr><td colSpan={user?.role === 'Super Admin' ? 12 : 11} className="text-center py-8 text-gray-400">No inquiries found</td></tr>
                         )}
                     </tbody>
                 </table>

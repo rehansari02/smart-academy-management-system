@@ -2,50 +2,331 @@ const StudentAttendance = require('../models/StudentAttendance');
 const EmployeeAttendance = require('../models/EmployeeAttendance');
 const Student = require('../models/Student');
 const Employee = require('../models/Employee');
+const ExamSchedule = require('../models/ExamSchedule');
+const AttendanceCalendar = require('../models/AttendanceCalendar');
 const sendSMS = require('../utils/smsSender');
+
+const normalizeDateRange = (dateValue) => {
+    const start = new Date(dateValue);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(dateValue);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+};
+
+const getCalendarYears = (fromDate, toDate) => {
+    const currentYear = new Date().getFullYear();
+    const startYear = fromDate ? new Date(fromDate).getFullYear() : currentYear;
+    const endYear = toDate ? new Date(toDate).getFullYear() : startYear;
+
+    if (Number.isNaN(startYear) || Number.isNaN(endYear)) return [currentYear];
+
+    const years = [];
+    for (let year = Math.min(startYear, endYear); year <= Math.max(startYear, endYear); year += 1) {
+        years.push(year);
+    }
+    return years;
+};
+
+const ensureSundayCalendarEntries = async (years, user) => {
+    const branch = user?.role !== 'Super Admin' ? user?.branchId : undefined;
+    const operations = [];
+
+    years.forEach((year) => {
+        const date = new Date(year, 0, 1);
+        while (date.getDay() !== 0) {
+            date.setDate(date.getDate() + 1);
+        }
+
+        while (date.getFullYear() === year) {
+            const { start, end } = normalizeDateRange(date);
+            const query = { type: 'Sunday', startDate: start, endDate: end };
+            if (branch) query.branch = branch;
+            else query.$or = [{ branch: { $exists: false } }, { branch: null }];
+
+            operations.push({
+                updateOne: {
+                    filter: query,
+                    update: {
+                        $setOnInsert: {
+                            title: 'Sunday',
+                            type: 'Sunday',
+                            startDate: start,
+                            endDate: end,
+                            remarks: 'Auto Sunday holiday',
+                            isActive: true,
+                            branch,
+                            createdBy: user?._id
+                        }
+                    },
+                    upsert: true
+                }
+            });
+
+            date.setDate(date.getDate() + 7);
+        }
+    });
+
+    if (operations.length > 0) {
+        await AttendanceCalendar.bulkWrite(operations, { ordered: false });
+    }
+};
+
+const getAttendanceClosureForDate = async (dateValue, user) => {
+    if (!dateValue) return null;
+
+    const { start, end } = normalizeDateRange(dateValue);
+    if (Number.isNaN(start.getTime())) return null;
+
+    if (start.getDay() === 0) {
+        return {
+            type: 'Sunday',
+            title: 'Sunday',
+            reason: 'Attendance is closed on Sunday'
+        };
+    }
+
+    const query = {
+        isActive: { $ne: false },
+        startDate: { $lte: end },
+        endDate: { $gte: start }
+    };
+
+    if (user && user.role !== 'Super Admin' && user.branchId) {
+        query.$or = [{ branch: user.branchId }, { branch: { $exists: false } }, { branch: null }];
+    }
+
+    const closure = await AttendanceCalendar.findOne(query).sort({ startDate: 1 });
+    if (!closure) return null;
+
+    return {
+        _id: closure._id,
+        type: closure.type,
+        title: closure.title,
+        reason: `${closure.type}: ${closure.title}`
+    };
+};
+
+exports.getAttendanceCalendar = async (req, res) => {
+    try {
+        const { fromDate, toDate, type } = req.query;
+        await ensureSundayCalendarEntries(getCalendarYears(fromDate, toDate), req.user);
+
+        const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 100);
+        const skip = (page - 1) * limit;
+        const query = {};
+
+        if (type) query.type = type;
+
+        if (fromDate || toDate) {
+            const start = fromDate ? normalizeDateRange(fromDate).start : new Date('1970-01-01');
+            const end = toDate ? normalizeDateRange(toDate).end : new Date('2999-12-31');
+            query.startDate = { $lte: end };
+            query.endDate = { $gte: start };
+        }
+
+        if (req.user && req.user.role !== 'Super Admin' && req.user.branchId) {
+            query.$or = [{ branch: req.user.branchId }, { branch: { $exists: false } }, { branch: null }];
+        }
+
+        const [items, total] = await Promise.all([
+            AttendanceCalendar.find(query)
+                .populate('createdBy', 'name')
+                .sort({ startDate: -1, createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            AttendanceCalendar.countDocuments(query)
+        ]);
+
+        res.status(200).json({
+            items,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.max(Math.ceil(total / limit), 1)
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching attendance calendar', error: error.message });
+    }
+};
+
+exports.createAttendanceCalendar = async (req, res) => {
+    try {
+        const { title, type, startDate, endDate, remarks, isActive } = req.body;
+
+        if (!title || !type || !startDate) {
+            return res.status(400).json({ message: 'Title, type, and start date are required' });
+        }
+
+        const normalizedStart = normalizeDateRange(startDate).start;
+        const normalizedEnd = normalizeDateRange(endDate || startDate).end;
+
+        if (Number.isNaN(normalizedStart.getTime()) || Number.isNaN(normalizedEnd.getTime())) {
+            return res.status(400).json({ message: 'Invalid date' });
+        }
+
+        if (normalizedEnd < normalizedStart) {
+            return res.status(400).json({ message: 'End date cannot be before start date' });
+        }
+
+        const item = await AttendanceCalendar.create({
+            title,
+            type,
+            startDate: normalizedStart,
+            endDate: normalizedEnd,
+            remarks,
+            isActive: isActive !== undefined ? isActive : true,
+            branch: req.user?.role !== 'Super Admin' ? req.user?.branchId : req.body.branch || undefined,
+            createdBy: req.user?._id
+        });
+
+        res.status(201).json({ message: 'Attendance calendar saved', item });
+    } catch (error) {
+        res.status(500).json({ message: 'Error saving attendance calendar', error: error.message });
+    }
+};
+
+exports.updateAttendanceCalendar = async (req, res) => {
+    try {
+        const { title, type, startDate, endDate, remarks, isActive } = req.body;
+        const item = await AttendanceCalendar.findById(req.params.id);
+
+        if (!item) return res.status(404).json({ message: 'Calendar entry not found' });
+
+        if (
+            req.user &&
+            req.user.role !== 'Super Admin' &&
+            item.branch &&
+            req.user.branchId &&
+            item.branch.toString() !== req.user.branchId.toString()
+        ) {
+            return res.status(403).json({ message: 'Not authorized to update this calendar entry' });
+        }
+
+        if (!title || !type || !startDate) {
+            return res.status(400).json({ message: 'Title, type, and start date are required' });
+        }
+
+        const normalizedStart = normalizeDateRange(startDate).start;
+        const normalizedEnd = normalizeDateRange(endDate || startDate).end;
+
+        if (Number.isNaN(normalizedStart.getTime()) || Number.isNaN(normalizedEnd.getTime())) {
+            return res.status(400).json({ message: 'Invalid date' });
+        }
+
+        if (normalizedEnd < normalizedStart) {
+            return res.status(400).json({ message: 'End date cannot be before start date' });
+        }
+
+        item.title = title;
+        item.type = type;
+        item.startDate = normalizedStart;
+        item.endDate = normalizedEnd;
+        item.remarks = remarks;
+        item.isActive = isActive !== undefined ? isActive : true;
+
+        await item.save();
+
+        res.status(200).json({ message: 'Attendance calendar updated', item });
+    } catch (error) {
+        res.status(500).json({ message: 'Error updating attendance calendar', error: error.message });
+    }
+};
+
+exports.deleteAttendanceCalendar = async (req, res) => {
+    try {
+        const item = await AttendanceCalendar.findById(req.params.id);
+        if (!item) return res.status(404).json({ message: 'Calendar entry not found' });
+
+        await item.deleteOne();
+        res.status(200).json({ message: 'Attendance calendar entry deleted', id: req.params.id });
+    } catch (error) {
+        res.status(500).json({ message: 'Error deleting attendance calendar', error: error.message });
+    }
+};
+
+exports.checkAttendanceCalendarStatus = async (req, res) => {
+    try {
+        const closure = await getAttendanceClosureForDate(req.query.date, req.user);
+        res.status(200).json({ isClosed: !!closure, closure });
+    } catch (error) {
+        res.status(500).json({ message: 'Error checking attendance calendar', error: error.message });
+    }
+};
 
 // --- STUDENT ATTENDANCE SECTION ---
 
 // Get list of registered students for a specific batch and time to take attendance
 exports.getStudentsForAttendance = async (req, res) => {
     try {
-        const { batch, batchTime } = req.query;
+        const { batch, batchId, date } = req.query;
 
-        if (!batch || !batchTime) {
-            return res.status(400).json({ message: "Batch and Batch Time are required" });
+        if (!batch && !batchId) {
+            return res.status(400).json({ message: "Batch is required" });
         }
 
-        // Fetch students who are registered AND belong to the batch/time
-        // Assuming Student model has 'batch' and 'batchTime' fields or effective equivalent.
-        // Looking at Student.js, it has 'batch'. It does NOT seem to have 'batchTime' explicitly?
-        // Wait, let me check Student.js again in memory.
-        // It has 'batch': String. It does NOT have 'batchTime'.
-        // However, the user request says: "batch name (dropdown option), batch time (dropdown option)".
-        // And "after selecting batch name and batch time it will let appear attendance table".
-        // It implies we might need to filter students by simple batch name first, or maybe the system assumes students are in a batch that has a time?
-        // Or maybe the user filters students just by batch, and 'batchTime' is just recorded for the attendance record (e.g. which slot).
-        // BUT, usually a student belongs to a batch.
-        
-        // Let's look at the "Batch" model. Maybe Batch has time?
-        // I don't have Batch model content loaded but I saw it exists.
-        // Actually, if the Student model has only 'batch', then we filter by 'batch'.
-        // If the user selects a time, it might just be metadata for the attendance record.
-        // However, if the students are segregated by time, then we need to know.
-        // Re-reading User Request: "after selecting batch name and batch time it will let appear attendance table"
-        // It might be possible that we just show ALL students in that batch, and the 'Time' is just for the record.
-        
-        // Strategy: Filter by batch.
-        // Also ensure isRegistered: true as per requirement.
-        
-        const students = await Student.find({ 
-            batch: batch, 
+        const closure = await getAttendanceClosureForDate(date, req.user);
+        if (closure) {
+            return res.status(200).json([]);
+        }
+
+        const batchValues = [batch, batchId].filter(Boolean).map(value => String(value).trim()).filter(Boolean);
+        if (batchId || batch) {
+            const Batch = require('../models/Batch');
+            const batchLookup = [];
+            if (batchId && /^[0-9a-fA-F]{24}$/.test(String(batchId))) {
+                batchLookup.push({ _id: batchId });
+            }
+            if (batch) {
+                batchLookup.push({ name: new RegExp(`^${String(batch).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
+            }
+
+            const batchDoc = batchLookup.length > 0
+                ? await Batch.findOne({ $or: batchLookup }).select('name')
+                : null;
+
+            if (batchDoc?.name) batchValues.push(batchDoc.name);
+        }
+
+        const batchMatchers = [...new Set(batchValues)].map(value => (
+            new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+        ));
+
+        const query = {
+            batch: { $in: batchMatchers },
             isRegistered: true,
-            isActive: true,
-            isDeleted: false
-        }).populate('course', 'name'); 
+            isDeleted: { $ne: true },
+            isCancelled: { $ne: true }
+        };
+
+        if (req.user && req.user.role !== 'Super Admin' && req.user.branchId) {
+            query.branchId = req.user.branchId;
+        }
+
+        const students = await Student.find(query)
+            .populate('course', 'name')
+            .sort({ admissionDate: -1, createdAt: -1 });
+
+        const attendanceDate = date ? new Date(date) : new Date();
+        attendanceDate.setHours(23, 59, 59, 999);
+
+        let eligibleStudents = students;
+        if (!Number.isNaN(attendanceDate.getTime()) && students.length > 0) {
+            const scheduledStudentIds = await ExamSchedule.distinct('attendees', {
+                attendees: { $in: students.map(student => student._id) },
+                isDeleted: { $ne: true },
+                isActive: { $ne: false },
+                'timeTable.date': { $lte: attendanceDate }
+            });
+            const scheduledStudentIdSet = new Set(scheduledStudentIds.map(id => id.toString()));
+            eligibleStudents = students.filter(student => !scheduledStudentIdSet.has(student._id.toString()));
+        }
 
         // Map to a cleaner format for frontend
-        const mappedStudents = students.map(s => ({
+        const mappedStudents = eligibleStudents.map(s => ({
             _id: s._id,
             enrollmentNo: s.enrollmentNo,
             name: `${s.firstName} ${s.middleName ? s.middleName + ' ' : ''}${s.lastName}`,
@@ -70,6 +351,16 @@ exports.checkStudentAttendanceStatus = async (req, res) => {
     try {
         const { date, batch, batchTime } = req.query;
         if (!date || !batch || !batchTime) return res.status(400).json({ message: "Missing params" });
+
+        const closure = await getAttendanceClosureForDate(date, req.user);
+        if (closure) {
+            return res.status(200).json({
+                exists: false,
+                isClosed: true,
+                closure,
+                message: closure.reason
+            });
+        }
 
         // Date needs to be normalized to start of day or ISO string match depending on how frontend sends it.
         // Usually frontend sends YYYY-MM-DD.
@@ -113,6 +404,11 @@ exports.saveStudentAttendance = async (req, res) => {
         // Validate basic
         if(!date || !batchName || !batchTime || !records) {
              return res.status(400).json({ message: "Missing required fields" });
+        }
+
+        const closure = await getAttendanceClosureForDate(date, req.user);
+        if (closure) {
+            return res.status(400).json({ message: `Attendance cannot be taken on this date. ${closure.reason}`, closure });
         }
         
         // Parse date
@@ -270,6 +566,16 @@ exports.checkEmployeeAttendanceStatus = async (req, res) => {
     try {
         const { date } = req.query;
         if (!date) return res.status(400).json({ message: "Date required" });
+
+        const closure = await getAttendanceClosureForDate(date, req.user);
+        if (closure) {
+            return res.status(200).json({
+                exists: false,
+                isClosed: true,
+                closure,
+                message: closure.reason
+            });
+        }
         
         const startOfDay = new Date(date);
         startOfDay.setHours(0,0,0,0);
@@ -298,6 +604,10 @@ exports.saveEmployeeAttendance = async (req, res) => {
         const takenBy = req.user.id;
 
         const attendanceDate = new Date(date);
+        const closure = await getAttendanceClosureForDate(date, req.user);
+        if (closure) {
+            return res.status(400).json({ message: `Attendance cannot be taken on this date. ${closure.reason}`, closure });
+        }
         const startOfDay = new Date(attendanceDate);
         startOfDay.setHours(0,0,0,0);
         const endOfDay = new Date(attendanceDate);

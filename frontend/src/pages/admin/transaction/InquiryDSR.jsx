@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { fetchInquiries, createInquiry, updateInquiry, resetTransaction } from '../../../features/transaction/transactionSlice';
 import { fetchCourses, fetchReferences } from '../../../features/master/masterSlice';
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
+import { getBranches } from '../../../features/master/branchSlice';
 import SmartTable from '../../../components/ui/SmartTable';
 import InquiryForm from '../../../components/transaction/InquiryForm'; // Imported reusable form
 import InquiryViewModal from '../../../components/transaction/InquiryViewModal';
@@ -12,7 +13,7 @@ import TimePicker12Hour from '../../../components/common/TimePicker12Hour';
 import StudentSearch from '../../../components/StudentSearch';
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
 import {
-    Plus, Search, X, PhoneCall, FileText, Edit, Trash2, Calendar, Eye, RefreshCw, Printer
+    Plus, Search, X, CalendarClock, FileText, Edit, Trash2, Calendar, Eye, RefreshCw, Printer
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../../utils/dateUtils';
@@ -130,6 +131,7 @@ const InquiryDSR = () => {
     const { inquiries, isSuccess, message } = useSelector((state) => state.transaction);
     const { employees } = useSelector((state) => state.employees);
     const { user } = useSelector((state) => state.auth);
+    const { branches } = useSelector((state) => state.branch);
 
     // Only show reference names that actually exist in loaded DSR inquiries
     const activeReferences = [...new Set(
@@ -137,14 +139,14 @@ const InquiryDSR = () => {
     )].sort();
 
     // Filter defaults to DSR
-    const [filters, setFilters] = useState({ startDate: '', endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '', source: 'DSR', dateFilterType: 'followUpDate' });
+    const [filters, setFilters] = useState({ startDate: '', endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '', branchId: '', source: 'DSR', dateFilterType: 'followUpDate' });
     const [modal, setModal] = useState({ type: null, data: null });
 
     const handlePrintList = () => {
         window.print();
     };
 
-    useEffect(() => { dispatch(fetchInquiries(filters)); dispatch(fetchCourses()); dispatch(fetchEmployees()); dispatch(fetchReferences()); }, [dispatch]);
+    useEffect(() => { dispatch(fetchInquiries(filters)); dispatch(fetchCourses()); dispatch(fetchEmployees()); dispatch(fetchReferences()); if (user?.role === 'Super Admin') dispatch(getBranches()); }, [dispatch]);
     useEffect(() => {
         if (isSuccess && message) {
             toast.success(message);
@@ -215,7 +217,7 @@ const InquiryDSR = () => {
             header: 'Action', render: r => (
                 <div className="flex gap-2">
                     <button onClick={() => setModal({ type: 'followup', data: r })} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100" title="Update Status">
-                        <PhoneCall size={14} />
+                        <CalendarClock size={14} />
                     </button>
                     <button onClick={() => setModal({ type: 'form', data: r })} className="bg-blue-50 text-blue-600 border border-blue-200 p-1.5 rounded hover:bg-blue-100" title="Edit">
                         <Edit size={14} />
@@ -319,7 +321,7 @@ const InquiryDSR = () => {
                     </div>
 
                     {/* Row 2: Student Search */}
-                    <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-2' : 'md:grid-cols-2'} gap-4`}>
+                    <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
                         <div className="relative z-20">
                             <StudentSearch
                                 label="Search Student"
@@ -345,13 +347,24 @@ const InquiryDSR = () => {
                                 placeholder="Search Reference..."
                             />
                         </div>
+                        {user?.role === 'Super Admin' && (
+                            <div>
+                                <label className="text-xs text-gray-500 font-semibold mb-1 block">Branch</label>
+                                <select value={filters.branchId} onChange={e => setFilters({ ...filters, branchId: e.target.value })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                                    <option value="">All Branches</option>
+                                    {branches?.map((branch) => (
+                                        <option key={branch._id} value={branch._id}>{branch.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                     </div>
 
                     {/* Row 3: Buttons */}
                     <div className="grid grid-cols-2 gap-4 pt-2">
                         <button
                             onClick={() => {
-                                const resetState = { startDate: '', endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '', source: 'DSR', dateFilterType: 'followUpDate' };
+                                const resetState = { startDate: '', endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '', branchId: '', source: 'DSR', dateFilterType: 'followUpDate' };
                                 setFilters(resetState);
                                 dispatch(fetchInquiries(resetState));
                             }}
@@ -374,7 +387,7 @@ const InquiryDSR = () => {
                     <h1 className="text-2xl font-bold text-blue-800 uppercase tracking-wide">DSR Inquiry List</h1>
                     <p className="text-xs text-gray-500 mt-1">Generated on {new Date().toLocaleDateString('en-GB')} | Total Inquiries: {inquiries?.length || 0}</p>
                 </div>
-                <table className="w-full border-collapse min-w-[1000px]">
+                <table className="w-full border-collapse min-w-[1100px]">
                     <thead>
                         <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
                             <th className="p-2 border font-semibold w-12">Sr. No.</th>
@@ -387,6 +400,7 @@ const InquiryDSR = () => {
                             <th className="p-2 border font-semibold">Followup Date</th>
                             <th className="p-2 border font-semibold">Followup Time</th>
                             <th className="p-2 border font-semibold w-36">Followup Details</th>
+                            <th className="p-2 border font-semibold">Followup By</th>
                             <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-32">Actions</th>
                         </tr>
                     </thead>
@@ -431,10 +445,11 @@ const InquiryDSR = () => {
                                     {inquiry.followUpDate ? new Date(inquiry.followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
                                 </td>
                                 <td className="p-2 border text-gray-600 truncate max-w-xs" title={inquiry.followUpDetails}>{inquiry.followUpDetails ? (inquiry.followUpDetails.length > 14 ? `${inquiry.followUpDetails.substring(0, 14)}...` : inquiry.followUpDetails) : '-'}</td>
+                                <td className="p-2 border text-gray-700">{inquiry.followUpBy?.name || inquiry.followUpBy?.username || '-'}</td>
                                 <td className="p-2 border text-center sticky right-0 bg-white">
                                     <div className="flex justify-center gap-1">
                                         <button onClick={() => setModal({ type: 'followup', data: inquiry })} className="bg-purple-50 text-purple-600 border border-purple-200 p-1 rounded hover:bg-purple-100 transition" title="Follow Up">
-                                            <PhoneCall size={14} />
+                                            <CalendarClock size={14} />
                                         </button>
                                         <button onClick={() => setModal({ type: 'view', data: inquiry })} className="bg-teal-50 text-teal-600 border border-teal-200 p-1 rounded hover:bg-teal-100 transition" title="View Print">
                                             <Eye size={14} />
@@ -449,7 +464,7 @@ const InquiryDSR = () => {
                                 </td>
                             </tr>
                         )) : (
-                            <tr><td colSpan={user?.role === 'Super Admin' ? 11 : 10} className="text-center py-8 text-gray-400">No inquiries found</td></tr>
+                            <tr><td colSpan={user?.role === 'Super Admin' ? 12 : 11} className="text-center py-8 text-gray-400">No inquiries found</td></tr>
                         )}
                     </tbody>
                 </table>

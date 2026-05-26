@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Plus, Search, Edit, Trash2, X, Printer, Eye, GraduationCap } from 'lucide-react';
+import { Calendar, Plus, Search, Edit, Trash2, X, Printer, Eye, GraduationCap, PhoneCall, RefreshCw } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import visitorService from '../../../services/visitorService';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import VisitorForm from '../../../components/transaction/VisitorForm';
 import VisitorViewModal from '../../../components/transaction/VisitorViewModal';
+import VisitorFollowUpModal from '../../../components/transaction/VisitorFollowUpModal';
+import SearchableDropdown from '../../../components/common/SearchableDropdown';
 
 const TodaysVisitorsList = () => {
     const navigate = useNavigate();
@@ -19,8 +21,10 @@ const TodaysVisitorsList = () => {
     
     // Fixed filter for Today
     const today = new Date().toISOString().split('T')[0];
-    const [search, setSearch] = useState('');
+    const [studentName, setStudentName] = useState('');
+    const [referenceBy, setReferenceBy] = useState('');
     const [filterBranch, setFilterBranch] = useState('');
+    const [inquirySource, setInquirySource] = useState('');
     const { user } = useSelector((state) => state.auth);
     
     const [showModal, setShowModal] = useState(false);
@@ -30,6 +34,9 @@ const TodaysVisitorsList = () => {
     // View Modal State
     const [showViewModal, setShowViewModal] = useState(false);
     const [viewingVisitor, setViewingVisitor] = useState(null);
+    const [followUpVisitor, setFollowUpVisitor] = useState(null);
+    const activeStudentNames = [...new Set(visitors.map(v => v.studentName).filter(Boolean))].sort();
+    const activeReferences = [...new Set(visitors.map(v => v.reference).filter(Boolean))].sort();
 
     useEffect(() => {
         fetchVisitors();
@@ -41,14 +48,20 @@ const TodaysVisitorsList = () => {
         }
     }, [user]);
 
-    const fetchVisitors = async () => {
+    const fetchVisitors = async (override = {}) => {
         setLoading(true);
+        const nextStudentName = override.studentName ?? studentName;
+        const nextReferenceBy = override.referenceBy ?? referenceBy;
+        const nextBranch = override.branchId ?? filterBranch;
+        const nextInquirySource = override.inquirySource ?? inquirySource;
         try {
             const data = await visitorService.getAllVisitors({
                 fromDate: today,
                 toDate: today,
-                search: search,
-                branchId: filterBranch
+                studentName: nextStudentName,
+                referenceBy: nextReferenceBy,
+                branchId: nextBranch,
+                inquirySource: nextInquirySource
             });
             setVisitors(data);
         } catch (error) {
@@ -69,6 +82,14 @@ const TodaysVisitorsList = () => {
 
     const handleSearch = () => {
         fetchVisitors();
+    };
+
+    const handleResetSearch = () => {
+        setStudentName('');
+        setReferenceBy('');
+        setFilterBranch('');
+        setInquirySource('');
+        fetchVisitors({ studentName: '', referenceBy: '', branchId: '', inquirySource: '' });
     };
 
     const handleDelete = async (id) => {
@@ -100,6 +121,16 @@ const TodaysVisitorsList = () => {
     const handleFormSuccess = () => {
         setShowModal(false);
         fetchVisitors();
+    };
+
+    const handleSaveFollowUp = async (id, data) => {
+        try {
+            await visitorService.createVisitorFollowUp(data);
+            setFollowUpVisitor(null);
+            fetchVisitors();
+        } catch (error) {
+            console.error("Error saving visitor follow-up:", error);
+        }
     };
 
     return (
@@ -168,31 +199,78 @@ const TodaysVisitorsList = () => {
                     </div>
                 </div>
 
-                {/* Simple Search */}
-                <div className="flex gap-2 mb-3 flex-wrap items-center bg-gray-50 p-2 rounded">
-                    {user?.role === 'Super Admin' && (
-                        <select 
-                            value={filterBranch} 
-                            onChange={(e) => setFilterBranch(e.target.value)} 
-                            className="border rounded p-1.5 focus:ring-1 focus:ring-blue-500 text-sm h-9"
-                        >
-                            <option value="">All Branches</option>
-                            {branches.map(b => (
-                                <option key={b._id} value={b._id}>{b.name}</option>
-                            ))}
-                        </select>
-                    )}
-                    <div className="flex gap-2 flex-grow max-w-sm">
-                    <input 
-                        type="text" 
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search Name or Mobile..."
-                        className="flex-1 border rounded p-1.5 focus:ring-1 focus:ring-blue-500 text-sm h-9"
-                    />
-                    <button onClick={handleSearch} className="bg-gray-100 hover:bg-gray-200 p-2 rounded-lg text-gray-600">
-                        <Search size={20} />
-                    </button>
+                {/* Search Section */}
+                <div className="bg-white p-4 rounded-lg shadow mb-6 border border-gray-200">
+                    <h2 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
+                        <Search size={16} /> Search Today's Visitors
+                    </h2>
+
+                    <div className="flex flex-col gap-4">
+                        <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
+                            {user?.role === 'Super Admin' && (
+                                <div>
+                                    <label className="text-xs text-gray-500 font-semibold mb-1 block">Branch</label>
+                                    <select
+                                        value={filterBranch}
+                                        onChange={(e) => setFilterBranch(e.target.value)}
+                                        className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    >
+                                        <option value="">All Branches</option>
+                                        {branches.map(b => (
+                                            <option key={b._id} value={b._id}>{b.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                            <div>
+                                <SearchableDropdown
+                                    options={activeStudentNames}
+                                    value={studentName}
+                                    onSelect={setStudentName}
+                                    label="Search Student"
+                                    placeholder="Search or type student name/mobile..."
+                                    clearLabel="All Students"
+                                />
+                            </div>
+                            <div>
+                                <SearchableDropdown
+                                    options={activeReferences}
+                                    value={referenceBy}
+                                    onSelect={setReferenceBy}
+                                    label="Reference By"
+                                    placeholder="Search or type Reference..."
+                                    clearLabel="All References"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 font-semibold mb-1 block">Inquiry List</label>
+                                <select
+                                    value={inquirySource}
+                                    onChange={(e) => setInquirySource(e.target.value)}
+                                    className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                >
+                                    <option value="">All Inquiry Lists</option>
+                                    <option value="Online">Online</option>
+                                    <option value="Walk-in">Offline</option>
+                                    <option value="DSR">DSR</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 pt-2">
+                            <button
+                                onClick={handleResetSearch}
+                                className="bg-red-100 text-red-700 px-6 py-2.5 rounded hover:bg-red-200 font-medium transition text-sm flex items-center justify-center gap-2"
+                            >
+                                <RefreshCw size={16} /> Reset
+                            </button>
+                            <button
+                                onClick={handleSearch}
+                                className="bg-blue-600 text-white px-6 py-2.5 rounded hover:bg-blue-700 font-medium transition text-sm flex items-center justify-center gap-2"
+                            >
+                                <Search size={16} /> Search
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -202,16 +280,17 @@ const TodaysVisitorsList = () => {
                         <h1 className="text-2xl font-bold text-blue-800 uppercase tracking-wide">Today's Visitors List</h1>
                         <p className="text-xs text-gray-500 mt-1">Generated on {new Date().toLocaleDateString('en-GB')} | Total Visitors: {visitors?.length || 0}</p>
                     </div>
-                    <table className="w-full border-collapse min-w-[1200px]">
+                    <table className="w-full border-collapse min-w-[1300px]">
                         <thead>
                             <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
                                 <th className="p-2 border font-semibold w-12">Sr No</th>
                                 <th className="p-2 border font-semibold">Visiting Date</th>
                                 {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
-                                <th className="p-2 border font-semibold">Name</th>
+                                <th className="p-2 border font-semibold">Student Name</th>
                                 <th className="p-2 border font-semibold text-center w-36">Contact</th>
                                 <th className="p-2 border font-semibold">Reference</th>
                                 <th className="p-2 border font-semibold">Attend By</th>
+                                <th className="p-2 border font-semibold text-center">Status</th>
                                 <th className="p-2 border font-semibold">In Time</th>
                                 <th className="p-2 border font-semibold">Out Time</th>
                                 <th className="p-2 border font-semibold">Remarks</th>
@@ -221,9 +300,9 @@ const TodaysVisitorsList = () => {
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan="12" className="text-center p-4">Loading...</td></tr>
+                                <tr><td colSpan="13" className="text-center p-4">Loading...</td></tr>
                             ) : visitors.length === 0 ? (
-                                <tr><td colSpan="12" className="text-center p-4 text-gray-500">No visitors today.</td></tr>
+                                <tr><td colSpan="13" className="text-center p-4 text-gray-500">No visitors today.</td></tr>
                             ) : (
                                 visitors.map((visitor, index) => (
                                     <tr key={visitor._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
@@ -253,6 +332,17 @@ const TodaysVisitorsList = () => {
                                         </td>
                                         <td className="p-2">{visitor.reference || '-'}</td>
                                         <td className="p-2">{visitor.attendedBy?.name || visitor.attendedBy?.username || '-'}</td>
+                                        <td className="p-2 text-center">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${
+                                                visitor.status === 'Open' ? 'bg-green-100 text-green-700 border-green-200' :
+                                                visitor.status === 'Recall' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                                                visitor.status === 'Complete' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                                visitor.status === 'Close' ? 'bg-red-100 text-red-700 border-red-200' :
+                                                'bg-gray-100 text-gray-600 border-gray-200'
+                                            }`}>
+                                                {visitor.status || 'Open'}
+                                            </span>
+                                        </td>
                                         <td className="p-2">
                                             <span className="text-green-700 font-semibold">{visitor.inTime}</span>
                                         </td>
@@ -270,6 +360,9 @@ const TodaysVisitorsList = () => {
                                         </td>
                                         <td className="p-2 text-center print:hidden">
                                             <div className="flex gap-2 justify-center">
+                                                <button onClick={() => setFollowUpVisitor(visitor)} className="bg-purple-50 text-purple-600 hover:bg-purple-100 p-1.5 rounded border border-purple-200 transition" title="Visitor Follow-up">
+                                                    <PhoneCall size={14} />
+                                                </button>
                                                 <button onClick={() => navigate('/master/student-admission', { state: { visitorData: visitor } })} className="bg-green-50 text-green-600 hover:bg-green-100 p-1.5 rounded border border-green-200 transition" title="Take Admission">
                                                     <GraduationCap size={14} />
                                                 </button>
@@ -329,6 +422,14 @@ const TodaysVisitorsList = () => {
                             setShowViewModal(false);
                             setViewingVisitor(null);
                         }}
+                    />
+                )}
+
+                {followUpVisitor && (
+                    <VisitorFollowUpModal
+                        visitor={followUpVisitor}
+                        onClose={() => setFollowUpVisitor(null)}
+                        onSave={handleSaveFollowUp}
                     />
                 )}
             </div>

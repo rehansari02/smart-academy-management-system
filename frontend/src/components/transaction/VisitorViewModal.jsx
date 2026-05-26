@@ -1,8 +1,30 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Phone, User, Calendar, Clock, BookOpen, Tag, Home, FileText, Building } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
+import visitorService from '../../services/visitorService';
 
 const VisitorViewModal = ({ visitor, onClose }) => {
+    const [visitorFollowUps, setVisitorFollowUps] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+
+    useEffect(() => {
+        const fetchHistory = async () => {
+            if (!visitor?._id) return;
+            setHistoryLoading(true);
+            try {
+                const data = await visitorService.getVisitorFollowUps({ visitorId: visitor._id });
+                setVisitorFollowUps(Array.isArray(data) ? data : []);
+            } catch (error) {
+                console.error('Failed to fetch visitor follow-up history', error);
+                setVisitorFollowUps([]);
+            } finally {
+                setHistoryLoading(false);
+            }
+        };
+
+        fetchHistory();
+    }, [visitor?._id]);
+
     if (!visitor) return null;
 
     // Resolve source
@@ -11,9 +33,9 @@ const VisitorViewModal = ({ visitor, onClose }) => {
             const src = visitor.inquiryId.source;
             if (!src) {
                 return {
-                    label: 'Offline (Converted Inquiry)',
+                    label: 'Offline Inquiry',
                     colorClass: 'bg-gradient-to-r from-teal-500 to-emerald-600 text-white',
-                    subtext: 'Inquiry details were completed offline.'
+                    subtext: 'Visitor created from an inquiry record.'
                 };
             }
             const lowercaseSrc = src.toLowerCase();
@@ -70,6 +92,23 @@ const VisitorViewModal = ({ visitor, onClose }) => {
     };
 
     const sourceInfo = getSourceInfo();
+    const inquiryHistory = visitor.inquiryId?.followUpHistory && visitor.inquiryId.followUpHistory.length > 0
+        ? visitor.inquiryId.followUpHistory
+        : (visitor.inquiryId?.followUpDate ? [{
+            date: visitor.inquiryId.followUpDate,
+            remarks: visitor.inquiryId.followUpDetails || 'Initial follow-up',
+            status: visitor.inquiryId.status || 'Open',
+            followUpBy: visitor.inquiryId.followUpBy,
+            createdAt: visitor.inquiryId.createdAt || visitor.inquiryId.inquiryDate
+        }] : []);
+
+    const statusClass = (status) => (
+        status === 'Open' ? 'bg-green-100 text-green-700 border-green-200' :
+        status === 'Recall' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+        status === 'Complete' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+        status === 'Close' ? 'bg-red-100 text-red-700 border-red-200' :
+        'bg-gray-100 text-gray-600 border-gray-200'
+    );
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 backdrop-blur-sm print:hidden">
@@ -109,7 +148,7 @@ const VisitorViewModal = ({ visitor, onClose }) => {
                             </div>
                             {visitor.inquiryId && (
                                 <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold self-start sm:self-auto border border-white/20">
-                                    Inquiry Converted
+                                    Inquiry Linked
                                 </span>
                             )}
                         </div>
@@ -214,6 +253,108 @@ const VisitorViewModal = ({ visitor, onClose }) => {
                             </div>
                         </div>
                     </div>
+
+                    {/* Visitor Follow-up History */}
+                    <div>
+                        <div className="bg-purple-50/70 p-2 px-3 font-bold text-purple-800 uppercase text-xs tracking-wider border-l-4 border-purple-600 mb-3 rounded-r-md flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1.5">
+                                <Clock size={14} /> Visitor Follow-up History
+                            </span>
+                            <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full">
+                                {visitorFollowUps.length} logs
+                            </span>
+                        </div>
+                        {historyLoading ? (
+                            <div className="text-center py-4 text-xs text-gray-400 bg-gray-50 rounded-lg border">Loading follow-up history...</div>
+                        ) : visitorFollowUps.length > 0 ? (
+                            <div className="relative border-l-2 border-purple-100 ml-4 pl-6 space-y-4">
+                                {visitorFollowUps.map((item, idx) => (
+                                    <div key={item._id || idx} className="relative">
+                                        <div className="absolute -left-[35px] top-1 bg-purple-600 text-white rounded-full flex items-center justify-center w-6 h-6 border-2 border-white shadow text-[10px] font-bold">
+                                            {idx + 1}
+                                        </div>
+                                        <div className="bg-gray-50 p-3 rounded-lg border border-gray-150">
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                                                <div className="font-bold text-gray-800 text-xs">
+                                                    Next Visit: {item.scheduledDate ? formatDate(item.scheduledDate) : '-'}
+                                                    {item.scheduledDate && (
+                                                        <span className="text-gray-500 font-medium ml-2">
+                                                            {new Date(item.scheduledDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider border self-start sm:self-auto ${statusClass(item.status)}`}>
+                                                    {item.status || 'Open'}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-gray-700 whitespace-pre-wrap bg-white p-2 rounded border border-gray-100">
+                                                {item.remark || 'No remark recorded.'}
+                                            </div>
+                                            <div className="text-[9px] text-gray-400 mt-2 flex justify-between gap-2">
+                                                <span>Followup By: {item.followUpBy?.name || item.followUpBy?.username || '-'}</span>
+                                                <span>Logged: {new Date(item.createdAt || item.scheduledDate).toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-4 text-xs text-gray-400 bg-gray-50 rounded-lg border border-dashed">
+                                No visitor follow-up history recorded yet.
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Linked Inquiry Follow-up History */}
+                    {visitor.inquiryId && (
+                        <div>
+                            <div className="bg-blue-50/70 p-2 px-3 font-bold text-blue-800 uppercase text-xs tracking-wider border-l-4 border-blue-600 mb-3 rounded-r-md flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-1.5">
+                                    <FileText size={14} /> Linked Inquiry Follow-up History
+                                </span>
+                                <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full">
+                                    {inquiryHistory.length} logs
+                                </span>
+                            </div>
+                            {inquiryHistory.length > 0 ? (
+                                <div className="relative border-l-2 border-blue-100 ml-4 pl-6 space-y-4">
+                                    {inquiryHistory.map((item, idx) => (
+                                        <div key={item._id || idx} className="relative">
+                                            <div className="absolute -left-[35px] top-1 bg-blue-600 text-white rounded-full flex items-center justify-center w-6 h-6 border-2 border-white shadow text-[10px] font-bold">
+                                                {idx + 1}
+                                            </div>
+                                            <div className="bg-gray-50 p-3 rounded-lg border border-gray-150">
+                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                                                    <div className="font-bold text-gray-800 text-xs">
+                                                        Follow-up: {item.date ? formatDate(item.date) : '-'}
+                                                        {item.date && (
+                                                            <span className="text-gray-500 font-medium ml-2">
+                                                                {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider border self-start sm:self-auto ${statusClass(item.status)}`}>
+                                                        {item.status || 'Open'}
+                                                    </span>
+                                                </div>
+                                                <div className="text-xs text-gray-700 whitespace-pre-wrap bg-white p-2 rounded border border-gray-100">
+                                                    {item.remarks || 'No remark recorded.'}
+                                                </div>
+                                                <div className="text-[9px] text-gray-400 mt-2 flex justify-between gap-2">
+                                                    <span>Followup By: {item.followUpBy?.name || item.followUpBy?.username || '-'}</span>
+                                                    <span>Logged: {new Date(item.createdAt || item.date).toLocaleString()}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-4 text-xs text-gray-400 bg-gray-50 rounded-lg border border-dashed">
+                                    No linked inquiry follow-up history recorded yet.
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Reference External Details if present */}
                     {!visitor.inquiryId && visitor.reference && (

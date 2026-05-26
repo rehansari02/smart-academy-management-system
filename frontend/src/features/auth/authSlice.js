@@ -21,7 +21,15 @@ export const registerUser = createAsyncThunk('auth/register', async (userData, t
 // Login User
 export const login = createAsyncThunk('auth/login', async (userData, thunkAPI) => {
   try {
-    const response = await axios.post(API_URL + 'login', userData);
+    const { rejectRole, ...loginData } = userData;
+    const response = await axios.post(API_URL + 'login', loginData);
+
+    if (rejectRole && response.data?.role === rejectRole) {
+      await axios.post(API_URL + 'logout');
+      localStorage.removeItem('user');
+      return thunkAPI.rejectWithValue('This is not the student login page. Please use Student Login.');
+    }
+
     localStorage.setItem('user', JSON.stringify(response.data));
     return response.data;
   } catch (error) {

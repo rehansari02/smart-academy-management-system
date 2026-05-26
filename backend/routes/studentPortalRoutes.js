@@ -9,13 +9,15 @@ const {
     getFreeLearningQuestions,
     submitFreeLearning,
     getFreeLearningReport,
-    getStudentFees
+    getStudentFees,
+    getStudentExamSchedules
 } = require('../controllers/studentPortalController');
 
 router.get('/dashboard', protect, getDashboardStats);
 router.get('/course', protect, getCourseDetails);
 router.post('/feedback', protect, submitFeedback);
 router.get('/fees', protect, getStudentFees);
+router.get('/exam-schedules', protect, getStudentExamSchedules);
 
 // Study Section Routes
 router.get('/materials', protect, getStudyMaterials);
