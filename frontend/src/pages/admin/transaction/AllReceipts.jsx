@@ -1,34 +1,38 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchFeeReceipts, deleteFeeReceipt, updateFeeReceipt } from '../../../features/transaction/transactionSlice';
-import { useNavigate, Link } from 'react-router-dom';
-import { Search, Printer, Edit2, Trash2, RefreshCw, FileText, X, CheckSquare, Square, Save } from 'lucide-react';
-import { toast } from 'react-toastify';
+import { fetchFeeReceipts, deleteFeeReceipt } from '../../../features/transaction/transactionSlice';
+import { fetchEmployees } from '../../../features/employee/employeeSlice';
+import { fetchBranches } from '../../../features/master/masterSlice';
+import { Link } from 'react-router-dom';
+import { Search, Printer, Edit2, Trash2, RefreshCw, FileText, X, CheckSquare, Square, Save, User, UserCheck } from 'lucide-react';
 import moment from 'moment';
 import { TableSkeleton } from '../../../components/common/SkeletonLoader';
 import EditReceiptModal from '../../../components/transaction/EditReceiptModal';
 import { useReactToPrint } from 'react-to-print';
 import ReceiptPrintTemplate from '../../../components/ReceiptPrintTemplate';
+import StudentSearch from '../../../components/StudentSearch';
 // Assuming you might want to reuse the Edit Modal from FeeCollection or create a new one. 
 // For now, I will implement the table first. If Edit needs a modal, I might need to copy that logic or refactor it into a shared component.
 // Given the user request, I will implement the Edit/Delete actions.
 
 const AllReceipts = () => {
     const dispatch = useDispatch();
-    const navigate = useNavigate();
-    const { receipts, isLoading, isSuccess, message } = useSelector(state => state.transaction);
+    const { receipts, isLoading } = useSelector(state => state.transaction);
+    const { employees } = useSelector(state => state.employees);
+    const { branches } = useSelector(state => state.master);
     const { user } = useSelector(state => state.auth);
     
     // Filters State
     const [filters, setFilters] = useState({
         startDate: '', 
-        endDate: new Date().toISOString().split('T')[0],
+        endDate: moment().format('YYYY-MM-DD'),
         receiptNo: '',
         paymentMode: '',
         studentId: '',
         search: '',
         studentName: '',
-        reference: ''
+        reference: '',
+        branchId: user?.role === 'Super Admin' ? '' : (user?.branchId || '')
     });
 
     const [printingReceipt, setPrintingReceipt] = useState(null);
@@ -37,33 +41,58 @@ const AllReceipts = () => {
     // Edit Modal State
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingReceipt, setEditingReceipt] = useState(null);
+    const totalAmount = useMemo(() => (receipts || []).reduce((sum, receipt) => sum + Number(receipt?.amountPaid || 0), 0), [receipts]);
+    const totalColumns = user && user.role === 'Super Admin' ? 9 : 8;
 
     useEffect(() => {
         // Initial fetch
-        dispatch(fetchFeeReceipts(filters));
-    }, [dispatch]);
+        const initialFilters = {
+            endDate: moment().format('YYYY-MM-DD'),
+            branchId: user?.role === 'Super Admin' ? '' : (user?.branchId || '')
+        };
+        dispatch(fetchFeeReceipts(initialFilters));
+        dispatch(fetchEmployees({ pageSize: 1000 }));
+        if (user?.role === 'Super Admin') {
+            dispatch(fetchBranches());
+        }
+    }, [dispatch, user]);
 
     const handleFilterChange = (e) => {
         const { name, value } = e.target;
         setFilters(prev => ({ ...prev, [name]: value }));
     };
 
+    const handleStudentSelect = (id, student) => {
+        setFilters(prev => ({ 
+            ...prev, 
+            studentId: id || '', 
+            studentName: student ? `${student.firstName} ${student.lastName}` : '' 
+        }));
+    };
+
     const applyFilters = () => {
-        dispatch(fetchFeeReceipts(filters));
+        const params = { ...filters };
+        // Normalize branchId if it's an object
+        if (params.branchId && typeof params.branchId === 'object') {
+            params.branchId = params.branchId._id;
+        }
+        dispatch(fetchFeeReceipts(params));
     };
 
     const resetFilters = () => {
-        setFilters({
+        const resetObj = {
             startDate: '',
-            endDate: new Date().toISOString().split('T')[0],
+            endDate: moment().format('YYYY-MM-DD'),
             receiptNo: '',
             paymentMode: '',
             studentId: '',
             search: '',
             studentName: '',
-            reference: ''
-        });
-        dispatch(fetchFeeReceipts({})); 
+            reference: '',
+            branchId: user?.role === 'Super Admin' ? '' : (user?.branchId || '')
+        };
+        setFilters(resetObj);
+        dispatch(fetchFeeReceipts(resetObj)); 
     };
 
     const handleDelete = (id) => {
@@ -117,6 +146,25 @@ const AllReceipts = () => {
                 </Link>
             </div>
 
+            <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Receipts</p>
+                    <p className="mt-1 text-2xl font-bold text-gray-900">{receipts?.length || 0}</p>
+                </div>
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Total Amount</p>
+                    <p className="mt-1 text-2xl font-bold text-gray-900">₹ {totalAmount.toLocaleString('en-IN')}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status</p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900">
+                        {filters.search || filters.receiptNo || filters.studentName || filters.reference || filters.paymentMode || filters.startDate || filters.endDate
+                            ? 'Filtered'
+                            : 'All records'}
+                    </p>
+                </div>
+            </div>
+
             {/* --- Filter Section --- */}
             <div className="bg-white p-4 rounded-lg shadow mb-6 border border-gray-200">
                 <h2 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
@@ -150,17 +198,17 @@ const AllReceipts = () => {
                             name="receiptNo" 
                             value={filters.receiptNo} 
                             onChange={handleFilterChange} 
-                            className="w-full border p-1 rounded text-sm" 
+                            className="w-full border p-1 rounded text-sm h-8" 
                             placeholder="Receipt No..."
                         />
                     </div>
-                     <div>
+                    <div>
                         <label className="text-xs text-gray-500">Payment Mode</label>
                          <select 
                             name="paymentMode" 
                             value={filters.paymentMode} 
                             onChange={handleFilterChange}
-                            className="w-full border p-1 rounded text-sm"
+                            className="w-full border p-1 rounded text-sm h-8"
                         >
                             <option value="">All Types</option>
                             <option value="Cash">Cash</option>
@@ -169,27 +217,47 @@ const AllReceipts = () => {
                         </select>
                     </div>
                     <div>
-                        <label className="text-xs text-gray-500">Student Name</label>
-                        <input 
-                            type="text" 
-                            name="studentName" 
-                            value={filters.studentName || ''} 
-                            onChange={handleFilterChange} 
-                            className="w-full border p-1 rounded text-sm" 
-                            placeholder="Student Name..."
+                        <StudentSearch 
+                            label="Student Name"
+                            placeholder="Search Student..."
+                            onSelect={handleStudentSelect}
+                            displayField="name"
+                            className="text-sm"
+                            additionalFilters={{ branchId: filters.branchId }}
                         />
                     </div>
                     <div>
-                        <label className="text-xs text-gray-500">Reference</label>
-                        <input 
-                            type="text" 
+                        <label className="text-xs text-gray-500">Reference (Staff)</label>
+                        <select 
                             name="reference" 
                             value={filters.reference || ''} 
                             onChange={handleFilterChange} 
-                            className="w-full border p-1 rounded text-sm" 
-                            placeholder="Reference..."
-                        />
+                            className="w-full border p-1 rounded text-sm h-8"
+                        >
+                            <option value="">All Reference</option>
+                            <option value="Direct Walk-in">Direct Walk-in</option>
+                            {employees && employees.map(emp => (
+                                <option key={emp._id} value={emp.name}>{emp.name}</option>
+                            ))}
+                        </select>
                     </div>
+
+                    {user?.role === 'Super Admin' && (
+                        <div>
+                            <label className="text-xs text-gray-500">Branch</label>
+                            <select 
+                                name="branchId" 
+                                value={typeof filters.branchId === 'object' ? filters.branchId?._id : filters.branchId} 
+                                onChange={handleFilterChange}
+                                className="w-full border p-1 rounded text-sm h-8"
+                            >
+                                <option value="">All Branches</option>
+                                {branches && branches.map(b => (
+                                    <option key={b._id} value={b._id}>{b.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     <div className="flex items-end gap-2 md:col-span-2">
                         <button onClick={resetFilters} className="bg-gray-200 p-2 rounded hover:bg-gray-300 text-gray-700 w-full flex justify-center" title="Reset">
@@ -283,8 +351,24 @@ const AllReceipts = () => {
                                 ))
                              ) : (
                                  <tr>
-                                     <td colSpan="7" className="text-center py-8 text-gray-500">No receipts found</td>
+                                     <td colSpan={totalColumns} className="text-center py-8 text-gray-500">No receipts found</td>
                                  </tr>
+                             )}
+                             {receipts && receipts.length > 0 && (
+                                <tr className="bg-gray-100 font-bold text-gray-900">
+                                    <td
+                                        className="p-2 border text-right uppercase"
+                                        colSpan={user && user.role === 'Super Admin' ? 6 : 5}
+                                    >
+                                        Grand Total
+                                    </td>
+                                    <td className="p-2 border text-right">
+                                        ₹ {totalAmount.toLocaleString('en-IN')}
+                                    </td>
+                                    <td className="p-2 border text-center" colSpan={2}>
+                                        {receipts.length} Receipts
+                                    </td>
+                                </tr>
                              )}
                         </tbody>
                     </table>

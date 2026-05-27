@@ -1,11 +1,22 @@
 import React from 'react';
-import { Edit, Trash2, ChevronLeft, ChevronRight, PhoneCall } from 'lucide-react';
+import { Edit, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 
-const SmartTable = ({ columns, data = [], pagination, onPageChange, onEdit, onDelete }) => {
+const SmartTable = ({ columns, data = [], pagination, onPageChange, onEdit, onDelete, isLoading = false, rowIndexOffset = 0 }) => {
   // Defensive check for Pagination values to prevent NaN errors
   const safePage = pagination && !Number.isNaN(Number(pagination.page)) ? pagination.page : 1;
   const safePages = pagination && !Number.isNaN(Number(pagination.pages)) ? pagination.pages : 1;
+  const safeTotal = pagination && !Number.isNaN(Number(pagination.total)) ? Number(pagination.total) : data.length;
   const showPagination = pagination && safePages > 1;
+  const totalColumns = columns.length + (onEdit || onDelete ? 1 : 0);
+
+  const renderCell = (col, row, rowIdx) => {
+    if (col.render) return col.render(row, rowIdx, rowIndexOffset);
+    if (typeof col.accessor === 'function') return col.accessor(row, rowIdx, rowIndexOffset);
+
+    const value = row[col.accessor];
+    if (value === undefined || value === null || Number.isNaN(value)) return '-';
+    return value;
+  };
 
   return (
     <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
@@ -22,15 +33,18 @@ const SmartTable = ({ columns, data = [], pagination, onPageChange, onEdit, onDe
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {data && data.length > 0 ? (
+            {isLoading ? (
+              <tr>
+                <td colSpan={totalColumns} className="px-6 py-12 text-center text-sm font-semibold text-gray-500">
+                  Loading records...
+                </td>
+              </tr>
+            ) : data && data.length > 0 ? (
               data.map((row, rowIdx) => (
                 <tr key={row._id || rowIdx} className="hover:bg-gray-50 transition-colors">
                   {columns.map((col, colIdx) => (
-                    <td key={colIdx} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {/* Check if render exists, else safely render accessor, casting NaN to string or fallback */}
-                      {col.render ? col.render(row, rowIdx) : (
-                         Number.isNaN(row[col.accessor]) ? '-' : row[col.accessor]
-                      )}
+                    <td key={colIdx} className={`px-6 py-4 text-sm text-gray-900 ${col.className || 'whitespace-nowrap'}`}>
+                      {renderCell(col, row, rowIdx)}
                     </td>
                   ))}
                   {(onEdit || onDelete) && (
@@ -51,7 +65,7 @@ const SmartTable = ({ columns, data = [], pagination, onPageChange, onEdit, onDe
               ))
             ) : (
               <tr>
-                <td colSpan={columns.length + 1} className="px-6 py-10 text-center text-gray-500">
+                <td colSpan={totalColumns} className="px-6 py-10 text-center text-gray-500">
                   No records found.
                 </td>
               </tr>
@@ -83,6 +97,7 @@ const SmartTable = ({ columns, data = [], pagination, onPageChange, onEdit, onDe
             <div>
               <p className="text-sm text-gray-700">
                 Page <span className="font-medium">{safePage}</span> of <span className="font-medium">{safePages}</span>
+                {safeTotal > 0 && <span className="ml-2 text-gray-400">({safeTotal} records)</span>}
               </p>
             </div>
             <div>

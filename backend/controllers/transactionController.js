@@ -337,11 +337,19 @@ const getFeeReceipts = asyncHandler(async (req, res) => {
 
   let query = {};
 
-  if (startDate && endDate) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
-    query.date = { $gte: start, $lte: end };
+  // Date Filters - make them optional individually
+  if (startDate || endDate) {
+    query.date = {};
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      query.date.$gte = start;
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query.date.$lte = end;
+    }
   }
 
   // --- BRANCH SCOPING ---
@@ -355,27 +363,44 @@ const getFeeReceipts = asyncHandler(async (req, res) => {
 
   if (receiptNo) query.receiptNo = { $regex: receiptNo, $options: "i" };
   if (paymentMode) query.paymentMode = paymentMode;
-  if (studentId) query.student = studentId;
+  
+  // Student & Reference Filter
+  if (studentId || studentName || reference) {
+      let studentQuery = { isDeleted: false };
+      
+      if (studentId) {
+          studentQuery._id = studentId;
+      }
 
-  if (studentName || reference) {
-      let studentQuery = {};
       if (studentName) {
-           studentQuery.$or = [
-              { firstName: { $regex: studentName, $options: "i" } },
-              { lastName: { $regex: studentName, $options: "i" } },
-              { regNo: { $regex: studentName, $options: "i" } },
-              { enrollmentNo: { $regex: studentName, $options: "i" } }
-           ];
+          const nameClean = studentName.trim();
+          const nameParts = nameClean.split(/\s+/);
+          
+          let nameFilters = [
+              { firstName: { $regex: nameClean, $options: "i" } },
+              { lastName: { $regex: nameClean, $options: "i" } },
+              { regNo: { $regex: nameClean, $options: "i" } },
+              { enrollmentNo: { $regex: nameClean, $options: "i" } }
+          ];
+
+          if (nameParts.length > 1) {
+              nameFilters.push({
+                  $and: [
+                      { firstName: { $regex: nameParts[0], $options: 'i' } },
+                      { lastName: { $regex: nameParts[nameParts.length - 1], $options: 'i' } }
+                  ]
+              });
+          }
+          
+          studentQuery.$or = nameFilters;
       }
+
       if (reference) {
-           studentQuery.reference = { $regex: reference, $options: 'i' };
+          studentQuery.reference = { $regex: reference, $options: 'i' };
       }
+
       const matchingStudents = await Student.find(studentQuery).select('_id');
-      if (query.student) {
-          query.student = { $in: matchingStudents.map(s => s._id).filter(id => id.toString() === query.student.toString()) };
-      } else {
-          query.student = { $in: matchingStudents.map(s => s._id) };
-      }
+      query.student = { $in: matchingStudents.map(s => s._id) };
   }
 
   let receipts = await FeeReceipt.find(query)

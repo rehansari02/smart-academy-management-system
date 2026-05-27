@@ -2,6 +2,11 @@ const Complain = require('../models/Complain');
 const Student = require('../models/Student');
 const asyncHandler = require('express-async-handler');
 
+const studentPopulateOptions = {
+    path: 'studentId',
+    select: 'firstName lastName enrollmentNo regNo mobileStudent mobileParent branchName'
+};
+
 // @desc    Submit a new complain
 // @route   POST /api/complains
 // @access  Private (Student)
@@ -59,10 +64,7 @@ const getAllComplains = asyncHandler(async (req, res) => {
     }
 
     const complains = await Complain.find(query)
-        .populate({
-            path: 'studentId',
-            select: 'firstName lastName enrollmentNo regNo mobileStudent branchName'
-        })
+        .populate(studentPopulateOptions)
         .sort({ createdAt: -1 });
     
     res.json(complains);
@@ -90,6 +92,7 @@ const updateComplainStatus = asyncHandler(async (req, res) => {
     }
 
     const updatedComplain = await complain.save();
+    await updatedComplain.populate(studentPopulateOptions);
     res.json(updatedComplain);
 });
 

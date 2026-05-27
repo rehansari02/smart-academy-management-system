@@ -79,7 +79,7 @@ const queueExamScheduleSms = (scheduleId) => {
 // @desc    Get Exam Schedules
 // @route   GET /api/master/exam-schedule
 const getExamSchedules = asyncHandler(async (req, res) => {
-    const { courseId, examName } = req.query;
+    const { courseId, examName, branchId } = req.query;
 
     let query = { isDeleted: false };
 
@@ -89,9 +89,14 @@ const getExamSchedules = asyncHandler(async (req, res) => {
     if (examName) {
         query.examName = { $regex: examName, $options: 'i' };
     }
+    if (branchId) {
+        const students = await Student.find({ branchId }).select('_id');
+        query.attendees = { $in: students.map(student => student._id) };
+    }
 
     const schedules = await ExamSchedule.find(query)
         .populate('course', 'name')
+        .populate('attendees', 'firstName lastName regNo branchId branchName')
         .populate('timeTable.subject', 'name')
         .sort({ createdAt: -1 });
 

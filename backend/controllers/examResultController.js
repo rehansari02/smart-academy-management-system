@@ -71,7 +71,7 @@ const getStudentAttendanceSummary = async (studentId, exam) => {
 // @desc    Get Exam Results with Filters
 // @route   GET /api/master/exam-result
 const getExamResults = asyncHandler(async (req, res) => {
-    const { examId, batch, regNo, studentName, courseId, examName } = req.query;
+    const { examId, batch, regNo, studentName, courseId, examName, branchId } = req.query;
 
     let query = { isDeleted: false };
 
@@ -85,7 +85,7 @@ const getExamResults = asyncHandler(async (req, res) => {
     if (req.query.studentId) query.student = req.query.studentId;
     
     // Filter by Student details (requires looking up students first)
-    if (regNo || studentName) {
+    if (regNo || studentName || branchId) {
         let studentQuery = {};
         if (regNo) studentQuery.regNo = { $regex: regNo, $options: 'i' };
         if (studentName) {
@@ -94,14 +94,16 @@ const getExamResults = asyncHandler(async (req, res) => {
                 { lastName: { $regex: studentName, $options: 'i' } }
             ];
         }
+        if (branchId) studentQuery.branchId = branchId;
         const students = await Student.find(studentQuery).select('_id');
         query.student = { $in: students };
     }
 
     const results = await ExamResult.find(query)
-        .populate('student', 'firstName lastName regNo enrollmentNo mobileStudent studentPhoto')
-        .populate('course', 'name')
+        .populate('student', 'firstName middleName lastName regNo enrollmentNo mobileStudent studentPhoto branchId branchName')
+        .populate('course', 'name shortName')
         .populate('exam', 'examName')
+        .populate('subjectMarks.subject', 'name')
         .sort({ createdAt: -1 });
 
     res.json(results);
@@ -261,7 +263,7 @@ const deleteExamResult = asyncHandler(async (req, res) => {
 // @route   GET /api/master/exam-result/:id
 const getExamResultById = asyncHandler(async (req, res) => {
     const result = await ExamResult.findById(req.params.id)
-        .populate('student', 'firstName middleName lastName regNo enrollmentNo mobileStudent studentPhoto dob aadharCard address city state pincode batch')
+        .populate('student', 'firstName middleName lastName regNo enrollmentNo mobileStudent studentPhoto dob aadharCard address city state pincode batch branchId branchName')
         .populate('course', 'name duration durationType shortName')
         .populate('subjectMarks.subject', 'name')
         .populate({

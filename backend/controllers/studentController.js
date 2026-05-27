@@ -5,6 +5,8 @@ const Course = require('../models/Course');
 const Batch = require('../models/Batch'); 
 const Branch = require('../models/Branch'); 
 const Inquiry = require('../models/Inquiry');
+const Reference = require('../models/Reference');
+const Employee = require('../models/Employee');
 const ExamResult = require('../models/ExamResult');
 const ExamRequest = require('../models/ExamRequest');
 const sendSMS = require('../utils/smsSender');
@@ -19,7 +21,7 @@ const getStudents = asyncHandler(async (req, res) => {
         page = 1, pageSize = 10, courseFilter, studentName,
         hasPendingFees, reference, startDate, endDate,
         isRegistered, isAdmissionFeesPaid, batch, branchId,
-        sortBy = '-createdAt', ids
+        sortBy = '-createdAt', ids, isActive
     } = req.query;
     
     let query = { isDeleted: false };
@@ -71,6 +73,10 @@ const getStudents = asyncHandler(async (req, res) => {
         query.isRegistered = isRegistered === 'true';
     }
 
+    if (isActive !== undefined) {
+        query.isActive = isActive === 'true';
+    }
+
     if (isAdmissionFeesPaid !== undefined) {
         query.isAdmissionFeesPaid = isAdmissionFeesPaid === 'true';
     }
@@ -96,7 +102,7 @@ const getStudents = asyncHandler(async (req, res) => {
         .populate('userId', 'username')
         .limit(limit)
         .skip(limit * (pageNum - 1))
-        .sort({ createdAt: -1 })
+        .sort(sortBy || '-createdAt')
         .lean();
 
     const studentIds = students.map(s => s._id);
@@ -872,16 +878,49 @@ const checkUsername = asyncHandler(async (req, res) => {
 });
 
 const getUniqueReferences = asyncHandler(async (req, res) => {
-    let query = { isDeleted: false };
+    const studentQuery = { isDeleted: false };
+    const inquiryQuery = { isDeleted: false };
+    const employeeQuery = { isDeleted: false, isActive: true };
     
     if (req.user.role !== 'Super Admin' && req.user.branchId) {
-        query.branchId = req.user.branchId;
+        studentQuery.branchId = req.user.branchId;
+        inquiryQuery.branchId = req.user.branchId;
+        employeeQuery.branchId = req.user.branchId;
     }
 
-    const references = await Student.distinct('reference', query);
-    // Filter out null, undefined, or empty strings and sort
-    const filteredReferences = references.filter(r => r && r.trim() !== '').sort();
-    res.json(filteredReferences);
+    const [
+        studentReferences,
+        inquiryReferences,
+        referenceMasters,
+        employeeReferences
+    ] = await Promise.all([
+        Student.distinct('reference', studentQuery),
+        Inquiry.distinct('referenceBy', inquiryQuery),
+        Reference.find({ isDeleted: false }).select('name').lean(),
+        Employee.find(employeeQuery).select('name').lean()
+    ]);
+
+    const referenceMap = new Map();
+    const addReference = (value) => {
+        const name = typeof value === 'string' ? value.trim() : '';
+        if (!name) return;
+        const key = name.toLowerCase();
+        if (!referenceMap.has(key)) referenceMap.set(key, name);
+    };
+
+    addReference('Direct');
+    studentReferences.forEach(addReference);
+    inquiryReferences.forEach(addReference);
+    referenceMasters.forEach(ref => addReference(ref.name));
+    employeeReferences.forEach(emp => addReference(emp.name));
+
+    const references = Array.from(referenceMap.values()).sort((a, b) => {
+        if (a.toLowerCase() === 'direct') return -1;
+        if (b.toLowerCase() === 'direct') return 1;
+        return a.localeCompare(b);
+    });
+
+    res.json(references);
 });
 
 module.exports = { 

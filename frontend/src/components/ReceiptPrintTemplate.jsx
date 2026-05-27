@@ -26,6 +26,18 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   };
 
   const amountInWords = numberToWords(Math.floor(receipt.amountPaid)) + ' Only';
+  const formatAmount = (value) => {
+    const num = Number(value || 0);
+    return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const getTotalFees = () => {
+    const courseFees = Number(receipt.student?.totalFees || 0);
+    const courseAdmissionFees = Number(receipt.course?.admissionFees || 0);
+    const paidAdmissionFees = Number(receipt.student?.admissionFeeAmount || 0);
+    const admissionFees = Math.max(courseAdmissionFees, paidAdmissionFees);
+    return courseFees + admissionFees;
+  };
 
   const getBatchTime = () => {
     if (!receipt.student?.batch || !batches) return receipt.student?.batch || 'N/A';
@@ -33,8 +45,8 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
     return batchObj ? `${batchObj.startTime} To ${batchObj.endTime}` : receipt.student.batch;
   };
 
-  // Single Receipt Component
-  const SingleReceipt = () => (
+  // Single Receipt markup
+  const renderSingleReceipt = () => (
     <div style={{
       width: '100%',
       height: '148mm', // Exactly half of A4 page (297mm)
@@ -190,10 +202,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
       }}>
         <div style={{ flex: 1 }}>
           <span style={{ color: '#0066cc' }}>TOTAL FEES : </span>
-          <span>
-            {receipt.student?.totalFees?.toLocaleString('en-IN')}.00
-            {receipt.course?.admissionFees > 0 && ` + ${receipt.course.admissionFees.toLocaleString('en-IN')}`}
-          </span>
+          <span>{formatAmount(getTotalFees())}</span>
         </div>
         <div style={{ flex: 1, textAlign: 'center' }}>
           <span style={{ color: '#0066cc' }}>DUE FEES : </span>
@@ -201,7 +210,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
             {(() => {
                 // Use the pre-calculated due from the server if available
                 if (receipt.student?.calculatedTotalDue !== undefined) {
-                    return `${receipt.student.calculatedTotalDue.toLocaleString('en-IN')}.00`;
+                    return formatAmount(receipt.student.calculatedTotalDue);
                 }
 
                 // Fallback to manual calculation if not provided
@@ -209,15 +218,9 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
                 const courseAdmFees = receipt.course?.admissionFees || 0;
                 const paidAdmFees = receipt.student?.admissionFeeAmount || 0;
                 const pendingAdm = Math.max(0, courseAdmFees - paidAdmFees);
+                const totalDue = courseDue + pendingAdm;
 
-                if (courseDue > 0 && pendingAdm > 0) {
-                    return `${courseDue.toLocaleString('en-IN')}.00 + ${pendingAdm.toLocaleString('en-IN')}`;
-                } else if (courseDue > 0) {
-                    return `${courseDue.toLocaleString('en-IN')}.00`;
-                } else if (pendingAdm > 0) {
-                    return `${pendingAdm.toLocaleString('en-IN')}.00`;
-                }
-                return '0.00';
+                return totalDue > 0 ? formatAmount(totalDue) : '0.00';
             })()}
           </span>
         </div>
@@ -228,7 +231,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
       </div>
 
       {/* Bottom Details */}
-      <div style={{ display: 'flex', marginBottom: '55px' }}>
+      <div style={{ display: 'flex', minHeight: '120px', marginBottom: '30px' }}>
         <div style={{ width: '60%' }}>
           <div style={{ marginBottom: '5px', padding: '4px 10px', backgroundColor: '#f2f2f2' }}>
             <span style={{ color: '#0066cc' }}>THROUGH : </span>
@@ -244,9 +247,9 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
           </div>
         </div>
 
-        <div style={{ flex: 1, position: 'relative' }}>
+        <div style={{ flex: 1, position: 'relative', minHeight: '120px' }}>
           {/* Signature Area - pushed to bottom to leave stamp space above */}
-          <div style={{ position: 'absolute', bottom: '0px', right: '10px', textAlign: 'right' }}>
+          <div style={{ position: 'absolute', bottom: '4px', right: '10px', textAlign: 'right' }}>
             <div style={{ marginBottom: '4px', fontWeight: 'bold' }}>
               {user?.name || 'Admin'}
             </div>
@@ -315,7 +318,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
         backgroundColor: 'white'
       }}>
         {/* First Copy */}
-        <SingleReceipt />
+        {renderSingleReceipt()}
 
         {/* Dotted Line Separator */}
         <div style={{
@@ -325,7 +328,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
         }}></div>
 
         {/* Second Copy */}
-        <SingleReceipt />
+        {renderSingleReceipt()}
       </div>
     </div>
   );

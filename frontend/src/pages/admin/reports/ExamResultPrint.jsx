@@ -189,6 +189,16 @@ const ExamResultPrint = () => {
     const student = result.student;
     const exam = result.exam;
     const course = result.course;
+
+    // Determine Center Name based on student branch
+    const getCenterName = () => {
+        const branchName = student?.branchName || '';
+        if (branchName.toUpperCase().includes('BHESTAN')) return 'BHESTAN, SURAT';
+        if (branchName.toUpperCase().includes('GODADARA')) return 'GODADARA, SURAT';
+        if (branchName) return `${branchName.toUpperCase()}, SURAT`;
+        return course?.centerName || 'GODADARA, SURAT';
+    };
+
     const subjects = exam?.timeTable || [];
     const issueDate = moment(result.issueDate || result.createdAt);
     const marksObtained = Number(result.marksObtained || 0);
@@ -254,7 +264,7 @@ const ExamResultPrint = () => {
                                         </tr>
                                         <tr style={{ height: '5.2mm' }}>
                                             <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>CENTRE</td>
-                                            <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>: {course?.centerName || 'GODADARA, SURAT'}</td>
+                                            <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>: {getCenterName()}</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -534,7 +544,7 @@ const ExamResultPrint = () => {
                                 margin: '0 0 4.5mm 0',
                                 color: '#111'
                             }}>
-                                With <span style={{ fontWeight: 'bold' }}>{formatGrade(result.grade)}</span> from our {course?.centerName || 'Godadara Surat Center'}
+                                With <span style={{ fontWeight: 'bold' }}>{formatGrade(result.grade)}</span> from our {getCenterName()}
                             </p>
 
                             {/* Course description given bellows these ares- */}

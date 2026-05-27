@@ -9,7 +9,6 @@ import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
 import StudentSearch from '../../../components/StudentSearch';
-import { toast } from 'react-toastify';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -61,11 +60,13 @@ const StudentWiseOutstanding = () => {
     // Fetch payment summary (outstanding + due) for each student - same backend logic as FeeCollection
     useEffect(() => {
         if (!students || students.length === 0) {
-            setPaymentSummaryMap({});
+            Promise.resolve().then(() => setPaymentSummaryMap({}));
             return;
         }
         let cancelled = false;
-        setSummaryLoading(true);
+        Promise.resolve().then(() => {
+            if (!cancelled) setSummaryLoading(true);
+        });
         Promise.all(
             students.map((s) =>
                 axios
@@ -297,6 +298,7 @@ const StudentWiseOutstanding = () => {
                             <th rowSpan="2" className="border border-blue-500 px-2 py-2 align-middle">Course</th>
                             <th rowSpan="2" className="border border-blue-500 px-2 py-2 align-middle">Mobile No.</th>
                             <th rowSpan="2" className="border border-blue-500 px-2 py-2 text-right align-middle">Outstanding</th>
+                            <th rowSpan="2" className="border border-blue-500 px-2 py-2 text-right align-middle">Adm. Pending</th>
                             <th colSpan="2" className="border border-blue-500 px-2 py-2 text-center">Follow Up</th>
                             <th rowSpan="2" className="border border-blue-500 px-2 py-2 align-middle">Rect. Date</th>
                             <th rowSpan="2" className="border border-blue-500 px-2 py-2 text-right align-middle">Rect. Amt</th>
@@ -310,7 +312,6 @@ const StudentWiseOutstanding = () => {
                     <tbody>
                         {sortedStudents.length > 0 ? sortedStudents.map((s, index) => {
                             const summary = paymentSummaryMap[s._id];
-                            const outstandingAmount = summary?.outstandingAmount ?? 0;
                             const dueAmount = summary?.dueAmount ?? 0;
                             return (
                                 <tr key={s._id} className="text-center hover:bg-gray-50">
@@ -323,21 +324,20 @@ const StudentWiseOutstanding = () => {
                                     <td className="border border-gray-300 px-2 py-1.5">{s.course?.shortName || s.course?.name || '-'}</td>
                                     <td className="border border-gray-300 px-2 py-1.5 text-center">{s.mobileParent || '-'}</td>
 
-                                    {/* Outstanding Amount (Breakdown: (EMI + Reg) + Admission) */}
+                                    {/* Outstanding Amount: registration + upcoming EMI only */}
                                     <td className="border border-gray-300 px-2 py-1.5 text-right font-semibold text-red-600">
                                         {summaryLoading ? '...' : (() => {
                                             const regEmi = (summary?.upcomingEMI || 0) + (summary?.pendingRegFees || 0);
-                                            const adm = summary?.pendingAdmissionFees || 0;
-                                            
-                                            if (regEmi > 0 && adm > 0) {
-                                                return `${regEmi.toLocaleString('en-IN')} + ${adm.toLocaleString('en-IN')}`;
-                                            } else if (regEmi > 0) {
-                                                return regEmi.toLocaleString('en-IN');
-                                            } else if (adm > 0) {
-                                                return adm.toLocaleString('en-IN');
-                                            }
-                                            return '-';
+                                            return regEmi > 0 ? regEmi.toLocaleString('en-IN') : '-';
                                         })()}
+                                    </td>
+
+                                    {/* Admission Pending Amount: shown separately, not appended with +500 */}
+                                    <td className="border border-gray-300 px-2 py-1.5 text-right font-semibold text-orange-600">
+                                        {summaryLoading ? '...' : ((summary?.pendingAdmissionFees || 0) > 0
+                                            ? (summary.pendingAdmissionFees).toLocaleString('en-IN')
+                                            : '-'
+                                        )}
                                     </td>
 
                                     {/* Follow Up Columns */}
@@ -358,7 +358,7 @@ const StudentWiseOutstanding = () => {
                             );
                         }) : (
                             <tr>
-                                <td colSpan="12" className="border border-gray-300 px-4 py-8 text-center text-gray-500 italic">
+                                <td colSpan="13" className="border border-gray-300 px-4 py-8 text-center text-gray-500 italic">
                                     No records found matching criteria.
                                 </td>
                             </tr>

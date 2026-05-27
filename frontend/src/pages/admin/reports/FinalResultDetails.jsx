@@ -1,250 +1,381 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchExamResults, fetchCourses, fetchBranches } from '../../../features/master/masterSlice';
 import { useReactToPrint } from 'react-to-print';
-import { Printer, FileText, Search, Loader2, ChevronDown, Filter, ClipboardList } from 'lucide-react';
+import moment from 'moment';
+import { fetchBranches, fetchExamResults } from '../../../features/master/masterSlice';
+import { Award, BookOpen, Building2, ChevronDown, ClipboardList, Filter, Loader2, Percent, Printer, RefreshCw, Search } from 'lucide-react';
 import logo from '../../../assets/logo2.png';
+
+const getId = (value) => (typeof value === 'object' ? value?._id : value);
+const studentName = (student) => [student?.firstName, student?.lastName].filter(Boolean).join(' ') || '-';
+const getBranchId = (result) => getId(result?.student?.branchId);
+const getBranchName = (result) => result?.student?.branchId?.name || result?.student?.branchName || 'Main Branch';
+const percentageOf = (result) => {
+    const total = Number(result.totalMarks || 0);
+    const obtained = Number(result.marksObtained || 0);
+    return total > 0 ? ((obtained / total) * 100).toFixed(2) : '0.00';
+};
+
+const subjectLabel = (subjectMark) => subjectMark?.subject?.name || subjectMark?.subjectName || 'Subject';
 
 const FinalResultDetails = () => {
     const dispatch = useDispatch();
-    const componentRef = useRef();
-    
-    const { examResults, courses, branches, isLoading } = useSelector((state) => state.master);
+    const componentRef = useRef(null);
+
+    const { examResults, branches, isLoading } = useSelector((state) => state.master);
     const { user } = useSelector((state) => state.auth);
 
-    const [selectedCourse, setSelectedCourse] = useState('All');
-    const [filteredResults, setFilteredResults] = useState([]);
+    const [filters, setFilters] = useState({ courseId: 'All', branchId: 'All', examName: 'All', search: '' });
 
     useEffect(() => {
         dispatch(fetchExamResults());
-        dispatch(fetchCourses());
         dispatch(fetchBranches());
     }, [dispatch]);
 
-    useEffect(() => {
-        if (examResults) {
-            if (selectedCourse === 'All') {
-                setFilteredResults(examResults);
-            } else {
-                setFilteredResults(examResults.filter(r => r.course?._id === selectedCourse || r.course === selectedCourse));
+    const examNames = useMemo(() => {
+        const names = new Set((examResults || []).map((result) => result.exam?.examName).filter(Boolean));
+        return Array.from(names).sort((a, b) => a.localeCompare(b));
+    }, [examResults]);
+
+    const baseResults = useMemo(() => {
+        const list = Array.isArray(examResults) ? examResults : [];
+        const search = filters.search.trim().toLowerCase();
+
+        return list
+            .filter((result) => filters.branchId === 'All' || getBranchId(result) === filters.branchId)
+            .filter((result) => filters.examName === 'All' || result.exam?.examName === filters.examName)
+            .filter((result) => {
+                if (!search) return true;
+                const text = [
+                    studentName(result.student),
+                    result.student?.regNo,
+                    result.student?.enrollmentNo,
+                    result.course?.name,
+                    result.course?.shortName,
+                    result.exam?.examName,
+                    result.grade,
+                    result.somNumber,
+                    result.csrNumber,
+                    ...(result.subjectMarks || []).map(subjectLabel),
+                ].filter(Boolean).join(' ').toLowerCase();
+                return text.includes(search);
+            });
+    }, [examResults, filters.branchId, filters.examName, filters.search]);
+
+    const availableCourses = useMemo(() => {
+        const map = new Map();
+        baseResults.forEach((result) => {
+            const courseId = getId(result.course);
+            if (courseId) map.set(courseId, { _id: courseId, name: result.course?.name || 'N/A' });
+        });
+        return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+    }, [baseResults]);
+
+    const availableBranches = useMemo(() => {
+        const map = new Map();
+        (examResults || []).forEach((result) => {
+            const branchId = getBranchId(result);
+            if (branchId) map.set(branchId, { _id: branchId, name: getBranchName(result) });
+        });
+        return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+    }, [examResults]);
+
+    const groupedResults = useMemo(() => {
+        const filtered = baseResults.filter((result) => filters.courseId === 'All' || getId(result.course) === filters.courseId);
+
+        const groups = {};
+        filtered.forEach(result => {
+            const courseId = getId(result.course);
+            const courseName = result.course?.name || 'Unknown Course';
+            if (!groups[courseId]) {
+                groups[courseId] = {
+                    id: courseId,
+                    name: courseName,
+                    shortName: result.course?.shortName || '',
+                    results: [],
+                    subjects: [],
+                    totalMaxMarks: result.totalMarks || 0
+                };
             }
-        }
-    }, [examResults, selectedCourse]);
+            groups[courseId].results.push(result);
+            
+            // Collect unique subjects for this course
+            (result.subjectMarks || []).forEach(sm => {
+                const sName = sm.subject?.name || sm.subjectName || 'Subject';
+                if (!groups[courseId].subjects.find(s => s.name === sName)) {
+                    groups[courseId].subjects.push({ name: sName, id: sm.subject?._id || sm.subject });
+                }
+            });
+        });
 
-    const getBranchInfo = () => {
-        let branchId = user?.branchId;
+        // Sort students within each group
+        Object.values(groups).forEach(group => {
+            group.results.sort((a, b) => {
+                return studentName(a.student).localeCompare(studentName(b.student)) || 
+                       (a.student?.regNo || '').localeCompare(b.student?.regNo || '', undefined, { numeric: true });
+            });
 
+            // Categorize subjects
+            const regular = [];
+            let project = null;
+            let seminar = null;
+            let discipline = null;
+
+            group.subjects.forEach(s => {
+                const n = s.name.toUpperCase();
+                if (n.includes('PROJECT')) project = s;
+                else if (n.includes('SEMINAR')) seminar = s;
+                else if (n.includes('DISCIPLINE') || n.includes('DESCIPLINE')) discipline = s;
+                else regular.push(s);
+            });
+
+            group.categorizedSubjects = { regular, project, seminar, discipline };
+        });
+
+        return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
+    }, [baseResults, filters.courseId]);
+
+    const headerBranch = useMemo(() => {
+        const branchId = getId(user?.branchId);
         if (user?.role === 'Super Admin') {
-            return {
-                name: "Main Branch",
-                address: "Smart Institute",
-                phone: "96017-49300",
-                mobile: "98988-30409",
-                email: "smartinstitutes@gmail.com"
-            };
+            return { name: 'Main Branch', address: 'Smart Institute', phone: '96017-49300', mobile: '98988-30409', email: 'smartinstitutes@gmail.com' };
         }
+        if (user?.branchDetails?.address) return user.branchDetails;
+        const found = branches?.find((branch) => branch._id === branchId);
+        return found || { name: user?.branchName || 'Main Branch', address: 'Smart Institute', phone: '96017-49300', mobile: '98988-30409', email: 'smartinstitutes@gmail.com' };
+    }, [branches, user]);
 
-        if (user && user.branchDetails && user.branchDetails.address) {
-            return user.branchDetails;
-        }
-
-        if (branchId) {
-             if (branches && branches.length > 0) {
-                 const found = branches.find(b => b._id === branchId || b._id === branchId?._id);
-                 if (found) return found;
-             }
-        }
-
-         return {
-            name: user?.branchName || "Main Branch", 
-            address: "Smart Institute",
-            phone: "96017-49300", 
-            mobile: "98988-30409",
-            email: "smartinstitutes@gmail.com" 
-        };
-    };
-
-    const headerBranch = getBranchInfo();
-
-    const handlePrint = useReactToPrint({
-        content: () => componentRef.current,
-        documentTitle: 'Final_Result_Details_Report',
+    const printReport = useReactToPrint({
+        contentRef: componentRef,
+        documentTitle: 'Final_Result_Details',
     });
 
-    if (isLoading) {
+    const handlePrint = () => {
+        if (componentRef.current) printReport();
+    };
+
+    const selectedCourseName = filters.courseId === 'All'
+        ? 'All Courses'
+        : availableCourses.find((course) => course._id === filters.courseId)?.name || 'Selected Course';
+
+    const summary = useMemo(() => {
+        const results = groupedResults.flatMap((group) => group.results);
+        const totalObtained = results.reduce((sum, result) => sum + Number(result.marksObtained || 0), 0);
+        const totalMarks = results.reduce((sum, result) => sum + Number(result.totalMarks || 0), 0);
+        const average = totalMarks > 0 ? ((totalObtained / totalMarks) * 100).toFixed(2) : '0.00';
+        return {
+            results: results.length,
+            courses: groupedResults.length,
+            certified: results.filter((result) => result.csrNumber || result.certificateNumber).length,
+            average,
+        };
+    }, [groupedResults]);
+
+    const renderCourseTable = (group) => {
+        const { regular, project, seminar, discipline } = group.categorizedSubjects;
+        
         return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh]">
-                <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-                <p className="text-gray-500 font-medium">Loading Result Data...</p>
+            <div key={group.id} className="mb-10 break-inside-avoid">
+                {/* Course Header */}
+                <div className="flex justify-between items-center bg-slate-100 p-2 border-x border-t border-slate-400">
+                    <h4 className="text-lg font-black text-blue-800 uppercase">{group.name} {group.shortName && `(${group.shortName})`}</h4>
+                    <div className="text-sm font-bold text-slate-700">Total Students: <span className="text-blue-700">{group.results.length.toString().padStart(2, '0')}</span></div>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse border border-slate-400 text-[8px] font-bold text-slate-900">
+                        <thead>
+                            <tr className="bg-slate-200">
+                                <th rowSpan="2" className="border border-slate-400 p-1 w-6">SR. NO.</th>
+                                <th rowSpan="2" className="border border-slate-400 p-1 w-16">REG. NO.</th>
+                                <th rowSpan="2" className="border border-slate-400 p-1 text-left min-w-[120px]">STUDENTS NAME</th>
+                                {regular.map((s, idx) => (
+                                    <th key={idx} colSpan="2" className="border border-slate-400 p-1 text-center uppercase">{s.name}</th>
+                                ))}
+                                <th rowSpan="2" className="border border-slate-400 p-1 w-10">TOTAL</th>
+                                <th rowSpan="2" className="border border-slate-400 p-1 w-10 uppercase">{project?.name || 'PROJECT'}</th>
+                                <th rowSpan="2" className="border border-slate-400 p-1 w-10 uppercase">{seminar?.name || 'SEMINAR'}</th>
+                                <th rowSpan="2" className="border border-slate-400 p-1 w-12 uppercase">{discipline?.name || 'DESCIPLINE'}</th>
+                                <th rowSpan="2" className="border border-slate-400 p-1 w-12">TOTAL O.M.</th>
+                                <th rowSpan="2" className="border border-slate-400 p-1 w-10">PER (%)</th>
+                                <th rowSpan="2" className="border border-slate-400 p-1 w-10">GRADE</th>
+                            </tr>
+                            <tr className="bg-slate-50">
+                                {regular.map((_, idx) => (
+                                    <React.Fragment key={idx}>
+                                        <th className="border border-slate-400 p-0.5 text-[7px] w-8">Theory</th>
+                                        <th className="border border-slate-400 p-0.5 text-[7px] w-8">Practical</th>
+                                    </React.Fragment>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {group.results.map((result, index) => {
+                                const getMarks = (sName) => {
+                                    const sm = result.subjectMarks?.find(m => (m.subject?.name || m.subjectName) === sName);
+                                    return sm ? { theory: Number(sm.theory ?? 0), practical: Number(sm.practical ?? 0), total: Number(sm.total ?? 0) } : { theory: 0, practical: 0, total: 0 };
+                                };
+
+                                let regularTotal = 0;
+                                regular.forEach(s => {
+                                    const m = getMarks(s.name);
+                                    regularTotal += m.total;
+                                });
+
+                                const projectMarks = project ? getMarks(project.name).total : 0;
+                                const seminarMarks = seminar ? getMarks(seminar.name).total : 0;
+                                const disciplineMarks = discipline ? getMarks(discipline.name).total : 0;
+                                
+                                // TOTAL O.M. is already in result.marksObtained, but let's be safe
+                                const totalOM = result.marksObtained || (regularTotal + projectMarks + seminarMarks + disciplineMarks);
+
+                                return (
+                                    <tr key={result._id} className="hover:bg-slate-50">
+                                        <td className="border border-slate-400 p-1 text-center">{index + 1}</td>
+                                        <td className="border border-slate-400 p-1 text-center">{result.student?.regNo || '-'}</td>
+                                        <td className="border border-slate-400 p-1 text-left uppercase whitespace-nowrap">{studentName(result.student)}</td>
+                                        {regular.map((s, idx) => {
+                                            const m = getMarks(s.name);
+                                            return (
+                                                <React.Fragment key={idx}>
+                                                    <td className="border border-slate-400 p-1 text-center">{m.theory}</td>
+                                                    <td className="border border-slate-400 p-1 text-center">{m.practical}</td>
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                        <td className="border border-slate-400 p-1 text-center bg-slate-50">{regularTotal}</td>
+                                        <td className="border border-slate-400 p-1 text-center">{project ? projectMarks : '-'}</td>
+                                        <td className="border border-slate-400 p-1 text-center">{seminar ? seminarMarks : '-'}</td>
+                                        <td className="border border-slate-400 p-1 text-center">{discipline ? disciplineMarks : '-'}</td>
+                                        <td className="border border-slate-400 p-1 text-center font-black bg-blue-50">{totalOM}</td>
+                                        <td className="border border-slate-400 p-1 text-center font-black">{percentageOf(result)}%</td>
+                                        <td className="border border-slate-400 p-1 text-center">{result.grade || '-'}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Course Summary Footer */}
+                <div className="flex justify-end mt-2">
+                    <div className="flex items-center gap-4 text-xs font-black uppercase">
+                        <span>Total Marks : </span>
+                        <div className="border-b-2 border-slate-900 px-4 py-0.5">{group.totalMaxMarks}</div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    if (isLoading && !examResults?.length) {
+        return (
+            <div className="flex min-h-[60vh] flex-col items-center justify-center">
+                <Loader2 className="mb-4 h-10 w-10 animate-spin text-primary" />
+                <p className="font-medium text-slate-500">Loading final result details...</p>
             </div>
         );
     }
 
     return (
-        <div className="container mx-auto p-4 max-w-7xl">
-            {/* --- Control Panel --- */}
-            <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 mb-8 no-print animate-fadeIn">
-                <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div className="flex items-center gap-4">
-                        <div className="bg-blue-100 p-3 rounded-lg text-blue-600">
-                            <ClipboardList size={24} />
+        <div className="min-h-screen bg-slate-50 px-4 py-5 print:bg-white print:p-0">
+            <div className="mx-auto max-w-[297mm]">
+                <div className="mb-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm print:hidden">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="rounded-lg bg-blue-50 p-3 text-blue-600"><ClipboardList size={24} /></div>
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Exam Report</p>
+                                <h1 className="text-2xl font-bold text-slate-900">Final Result Details</h1>
+                                <p className="text-sm text-slate-500">Course-wise grouped report matching official format.</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-800">Final Result Details</h1>
-                            <p className="text-gray-500 text-sm">Comprehensive Result Reports</p>
+                        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><ClipboardList size={14} /> Results</div><p className="mt-1 text-xl font-bold text-slate-900">{summary.results}</p></div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><Award size={14} /> Certified</div><p className="mt-1 text-xl font-bold text-slate-900">{summary.certified}</p></div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><Percent size={14} /> Average</div><p className="mt-1 text-xl font-bold text-slate-900">{summary.average}%</p></div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><BookOpen size={14} /> Course</div><p className="mt-1 truncate text-sm font-bold text-slate-900">{selectedCourseName}</p></div>
                         </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-4">
-                        <div className="relative">
-                            <select
-                                className="appearance-none bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer font-medium"
-                                value={selectedCourse}
-                                onChange={(e) => setSelectedCourse(e.target.value)}
-                            >
-                                <option value="All">All Courses</option>
-                                {courses?.map(c => (
-                                    <option key={c._id} value={c._id}>{c.name}</option>
-                                ))}
+                    <div className="mt-5 flex flex-wrap gap-3 border-t border-slate-100 pt-4">
+                        <div className="relative min-w-0 flex-[1_1_18rem]">
+                            <input
+                                className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                value={filters.search}
+                                onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                                placeholder="Search student, reg no, subject..."
+                            />
+                            <Search className="absolute left-3 top-3 text-slate-400" size={18} />
+                        </div>
+                        <div className="relative min-w-0 flex-[1_1_13rem]">
+                            <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.branchId} onChange={(e) => setFilters((prev) => ({ ...prev, branchId: e.target.value, courseId: 'All' }))}>
+                                <option value="All">All Branches</option>
+                                {availableBranches.map((branch) => <option key={branch._id} value={branch._id}>{branch.name}</option>)}
                             </select>
-                            <Filter className="absolute left-3 top-3 text-gray-400" size={18} />
-                            <ChevronDown className="absolute right-3 top-3 text-gray-400 pointer-events-none" size={18} />
+                            <Building2 className="absolute left-3 top-3 text-slate-400" size={18} />
+                            <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
                         </div>
-
-                        <button
-                            onClick={handlePrint}
-                            className="bg-primary hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg flex items-center gap-2 font-bold shadow-lg shadow-blue-200 transition-all active:scale-95"
-                        >
-                            <Printer size={18} /> Print Results
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            {/* --- Report Content --- */}
-            <div ref={componentRef} className="print-container bg-white p-4 sm:p-8 rounded-lg shadow-sm border border-gray-100">
-                {/* Report Header */}
-                <div className="flex justify-between items-start border-b-2 border-primary pb-4 mb-8">
-                    <div className="flex items-center gap-4">
-                        <img src={logo} alt="Institute Logo" className="h-20 w-auto object-contain" />
-                    </div>
-                    <div className="text-right text-xs space-y-1">
-                        <h2 className="text-xl font-bold text-blue-600 mb-1">{headerBranch.name}</h2>
-                        <div className="text-gray-600 max-w-xs ml-auto font-medium">
-                            {headerBranch.address}
+                        <div className="relative min-w-0 flex-[1_1_13rem]">
+                            <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.courseId} onChange={(e) => setFilters((prev) => ({ ...prev, courseId: e.target.value }))}>
+                                <option value="All">All Courses</option>
+                                {availableCourses.map((course) => <option key={course._id} value={course._id}>{course.name}</option>)}
+                            </select>
+                            <Filter className="absolute left-3 top-3 text-slate-400" size={18} />
+                            <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
                         </div>
-                        <p className="font-bold text-blue-800">
-                             Ph. No. : {headerBranch.phone}, Mob. No. : {headerBranch.mobile}
-                        </p>
-                        <p className="text-blue-500 underline font-medium">{headerBranch.email}</p>
-                        <div className="mt-2 inline-block bg-gray-100 px-3 py-1 rounded-md border border-gray-200">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase block leading-tight">Report Date</span>
-                            <span className="text-xs font-black text-gray-800">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                        <div className="relative min-w-0 flex-[1_1_13rem]">
+                            <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.examName} onChange={(e) => setFilters((prev) => ({ ...prev, examName: e.target.value, courseId: 'All' }))}>
+                                <option value="All">All Exams</option>
+                                {examNames.map((name) => <option key={name} value={name}>{name}</option>)}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
+                        </div>
+                        <button onClick={() => setFilters({ courseId: 'All', branchId: 'All', examName: 'All', search: '' })} className="flex flex-[0_1_8rem] items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><RefreshCw size={16} /> Reset</button>
+                        <button onClick={handlePrint} className="flex flex-[0_1_10rem] items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700"><Printer size={18} /> Print Results</button>
+                    </div>
+                </div>
+
+                <div ref={componentRef} className="print-container bg-white p-5 sm:p-7 shadow-lg border border-slate-200 rounded-lg">
+                    {/* Page Header */}
+                    <div className="mb-6 flex justify-between items-start">
+                        <img src={logo} alt="Institute Logo" className="h-14 w-auto object-contain" />
+                        <div className="text-center flex-1 mx-4">
+                            <h2 className="text-2xl font-black text-blue-800 uppercase tracking-tighter">Final Examination {filters.examName === 'All' ? moment().format('MMMM - YYYY') : filters.examName}</h2>
+                            <p className="text-[10px] font-bold text-slate-600 uppercase mt-1">
+                                (Cat 'Smart', Cat, A.D.C.A., C.C.A., M.C., C.T.D.P., C.A.B.T., C.D.P., D.F., C.T.D., T.D.)
+                            </p>
+                        </div>
+                        <div className="text-right text-[10px] font-bold text-slate-800">
+                            <div>Date : <span className="ml-2 border-b border-slate-800 px-4">{moment().format('DD-MMM-YY')}</span></div>
+                            <div className="mt-2">({headerBranch.name?.toUpperCase()})</div>
                         </div>
                     </div>
-                </div>
 
-                <div className="text-center mb-10">
-                    <h3 className="text-2xl font-black text-gray-800 border-b-4 border-gray-800 inline-block px-8 pb-1 uppercase">Final Result Details Report</h3>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full text-[10px] border-collapse border-2 border-gray-800">
-                        <thead>
-                            <tr className="bg-gray-800 text-white font-black uppercase">
-                                <th className="p-2 border border-gray-600 w-10">Sr</th>
-                                <th className="p-2 border border-gray-600 w-24">Reg No.</th>
-                                <th className="p-2 border border-gray-600 text-left">Student Name</th>
-                                <th className="p-2 border border-gray-600 text-left">Course</th>
-                                <th className="p-2 border border-gray-600 w-20 text-center">Marks</th>
-                                <th className="p-2 border border-gray-600 w-16 text-center">%</th>
-                                <th className="p-2 border border-gray-600 w-16 text-center">Grade</th>
-                                <th className="p-2 border border-gray-600 w-24 text-center">SOM No.</th>
-                                <th className="p-2 border border-gray-600 w-24 text-center">CSR No.</th>
-                                <th className="p-2 border border-gray-600 text-left">Subject Wise Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredResults.length === 0 ? (
-                                <tr>
-                                    <td colSpan="10" className="p-10 text-center text-gray-500 font-bold text-sm italic bg-gray-50">
-                                        No exam results recorded yet.
-                                    </td>
-                                </tr>
-                            ) : (
-                                filteredResults.map((result, idx) => {
-                                    const percentage = ((result.marksObtained / result.totalMarks) * 100).toFixed(2);
-                                    return (
-                                        <tr key={result._id} className="border-b border-gray-300 hover:bg-gray-50 transition-colors">
-                                            <td className="p-2 border-r border-gray-300 text-center font-bold">{idx + 1}</td>
-                                            <td className="p-2 border-r border-gray-300 text-center font-mono font-bold text-blue-800">{result.student?.regNo || '-'}</td>
-                                            <td className="p-2 border-r border-gray-300 font-bold text-gray-900 uppercase">
-                                                {result.student?.firstName} {result.student?.lastName}
-                                            </td>
-                                            <td className="p-2 border-r border-gray-300 font-bold text-gray-600">
-                                                {result.course?.name || 'N/A'}
-                                            </td>
-                                            <td className="p-2 border-r border-gray-300 text-center font-black">
-                                                {result.marksObtained} / {result.totalMarks}
-                                            </td>
-                                            <td className="p-2 border-r border-gray-300 text-center font-black text-blue-700">
-                                                {percentage}%
-                                            </td>
-                                            <td className="p-2 border-r border-gray-300 text-center">
-                                                <span className="font-black border border-gray-800 px-1.5 py-0.5 rounded">{result.grade}</span>
-                                            </td>
-                                            <td className="p-2 border-r border-gray-300 text-center font-bold text-gray-500">
-                                                {result.somNumber || '-'}
-                                            </td>
-                                            <td className="p-2 border-r border-gray-300 text-center font-bold text-amber-700">
-                                                {result.csrNumber || '-'}
-                                            </td>
-                                            <td className="p-2">
-                                                <div className="flex flex-wrap gap-1">
-                                                    {result.subjectMarks?.map((sm, smIdx) => (
-                                                        <span key={smIdx} className="bg-gray-100 px-1.5 py-0.5 rounded-sm border border-gray-200 text-[9px] whitespace-nowrap">
-                                                            <span className="font-bold">{sm.subject?.name?.slice(0, 3).toUpperCase()}:</span> {sm.total}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-
-                {/* Footer Signature */}
-                <div className="mt-20 flex justify-between items-end border-t border-dashed border-gray-300 pt-10 no-print-flex">
-                    <div className="text-center">
-                        <div className="w-48 border-b-2 border-gray-800 mb-2"></div>
-                        <p className="text-xs font-black text-gray-800 uppercase tracking-widest">Prepared By</p>
-                    </div>
-                    <div className="text-center text-[10px] text-gray-400 font-medium">
-                        Report generated by {user?.name} on {new Date().toLocaleString()}
-                    </div>
-                    <div className="text-center">
-                        <div className="w-48 border-b-2 border-gray-800 mb-2"></div>
-                        <p className="text-xs font-black text-gray-800 uppercase tracking-widest">Office Seal</p>
-                    </div>
+                    {groupedResults.length === 0 ? (
+                        <div className="border border-slate-300 bg-slate-50 p-10 text-center text-sm font-bold text-slate-500 rounded-lg">No exam results found for the selected filters.</div>
+                    ) : (
+                        groupedResults.map(renderCourseTable)
+                    )}
                 </div>
             </div>
 
             <style dangerouslySetInnerHTML={{ __html: `
+                .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
                 @media print {
-                    .no-print { display: none !important; }
-                    .print-container { 
-                        box-shadow: none !important; 
-                        border: none !important; 
-                        padding: 0 !important;
-                        margin: 0 !important;
+                    body { background: #fff !important; margin: 0; }
+                    .print-container {
+                        border: 0 !important;
+                        box-shadow: none !important;
+                        padding: 4mm !important;
+                        width: 297mm;
                     }
-                    body { background: white !important; }
-                    @page { margin: 1cm; orientation: landscape; }
+                    @page { 
+                        size: A4 landscape; 
+                        margin: 0; 
+                    }
                 }
-            `}} />
+            ` }} />
         </div>
     );
 };

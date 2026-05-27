@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchStudents, toggleActiveStatus, resetStudentLogin, resetStatus, deleteStudent, fetchUniqueReferences } from '../../../features/student/studentSlice';
+import { fetchStudents, resetStudentLogin, resetStatus, deleteStudent, fetchUniqueReferences } from '../../../features/student/studentSlice';
 import { fetchCourses, fetchBatches, fetchBranches } from '../../../features/master/masterSlice';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Eye, EyeOff, Edit, Printer, FileText, CheckSquare, Square, Search, RefreshCw, Plus, Lock, X, Save, Trash2 } from 'lucide-react';
 import StudentSearch from '../../../components/StudentSearch';
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
@@ -13,7 +13,6 @@ import Swal from 'sweetalert2';
 
 const StudentList = () => {
   const dispatch = useDispatch();
-  const navigate = useNavigate();
   const { students, pagination, isLoading, isSuccess, message, uniqueReferences } = useSelector((state) => state.students);
   const { courses, branches } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
@@ -57,7 +56,7 @@ const StudentList = () => {
       if(message) {
           if(isSuccess) {
               toast.success(message);
-              if(showResetModal) setShowResetModal(false);
+              if(showResetModal) Promise.resolve().then(() => setShowResetModal(false));
           } else {
               toast.error(message);
           }
@@ -193,9 +192,12 @@ const StudentList = () => {
                         label="Search Student"
                         onSelect={(id, student) => {
                             if (student) {
-                                const newFilters = { ...filters, studentName: '', page: 1 };
+                                const studentName = `${student.firstName || ''} ${student.middleName || ''} ${student.lastName || ''}`.trim().replace(/\s+/g, ' ');
+                                const newFilters = { ...filters, studentName, page: 1 };
                                 setFilters(newFilters);
                                 setAppliedFilters(newFilters);
+                            } else {
+                                setFilters(prev => ({ ...prev, studentName: '', page: 1 }));
                             }
                         }}
                         additionalFilters={{ isRegistered: 'true' }}

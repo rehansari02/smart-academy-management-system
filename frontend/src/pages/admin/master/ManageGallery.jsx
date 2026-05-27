@@ -1,21 +1,156 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { Plus, Search, Image as ImageIcon, Edit2, Trash2, X, Upload, ArrowLeft, CheckCircle, Camera, Video, Layers, Tag, Check, Eye, EyeOff } from 'lucide-react';
+import { Plus, Search, Image as ImageIcon, Edit2, Trash2, X, Upload, ArrowLeft, CheckCircle, Camera, Layers, Tag, Eye, EyeOff, ExternalLink, PlayCircle } from 'lucide-react';
 import Swal from 'sweetalert2';
 import galleryService from '../../../services/galleryService';
 
-// Helper to convert youtube standard link to embed link if needed
+const getYoutubeVideoId = (parsed) => {
+    const pathParts = parsed.pathname.split('/').filter(Boolean);
+    if (parsed.hostname.includes('youtu.be')) return pathParts[0] || '';
+    if (['embed', 'shorts', 'live'].includes(pathParts[0])) return pathParts[1] || '';
+    return parsed.searchParams.get('v') || '';
+};
+
+const getInstagramEmbedUrl = (url) => {
+    const cleanUrl = url.split('?')[0].replace(/\/$/, '');
+    return `${cleanUrl}/embed`;
+};
+
+const getFacebookEmbedUrl = (parsed, url) => {
+    const path = parsed.pathname.toLowerCase();
+    const isVideo = parsed.hostname.includes('fb.watch')
+        || path.includes('/videos/')
+        || path.includes('/watch/')
+        || path.includes('/reel/')
+        || path.includes('/share/v/');
+    const pluginType = isVideo ? 'video' : 'post';
+    return `https://www.facebook.com/plugins/${pluginType}.php?href=${encodeURIComponent(url)}&show_text=true&width=500`;
+};
+
+const getGalleryLinkInfo = (rawUrl = '') => {
+    const value = rawUrl.trim();
+    if (!value) return { type: 'none', label: 'No Link', url: '', embedUrl: '', host: '' };
+
+    const normalizedUrl = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+
+    try {
+        const parsed = new URL(normalizedUrl);
+        const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+
+        if (host.includes('youtube.com') || host.includes('youtu.be')) {
+            const videoId = getYoutubeVideoId(parsed);
+
+            return {
+                type: 'youtube',
+                label: 'YouTube',
+                url: normalizedUrl,
+                embedUrl: videoId ? `https://www.youtube.com/embed/${videoId}` : normalizedUrl,
+                thumbnailUrl: videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : '',
+                host
+            };
+        }
+
+        if (host.includes('instagram.com')) {
+            return {
+                type: 'instagram',
+                label: 'Instagram',
+                url: normalizedUrl,
+                embedUrl: getInstagramEmbedUrl(normalizedUrl),
+                thumbnailUrl: '',
+                host
+            };
+        }
+
+        if (host.includes('facebook.com') || host.includes('fb.watch')) {
+            return {
+                type: 'facebook',
+                label: 'Facebook',
+                url: normalizedUrl,
+                embedUrl: getFacebookEmbedUrl(parsed, normalizedUrl),
+                thumbnailUrl: '',
+                host
+            };
+        }
+
+        return { type: 'link', label: 'External Link', url: normalizedUrl, embedUrl: '', thumbnailUrl: '', host };
+    } catch {
+        return { type: 'link', label: 'External Link', url: value, embedUrl: '', thumbnailUrl: '', host: value };
+    }
+};
+
+// Keep saved links clean, but only convert YouTube to iframe format.
 const formatVideoLink = (url) => {
-    if (!url) return '';
-    if (url.includes('watch?v=')) {
-        const videoId = url.split('watch?v=')[1].split('&')[0];
-        return `https://www.youtube.com/embed/${videoId}`;
+    const linkInfo = getGalleryLinkInfo(url);
+    return linkInfo.type === 'youtube' ? linkInfo.embedUrl : linkInfo.url;
+};
+
+const getLinkTheme = (type) => {
+    switch (type) {
+        case 'youtube': return 'bg-red-600 text-white border-red-600';
+        case 'instagram': return 'bg-pink-600 text-white border-pink-600';
+        case 'facebook': return 'bg-blue-600 text-white border-blue-600';
+        default: return 'bg-gray-800 text-white border-gray-800';
     }
-    if (url.includes('youtu.be/')) {
-        const videoId = url.split('youtu.be/')[1].split('?')[0];
-        return `https://www.youtube.com/embed/${videoId}`;
+};
+
+const GalleryLinkPreview = ({ url, compact = false }) => {
+    const linkInfo = getGalleryLinkInfo(url);
+    if (!linkInfo.url) return null;
+
+    if (linkInfo.embedUrl && ['youtube', 'instagram', 'facebook'].includes(linkInfo.type)) {
+        return (
+            <div className={`rounded-xl overflow-hidden border shadow-sm ${
+                linkInfo.type === 'youtube' ? 'border-red-100 bg-black' :
+                linkInfo.type === 'instagram' ? 'border-pink-100 bg-white' :
+                'border-blue-100 bg-white'
+            }`}>
+                {linkInfo.type !== 'youtube' && (
+                    <div className={`flex items-center justify-between gap-3 px-4 py-3 ${linkInfo.type === 'instagram' ? 'bg-pink-50' : 'bg-blue-50'}`}>
+                        <div className="min-w-0">
+                            <p className="text-xs font-extrabold uppercase tracking-wide text-gray-500">{linkInfo.label} Preview</p>
+                            <p className="truncate text-sm font-bold text-gray-800">{linkInfo.host || linkInfo.url}</p>
+                        </div>
+                        <a href={linkInfo.url} target="_blank" rel="noreferrer" className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold ${getLinkTheme(linkInfo.type)}`}>
+                            Open
+                        </a>
+                    </div>
+                )}
+                <iframe
+                    src={linkInfo.embedUrl}
+                    title={`${linkInfo.label} preview`}
+                    className={linkInfo.type === 'youtube' ? 'w-full aspect-video' : 'w-full min-h-[420px] bg-white'}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                />
+            </div>
+        );
     }
-    return url;
+
+    return (
+        <a
+            href={linkInfo.url}
+            target="_blank"
+            rel="noreferrer"
+            className={`block rounded-xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${compact ? 'text-center' : ''} ${
+                linkInfo.type === 'instagram' ? 'border-pink-200 bg-pink-50' :
+                linkInfo.type === 'facebook' ? 'border-blue-200 bg-blue-50' :
+                'border-gray-200 bg-gray-50'
+            }`}
+        >
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${getLinkTheme(linkInfo.type)}`}>
+                        {linkInfo.type === 'youtube' ? <PlayCircle size={20} /> : <ExternalLink size={18} />}
+                    </div>
+                    <div className="min-w-0">
+                        <p className="font-extrabold text-gray-900 text-sm">{linkInfo.label}</p>
+                        <p className="text-xs text-gray-500 font-semibold truncate">{linkInfo.host || linkInfo.url}</p>
+                    </div>
+                </div>
+                <ExternalLink size={16} className="text-gray-400 shrink-0" />
+            </div>
+        </a>
+    );
 };
 
 // ── Image Upload Panel (add more photos to existing event) ──────────────────
@@ -23,6 +158,7 @@ const ImagePanel = ({ gallery, onBack, onUpdated }) => {
     const [files, setFiles] = useState([]);
     const [uploading, setUploading] = useState(false);
     const [current, setCurrent] = useState({ ...gallery });
+    const currentLink = getGalleryLinkInfo(current.videoLink);
 
     const refresh = async () => {
         const data = await galleryService.getGalleryById(gallery._id);
@@ -79,12 +215,19 @@ const ImagePanel = ({ gallery, onBack, onUpdated }) => {
                     <p className="text-xs text-gray-500 mt-0.5">{current.category} &bull; {current.images?.length || 0} photos</p>
                     {current.description && <p className="text-sm text-gray-600 mt-1">{current.description}</p>}
                 </div>
-                {current.videoLink && (
-                    <div className="flex items-center gap-1.5 bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-bold">
-                        <Video size={14} /> Video Link Attached
+                {currentLink.url && (
+                    <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${getLinkTheme(currentLink.type)}`}>
+                        <ExternalLink size={14} /> {currentLink.label} Link Attached
                     </div>
                 )}
             </div>
+
+            {currentLink.url && (
+                <div className="mb-5">
+                    <h3 className="font-bold text-gray-700 text-sm uppercase mb-3">Attached Link</h3>
+                    <GalleryLinkPreview url={current.videoLink} />
+                </div>
+            )}
 
             {/* Upload zone */}
             <div className="border-2 border-dashed border-pink-300 rounded-xl p-5 text-center bg-pink-50/50 mb-5">
@@ -174,7 +317,7 @@ const ManageGallery = () => {
             ]);
             setGalleries(galData);
             setCategoryList(catData);
-        } catch (e) { 
+        } catch { 
             toast.error('Failed to load gallery data'); 
         } finally { 
             setLoading(false); 
@@ -204,7 +347,7 @@ const ManageGallery = () => {
             await galleryService.updateCategory(cat._id, { isActive: !cat.isActive });
             toast.success('Category status updated');
             fetchData();
-        } catch (err) {
+        } catch {
             toast.error('Failed to update category');
         }
     };
@@ -214,7 +357,7 @@ const ManageGallery = () => {
             await galleryService.updateGallery(g._id, { isActive: !g.isActive });
             toast.success(`Event album is now ${!g.isActive ? 'Visible' : 'Hidden'} on website`);
             fetchData();
-        } catch (err) {
+        } catch {
             toast.error('Failed to update event status');
         }
     };
@@ -233,7 +376,7 @@ const ManageGallery = () => {
                     await galleryService.deleteCategory(id);
                     toast.success('Category deleted');
                     fetchData();
-                } catch (err) {
+                } catch {
                     toast.error('Failed to delete category');
                 }
             }
@@ -385,17 +528,25 @@ const ManageGallery = () => {
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-                                {filteredGalleries.map(g => (
+                                {filteredGalleries.map(g => {
+                                    const linkInfo = getGalleryLinkInfo(g.videoLink);
+
+                                    return (
                                     <div key={g._id} className="bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition group cursor-pointer flex flex-col justify-between"
                                         onClick={() => { setSelectedGallery(g); setView('images'); }}>
                                         <div>
                                             <div className="aspect-video bg-gray-100 relative overflow-hidden">
                                                 {g.images?.[0] ? (
                                                     <img src={g.images[0].startsWith('http') ? g.images[0] : `${import.meta.env.VITE_API_URL.replace('/api', '')}/${g.images[0]}`} alt={g.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                                                ) : g.videoLink ? (
-                                                    <div className="w-full h-full bg-purple-900 text-white flex flex-col items-center justify-center p-4">
-                                                        <Video size={36} className="text-purple-300 mb-2 animate-pulse" />
-                                                        <span className="text-xs font-bold uppercase tracking-wider text-purple-200">Video Entry</span>
+                                                ) : linkInfo.url ? (
+                                                    <div className={`w-full h-full text-white flex flex-col items-center justify-center p-4 ${
+                                                        linkInfo.type === 'youtube' ? 'bg-red-900' :
+                                                        linkInfo.type === 'instagram' ? 'bg-pink-900' :
+                                                        linkInfo.type === 'facebook' ? 'bg-blue-900' :
+                                                        'bg-gray-900'
+                                                    }`}>
+                                                        <ExternalLink size={36} className="text-white/70 mb-2" />
+                                                        <span className="text-xs font-bold uppercase tracking-wider text-white/80">{linkInfo.label}</span>
                                                     </div>
                                                 ) : (
                                                     <div className="w-full h-full flex items-center justify-center"><ImageIcon size={32} className="text-gray-300" /></div>
@@ -403,9 +554,9 @@ const ManageGallery = () => {
                                                 <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                                                     <ImageIcon size={10} /> {g.images?.length || 0}
                                                 </div>
-                                                {g.videoLink && (
-                                                    <div className="absolute bottom-2 left-2 bg-purple-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                                                        <Video size={10} /> Video
+                                                {linkInfo.url && (
+                                                    <div className={`absolute bottom-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${getLinkTheme(linkInfo.type)}`}>
+                                                        <ExternalLink size={10} /> {linkInfo.label}
                                                     </div>
                                                 )}
                                                 <div className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${g.isActive ? 'bg-green-500 text-white' : 'bg-gray-500 text-white'}`}>{g.isActive ? 'Active' : 'Hidden'}</div>
@@ -414,6 +565,18 @@ const ManageGallery = () => {
                                                 <div className="inline-block text-[10px] font-bold uppercase tracking-wider bg-pink-50 text-pink-600 border border-pink-200 rounded px-1.5 py-0.5 mb-1.5">{g.category}</div>
                                                 <h3 className="font-bold text-gray-800 text-sm line-clamp-1">{g.title}</h3>
                                                 {g.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{g.description}</p>}
+                                                {linkInfo.url && (
+                                                    <a
+                                                        href={linkInfo.url}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1.5 text-[11px] font-bold text-gray-600 hover:bg-gray-100"
+                                                    >
+                                                        <ExternalLink size={12} />
+                                                        <span className="truncate">{linkInfo.host || linkInfo.label}</span>
+                                                    </a>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="p-4 pt-0">
@@ -430,7 +593,8 @@ const ManageGallery = () => {
                                             </div>
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -543,18 +707,23 @@ const ManageGallery = () => {
                                 </select>
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-gray-700 block mb-1">Video Link / YouTube Embed URL <span className="text-purple-600 font-normal">(Optional)</span></label>
+                                <label className="text-xs font-bold text-gray-700 block mb-1">Social / Video Link <span className="text-purple-600 font-normal">(Optional)</span></label>
                                 <div className="relative">
-                                    <Video className="absolute left-3.5 top-1/2 -translate-y-1/2 text-purple-400" size={18} />
+                                    <ExternalLink className="absolute left-3.5 top-1/2 -translate-y-1/2 text-purple-400" size={18} />
                                     <input 
-                                        type="url" 
+                                        type="text" 
                                         value={form.videoLink} 
                                         onChange={e => setForm({ ...form, videoLink: e.target.value })}
-                                        placeholder="https://www.youtube.com/watch?v=... or embed url"
+                                        placeholder="Paste YouTube, Instagram, Facebook, or website link"
                                         className="w-full border rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-400 outline-none font-medium" 
                                     />
                                 </div>
-                                <span className="text-[11px] text-gray-400 mt-1 block">Paste YouTube video link. You can include photos along with a video link!</span>
+                                <span className="text-[11px] text-gray-400 mt-1 block">Supports YouTube, Instagram, Facebook, and normal website links. You can include photos with the link.</span>
+                                {form.videoLink?.trim() && (
+                                    <div className="mt-3">
+                                        <GalleryLinkPreview url={form.videoLink} compact />
+                                    </div>
+                                )}
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-gray-700 block mb-1">Description <span className="text-gray-400 font-normal">(Optional)</span></label>
