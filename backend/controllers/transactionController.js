@@ -406,7 +406,7 @@ const getFeeReceipts = asyncHandler(async (req, res) => {
   let receipts = await FeeReceipt.find(query)
     .populate("student", "firstName lastName regNo enrollmentNo middleName mobileStudent mobileParent batch totalFees pendingFees branchName emiDetails admissionFeeAmount")
     .populate("course", "name shortName admissionFees")
-    .populate("branch", "name shortCode") // Populate Branch for Super Admin visibility
+    .populate("branch", "name shortCode address city state phone mobile email") // Populate full Branch details for print rendering
     .sort({ createdAt: -1 });
 
   // Add calculated fields for each receipt
@@ -566,7 +566,8 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
   // Populate receipt for frontend immediate use (printing)
   await receipt.populate([
     { path: "student", select: "firstName lastName regNo enrollmentNo middleName mobileStudent mobileParent batch totalFees pendingFees branchName emiDetails admissionFeeAmount" },
-    { path: "course", select: "name shortName admissionFees" }
+    { path: "course", select: "name shortName admissionFees" },
+    { path: "branch", select: "name shortCode address city state phone mobile email" }
   ]);
 
   // Add calculated fields for the receipt
@@ -898,6 +899,7 @@ const getStudentPaymentHistory = asyncHandler(async (req, res) => {
       }
     })
     .populate("course", "name shortName admissionFees")
+    .populate("branch", "name shortCode address city state phone mobile email")
     .sort({ date: 1 });
 
   res.json(receipts);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchCourses } from '../../features/master/masterSlice';
@@ -314,6 +314,29 @@ const PublicNavbar = () => {
 
 const PublicLayout = () => {
   const { user } = useSelector((state) => state.auth);
+  const location = useLocation();
+
+  const whatsappMessage = useMemo(() => {
+    const pageMap = [
+      { match: ['/online-admission'], message: 'Hello, I want admission details and fee information for Smart Institute.' },
+      { match: ['/course'], message: 'Hello, I want course details and timings from Smart Institute.' },
+      { match: ['/contact'], message: 'Hello, I need the contact details and office location for Smart Institute.' },
+      { match: ['/franchise'], message: 'Hello, I want franchise information for Smart Institute.' },
+      { match: ['/verify-student'], message: 'Hello, I need help with student admission verification.' },
+      { match: ['/student-login'], message: 'Hello, I need help with student login access.' },
+      { match: ['/result'], message: 'Hello, I need help checking student results.' },
+      { match: ['/feedback'], message: 'Hello, I want to share feedback about Smart Institute.' }
+    ];
+
+    const match = pageMap.find(item => item.match.some(path => location.pathname.startsWith(path)));
+    return match?.message || 'Hello, I would like more information about Smart Institute.';
+  }, [location.pathname]);
+
+  const whatsappLink = useMemo(() => {
+    const phone = '919601749300';
+    const text = encodeURIComponent(whatsappMessage);
+    return `https://wa.me/${phone}?text=${text}`;
+  }, [whatsappMessage]);
 
   return (
     <div className="min-h-screen bg-white font-sans flex flex-col">
@@ -418,6 +441,23 @@ const PublicLayout = () => {
       <div className="flex-grow">
         <Outlet />
       </div>
+
+      <a
+        href={whatsappLink}
+        target="_blank"
+        rel="noreferrer"
+        className="fixed bottom-5 right-5 z-[60] flex items-center gap-3 rounded-full bg-[#25D366] px-4 py-3 text-white shadow-lg shadow-green-900/20 transition-transform hover:-translate-y-0.5 hover:shadow-xl"
+        aria-label="Chat on WhatsApp"
+        title="Chat on WhatsApp"
+      >
+        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15">
+          <svg viewBox="0 0 32 32" className="h-6 w-6 fill-current" aria-hidden="true">
+            <path d="M19.11 17.02c-.29-.15-1.72-.85-1.99-.95-.27-.1-.47-.15-.67.15-.2.29-.77.95-.94 1.15-.17.2-.35.22-.64.07-.29-.15-1.23-.45-2.34-1.44-.86-.77-1.44-1.72-1.61-2.01-.17-.29-.02-.45.13-.6.13-.13.29-.35.43-.52.14-.17.19-.29.29-.48.1-.2.05-.37-.02-.52-.07-.15-.67-1.6-.92-2.19-.24-.57-.48-.49-.67-.5h-.57c-.2 0-.52.07-.79.37-.27.29-1.03 1-1.03 2.44s1.06 2.83 1.21 3.03c.15.2 2.09 3.18 5.06 4.46.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.08 1.72-.7 1.96-1.39.24-.68.24-1.26.17-1.39-.07-.13-.27-.21-.56-.36z" />
+            <path d="M16.03 3C9.4 3 4 8.38 4 14.98c0 2.1.55 4.15 1.61 5.95L4 29l8.31-1.54c1.74.95 3.7 1.45 5.72 1.45h.01C24.67 28.91 30 23.57 30 16.98 30 10.38 22.67 3 16.03 3zm0 23.56c-1.8 0-3.56-.48-5.08-1.38l-.36-.21-4.93.91.93-4.81-.23-.38a11.52 11.52 0 0 1-1.72-6.11C4.64 9.55 9.45 4.73 16.03 4.73c5.98 0 11.3 5.26 11.3 12.25 0 5.98-4.84 11.58-11.3 11.58z" />
+          </svg>
+        </span>
+        <span className="hidden sm:block text-sm font-semibold">WhatsApp Us</span>
+      </a>
 
       {/* 5. Footer */}
       <footer className="bg-gray-900 text-gray-300 pt-16 pb-8 border-t-4 border-accent mt-auto">

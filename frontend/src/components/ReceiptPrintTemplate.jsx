@@ -45,6 +45,29 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
     return batchObj ? `${batchObj.startTime} To ${batchObj.endTime}` : receipt.student.batch;
   };
 
+  const getBranchInfo = () => {
+    const branch = receipt.branch && typeof receipt.branch === 'object' ? receipt.branch : null;
+    const studentBranch = receipt.student?.branchId && typeof receipt.student.branchId === 'object' ? receipt.student.branchId : null;
+    const fallbackAddress = user?.branchDetails?.address || '309-A, 309-B, 3rd Floor, Sai Square Building';
+    const fallbackCity = user?.branchDetails?.city || 'Bhestan';
+    const fallbackState = user?.branchDetails?.state || 'Gujarat';
+    const fallbackPhone = user?.branchDetails?.phone || '9601749300';
+    const fallbackMobile = user?.branchDetails?.mobile || '9898830409';
+    const fallbackEmail = user?.branchDetails?.email || 'smartinstitutes@gmail.com';
+
+    return branch || studentBranch || {
+      name: receipt.student?.branchName || 'Main Branch',
+      address: fallbackAddress,
+      city: fallbackCity,
+      state: fallbackState,
+      phone: fallbackPhone,
+      mobile: fallbackMobile,
+      email: fallbackEmail
+    };
+  };
+
+  const branchInfo = getBranchInfo();
+
   // Single Receipt markup
   const renderSingleReceipt = () => (
     <div style={{
@@ -80,21 +103,21 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
             textDecoration: 'underline',
             textUnderlineOffset: '6px'
           }}>
-            {receipt.student?.branchId?.name || (receipt.student?.branchName ? (receipt.student.branchName.endsWith(' Branch') ? receipt.student.branchName : `${receipt.student.branchName} Branch`) : 'Main')}          </h2>
+            {branchInfo.name || (receipt.student?.branchName ? (receipt.student.branchName.endsWith(' Branch') ? receipt.student.branchName : `${receipt.student.branchName} Branch`) : 'Main')}          </h2>
           <p style={{ margin: '2px 0', fontSize: '11px', color: '#444', fontWeight: '500' }}>
-            {receipt.student?.branchId?.address || '309-A, 309-B, 3rd Floor, Sai Square Building'}<br />
-            {receipt.student?.branchId?.city || 'Bhestan'}, {receipt.student?.branchId?.state || 'Gujarat'} - {receipt.student?.branchId?.pincode || '395023'} (INDIA)
+            {branchInfo.address || '309-A, 309-B, 3rd Floor, Sai Square Building'}<br />
+            {branchInfo.city || 'Bhestan'}, {branchInfo.state || 'Gujarat'} - {branchInfo.pincode || '395023'} (INDIA)
           </p>
           <div style={{ marginTop: '4px', fontSize: '11px', fontWeight: '500' }}>
             <span style={{ color: '#0066cc' }}>Ph. No. : </span>
-            {receipt.student?.branchId?.phone || '9601749300'},
+            {branchInfo.phone || '9601749300'},
             <span style={{ color: '#0066cc', marginLeft: '5px' }}>Mob. No. : </span>
-            {receipt.student?.branchId?.mobile || '9898830409'}
+            {branchInfo.mobile || '9898830409'}
           </div>
           <div style={{ fontSize: '11px', marginTop: '2px', fontWeight: '500' }}>
             <span style={{ color: '#0066cc' }}>Email ID : </span>
-            <a href={`mailto:${receipt.student?.branchId?.email}`} style={{ color: '#0066cc', textDecoration: 'none' }}>
-              {receipt.student?.branchId?.email || 'smartinstitutes@gmail.com'}
+            <a href={`mailto:${branchInfo.email}`} style={{ color: '#0066cc', textDecoration: 'none' }}>
+              {branchInfo.email || 'smartinstitutes@gmail.com'}
             </a>
           </div>
         </div>
