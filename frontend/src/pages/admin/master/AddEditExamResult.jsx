@@ -164,8 +164,9 @@ const AddEditExamResult = () => {
       dispatch(fetchExamScheduleDetails(selectedExamId));
       
       if (!isEditMode) {
+        // Try to find in existing list first for immediate feedback
         const selectedExam = examSchedules.find(e => e._id === selectedExamId);
-        if (selectedExam && selectedExam.timeTable) {
+        if (selectedExam && selectedExam.timeTable && selectedExam.timeTable.length > 0) {
           const initialMarks = selectedExam.timeTable.map(item => ({
             subjectId: item.subject?._id || item.subject,
             subjectName: item.subject?.name || 'Subject',
@@ -179,6 +180,23 @@ const AddEditExamResult = () => {
       }
     }
   }, [selectedExamId, examSchedules, setValue, isEditMode, dispatch]);
+
+  // Update subjectMarks when full exam details are loaded (handles 7+ subjects case)
+  useEffect(() => {
+    if (examScheduleDetails && !isEditMode && examScheduleDetails._id === selectedExamId) {
+      if (examScheduleDetails.timeTable && examScheduleDetails.timeTable.length > 0) {
+        const initialMarks = examScheduleDetails.timeTable.map(item => ({
+          subjectId: item.subject?._id || item.subject,
+          subjectName: item.subject?.name || 'Subject',
+          theory: 0,
+          practical: 0,
+          total: 0,
+          maxMarks: item.total || 100
+        }));
+        setValue('subjectMarks', initialMarks);
+      }
+    }
+  }, [examScheduleDetails, isEditMode, setValue, selectedExamId]);
 
   const activeExamSchedules = useMemo(() => {
     return examSchedules.filter(e => e.isActive && !e.isDeleted && e.course && e.examName && e.attendees && e.attendees.length > 0);

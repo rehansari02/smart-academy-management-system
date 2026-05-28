@@ -59,6 +59,7 @@ export const MENU_CONFIG = [
       { title: 'Pending Student Registration', path: '/transaction/pending-registration' },
       { title: 'Student Cancellation', path: '/transaction/student-cancellation' },
       { title: 'Fees Receipt', path: '/transaction/fees-receipt' },
+      { title: 'Expenses', path: '/transaction/expenses' },
       {
         title: 'Attendance',
         type: 'nested',

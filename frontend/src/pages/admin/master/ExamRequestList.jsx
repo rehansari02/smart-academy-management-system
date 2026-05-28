@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchExamRequests, cancelExamRequest, fetchCourses } from '../../../features/master/masterSlice';
+import { fetchExamRequests, cancelExamRequest, fetchCourses, fetchExamRequestBranches } from '../../../features/master/masterSlice';
 import { Search, RefreshCw, XCircle } from 'lucide-react';
 import StudentSearch from '../../../components/StudentSearch';
 import { toast } from 'react-toastify';
@@ -10,11 +10,13 @@ const ExamRequestList = () => {
   const dispatch = useDispatch();
   
   // Redux Data
-  const { examRequests, courses, isLoading } = useSelector((state) => state.master);
+  const { examRequests, courses, examRequestBranches, isLoading } = useSelector((state) => state.master);
+  const { user } = useSelector((state) => state.auth);
 
   const [filters, setFilters] = useState({
     studentId: '',
-    courseId: ''
+    courseId: '',
+    branchId: ''
   });
   const [cancelModal, setCancelModal] = useState({ show: false, requestId: null, reason: '' });
   const [selectedRequests, setSelectedRequests] = useState([]);
@@ -23,6 +25,7 @@ const ExamRequestList = () => {
   useEffect(() => {
     dispatch(fetchCourses());
     dispatch(fetchExamRequests());
+    dispatch(fetchExamRequestBranches());
   }, [dispatch]);
 
   const handleSearch = () => {
@@ -30,7 +33,7 @@ const ExamRequestList = () => {
   };
 
   const handleReset = () => {
-    setFilters({ studentId: '', courseId: '' });
+    setFilters({ studentId: '', courseId: '', branchId: '' });
     dispatch(fetchExamRequests());
   };
 
@@ -94,8 +97,7 @@ const ExamRequestList = () => {
 
       {/* --- Filter Section --- */}
       <div className="bg-white p-4 rounded shadow mb-6 border-t-4 border-primary">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-          {/* Student Filter */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           {/* Student Filter */}
           <div>
             <StudentSearch 
@@ -118,6 +120,26 @@ const ExamRequestList = () => {
                 {courses.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
             </select>
           </div>
+
+          {/* Branch Filter - only for Super Admin, only show branches with exam request data */}
+          {user?.role === 'Super Admin' && (
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">Select Branch</label>
+              <select 
+                  className="border p-2 rounded w-full text-sm"
+                  value={filters.branchId}
+                  onChange={(e) => setFilters({...filters, branchId: e.target.value})}
+              >
+                  <option value="">-- All Branches --</option>
+                  {examRequestBranches && examRequestBranches.map(b => (
+                      <option key={b._id} value={b._id}>{b.name}</option>
+                  ))}
+              </select>
+              {examRequestBranches.length === 0 && (
+                  <p className="text-[10px] text-gray-400 mt-1">No branches with exam requests</p>
+              )}
+            </div>
+          )}
 
           {/* Buttons */}
           <div className="flex gap-2">

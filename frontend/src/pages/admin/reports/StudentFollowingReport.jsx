@@ -235,6 +235,7 @@ const StudentFollowingReport = () => {
                             <th className="p-2 border font-semibold w-12 text-center align-middle">Sr No.</th>
                             <th className="p-2 border font-semibold align-middle w-24 text-center">Date</th>
                             <th className="p-2 border font-semibold align-middle text-center w-1/5">Student Name</th>
+                            <th className="p-2 border font-semibold align-middle text-center">Course</th>
                             <th className="p-2 border font-semibold align-middle text-center w-1/4">Contact (G/H/S)</th>
                             <th className="p-2 border font-semibold align-middle text-center w-1/4">Address</th>
                             <th className="p-2 border font-semibold align-middle text-center w-24">Join Status</th>
@@ -252,6 +253,10 @@ const StudentFollowingReport = () => {
                                 </td>
                                 <td className="p-2 border font-medium text-gray-900 capitalize">
                                     {item.firstName} {item.middleName ? `${item.middleName} ` : ''}{item.lastName || ''}
+                                </td>
+
+                                <td className="p-2 border text-gray-700 font-medium">
+                                    {item.interestedCourse?.name || '-'}
                                 </td>
 
                                 {/* Contact Column with G/H/S Split */}
@@ -298,7 +303,7 @@ const StudentFollowingReport = () => {
                             </tr>
                         )) : (
                             <tr>
-                                <td colSpan="9" className="p-4 text-center text-gray-500 italic border">
+                                <td colSpan="10" className="p-4 text-center text-gray-500 italic border">
                                     No records found matching criteria.
                                 </td>
                             </tr>

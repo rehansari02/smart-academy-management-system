@@ -152,9 +152,9 @@ const InquiryDSR = () => {
             toast.success(message);
             dispatch(resetTransaction());
             setModal({ type: null });
-            // fetchInquiries removed to maintain list state
+            dispatch(fetchInquiries(filters));
         }
-    }, [isSuccess, message, dispatch]);
+    }, [isSuccess, message, dispatch, filters]);
 
     // Wrapper for InquiryForm save
     const handleFormSave = (payload) => {
@@ -272,7 +272,16 @@ const InquiryDSR = () => {
                 }
             `}</style>
             <div className="flex justify-between mb-4 items-center">
-                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><FileText className="text-purple-600" /> DSR Inquiry Report</h2>
+                <div className="flex items-center gap-3">
+                    <FileText className="text-purple-600" size={24} />
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-800">DSR Inquiry Report</h2>
+                        <p className="text-xs text-gray-500">Daily Sales Report inquiries management</p>
+                    </div>
+                    <span className="bg-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm ml-2">
+                        Total: {inquiries?.length || 0}
+                    </span>
+                </div>
                 <div className="flex gap-2">
                     <button onClick={handlePrintList} className="bg-green-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 hover:bg-green-700 font-bold transition-all transform hover:scale-105">
                         <Printer size={18} /> Print List

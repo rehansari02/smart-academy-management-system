@@ -9,6 +9,137 @@ const asyncHandler = require("express-async-handler");
 const generateEnrollmentNumber = require("../utils/enrollmentGenerator");
 const sendSMS = require("../utils/smsSender"); // Moved to top for global use
 
+const getReceiptPurpose = (receipt) => {
+  const remarks = (receipt?.remarks || "").toLowerCase();
+  if (remarks.includes("admission")) return "admission";
+  if (remarks.includes("registration")) return "registration";
+  return "installment";
+};
+
+const getReceiptAmount = (receipt) => Number(receipt?.amountPaid || 0);
+
+const getPaidAmountByPurpose = (receipts, purpose) => receipts
+  .filter((receipt) => getReceiptPurpose(receipt) === purpose)
+  .reduce((sum, receipt) => sum + getReceiptAmount(receipt), 0);
+
+const getNextInstallmentNumber = (receipts) => {
+  const installmentReceipts = receipts.filter((receipt) => getReceiptPurpose(receipt) === "installment");
+  const maxStoredInstallment = installmentReceipts.reduce((max, receipt) => {
+    const value = Number(receipt.installmentNumber || 0);
+    return value > max ? value : max;
+  }, 0);
+
+  return Math.max(maxStoredInstallment, installmentReceipts.length) + 1;
+};
+
+const resolveReceiptPurposeForPayment = (student, receipts, requestedRemarks = "") => {
+  const normalizedRemarks = (requestedRemarks || "").toLowerCase();
+  const courseAdmissionFee = Number(student.course?.admissionFees || 0);
+  const hasRegistrationReceipt = receipts.some((receipt) => getReceiptPurpose(receipt) === "registration");
+
+  if (normalizedRemarks.includes("admission")) {
+    return { purpose: "admission", remarks: requestedRemarks || "Admission Fee", installmentNumber: 0 };
+  }
+
+  if (normalizedRemarks.includes("registration") && !hasRegistrationReceipt) {
+    return { purpose: "registration", remarks: requestedRemarks || "Registration Fee", installmentNumber: 0 };
+  }
+
+  const paidAdmission = Math.max(
+    getPaidAmountByPurpose(receipts, "admission"),
+    Number(student.admissionFeeAmount || 0)
+  );
+  if (courseAdmissionFee > paidAdmission) {
+    return { purpose: "admission", remarks: "Admission Fee", installmentNumber: 0 };
+  }
+
+  if (!hasRegistrationReceipt) {
+    return { purpose: "registration", remarks: "Registration Fee", installmentNumber: 0 };
+  }
+
+  const installmentNumber = getNextInstallmentNumber(receipts);
+  const installmentRemarks = normalizedRemarks.includes("admission") || normalizedRemarks.includes("registration")
+    ? ""
+    : requestedRemarks;
+  return {
+    purpose: "installment",
+    remarks: installmentRemarks || `Installment ${installmentNumber}`,
+    installmentNumber
+  };
+};
+
+const attachReceiptDisplayInfo = (receipts) => {
+  const sortedReceipts = [...receipts].sort((a, b) => {
+    const aTime = new Date(a.date || a.createdAt || 0).getTime();
+    const bTime = new Date(b.date || b.createdAt || 0).getTime();
+    if (aTime !== bTime) return aTime - bTime;
+    return Number(a.receiptNo || 0) - Number(b.receiptNo || 0);
+  });
+
+  const receiptRole = new Map();
+  const receiptId = (receipt) => receipt._id.toString();
+  const receiptAmount = (receipt) => Number(receipt.amountPaid || 0);
+  const receiptRemarks = (receipt) => (receipt.remarks || "").toLowerCase();
+  const firstReceipt = sortedReceipts[0] || {};
+  const student = firstReceipt.student || {};
+  const recordedAdmissionPaid = Number(student.admissionFeeAmount || 0);
+
+  sortedReceipts.forEach((receipt) => {
+    if (receiptRemarks(receipt).includes("admission")) {
+      receiptRole.set(receiptId(receipt), "admission");
+    }
+  });
+
+  let totalAdmissionPaid = sortedReceipts
+    .filter((receipt) => receiptRole.get(receiptId(receipt)) === "admission")
+    .reduce((sum, receipt) => sum + receiptAmount(receipt), 0);
+
+  if (recordedAdmissionPaid > totalAdmissionPaid) {
+    for (const receipt of sortedReceipts) {
+      const id = receiptId(receipt);
+      if (receiptRole.has(id)) continue;
+
+      const remainingAdmission = recordedAdmissionPaid - totalAdmissionPaid;
+      if (remainingAdmission <= 0) break;
+      if (receiptAmount(receipt) <= remainingAdmission) {
+        receiptRole.set(id, "admission");
+        totalAdmissionPaid += receiptAmount(receipt);
+      }
+    }
+  }
+
+  for (const receipt of sortedReceipts) {
+    if (!receiptRole.has(receiptId(receipt)) && receiptRemarks(receipt).includes("registration")) {
+      receiptRole.set(receiptId(receipt), "registration");
+      break;
+    }
+  }
+
+  const hasRegistrationRole = () => [...receiptRole.values()].includes("registration");
+
+  if (!hasRegistrationRole()) {
+    for (const receipt of sortedReceipts) {
+      const id = receiptId(receipt);
+      if (receiptRole.has(id)) continue;
+
+      receiptRole.set(id, "registration");
+      break;
+    }
+  }
+
+  let installmentNumber = 0;
+  return receipts.map((receipt) => {
+    const role = receiptRole.get(receiptId(receipt)) || "installment";
+    const displayInstallmentNumber = role === "installment" ? ++installmentNumber : 0;
+
+    return {
+      ...receipt,
+      receiptPurpose: role,
+      displayInstallmentNumber
+    };
+  });
+};
+
 // --- INQUIRY ---
 
 // @desc Get Inquiries with Filters
@@ -436,7 +567,7 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
 
   // 1. Parallel Data Fetching
   const [student, existingReceipts] = await Promise.all([
-    Student.findById(studentId),
+    Student.findById(studentId).populate("course", "admissionFees registrationFees"),
     FeeReceipt.find({ student: studentId }).sort({ createdAt: 1 }).lean()
   ]);
 
@@ -465,16 +596,7 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
       receiptNo = String(Number(lastReceipt.receiptNo) + 1);
   }
 
-  // 2.5. Calculate Installment Number
-  let installmentNumber = 1;
-  
-  if (existingReceipts.length > 0) {
-    installmentNumber = existingReceipts.length + 1;
-  }
-  
-  if (installmentNumber === 1 && student.isRegistered) {
-    installmentNumber = 3; 
-  }
+  const receiptPurpose = resolveReceiptPurposeForPayment(student, existingReceipts, remarks);
 
   // branchId is already determined above
 
@@ -486,10 +608,10 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
     branch: branchId, // Assign Branch
     amountPaid,
     paymentMode,
-    remarks,
+    remarks: receiptPurpose.remarks,
     date: date || Date.now(),
     createdBy: req.user._id,
-    installmentNumber,
+    installmentNumber: receiptPurpose.installmentNumber,
     bankName,
     chequeNumber,
     chequeDate,
@@ -503,7 +625,7 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
   // 4. Update Student Pending Fees & Status
   let admissionCompletedNow = false;
 
-  if (remarks && remarks.toLowerCase().includes("admission")) {
+  if (receiptPurpose.purpose === "admission") {
     // If it's an admission fee payment, we update admission-specific fields
     if (!student.isAdmissionFeesPaid) {
       student.isAdmissionFeesPaid = true;
@@ -536,14 +658,16 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
       const var2 = amountPaid; // Amount
       
       // Determine var3 (Purpose)
-      let var3 = `Installment ${installmentNumber}`;
-      if (admissionCompletedNow || (remarks && remarks.toLowerCase().includes('admission'))) {
+      let var3 = receiptPurpose.purpose === "installment"
+        ? `Installment ${receiptPurpose.installmentNumber}`
+        : receiptPurpose.remarks;
+      if (admissionCompletedNow || receiptPurpose.purpose === "admission") {
           var3 = "Admission Fees";
-      } else if (remarks && remarks.toLowerCase().includes('registration')) {
+      } else if (receiptPurpose.purpose === "registration") {
           var3 = "Registration Fees";
       }
 
-      const includeRegNo = !(admissionCompletedNow || (remarks && remarks.toLowerCase().includes('admission')));
+      const includeRegNo = receiptPurpose.purpose !== "admission";
       const var4 = student.regNo || student.enrollmentNo || "N/A";
       const smsMessage = includeRegNo
         ? `Dear, ${var1}. Your Course fees ${var2} has been deposited for ${var3}, Reg.No. ${var4}. Thank you, Smart Institute`
@@ -799,23 +923,23 @@ const getStudentPaymentSummary = asyncHandler(async (req, res) => {
   // "registration". Older registration receipts can be blank, so after
   // admission is removed, assign the earliest remaining receipts to
   // registration until the course registration fee is covered.
-  sortedReceipts.forEach(r => {
-      if (!receiptRole.has(receiptId(r)) && receiptRemarks(r).includes("registration")) {
-          receiptRole.set(receiptId(r), "registration");
+  for (const receipt of sortedReceipts) {
+      if (!receiptRole.has(receiptId(receipt)) && receiptRemarks(receipt).includes("registration")) {
+          receiptRole.set(receiptId(receipt), "registration");
+          break;
       }
-  });
+  }
 
   let totalRegPaid = sortedReceipts
       .filter(r => receiptRole.get(receiptId(r)) === "registration")
       .reduce((acc, curr) => acc + receiptAmount(curr), 0);
 
-  if (courseRegFees > totalRegPaid) {
+  const hasRegistrationPayment = totalRegPaid > 0;
+
+  if (!hasRegistrationPayment) {
       for (const receipt of sortedReceipts) {
           const id = receiptId(receipt);
           if (receiptRole.has(id)) continue;
-
-          const remainingReg = courseRegFees - totalRegPaid;
-          if (remainingReg <= 0) break;
 
           const looksLikeOldRegistration =
               !receiptRemarks(receipt) &&
@@ -829,7 +953,7 @@ const getStudentPaymentSummary = asyncHandler(async (req, res) => {
   }
   
   // "pending registration fees... is our outstanding amount"
-  const pendingRegFees = Math.max(0, courseRegFees - totalRegPaid);
+  const pendingRegFees = hasRegistrationPayment || totalRegPaid > 0 ? 0 : courseRegFees;
 
   if (student.paymentPlan === "Monthly") {
       // Monthly Plan Logic:
@@ -898,11 +1022,12 @@ const getStudentPaymentHistory = asyncHandler(async (req, res) => {
         select: "name address city state phone mobile email"
       }
     })
-    .populate("course", "name shortName admissionFees")
+    .populate("course", "name shortName admissionFees registrationFees")
     .populate("branch", "name shortCode address city state phone mobile email")
-    .sort({ date: 1 });
+    .sort({ date: 1, createdAt: 1 })
+    .lean();
 
-  res.json(receipts);
+  res.json(attachReceiptDisplayInfo(receipts));
 });
 
 // @desc    Generate Receipt Report with Filters

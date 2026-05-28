@@ -11,6 +11,12 @@ export const fetchStudents = createAsyncThunk(
   async (params, thunkAPI) => {
     try {
       const queryParams = { ...params };
+      // Remove empty/undefined params to prevent accidental backend filtering
+      Object.keys(queryParams).forEach(key => {
+        if (queryParams[key] === '' || queryParams[key] === undefined || queryParams[key] === null) {
+          delete queryParams[key];
+        }
+      });
       // By default, exclude cancelled students unless explicitly requested
       if (queryParams.includeCancelled !== true) {
         queryParams.isCancelled = false;
@@ -184,6 +190,20 @@ export const reactivateStudent = createAsyncThunk(
   async (id, thunkAPI) => {
     try {
       const response = await axios.put(`${API_URL}${id}/reactivate`);
+      return response.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message
+      );
+    }
+  }
+);
+
+export const updateStudentDocuments = createAsyncThunk(
+  "students/updateDocuments",
+  async ({ id, data }, thunkAPI) => {
+    try {
+      const response = await axios.put(`${API_URL}${id}/documents`, data);
       return response.data;
     } catch (error) {
       return thunkAPI.rejectWithValue(
@@ -370,6 +390,23 @@ const studentSlice = createSlice({
         }
       })
       .addCase(reactivateStudent.rejected, (state, action) => {
+        state.isLoading = false;
+        state.isSuccess = false;
+        state.message = action.payload;
+      })
+      .addCase(updateStudentDocuments.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(updateStudentDocuments.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.isSuccess = true;
+        state.message = "Documents Status Updated Successfully";
+        const index = state.students.findIndex(s => s._id === action.payload._id);
+        if (index !== -1) {
+          state.students[index] = action.payload;
+        }
+      })
+      .addCase(updateStudentDocuments.rejected, (state, action) => {
         state.isLoading = false;
         state.isSuccess = false;
         state.message = action.payload;

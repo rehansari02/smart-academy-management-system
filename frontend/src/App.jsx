@@ -82,6 +82,7 @@ const ManageFeedback = lazy(() => import("./pages/admin/master/ManageFeedback"))
 const BranchMaster = lazy(() => import("./pages/admin/master/BranchMaster"));
 const Material = lazy(() => import("./pages/admin/master/Material"));
 const FreeLearning = lazy(() => import("./pages/admin/master/FreeLearning"));
+const ReferenceIncentive = lazy(() => import("./pages/admin/master/ReferenceIncentive"));
 const CloudinaryManager = lazy(() => import("./pages/admin/utility/CloudinaryManager"));
 const LocationMaster = lazy(() => import("./pages/admin/utility/LocationMaster"));
 const SmsStation = lazy(() => import("./pages/admin/utility/SmsStation"));
@@ -126,6 +127,7 @@ const StudentRegistrationProcess = lazy(() =>
 const StudentAttendance = lazy(() => import("./pages/admin/transaction/StudentAttendance"));
 const EmployeeAttendance = lazy(() => import("./pages/admin/transaction/EmployeeAttendance"));
 const ManageAttendance = lazy(() => import("./pages/admin/transaction/ManageAttendance"));
+const Expenses = lazy(() => import("./pages/admin/transaction/Expenses"));
 
 // --- BLOG ---
 const ManageBlogs = lazy(() => import("./pages/admin/blog/ManageBlogs"));
@@ -376,6 +378,14 @@ function App() {
               <Route path="/master/gallery" element={<PrivateRoute><ManageGallery /></PrivateRoute>} />
               <Route path="/master/feedback" element={<PrivateRoute><ManageFeedback /></PrivateRoute>} />
               <Route
+                path="/reference-incentive"
+                element={
+                  <PrivateRoute>
+                    <ReferenceIncentive />
+                  </PrivateRoute>
+                }
+              />
+              <Route
                 path="/master/branch"
                 element={
                   <PrivateRoute>
@@ -543,6 +553,16 @@ function App() {
                 element={
                   <PrivateRoute>
                     <EmployeeAttendance />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/transaction/expenses"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <Expenses />
+                    </Suspense>
                   </PrivateRoute>
                 }
               />

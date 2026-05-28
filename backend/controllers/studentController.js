@@ -923,22 +923,23 @@ const getUniqueReferences = asyncHandler(async (req, res) => {
     res.json(references);
 });
 
-module.exports = { 
-    getStudents, 
-    getStudentById, 
-    createStudent, 
-    updateStudent, 
-    confirmStudentRegistration, 
-    deleteStudent, 
-    toggleStudentStatus, 
-    resetStudentLogin, 
-    getNextRegNo, 
-    cancelStudent,
-    reactivateStudent,
-    getExamPendingStudents,
-    getUniqueReferences,
-    checkUsername
-};
+const updateStudentDocuments = asyncHandler(async (req, res) => {
+    const student = await Student.findById(req.params.id);
+    if (student) {
+        student.isPhotos = req.body.isPhotos !== undefined ? req.body.isPhotos : student.isPhotos;
+        student.isIDProof = req.body.isIDProof !== undefined ? req.body.isIDProof : student.isIDProof;
+        student.isMarksheetCertificate = req.body.isMarksheetCertificate !== undefined ? req.body.isMarksheetCertificate : student.isMarksheetCertificate;
+        student.isAddressProof = req.body.isAddressProof !== undefined ? req.body.isAddressProof : student.isAddressProof;
+        
+        student.verifiedBy = req.user.name || req.user.username;
+        student.verifiedAt = new Date();
+
+        const updatedStudent = await student.save();
+        res.json(updatedStudent);
+    } else {
+        res.status(404); throw new Error('Student not found');
+    }
+});
 
 const verifyAdmissionStatus = asyncHandler(async (req, res) => {
     const { enrollmentNo, regNo, identifier, dob } = req.body;
@@ -1012,5 +1013,6 @@ module.exports = {
     getExamPendingStudents,
     getUniqueReferences,
     verifyAdmissionStatus,
-    checkUsername
+    checkUsername,
+    updateStudentDocuments
 };

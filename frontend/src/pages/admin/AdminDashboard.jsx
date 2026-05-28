@@ -24,7 +24,8 @@ import {
   RefreshCw,
   UserPlus,
   Users,
-  Wallet
+  Wallet,
+  Receipt
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { getBranches } from '../../features/master/branchSlice';
@@ -50,6 +51,7 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [dashboardData, setDashboardData] = useState(null);
   const [filters, setFilters] = useState({ period: 'today', branchId: '', fromDate: '', toDate: '' });
+  const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
 
   const formatAmount = (value) => `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
   const formatDate = (date) => date ? new Date(date).toLocaleDateString('en-GB') : '-';
@@ -75,13 +77,12 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     dispatch(getBranches());
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchDashboard(filters);
     }, 300);
-
     return () => clearTimeout(timer);
   }, [filters]);
 
@@ -157,9 +158,13 @@ const AdminDashboard = () => {
   };
 
   const selectedPeriodLabel = periodOptions.find(option => option.value === filters.period)?.label || 'Today';
-  const selectedBranchName = filters.branchId
-    ? branches.find(branch => branch._id === filters.branchId)?.name || 'Selected Branch'
-    : 'All Branches';
+  const effectiveBranchId = dashboardData?.filters?.branchId || filters.branchId || '';
+  const selectedBranchName = effectiveBranchId
+    ? branches.find(branch => branch._id === effectiveBranchId)?.name || user?.branchName || 'Selected Branch'
+    : isSuperAdmin
+      ? 'All Branches'
+      : user?.branchName || 'My Branch';
+
   const recentListLimit = dashboardData?.filters?.recentListLimit || 5;
   const totalActivity = ['inquiries', 'admissions', 'registrations', 'visitors', 'receipts']
     .reduce((sum, key) => sum + Number(cards[key] || 0), 0);
@@ -173,7 +178,8 @@ const AdminDashboard = () => {
     { label: 'Receipts', value: cards.receipts, icon: <Wallet size={22} />, tone: 'border-l-cyan-500', helper: 'Payments taken', iconTone: 'bg-cyan-50 text-cyan-700' },
     { label: 'Total Collection', value: formatAmount(cards.collection), icon: <Wallet size={22} />, tone: 'border-l-green-500', helper: 'All fee receipts', iconTone: 'bg-green-50 text-green-700' },
     { label: 'Admission Fees', value: formatAmount(cards.admissionFees), icon: <Building2 size={22} />, tone: 'border-l-indigo-500', helper: 'Admission collection', iconTone: 'bg-indigo-50 text-indigo-700' },
-    { label: 'Registration Fees', value: formatAmount(cards.registrationFees), icon: <Building2 size={22} />, tone: 'border-l-pink-500', helper: 'Registration collection', iconTone: 'bg-pink-50 text-pink-700' }
+    { label: 'Registration Fees', value: formatAmount(cards.registrationFees), icon: <Building2 size={22} />, tone: 'border-l-pink-500', helper: 'Registration collection', iconTone: 'bg-pink-50 text-pink-700' },
+    { label: 'Total Expenses', value: formatAmount(cards.totalExpenses), icon: <Receipt size={22} />, tone: 'border-l-red-500', helper: `${cards.expenseCount || 0} expense entries`, iconTone: 'bg-red-50 text-red-700' }
   ];
 
   return (
@@ -213,9 +219,8 @@ const AdminDashboard = () => {
         <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_auto] xl:items-end">
             <div className="space-y-4">
-              <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">Date Filter</label>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">
+              <label className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">Date Filter</label>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">
                   {periodOptions.map(option => (
                     <button
                       key={option.value}
@@ -235,10 +240,9 @@ const AdminDashboard = () => {
                     </button>
                   ))}
                 </div>
-              </div>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                {user?.role === 'Super Admin' && (
+                {isSuperAdmin ? (
                   <div>
                     <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Branch</label>
                     <select
@@ -248,6 +252,17 @@ const AdminDashboard = () => {
                     >
                       <option value="">All Branches</option>
                       {branches.map(branch => <option key={branch._id} value={branch._id}>{branch.name}</option>)}
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Branch</label>
+                    <select
+                      value={user?.branchId?._id || user?.branchId || ''}
+                      disabled
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-500 outline-none"
+                    >
+                      <option value={user?.branchId?._id || user?.branchId || ''}>{user?.branchName || 'My Branch'}</option>
                     </select>
                   </div>
                 )}
@@ -285,97 +300,118 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {loading ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center font-bold text-slate-500 shadow-sm">
-            <RefreshCw className="mr-2 inline-block animate-spin" size={18} /> Loading dashboard...
-          </div>
-        ) : dashboardData && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Collection Snapshot</p>
-                <p className="mt-2 text-3xl font-black text-slate-900">{formatAmount(cards.collection)}</p>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <MiniMetric label="Admission" value={formatAmount(cards.admissionFees)} />
-                  <MiniMetric label="Registration" value={formatAmount(cards.registrationFees)} />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Activity Volume</p>
-                <p className="mt-2 text-3xl font-black text-slate-900">{totalActivity.toLocaleString('en-IN')}</p>
-                <div className="mt-4 grid grid-cols-3 gap-3">
-                  <MiniMetric label="Leads" value={cards.inquiries || 0} />
-                  <MiniMetric label="Visits" value={cards.visitors || 0} />
-                  <MiniMetric label="Receipts" value={cards.receipts || 0} />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Pending Work</p>
-                <p className="mt-2 text-3xl font-black text-slate-900">{pendingWork.toLocaleString('en-IN')}</p>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <MiniMetric label="Admission Fees" value={cards.pendingAdmissionFees || 0} />
-                  <MiniMetric label="Registration" value={cards.pendingRegistrationFees || 0} />
-                </div>
-              </div>
+        {/* Dashboard Content */}
+        <div>
+          {loading ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center font-bold text-slate-500 shadow-sm">
+              <RefreshCw className="mr-2 inline-block animate-spin" size={18} /> Loading dashboard...
             </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {summaryCards.map(card => (
-                <div key={card.label} className={`rounded-2xl border border-slate-200 border-l-4 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${card.tone}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-black uppercase tracking-wide text-slate-500">{card.label}</p>
-                      <p className="mt-2 break-words text-2xl font-black text-slate-900">{card.value ?? 0}</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-400">{card.helper}</p>
-                    </div>
-                    <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${card.iconTone}`}>{card.icon}</div>
+          ) : dashboardData && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-xs font-black uppercase tracking-wide text-slate-500">Collection Snapshot</p>
+                  <p className="mt-2 text-3xl font-black text-slate-900">{formatAmount(cards.collection)}</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <MiniMetric label="Admission" value={formatAmount(cards.admissionFees)} />
+                    <MiniMetric label="Registration" value={formatAmount(cards.registrationFees)} />
                   </div>
                 </div>
-              ))}
-            </div>
 
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-              <ChartPanel title="Overall Activity" subtitle="Counts by workflow">
-                <Line data={overviewChart} options={chartOptions} />
-              </ChartPanel>
-              <ChartPanel title="Inquiry Source" subtitle="Source wise inquiries">
-                <Doughnut data={sourceChart} options={doughnutOptions} />
-              </ChartPanel>
-              <ChartPanel title="Payment Collection" subtitle="Payment mode wise amount">
-                <Bar data={paymentChart} options={chartOptions} />
-              </ChartPanel>
-            </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-xs font-black uppercase tracking-wide text-slate-500">Activity Volume</p>
+                  <p className="mt-2 text-3xl font-black text-slate-900">{totalActivity.toLocaleString('en-IN')}</p>
+                  <div className="mt-4 grid grid-cols-3 gap-3">
+                    <MiniMetric label="Leads" value={cards.inquiries || 0} />
+                    <MiniMetric label="Visits" value={cards.visitors || 0} />
+                    <MiniMetric label="Receipts" value={cards.receipts || 0} />
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-              <DataTable title="Recent Inquiries" rows={listData.inquiries} limit={recentListLimit} columns={[
-                ['Date', row => formatDate(row.createdAt)],
-                ['Name', row => `${row.firstName || ''} ${row.lastName || ''}`],
-                ['Source', row => row.source || '-'],
-                ['Branch', row => row.branchId?.name || '-']
-              ]} />
-              <DataTable title="Recent Admissions" rows={listData.admissions} limit={recentListLimit} columns={[
-                ['Date', row => formatDate(row.admissionDate)],
-                ['Student', row => `${row.firstName || ''} ${row.lastName || ''}`],
-                ['Course', row => row.course?.name || '-'],
-                ['Branch', row => row.branchId?.name || '-']
-              ]} />
-              <DataTable title="Recent Fee Receipts" rows={listData.receipts} limit={recentListLimit} columns={[
-                ['Date', row => formatDate(row.date)],
-                ['Receipt', row => row.receiptNo],
-                ['Student', row => row.student ? `${row.student.firstName || ''} ${row.student.lastName || ''}` : '-'],
-                ['Amount', row => formatAmount(row.amountPaid), 'text-right font-black']
-              ]} />
-              <DataTable title="Recent Visitors" rows={listData.visitors} limit={recentListLimit} columns={[
-                ['Date', row => formatDate(row.visitingDate)],
-                ['Student', row => row.studentName || '-'],
-                ['Contact', row => row.mobileNumber || row.contactParent || '-'],
-                ['Status', row => row.status || 'Open']
-              ]} />
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-xs font-black uppercase tracking-wide text-slate-500">Pending Work</p>
+                  <p className="mt-2 text-3xl font-black text-slate-900">{pendingWork.toLocaleString('en-IN')}</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <MiniMetric label="Admission Fees" value={cards.pendingAdmissionFees || 0} />
+                    <MiniMetric label="Registration" value={cards.pendingRegistrationFees || 0} />
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 border-l-4 border-l-red-500 bg-white p-5 shadow-sm">
+                  <p className="text-xs font-black uppercase tracking-wide text-slate-500">Expenses</p>
+                  <p className="mt-2 text-3xl font-black text-red-600">{formatAmount(cards.totalExpenses)}</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <MiniMetric label="Entries" value={cards.expenseCount || 0} />
+                    <MiniMetric label="Net Income" value={formatAmount((cards.collection || 0) - (cards.totalExpenses || 0))} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {summaryCards.map(card => (
+                  <div key={card.label} className={`rounded-2xl border border-slate-200 border-l-4 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${card.tone}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-black uppercase tracking-wide text-slate-500">{card.label}</p>
+                        <p className="mt-2 break-words text-2xl font-black text-slate-900">{card.value ?? 0}</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-400">{card.helper}</p>
+                      </div>
+                      <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${card.iconTone}`}>{card.icon}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+                <ChartPanel title="Overall Activity" subtitle="Counts by workflow">
+                  <Line data={overviewChart} options={chartOptions} />
+                </ChartPanel>
+                <ChartPanel title="Inquiry Source" subtitle="Source wise inquiries">
+                  <Doughnut data={sourceChart} options={doughnutOptions} />
+                </ChartPanel>
+                <ChartPanel title="Payment Collection" subtitle="Payment mode wise amount">
+                  <Bar data={paymentChart} options={chartOptions} />
+                </ChartPanel>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                <DataTable title="Recent Inquiries" rows={listData.inquiries} limit={recentListLimit} columns={[
+                  ['Date', row => formatDate(row.createdAt)],
+                  ['Name', row => `${row.firstName || ''} ${row.lastName || ''}`],
+                  ['Source', row => row.source || '-'],
+                  ['Branch', row => row.branchId?.name || '-']
+                ]} />
+                <DataTable title="Recent Admissions" rows={listData.admissions} limit={recentListLimit} columns={[
+                  ['Date', row => formatDate(row.admissionDate)],
+                  ['Student', row => `${row.firstName || ''} ${row.lastName || ''}`],
+                  ['Course', row => row.course?.name || '-'],
+                  ['Branch', row => row.branchId?.name || '-']
+                ]} />
+                <DataTable title="Recent Fee Receipts" rows={listData.receipts} limit={recentListLimit} columns={[
+                  ['Date', row => formatDate(row.date)],
+                  ['Receipt', row => row.receiptNo],
+                  ['Student', row => row.student ? `${row.student.firstName || ''} ${row.student.lastName || ''}` : '-'],
+                  ['Branch', row => row.branch?.name || '-'],
+                  ['Amount', row => formatAmount(row.amountPaid), 'text-right font-black']
+                ]} />
+                <DataTable title="Recent Visitors" rows={listData.visitors} limit={recentListLimit} columns={[
+                  ['Date', row => formatDate(row.visitingDate)],
+                  ['Student', row => row.studentName || '-'],
+                  ['Contact', row => row.mobileNumber || row.contactParent || '-'],
+                  ['Branch', row => row.branchId?.name || '-'],
+                  ['Status', row => row.status || 'Open']
+                ]} />
+                <DataTable title="Recent Expenses" rows={listData.expenses} limit={recentListLimit} columns={[
+                  ['Date', row => formatDate(row.date)],
+                  ['Category', row => row.category?.name || '-'],
+                  ['Reason', row => row.reason || '-'],
+                  ['Branch', row => row.branch?.name || '-'],
+                  ['Amount', row => formatAmount(row.amount), 'text-right font-black text-red-600']
+                ]} />
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
@@ -453,5 +489,6 @@ const MiniMetric = ({ label, value }) => (
     <p className="mt-1 truncate text-sm font-black text-slate-900" title={String(value)}>{value}</p>
   </div>
 );
+
 
 export default AdminDashboard;

@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchStudents, resetStatus } from '../../../features/student/studentSlice';
+import { fetchStudents, resetStatus, updateStudentDocuments } from '../../../features/student/studentSlice';
 import { fetchBranches, fetchCourses } from '../../../features/master/masterSlice';
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
-import { FileText, Printer, Search, RefreshCw } from 'lucide-react';
+import { FileText, Printer, Search, RefreshCw, Edit, X, Save, CheckCircle2, User } from 'lucide-react';
 import StudentSearch from '../../../components/StudentSearch';
 import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
@@ -27,6 +27,14 @@ const StudentRegistrationReport = () => {
     });
 
     const [showReport, setShowReport] = useState(true);
+    const [selectedStudent, setSelectedStudent] = useState(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [docStatus, setDocStatus] = useState({
+        isPhotos: false,
+        isIDProof: false,
+        isMarksheetCertificate: false,
+        isAddressProof: false
+    });
 
     const componentRef = useRef(null);
 
@@ -71,6 +79,35 @@ const StudentRegistrationReport = () => {
             sortBy: '-createdAt' 
         }));
         setShowReport(true);
+    };
+
+    const handleEditDocs = (student) => {
+        setSelectedStudent(student);
+        setDocStatus({
+            isPhotos: student.isPhotos || false,
+            isIDProof: student.isIDProof || false,
+            isMarksheetCertificate: student.isMarksheetCertificate || false,
+            isAddressProof: student.isAddressProof || false
+        });
+        setIsModalOpen(true);
+    };
+
+    const handleUpdateDocs = async () => {
+        if (!selectedStudent) return;
+        
+        try {
+            await dispatch(updateStudentDocuments({
+                id: selectedStudent._id,
+                data: docStatus
+            })).unwrap();
+            
+            toast.success("Documents status updated successfully");
+            setIsModalOpen(false);
+            // Refresh the list to show updated status and verifier name
+            handleSearch();
+        } catch (err) {
+            toast.error(err || "Failed to update documents status");
+        }
     };
 
     useEffect(() => {
@@ -233,6 +270,8 @@ const StudentRegistrationReport = () => {
                                 <th rowSpan="2" className="border border-gray-400 p-1 w-12">Status</th>
                                 <th colSpan="4" className="border border-gray-400 p-1">Document Details</th>
                                 <th colSpan="2" className="border border-gray-400 p-1">Registration Status</th>
+                                <th rowSpan="2" className="border border-gray-400 p-1 w-20">Verified By</th>
+                                <th rowSpan="2" className="border border-gray-400 p-1 w-16 print:hidden">Action</th>
                             </tr>
                             <tr className="bg-blue-500 text-white print:bg-gray-100 print:text-black">
                                 <th className="border border-gray-400 p-1 w-10">Photo</th>
@@ -300,12 +339,24 @@ const StudentRegistrationReport = () => {
                                             <td className={`border border-gray-400 p-1 font-bold`}>
                                                 {isRegistrationPaid ? registrationAmount : 0}
                                             </td>
+                                            <td className="border border-gray-400 p-1 italic text-[10px] text-gray-600">
+                                                {student.verifiedBy || '-'}
+                                            </td>
+                                            <td className="border border-gray-400 p-1 print:hidden text-center">
+                                                <button 
+                                                    onClick={() => handleEditDocs(student)} 
+                                                    className="p-1 bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition"
+                                                    title="Update Documents"
+                                                >
+                                                    <Edit size={14} />
+                                                </button>
+                                            </td>
                                         </tr>
                                     );
                                 })
                             ) : (
                                 <tr>
-                                    <td colSpan="11" className="p-4 text-center text-gray-500 border border-gray-400">
+                                    <td colSpan="13" className="p-4 text-center text-gray-500 border border-gray-400">
                                         {isLoading ? 'Loading...' : 'No records found.'}
                                     </td>
                                 </tr>
@@ -321,6 +372,78 @@ const StudentRegistrationReport = () => {
                 </div>
             </div>
 
+            {/* Document Verification Modal */}
+            {isModalOpen && selectedStudent && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full overflow-hidden animate-fade-in-up border border-blue-100">
+                        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-white/20 p-2 rounded-xl">
+                                    <FileText size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg tracking-tight uppercase">Document Check</h3>
+                                    <p className="text-[10px] font-bold text-blue-100 uppercase tracking-widest opacity-80">VERIFY SUBMISSION</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setIsModalOpen(false)} className="hover:bg-white/20 p-2 rounded-2xl transition-all">
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-6">
+                            <div className="flex items-center gap-4 p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                                <div className="h-12 w-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-xl">
+                                    {selectedStudent.firstName?.charAt(0)}
+                                </div>
+                                <div>
+                                    <p className="font-black text-slate-800 tracking-tight">{selectedStudent.firstName} {selectedStudent.lastName}</p>
+                                    <p className="text-xs font-bold text-slate-500">Reg No: {selectedStudent.regNo}</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-4">Submission Status</p>
+                                
+                                <DocToggle 
+                                    label="Passport Size Photos" 
+                                    checked={docStatus.isPhotos} 
+                                    onChange={(val) => setDocStatus(prev => ({ ...prev, isPhotos: val }))} 
+                                />
+                                <DocToggle 
+                                    label="Valid ID Proof" 
+                                    checked={docStatus.isIDProof} 
+                                    onChange={(val) => setDocStatus(prev => ({ ...prev, isIDProof: val }))} 
+                                />
+                                <DocToggle 
+                                    label="Marksheet / Certificate" 
+                                    checked={docStatus.isMarksheetCertificate} 
+                                    onChange={(val) => setDocStatus(prev => ({ ...prev, isMarksheetCertificate: val }))} 
+                                />
+                                <DocToggle 
+                                    label="Address Proof" 
+                                    checked={docStatus.isAddressProof} 
+                                    onChange={(val) => setDocStatus(prev => ({ ...prev, isAddressProof: val }))} 
+                                />
+                            </div>
+
+                            <div className="pt-4 flex flex-col gap-3">
+                                <button
+                                    onClick={handleUpdateDocs}
+                                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-100 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                >
+                                    <Save size={18} />
+                                    Save Proof Status
+                                </button>
+                                <p className="text-[10px] text-center font-bold text-slate-400">
+                                    Verification will be recorded under your name: <span className="text-blue-600">{(user.name || user.username)}</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
              <style type="text/css" media="print">
                 {`
                     @page { size: A4; margin: 10mm; }
@@ -330,5 +453,26 @@ const StudentRegistrationReport = () => {
          </div>
     );
 };
+
+const DocToggle = ({ label, checked, onChange }) => (
+    <div 
+        onClick={() => onChange(!checked)}
+        className={`flex items-center justify-between p-4 rounded-2xl border-2 cursor-pointer transition-all ${
+            checked 
+            ? 'bg-emerald-50 border-emerald-500 shadow-lg shadow-emerald-50' 
+            : 'bg-slate-50 border-slate-100 grayscale opacity-60'
+        }`}
+    >
+        <div className="flex items-center gap-3">
+            <div className={`p-1.5 rounded-lg ${checked ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                <CheckCircle2 size={16} />
+            </div>
+            <span className={`text-sm font-black ${checked ? 'text-emerald-900' : 'text-slate-500'}`}>{label}</span>
+        </div>
+        <div className={`h-6 w-11 rounded-full p-1 transition-colors ${checked ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+            <div className={`h-4 w-4 rounded-full bg-white transition-transform ${checked ? 'translate-x-5' : 'translate-x-0'}`} />
+        </div>
+    </div>
+);
 
 export default StudentRegistrationReport;

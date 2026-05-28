@@ -85,8 +85,13 @@ const OnlineAdmission = () => {
     // Build FormData for file upload
     const formData = new FormData();
     Object.keys(data).forEach(key => {
-        if (key === 'studentPhoto' && data[key][0]) {
-            formData.append('studentPhoto', data[key][0]);
+        if (key === 'studentPhoto') {
+            const photoFile = data[key];
+            if (photoFile instanceof File) {
+                formData.append('studentPhoto', photoFile);
+            } else if (photoFile && typeof photoFile === 'object' && photoFile[0]) {
+                formData.append('studentPhoto', photoFile[0]);
+            }
         } else if (key !== 'studentPhoto' && key !== 'agreeTerms') {
              // Map form fields to Inquiry Schema fields
              // Note: Inquiry expects 'interestedCourse', 'branchId', 'referenceBy'

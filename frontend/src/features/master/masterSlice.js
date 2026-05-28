@@ -139,6 +139,13 @@ export const fetchExamRequests = createAsyncThunk('master/fetchExamRequests', as
     } catch (error) { return thunkAPI.rejectWithValue(error.message); }
 });
 
+export const fetchExamRequestBranches = createAsyncThunk('master/fetchExamRequestBranches', async (_, thunkAPI) => {
+    try {
+        const response = await axios.get(API_URL + 'exam-request-branches');
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+});
+
 export const createExamRequest = createAsyncThunk('master/createExamRequest', async (data, thunkAPI) => {
     try {
         const response = await axios.post(API_URL + 'exam-request', data);
@@ -400,6 +407,7 @@ const masterSlice = createSlice({
         freeLearningQuestions: [],
         states: [],
         cities: [],
+        examRequestBranches: [],
         nextResultNumbers: { somNumber: '', csrNumber: '' },
         isLoading: false,
         isSuccess: false,
@@ -520,6 +528,9 @@ const masterSlice = createSlice({
             .addCase(fetchExamRequests.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.examRequests = action.payload;
+            })
+            .addCase(fetchExamRequestBranches.fulfilled, (state, action) => {
+                state.examRequestBranches = action.payload;
             })
             .addCase(createExamRequest.fulfilled, (state, action) => {
                 state.isLoading = false;

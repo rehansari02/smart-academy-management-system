@@ -208,6 +208,11 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                 outTime: convertTo12Hour(formData.outTime)
             };
 
+            // Remove empty attendedBy to prevent BSON cast error
+            if (submissionData.attendedBy === '' || submissionData.attendedBy === null) {
+                delete submissionData.attendedBy;
+            }
+
             if (initialData?._id) {
                 // Update existing visitor
                 await visitorService.updateVisitor(initialData._id, submissionData);

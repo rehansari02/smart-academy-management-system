@@ -32,6 +32,50 @@ const POPULAR_INDIAN_BANKS = [
 const ONLINE_PAYMENT_TYPES = ["UPI", "Net Banking", "Bank Transfer", "Other"];
 const UPI_PROVIDERS = ["Google Pay", "PhonePe", "Paytm", "BHIM", "Amazon Pay", "Other"];
 
+const getReceiptDisplayType = (receipt) => {
+    const remark = (receipt.remarks || '').toLowerCase();
+
+    if (receipt.receiptPurpose === 'admission') {
+        return {
+            label: 'Admission',
+            className: 'bg-purple-100 text-purple-700 border-purple-200'
+        };
+    }
+
+    if (receipt.receiptPurpose === 'registration') {
+        return {
+            label: 'Registration',
+            className: 'bg-indigo-100 text-indigo-700 border-indigo-200'
+        };
+    }
+
+    if (receipt.receiptPurpose === 'installment') {
+        return {
+            label: receipt.displayInstallmentNumber || receipt.installmentNumber || 1,
+            className: 'bg-blue-100 text-blue-700 border-blue-200'
+        };
+    }
+
+    if (remark.includes('admission')) {
+        return {
+            label: 'Admission',
+            className: 'bg-purple-100 text-purple-700 border-purple-200'
+        };
+    }
+
+    if (remark.includes('registration')) {
+        return {
+            label: 'Registration',
+            className: 'bg-indigo-100 text-indigo-700 border-indigo-200'
+        };
+    }
+
+    return {
+        label: receipt.displayInstallmentNumber || receipt.installmentNumber || 1,
+        className: 'bg-blue-100 text-blue-700 border-blue-200'
+    };
+};
+
 const FeeCollection = () => {
     const dispatch = useDispatch();
     const navigate = useNavigate();
@@ -722,29 +766,12 @@ const FeeCollection = () => {
                                                     <td className="p-3 font-mono text-gray-500 text-xs">{receipt.receiptNo}</td>
                                                     <td className="p-3">
                                                        {(() => {
-                                                            const remark = (receipt.remarks || '').toLowerCase();
-                                                            
-                                                            if (remark.includes('admission')) {
-                                                                return (
-                                                                    <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] font-bold uppercase tracking-wide border border-purple-200">
-                                                                        Admission
-                                                                    </span>
-                                                                );
-                                                            } else if (remark.includes('registration')) {
-                                                                return (
-                                                                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold uppercase tracking-wide border border-indigo-200">
-                                                                        Registration
-                                                                    </span>
-                                                                );
-                                                            } else {
-                                                                // This is a monthly installment payment
-                                                                const installmentNum = (receipt.installmentNumber - 2) > 0 ? receipt.installmentNumber - 2 : 1;
-                                                                return (
-                                                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-bold uppercase tracking-wide border border-blue-200">
-                                                                        {installmentNum}
-                                                                    </span>
-                                                                );
-                                                            }
+                                                            const displayType = getReceiptDisplayType(receipt);
+                                                            return (
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${displayType.className}`}>
+                                                                    {displayType.label}
+                                                                </span>
+                                                            );
                                                         })()}
                                                     </td>
                                                     <td className="p-3 text-right font-bold text-gray-800">{receipt.amountPaid?.toLocaleString('en-IN')}</td>

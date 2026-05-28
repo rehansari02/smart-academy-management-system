@@ -16,6 +16,11 @@ const studentSchema = new mongoose.Schema(
     isIDProof: { type: Boolean, default: false },
     isMarksheetCertificate: { type: Boolean, default: false },
     isAddressProof: { type: Boolean, default: false },
+    verifiedBy: { type: String },
+    verifiedAt: { type: Date },
+    incentiveStatus: { type: String, enum: ['Pending', 'Paid'], default: 'Pending' },
+    incentivePaidAt: { type: Date },
+    incentivePaidBy: { type: String },
     
     branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
     branchName: { type: String, default: "Main Branch" },

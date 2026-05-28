@@ -1,11 +1,12 @@
 const asyncHandler = require('express-async-handler');
 const ExamRequest = require('../models/ExamRequest');
 const Student = require('../models/Student');
+const Branch = require('../models/Branch');
 
 // @desc    Get Exam Requests with Filters
 // @route   GET /api/master/exam-request
 const getExamRequests = asyncHandler(async (req, res) => {
-    const { studentId, courseId } = req.query;
+    const { studentId, courseId, branchId } = req.query;
 
     let query = { isDeleted: false, status: 'Pending' };
 
@@ -13,21 +14,64 @@ const getExamRequests = asyncHandler(async (req, res) => {
     if (studentId) {
         query.student = studentId;
     } 
-    // Filter by Course (Indirect relationship)
-    else if (courseId) {
-        const studentsInCourse = await Student.find({ course: courseId }).select('_id');
-        query.student = { $in: studentsInCourse };
+
+    // Build student filter for course/branch (these filter through Student)
+    let studentFilter = {};
+    if (courseId) {
+        studentFilter.course = courseId;
+    }
+    if (branchId) {
+        studentFilter.branchId = branchId;
+    }
+
+    // If filtering by course or branch, find matching students first
+    const hasStudentFields = Object.keys(studentFilter).length > 0;
+    if (hasStudentFields && !studentId) {
+        const studentsInFilter = await Student.find(studentFilter).select('_id');
+        query.student = { $in: studentsInFilter };
+    } else if (hasStudentFields && studentId) {
+        // If both studentId and other filters, verify the student matches
+        const student = await Student.findOne({ _id: studentId, ...studentFilter });
+        if (!student) {
+            return res.json([]);
+        }
+        query.student = studentId;
     }
 
     const requests = await ExamRequest.find(query)
         .populate({
             path: 'student',
             populate: { path: 'course', select: 'name duration' },
-            select: 'firstName lastName regNo admissionDate mobileParent mobileStudent'
+            select: 'firstName lastName regNo admissionDate mobileParent mobileStudent branchId'
         })
         .sort({ createdAt: -1 });
 
     res.json(requests);
+});
+
+// @desc    Get branches that have exam request data
+// @route   GET /api/master/exam-request/branches
+const getExamRequestBranches = asyncHandler(async (req, res) => {
+    // Find all exam requests that are pending and not deleted
+    const examRequests = await ExamRequest.find({ isDeleted: false, status: 'Pending' })
+        .populate({
+            path: 'student',
+            select: 'branchId',
+            match: { branchId: { $exists: true, $ne: null } }
+        })
+        .lean();
+
+    // Extract unique branch IDs from students that have a branchId
+    const branchIds = [...new Set(
+        examRequests
+            .filter(r => r.student && r.student.branchId)
+            .map(r => r.student.branchId.toString())
+    )];
+
+    // Fetch the branch details
+    const branches = await Branch.find({ _id: { $in: branchIds }, isActive: true }).select('name shortCode').lean();
+
+    res.json(branches);
 });
 
 // @desc    Get Pending Exams (Dashboard)
@@ -108,4 +152,4 @@ const createExamRequest = asyncHandler(async (req, res) => {
     }
 });
 
-module.exports = { getExamRequests, cancelExamRequest, createExamRequest,getPendingExams };
+module.exports = { getExamRequests, getExamRequestBranches, cancelExamRequest, createExamRequest, getPendingExams };

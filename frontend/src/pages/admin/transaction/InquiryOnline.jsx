@@ -329,6 +329,9 @@ const InquiryOnline = () => {
                         <h2 className="text-2xl font-bold text-gray-800">Online Inquiries</h2>
                         <p className="text-xs text-gray-500">Manage inquiries received from Website or Social Media</p>
                     </div>
+                    <span className="bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm ml-2">
+                        Total: {inquiries?.length || 0}
+                    </span>
                 </div>
                 <button onClick={handlePrintList} className="bg-green-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 hover:bg-green-700 font-bold transition-all transform hover:scale-105">
                     <Printer size={18} /> Print List

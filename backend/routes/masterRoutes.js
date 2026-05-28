@@ -11,7 +11,7 @@ const {
     getEducations, createEducation,
     getExams, createExam
 } = require('../controllers/masterController');
-const { getExamRequests, cancelExamRequest, createExamRequest, getPendingExams } = require('../controllers/examController');
+const { getExamRequests, getExamRequestBranches, cancelExamRequest, createExamRequest, getPendingExams } = require('../controllers/examController');
 const { getExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, getExamScheduleDetails, getMyExamSchedules } = require('../controllers/examScheduleController');
 const { getExamResults, createExamResult, updateExamResult, deleteExamResult, getExamResultById, getNextResultNumbers, verifyExamResult } = require('../controllers/examResultController');
 const { createQuestion, getQuestions, updateQuestion, deleteQuestion } = require('../controllers/freeLearningController');
@@ -71,6 +71,7 @@ router.route('/exam-request')
     .get(protect, getExamRequests)
     .post(protect, createExamRequest);
 
+router.get('/exam-request-branches', protect, getExamRequestBranches);
 router.put('/exam-request/:id/cancel', protect, cancelExamRequest);
 router.get('/exam-pending', protect, getPendingExams);
 

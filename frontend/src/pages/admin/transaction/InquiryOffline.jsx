@@ -166,10 +166,9 @@ const InquiryOffline = () => {
             toast.success(message);
             dispatch(resetTransaction());
             setModal({ type: null });
-            // fetchInquiries removed to prevent resetting list filters/showing all data
-            // Redux state is already updated via create/update thunks
+            dispatch(fetchInquiries(filters));
         }
-    }, [isSuccess, message, dispatch]);
+    }, [isSuccess, message, dispatch, filters]);
 
     const handleSave = (data) => {
         // Data is now FormData if coming from InquiryForm, or object from FollowUpModal
@@ -307,7 +306,16 @@ const InquiryOffline = () => {
                 }
             `}</style>
             <div className="flex justify-between mb-4 items-center">
-                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><User className="text-blue-600" /> Offline Inquiries</h2>
+                <div className="flex items-center gap-3">
+                    <User className="text-blue-600" size={24} />
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-800">Offline Inquiries</h2>
+                        <p className="text-xs text-gray-500">Walk-in inquiry management</p>
+                    </div>
+                    <span className="bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm ml-2">
+                        Total: {inquiries?.length || 0}
+                    </span>
+                </div>
                 <div className="flex gap-2">
                     <button onClick={handlePrintList} className="bg-green-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 hover:bg-green-700 font-bold transition-all transform hover:scale-105">
                         <Printer size={18} /> Print List

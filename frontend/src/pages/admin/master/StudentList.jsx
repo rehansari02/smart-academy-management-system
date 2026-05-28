@@ -28,7 +28,7 @@ const StudentList = () => {
     branchId: '',
     pageSize: 10,
     page: 1,
-    isRegistered: 'true'
+    isRegistered: ''
   });
 
   // Applied Filters (Triggers API call)
@@ -51,6 +51,21 @@ const StudentList = () => {
   useEffect(() => {
     dispatch(fetchStudents(appliedFilters));
   }, [dispatch, appliedFilters]); 
+
+  // Auto-search when date, course, batch, or branch filters change (debounced)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAppliedFilters({ ...filters, page: 1 });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [
+    filters.startDate, 
+    filters.endDate, 
+    filters.courseFilter, 
+    filters.reference,
+    filters.batch, 
+    filters.branchId
+  ]);
 
   useEffect(() => {
       if(message) {
@@ -98,7 +113,7 @@ const StudentList = () => {
         branchId: '',
         pageSize: 10, 
         page: 1, 
-        isRegistered: 'true'
+        isRegistered: ''
     };
     setFilters(initial);
     setAppliedFilters(initial);
@@ -185,8 +200,8 @@ const StudentList = () => {
                 </div>
             </div>
 
-            {/* Row 2: Student Search & Batch */}
-            <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
+            {/* Row 2: Student Search & Batch & Registration Status */}
+            <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4`}>
                 <div className="relative z-20"> 
                     <StudentSearch 
                         label="Search Student"
@@ -210,7 +225,7 @@ const StudentList = () => {
                         label="Reference"
                         options={uniqueReferences}
                         value={filters.reference}
-                        onSelect={(val) => setFilters({ ...filters, reference: val })}
+                        onSelect={(val) => setFilters({ ...filters, reference: val, page: 1 })}
                         placeholder="Search Reference..."
                     />
                 </div>
@@ -224,7 +239,19 @@ const StudentList = () => {
                         className="w-full border p-2.5 rounded text-sm focus:ring-2 focus:ring-primary outline-none" 
                         placeholder="Enter Batch Name..."
                     />
-                </div>
+                </div>                    <div>
+                        <label className="text-xs text-gray-500 font-semibold mb-1 block">Registration</label>
+                        <select 
+                            name="isRegistered"
+                            value={filters.isRegistered}
+                            onChange={handleFilterChange}
+                            className="w-full border p-2.5 rounded text-sm focus:ring-2 focus:ring-primary outline-none"
+                        >
+                            <option value="">All Students</option>
+                            <option value="true">Registered</option>
+                            <option value="false">Unregistered</option>
+                        </select>
+                    </div>
                 {user?.role === 'Super Admin' && (
                     <div>
                         <label className="text-xs text-gray-500 font-semibold mb-1 block">Branch</label>

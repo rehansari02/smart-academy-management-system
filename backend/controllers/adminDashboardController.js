@@ -3,6 +3,8 @@ const Inquiry = require('../models/Inquiry');
 const Student = require('../models/Student');
 const FeeReceipt = require('../models/FeeReceipt');
 const Visitor = require('../models/Visitor');
+const Expense = require('../models/Expense');
+const mongoose = require('mongoose');
 
 const RECENT_LIST_LIMIT = 5;
 
@@ -47,8 +49,14 @@ const buildRange = ({ period = 'today', fromDate, toDate }) => {
     return { start, end };
 };
 
-const addBranchScope = (query, field, branchId) => {
-    if (branchId) query[field] = branchId;
+const normalizeBranchId = (branchId) => {
+    if (!branchId) return null;
+    if (!mongoose.Types.ObjectId.isValid(branchId)) return false;
+    return new mongoose.Types.ObjectId(branchId);
+};
+
+const addBranchScope = (query, field, branchObjectId) => {
+    if (branchObjectId) query[field] = branchObjectId;
     return query;
 };
 
@@ -68,14 +76,21 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
         branchId = req.user.branchId;
     }
 
+    const branchObjectId = normalizeBranchId(branchId);
+    if (branchObjectId === false) {
+        res.status(400);
+        throw new Error('Invalid branch selected');
+    }
+
     const { start, end } = buildRange({ period, fromDate, toDate });
     const dateMatch = { $gte: start, $lte: end };
 
-    const inquiryQuery = addBranchScope({ isDeleted: false, createdAt: dateMatch }, 'branchId', branchId);
-    const admissionQuery = addBranchScope({ isDeleted: false, admissionDate: dateMatch }, 'branchId', branchId);
-    const registrationQuery = addBranchScope({ isDeleted: false, isRegistered: true, registrationDate: dateMatch }, 'branchId', branchId);
-    const visitorQuery = addBranchScope({ isDeleted: false, visitingDate: dateMatch }, 'branchId', branchId);
-    const feeQuery = addBranchScope({ date: dateMatch }, 'branch', branchId);
+    const inquiryQuery = addBranchScope({ isDeleted: false, createdAt: dateMatch }, 'branchId', branchObjectId);
+    const admissionQuery = addBranchScope({ isDeleted: false, admissionDate: dateMatch }, 'branchId', branchObjectId);
+    const registrationQuery = addBranchScope({ isDeleted: false, isRegistered: true, registrationDate: dateMatch }, 'branchId', branchObjectId);
+    const visitorQuery = addBranchScope({ isDeleted: false, visitingDate: dateMatch }, 'branchId', branchObjectId);
+    const feeQuery = addBranchScope({ date: dateMatch }, 'branch', branchObjectId);
+    const expenseQuery = addBranchScope({ date: dateMatch }, 'branch', branchObjectId);
 
     const admissionFeeQuery = {
         ...feeQuery,
@@ -101,7 +116,9 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
         recentReceipts,
         recentVisitors,
         pendingAdmissionFees,
-        pendingRegistrationFees
+        pendingRegistrationFees,
+        expenseSummaryResult,
+        recentExpenses
     ] = await Promise.all([
         Inquiry.countDocuments(inquiryQuery),
         Student.countDocuments(admissionQuery),
@@ -145,12 +162,22 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
             .sort({ visitingDate: -1, createdAt: -1 })
             .limit(RECENT_LIST_LIMIT)
             .lean(),
-        Student.countDocuments(addBranchScope({ isDeleted: false, isAdmissionFeesPaid: false }, 'branchId', branchId)),
-        Student.countDocuments(addBranchScope({ isDeleted: false, isRegistered: false }, 'branchId', branchId))
+        Student.countDocuments(addBranchScope({ isDeleted: false, isAdmissionFeesPaid: false }, 'branchId', branchObjectId)),
+        Student.countDocuments(addBranchScope({ isDeleted: false, isRegistered: false }, 'branchId', branchObjectId)),
+        Expense.aggregate([
+            { $match: expenseQuery },
+            { $group: { _id: null, amount: { $sum: '$amount' }, count: { $sum: 1 } } }
+        ]),
+        Expense.find(expenseQuery)
+            .populate('category', 'name')
+            .populate('branch', 'name')
+            .sort({ date: -1, createdAt: -1 })
+            .limit(RECENT_LIST_LIMIT)
+            .lean()
     ]);
 
     res.json({
-        filters: { period, fromDate, toDate, branchId, start, end, recentListLimit: RECENT_LIST_LIMIT },
+        filters: { period, fromDate, toDate, branchId: branchObjectId ? branchObjectId.toString() : '', start, end, recentListLimit: RECENT_LIST_LIMIT },
         cards: {
             inquiries: inquiryCount,
             admissions: admissionCount,
@@ -161,7 +188,9 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
             admissionFees: admissionFeeSummary.amount,
             registrationFees: registrationFeeSummary.amount,
             pendingAdmissionFees,
-            pendingRegistrationFees
+            pendingRegistrationFees,
+            totalExpenses: (expenseSummaryResult[0] || { amount: 0 }).amount,
+            expenseCount: (expenseSummaryResult[0] || { count: 0 }).count
         },
         charts: {
             sourceCounts,
@@ -171,9 +200,237 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
             inquiries: recentInquiries,
             admissions: recentAdmissions,
             receipts: recentReceipts,
-            visitors: recentVisitors
+            visitors: recentVisitors,
+            expenses: recentExpenses
         }
     });
 });
 
-module.exports = { getAdminDashboard };
+// @desc    Get Reference Incentive Dashboard Data
+// @route   GET /api/admin-dashboard/reference-incentive
+const getReferenceIncentive = asyncHandler(async (req, res) => {
+    const { period = 'today', fromDate, toDate, reference } = req.query;
+    let branchId = req.query.branchId || '';
+
+    if (req.user.role !== 'Super Admin') {
+        branchId = req.user.branchId;
+    }
+
+    const branchObjectId = normalizeBranchId(branchId);
+    if (branchObjectId === false) {
+        res.status(400);
+        throw new Error('Invalid branch selected');
+    }
+
+    const { start, end } = buildRange({ period, fromDate, toDate });
+    const dateMatch = { $gte: start, $lte: end };
+
+    // Get all unique references with aggregation and incentive calculation
+    const allRefs = await Student.aggregate([
+        {
+            $match: {
+                isDeleted: false,
+                ...(branchObjectId ? { branchId: branchObjectId } : {}),
+                reference: { $exists: true, $ne: '', $ne: null, $ne: 'Direct' }
+            }
+        },
+        {
+            $lookup: {
+                from: 'courses',
+                localField: 'course',
+                foreignField: '_id',
+                as: 'courseInfo'
+            }
+        },
+        { $unwind: { path: '$courseInfo', preserveNullAndEmptyArrays: true } },
+        {
+            $addFields: {
+                calculatedIncentive: {
+                    $cond: [
+                        { $eq: ['$courseInfo.commissionType', 'Percentage'] },
+                        { $multiply: [{ $divide: [{ $ifNull: ['$courseInfo.commission', 0] }, 100] }, '$totalFees'] },
+                        { $ifNull: ['$courseInfo.commission', 0] }
+                    ]
+                }
+            }
+        },
+        {
+            $group: {
+                _id: '$reference',
+                studentCount: { $sum: 1 },
+                admissionCount: {
+                    $sum: { $cond: [{ $ne: ['$admissionDate', null] }, 1, 0] }
+                },
+                registrationCount: {
+                    $sum: { $cond: ['$isRegistered', 1, 0] }
+                },
+                totalFees: { $sum: '$totalFees' },
+                pendingFees: { $sum: '$pendingFees' },
+                totalIncentive: { $sum: '$calculatedIncentive' },
+                pendingIncentive: {
+                    $sum: { $cond: [{ $eq: ['$incentiveStatus', 'Paid'] }, 0, '$calculatedIncentive'] }
+                },
+                paidIncentive: {
+                    $sum: { $cond: [{ $eq: ['$incentiveStatus', 'Paid'] }, '$calculatedIncentive', 0] }
+                }
+            }
+        },
+        { $sort: { totalIncentive: -1, studentCount: -1 } }
+    ]);
+
+    // If a specific reference is selected, get detailed data
+    let referenceDetail = null;
+    if (reference) {
+        const studentQuery = {
+            isDeleted: false,
+            reference: { $regex: `^${reference}$`, $options: 'i' },
+            ...(branchObjectId ? { branchId: branchObjectId } : {})
+        };
+
+        const students = await Student.find(studentQuery)
+            .populate('course', 'name duration durationType shortName commission commissionType')
+            .populate('branchId', 'name')
+            .sort({ admissionDate: -1 })
+            .lean();
+
+        // Calculate incentive for each student in the detailed view
+        const studentsWithIncentive = students.map(s => {
+            let incentive = 0;
+            if (s.course) {
+                if (s.course.commissionType === 'Percentage') {
+                    incentive = (s.course.commission / 100) * (s.totalFees || 0);
+                } else {
+                    incentive = s.course.commission || 0;
+                }
+            }
+            return { ...s, incentive };
+        });
+
+        const studentIds = students.map(s => s._id);
+
+        // Get fee receipts for these students
+        const receipts = await FeeReceipt.aggregate([
+            {
+                $match: {
+                    student: { $in: studentIds },
+                    date: dateMatch
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalPaid: { $sum: '$amountPaid' },
+                    receiptCount: { $sum: 1 },
+                    admissionPaid: {
+                        $sum: {
+                            $cond: [
+                                { $regexMatch: { input: { $toLower: '$remarks' }, regex: 'admission' } },
+                                '$amountPaid',
+                                0
+                            ]
+                        }
+                    },
+                    registrationPaid: {
+                        $sum: {
+                            $cond: [
+                                { $regexMatch: { input: { $toLower: '$remarks' }, regex: 'registration' } },
+                                '$amountPaid',
+                                0
+                            ]
+                        }
+                    }
+                }
+            }
+        ]);
+
+        // Get recent receipts for these students (with populate)
+        const recentReceipts = await FeeReceipt.find({
+            student: { $in: studentIds },
+            date: dateMatch
+        })
+            .populate('student', 'firstName middleName lastName enrollmentNo regNo')
+            .sort({ date: -1, createdAt: -1 })
+            .limit(10)
+            .lean();
+
+        // Monthly trend for this reference's students (admissions by month)
+        const monthlyTrend = await Student.aggregate([
+            {
+                $match: {
+                    ...studentQuery,
+                    admissionDate: dateMatch
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        year: { $year: '$admissionDate' },
+                        month: { $month: '$admissionDate' }
+                    },
+                    count: { $sum: 1 },
+                    totalFees: { $sum: '$totalFees' }
+                }
+            },
+            { $sort: { '_id.year': 1, '_id.month': 1 } }
+        ]);
+
+        referenceDetail = {
+            students: studentsWithIncentive,
+            feeSummary: receipts[0] || { totalPaid: 0, receiptCount: 0, admissionPaid: 0, registrationPaid: 0 },
+            recentReceipts,
+            monthlyTrend: monthlyTrend.map(t => ({
+                label: `${t._id.month}/${t._id.year}`,
+                count: t.count,
+                fees: t.totalFees
+            })),
+            summary: {
+                studentCount: students.length,
+                admissionCount: students.filter(s => s.admissionDate).length,
+                registrationCount: students.filter(s => s.isRegistered).length,
+                totalFees: students.reduce((sum, s) => sum + (s.totalFees || 0), 0),
+                pendingFees: students.reduce((sum, s) => sum + (s.pendingFees || 0), 0),
+                totalPaid: (receipts[0] || { totalPaid: 0 }).totalPaid,
+                totalIncentive: studentsWithIncentive.reduce((sum, s) => sum + (s.incentive || 0), 0),
+                pendingIncentive: studentsWithIncentive.reduce((sum, s) => sum + (s.incentiveStatus === 'Paid' ? 0 : (s.incentive || 0)), 0),
+                paidIncentive: studentsWithIncentive.reduce((sum, s) => sum + (s.incentiveStatus === 'Paid' ? (s.incentive || 0) : 0), 0)
+            }
+        };
+    }
+
+    res.json({
+        filters: { period, fromDate, toDate, branchId: branchObjectId ? branchObjectId.toString() : '', start, end, reference },
+        references: allRefs,
+        selectedReference: referenceDetail
+    });
+});
+
+// @desc    Update Student Incentive Status
+// @route   PUT /api/admin-dashboard/reference-incentive/update-status
+const updateIncentiveStatus = asyncHandler(async (req, res) => {
+    const { studentIds, status } = req.body;
+
+    if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+        res.status(400);
+        throw new Error('Please provide student IDs');
+    }
+
+    if (!['Pending', 'Paid'].includes(status)) {
+        res.status(400);
+        throw new Error('Invalid status. Use "Pending" or "Paid"');
+    }
+
+    const updateData = {
+        incentiveStatus: status,
+        incentivePaidAt: status === 'Paid' ? new Date() : null,
+        incentivePaidBy: status === 'Paid' ? (req.user.name || req.user.username) : null
+    };
+
+    await Student.updateMany(
+        { _id: { $in: studentIds } },
+        { $set: updateData }
+    );
+
+    res.json({ message: `Incentive status updated to ${status} for ${studentIds.length} students` });
+});
+
+module.exports = { getAdminDashboard, getReferenceIncentive, updateIncentiveStatus };

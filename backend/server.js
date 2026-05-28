@@ -1,21 +1,40 @@
-const express = require("express");
+console.log("SERVER STARTING...");
 const dotenv = require("dotenv");
-const cookieParser = require("cookie-parser");
-const cors = require("cors");
-const connectDB = require("./config/db");
-const { errorHandler } = require("./middlewares/errorMiddleware");
-
 dotenv.config();
-connectDB();
+console.log("Env loaded:", process.env.MONGO_URI ? "YES" : "NO");
+
+console.log("Loading express...");
+const express = require("express");
+console.log("Loading cookie-parser...");
+const cookieParser = require("cookie-parser");
+console.log("Loading cors...");
+const cors = require("cors");
+console.log("Loading db...");
+const connectDB = require("./config/db");
+console.log("Loading errorMiddleware...");
+const { errorHandler } = require("./middlewares/errorMiddleware");
+console.log("Loading path...");
+const path = require("path");
+console.log("Loading helmet...");
+const helmet = require("helmet");
+console.log("Loading express-rate-limit...");
+const rateLimit = require("express-rate-limit");
+console.log("Loading morgan...");
+const morgan = require("morgan");
+console.log("Loading logger...");
+const logger = require("./config/logger");
+
+console.log("Connecting to DB...");
+connectDB().then(() => {
+    console.log("DB connection call finished.");
+}).catch(err => {
+    console.error("DB connection call FAILED:", err);
+});
 
 const app = express();
 
-const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
-const morgan = require("morgan");
-const logger = require("./config/logger");
-
 app.set('trust proxy', 1);
+
 // Security Middleware
 app.use(helmet());
 
@@ -71,7 +90,8 @@ app.use(cors({
     }
   },
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  credentials: true
+  credentials: true,
+  exposedHeaders: ["set-cookie"],
 }));
 
 // Rate Limiting
@@ -99,6 +119,7 @@ app.use("/uploads", express.static("uploads"));
 // Routes
 app.get("/", (req, res) => res.send("API is running..."));
 app.get("/api", (req, res) => res.send("API is running..."));
+
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use('/api/master/news', require('./routes/newsRoutes'));
 app.use('/api/master/terms', require('./routes/termsRoutes'));
@@ -110,6 +131,8 @@ app.use("/api/user-rights", require("./routes/userRightRoutes"));
 app.use("/api/visitors", require("./routes/visitorRoutes"));
 app.use("/api/news", require("./routes/newsRoutes"));
 app.use("/api/transaction/attendance", require("./routes/attendanceRoutes"));
+app.use("/api/transaction/expenses", require("./routes/expenseRoutes"));
+app.use("/api/transaction/expense-categories", require("./routes/expenseCategoryRoutes"));
 app.use("/api/branches", require("./routes/branchRoutes"));
 app.use("/api/cloudinary", require("./routes/cloudinaryRoutes"));
 app.use("/api/materials", require("./routes/materialRoutes")); // Material Routes

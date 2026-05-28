@@ -73,6 +73,11 @@ exports.createVisitor = async (req, res) => {
             branchId = req.user.branchId;
         }
 
+        // Fix empty string attendedBy — convert to undefined to avoid BSON cast error
+        if (attendedBy === '' || attendedBy === null) {
+            attendedBy = undefined;
+        }
+
         if (inquiryId && !status) {
             const inquiry = await Inquiry.findById(inquiryId).select('status');
             status = inquiry?.status || 'Open';
@@ -193,6 +198,11 @@ exports.updateVisitor = async (req, res) => {
     try {
         let { visitingDate, studentName, mobileNumber, contactParent, contactHome, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId } = req.body;
         
+        // Fix empty string attendedBy — convert to undefined to avoid BSON cast error
+        if (attendedBy === '' || attendedBy === null) {
+            attendedBy = undefined;
+        }
+
         // Note: Usually we don't update branchId but if Super Admin wants to, they can.
         // If not Super Admin, we might want to prevent changing branchId, but keeping it simple for now or enforcing it stays same.
         // For strictness:
@@ -273,7 +283,21 @@ exports.createVisitorFollowUp = async (req, res) => {
         await visitor.save();
 
         const populatedFollowUp = await VisitorFollowUp.findById(followUp._id)
-            .populate('visitorId')
+            .populate({
+                path: 'visitorId',
+                populate: [
+                    { path: 'course', select: 'name' },
+                    { path: 'attendedBy', select: 'name username' },
+                    { path: 'branchId', select: 'name' },
+                    {
+                        path: 'inquiryId',
+                        populate: [
+                            { path: 'followUpBy', select: 'name username' },
+                            { path: 'followUpHistory.followUpBy', select: 'name username' }
+                        ]
+                    }
+                ]
+            })
             .populate('attendedBy', 'name username')
             .populate('followUpBy', 'name username')
             .populate('branchId', 'name');
@@ -324,7 +348,14 @@ exports.getVisitorFollowUps = async (req, res) => {
                 populate: [
                     { path: 'course', select: 'name' },
                     { path: 'attendedBy', select: 'name username' },
-                    { path: 'branchId', select: 'name' }
+                    { path: 'branchId', select: 'name' },
+                    {
+                        path: 'inquiryId',
+                        populate: [
+                            { path: 'followUpBy', select: 'name username' },
+                            { path: 'followUpHistory.followUpBy', select: 'name username' }
+                        ]
+                    }
                 ]
             })
             .populate('attendedBy', 'name username')

@@ -8,7 +8,7 @@ import EmployeeDashboard from './EmployeeDashboard';
 import { useUserRights } from '../../hooks/useUserRights';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Search, RefreshCw, ExternalLink, Clock, AlertCircle, CheckCircle, UserPlus, XCircle, BarChart3, Wallet, Users, CalendarDays, Building2 } from 'lucide-react';
+import { Search, RefreshCw, ExternalLink, Clock, AlertCircle, CheckCircle, UserPlus, XCircle, BarChart3, Wallet, Users, CalendarDays, Building2, TrendingUp } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Swal from 'sweetalert2';
 
@@ -216,14 +216,22 @@ const AdminHome = () => {
                     <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Admin Dashboard</h1>
                     <p className="text-gray-500 mt-2">Daily Overview & Tasks</p>
                 </div>
-                <button
-                    onClick={() => navigate('/dashboard')}
-                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition ${
-                        'bg-white text-primary border border-blue-100 hover:bg-blue-50'
-                    }`}
-                >
-                    <BarChart3 size={18} /> Dashboard
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => navigate('/reference-incentive')}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-100"
+                    >
+                        <TrendingUp size={18} /> Reference Incentive
+                    </button>
+                    <button
+                        onClick={() => navigate('/dashboard')}
+                        className={`inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition ${
+                            'bg-white text-primary border border-blue-100 hover:bg-blue-50'
+                        }`}
+                    >
+                        <BarChart3 size={18} /> Dashboard
+                    </button>
+                </div>
             </div>
 
             {/* --- Tab Navigation --- */}

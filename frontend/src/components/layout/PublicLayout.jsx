@@ -67,8 +67,8 @@ const PublicNavbar = () => {
       name: 'Student Corner',
       isDropdown: true,
       subItems: [
-        { name: 'Admission Verify', path: '/verify-student' },
         { name: 'Student Login', path: '/student-login' },
+        { name: 'Admission Verify', path: '/verify-student' },
         { name: 'Result View', path: '/result' },
       ]
     },
@@ -174,9 +174,12 @@ const PublicNavbar = () => {
                                         <Link
                                           key={course._id}
                                           to={`/course/${course._id}`}
-                                          className="rounded-lg border border-gray-100 px-4 py-3 text-sm font-semibold text-gray-700 hover:border-primary/20 hover:bg-blue-50 hover:text-primary transition-colors"
+                                          className="group/card flex flex-col justify-between rounded-lg border border-gray-200 px-4 py-3 hover:border-primary hover:bg-blue-50 hover:shadow-md transition-all cursor-pointer"
                                         >
-                                          {course.name}
+                                          <span className="text-sm font-semibold text-gray-700 group-hover/card:text-primary transition-colors">{course.name}</span>
+                                          <span className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-primary">
+                                            View Details <ArrowRight size={11} />
+                                          </span>
                                         </Link>
                                       ))}
                                     </div>
@@ -446,17 +449,14 @@ const PublicLayout = () => {
         href={whatsappLink}
         target="_blank"
         rel="noreferrer"
-        className="fixed bottom-5 right-5 z-[60] flex items-center gap-3 rounded-full bg-[#25D366] px-4 py-3 text-white shadow-lg shadow-green-900/20 transition-transform hover:-translate-y-0.5 hover:shadow-xl"
+        className="fixed bottom-5 right-5 z-[60] flex items-center justify-center rounded-full bg-[#25D366] p-3 text-white shadow-lg shadow-green-900/20 transition-transform hover:-translate-y-0.5 hover:shadow-xl"
         aria-label="Chat on WhatsApp"
         title="Chat on WhatsApp"
       >
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15">
-          <svg viewBox="0 0 32 32" className="h-6 w-6 fill-current" aria-hidden="true">
-            <path d="M19.11 17.02c-.29-.15-1.72-.85-1.99-.95-.27-.1-.47-.15-.67.15-.2.29-.77.95-.94 1.15-.17.2-.35.22-.64.07-.29-.15-1.23-.45-2.34-1.44-.86-.77-1.44-1.72-1.61-2.01-.17-.29-.02-.45.13-.6.13-.13.29-.35.43-.52.14-.17.19-.29.29-.48.1-.2.05-.37-.02-.52-.07-.15-.67-1.6-.92-2.19-.24-.57-.48-.49-.67-.5h-.57c-.2 0-.52.07-.79.37-.27.29-1.03 1-1.03 2.44s1.06 2.83 1.21 3.03c.15.2 2.09 3.18 5.06 4.46.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.08 1.72-.7 1.96-1.39.24-.68.24-1.26.17-1.39-.07-.13-.27-.21-.56-.36z" />
-            <path d="M16.03 3C9.4 3 4 8.38 4 14.98c0 2.1.55 4.15 1.61 5.95L4 29l8.31-1.54c1.74.95 3.7 1.45 5.72 1.45h.01C24.67 28.91 30 23.57 30 16.98 30 10.38 22.67 3 16.03 3zm0 23.56c-1.8 0-3.56-.48-5.08-1.38l-.36-.21-4.93.91.93-4.81-.23-.38a11.52 11.52 0 0 1-1.72-6.11C4.64 9.55 9.45 4.73 16.03 4.73c5.98 0 11.3 5.26 11.3 12.25 0 5.98-4.84 11.58-11.3 11.58z" />
-          </svg>
-        </span>
-        <span className="hidden sm:block text-sm font-semibold">WhatsApp Us</span>
+        <svg viewBox="0 0 32 32" className="h-7 w-7" fill="white" aria-hidden="true">
+          <path d="M19.11 17.02c-.29-.15-1.72-.85-1.99-.95-.27-.1-.47-.15-.67.15-.2.29-.77.95-.94 1.15-.17.2-.35.22-.64.07-.29-.15-1.23-.45-2.34-1.44-.86-.77-1.44-1.72-1.61-2.01-.17-.29-.02-.45.13-.6.13-.13.29-.35.43-.52.14-.17.19-.29.29-.48.1-.2.05-.37-.02-.52-.07-.15-.67-1.6-.92-2.19-.24-.57-.48-.49-.67-.5h-.57c-.2 0-.52.07-.79.37-.27.29-1.03 1-1.03 2.44s1.06 2.83 1.21 3.03c.15.2 2.09 3.18 5.06 4.46.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.08 1.72-.7 1.96-1.39.24-.68.24-1.26.17-1.39-.07-.13-.27-.21-.56-.36z" />
+          <path d="M16.03 3C9.4 3 4 8.38 4 14.98c0 2.1.55 4.15 1.61 5.95L4 29l8.31-1.54c1.74.95 3.7 1.45 5.72 1.45h.01C24.67 28.91 30 23.57 30 16.98 30 10.38 22.67 3 16.03 3zm0 23.56c-1.8 0-3.56-.48-5.08-1.38l-.36-.21-4.93.91.93-4.81-.23-.38a11.52 11.52 0 0 1-1.72-6.11C4.64 9.55 9.45 4.73 16.03 4.73c5.98 0 11.3 5.26 11.3 12.25 0 5.98-4.84 11.58-11.3 11.58z" />
+        </svg>
       </a>
 
       {/* 5. Footer */}

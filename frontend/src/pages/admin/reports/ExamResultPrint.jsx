@@ -129,11 +129,21 @@ const ExamResultPrint = () => {
     };
 
     // Helper to determine max marks based on subject name or table index
-    const getMaxMarks = (name, index) => {
+    const getMaxMarks = (name, index, totalItems) => {
         const n = (name || '').toUpperCase();
-        if (n.includes('PROJECT') || n.includes('DESCIPLINE') || n.includes('DISCIPLINE') || index === 5 || index === 6) {
+        
+        // Explicit name checks are safest
+        if (n.includes('PROJECT') || n.includes('DISCIPLINE') || n.includes('DESCIPLINE')) {
             return 50;
         }
+
+        // If it's one of the last two items in a standard curriculum, it's likely 50 marks
+        if (totalItems >=6 && (index === totalItems - 1 || index === totalItems - 2)) {
+             // But only if it's not a standard subject name that we know is 100
+             const isStandard100 = n.includes('BASIC') || n.includes('TALLY') || n.includes('DTP') || n.includes('HTML') || n.includes('INTERNET');
+             if (!isStandard100) return 50;
+        }
+        
         return 100;
     };
 
@@ -148,7 +158,7 @@ const ExamResultPrint = () => {
             { name: 'DESKTOP PUBLISHING- D.T.P. (IV)', subtext: 'Photoshop Cs3, Corel Draw, Pagemaker' },
             { name: 'INTERNET & SEMINAR (V)', subtext: 'Internet & Seminar' },
             { name: 'PROJECT', subtext: '' },
-            { name: 'DESCIPLINE', subtext: '' }
+            { name: 'DISCIPLINE', subtext: '' }
         ];
 
         // Match common roman numerals/indicators
@@ -158,7 +168,7 @@ const ExamResultPrint = () => {
         if (n === '(IV)' || n === 'IV') return defaults[3];
         if (n === '(V)' || n === 'V') return defaults[4];
         if (n === 'PROJECT') return defaults[5];
-        if (n === 'DESCIPLINE' || n === 'DISCIPLINE') return defaults[6];
+        if (n === 'DISCIPLINE' || n === 'DESCIPLINE') return defaults[6];
 
         // Intelligent keywords match
         let matchedName = n;
@@ -169,7 +179,7 @@ const ExamResultPrint = () => {
         else if (n.includes('DESKTOP') || n.includes('DTP') || n.includes('PUBLISHING')) { matchedName = 'DESKTOP PUBLISHING- D.T.P. (IV)'; matchedSubtext = defaults[3].subtext; }
         else if (n.includes('INTERNET') || n.includes('SEMINAR')) { matchedName = 'INTERNET & SEMINAR (V)'; matchedSubtext = defaults[4].subtext; }
         else if (n.includes('PROJECT')) { matchedName = 'PROJECT'; matchedSubtext = ''; }
-        else if (n.includes('DESCIPLINE') || n.includes('DISCIPLINE')) { matchedName = 'DESCIPLINE'; matchedSubtext = ''; }
+        else if (n.includes('DISCIPLINE') || n.includes('DESCIPLINE')) { matchedName = 'DISCIPLINE'; matchedSubtext = ''; }
         else {
             if (index >= 0 && index < defaults.length) {
                 return defaults[index];
@@ -199,15 +209,98 @@ const ExamResultPrint = () => {
         return course?.centerName || 'GODADARA, SURAT';
     };
 
-    const subjects = exam?.timeTable || [];
     const issueDate = moment(result.issueDate || result.createdAt);
     const marksObtained = Number(result.marksObtained || 0);
     const totalMarks = Number(result.totalMarks || 0);
     const marksPercentage = result.percentage || (totalMarks > 0 ? ((marksObtained / totalMarks) * 100).toFixed(2) : '0.00');
     const totalPresentsText = result.totalPresentsText || result.attendanceSummary?.totalPresentsText || '';
 
-    // Render actual student marks only
-    const marksData = result.subjectMarks || [];
+    // Robust marksData construction: Combine exam timetable with saved marks
+    // This ensures all subjects from the exam are shown, plus any specific marks recorded.
+    const timetable = exam?.timeTable || [];
+    const savedMarks = result.subjectMarks || [];
+    
+    // Create a map of saved marks by subject ID for quick lookup
+    const savedMarksMap = new Map();
+    savedMarks.forEach(sm => {
+        const id = (sm.subject?._id || sm.subject)?.toString();
+        if (id) savedMarksMap.set(id, sm);
+    });
+
+    let marksData = [];
+    if (timetable.length > 0) {
+        // Use timetable as base to maintain correct order and ensure all subjects are listed
+        marksData = timetable.map(tt => {
+            const id = (tt.subject?._id || tt.subject)?.toString();
+            const sm = savedMarksMap.get(id);
+            return {
+                subject: tt.subject,
+                subjectName: tt.subject?.name || tt.subjectName || sm?.subjectName || sm?.name || '',
+                theory: sm?.theory ?? '-',
+                practical: sm?.practical ?? '-',
+                total: sm?.total ?? '-',
+                maxMarks: tt.total || sm?.maxMarks || 0
+            };
+        });
+        
+        // Add any subjects from savedMarks that weren't in the timetable (rare edge case)
+        savedMarks.forEach(sm => {
+            const id = (sm.subject?._id || sm.subject)?.toString();
+            if (id && !timetable.some(tt => (tt.subject?._id || tt.subject)?.toString() === id)) {
+                marksData.push({
+                    subject: sm.subject,
+                    subjectName: sm.subject?.name || sm.subjectName || sm.name || '',
+                    theory: sm.theory,
+                    practical: sm.practical,
+                    total: sm.total,
+                    maxMarks: sm.maxMarks || 0
+                });
+            }
+        });
+    } else {
+        // Fallback to saved marks only if timetable is unavailable
+        marksData = savedMarks.map(sm => ({
+            subject: sm.subject,
+            subjectName: sm.subject?.name || sm.subjectName || sm.name || '',
+            theory: sm.theory,
+            practical: sm.practical,
+            total: sm.total,
+            maxMarks: sm.maxMarks || 0
+        }));
+    }
+
+    // --- Dynamic Layout Calculations for Marksheet ---
+    const numSubjects = marksData.length;
+    let rowHeight = '11mm';
+    let snameFontSize = '10px';
+    let ssubFontSize = '7px';
+    let tableFontSize = '9.5px';
+    let spacerHeight = '7mm';
+    let headingMarginTop = '4mm';
+    let headingMarginBottom = '3.5mm';
+    let detailsMarginBottom = '4mm';
+    let botTableHeight = '10mm';
+    let botTableFontSize = '9px';
+
+    if (numSubjects > 6) {
+        // More aggressive scaling to fit into the pre-printed space
+        const overflow = numSubjects - 6;
+        // Target: fit numSubjects into the space of 6 rows (approx 66mm)
+        const calculatedHeight = 66 / numSubjects;
+        rowHeight = `${Math.max(6.5, calculatedHeight)}mm`;
+        
+        snameFontSize = `${Math.max(7, 10 - (overflow * 0.7))}px`;
+        ssubFontSize = `${Math.max(5.5, 7 - (overflow * 0.3))}px`;
+        tableFontSize = `${Math.max(7.5, 9.5 - (overflow * 0.4))}px`;
+        
+        spacerHeight = `${Math.max(1, 7 - (overflow * 1.5))}mm`;
+        headingMarginTop = `${Math.max(0.5, 4 - (overflow * 1.0))}mm`;
+        headingMarginBottom = `${Math.max(0.5, 3.5 - (overflow * 0.8))}mm`;
+        detailsMarginBottom = `${Math.max(1, 4 - (overflow * 0.8))}mm`;
+        
+        botTableHeight = `${Math.max(6, 10 - (overflow * 0.8))}mm`;
+        botTableFontSize = `${Math.max(7, 9 - (overflow * 0.5))}px`;
+    }
 
     const studentPrefix = student?.gender?.toLowerCase() === 'female' ? 'MISS.' : 'MR.';
     const fatherPrefix = 'SHRI';
@@ -243,16 +336,16 @@ const ExamResultPrint = () => {
                             </div>
 
                             {/* Candidate Details Grid below Register No */}
-                            <div style={{ width: '100%', marginBottom: '4mm', fontFamily: 'Arial, sans-serif', color: '#000' }}>
+                            <div style={{ width: '100%', marginBottom: detailsMarginBottom, fontFamily: 'Arial, sans-serif', color: '#000' }}>
                                 <table style={{ borderCollapse: 'collapse', border: 'none', textAlign: 'left', width: '100%', background: 'transparent' }}>
                                     <tbody>
                                         <tr style={{ height: '5.2mm' }}>
                                             <td style={{ width: '22%', border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>CANDIDATE NAME</td>
-                                            <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>: {studentPrefix} {student?.firstName} {student?.middleName} {student?.lastName}</td>
+                                            <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>: {studentPrefix} {student?.firstName?.toUpperCase()} {student?.lastName?.toUpperCase()}</td>
                                         </tr>
                                         <tr style={{ height: '5.2mm' }}>
                                             <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>FATHER NAME</td>
-                                            <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>: {fatherPrefix} {student?.fatherName || student?.middleName}</td>
+                                            <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>: {fatherPrefix} {(student?.fatherName || student?.middleName)?.toUpperCase()}</td>
                                         </tr>
                                         <tr style={{ height: '5.2mm' }}>
                                             <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>COURSE</td>
@@ -271,13 +364,13 @@ const ExamResultPrint = () => {
                             </div>
 
                             {/* Center Align STATEMENT OF MARKS heading with custom spacing and underline */}
-                            <div style={{ width: '100%', textAlign: 'center', fontSize: '5mm', fontWeight: '900', color: '#000', letterSpacing: '0.8px', fontFamily: 'Arial, sans-serif', marginTop: '4mm', marginBottom: '3.5mm', textDecoration: 'underline' }}>
+                            <div style={{ width: '100%', textAlign: 'center', fontSize: '5mm', fontWeight: '900', color: '#000', letterSpacing: '0.8px', fontFamily: 'Arial, sans-serif', marginTop: headingMarginTop, marginBottom: headingMarginBottom, textDecoration: 'underline' }}>
                                 STATEMENT OF MARKS
                             </div>
 
                             {/* MAIN MARKS TABLE (Native two-row header with rowspan/colspan to ensure perfect vertical borders) */}
                             <div className="tbl-wrap" style={{ position: 'relative', top: 'auto', left: 'auto', width: '100%', zIndex: 10 }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: tableFontSize }}>
                                     <thead>
                                         <tr style={{ height: '6.5mm' }}>
                                             <th rowSpan="2" style={{ width: '8%', border: '1px solid #000', fontWeight: '900', fontSize: '8.8px' }}>SR NO.</th>
@@ -298,7 +391,7 @@ const ExamResultPrint = () => {
                                             const subjectName = subj.subject?.name || subj.subjectName || subj.name || '';
                                             const harms = subjectName !== '---' && subjectName !== '';
                                             const totalVal = harms ? (subj.total !== '-' ? subj.total : (Number(subj.theory) || 0) + (Number(subj.practical) || 0)) : '';
-                                            const maxMarksVal = harms ? (subj.maxMarks || getMaxMarks(subjectName, index)) : '';
+                                            const maxMarksVal = harms ? (subj.maxMarks || getMaxMarks(subjectName, index, marksData.length)) : '';
                                             const gradeVal = harms ? getSubjectGrade(totalVal, maxMarksVal) : '';
                                             const wordsVal = harms ? numberToWords(totalVal) : '';
 
@@ -308,13 +401,13 @@ const ExamResultPrint = () => {
                                             const displaySubtext = harms ? subjectDetails.subtext : '';
 
                                             return (
-                                                <tr key={index} style={{ height: '11mm' }}>
+                                                <tr key={index} style={{ height: rowHeight }}>
                                                     <td style={{ border: '1px solid #000' }}>{harms ? index + 1 : ''}</td>
                                                     <td style={{ border: '1px solid #000', textAlign: 'center', padding: '2px 4px' }}>
                                                         {harms ? (
                                                             <>
-                                                                <div className="sname">{displaySubjectName}</div>
-                                                                {displaySubtext && <div className="ssub">{displaySubtext}</div>}
+                                                                <div className="sname" style={{ fontSize: snameFontSize }}>{displaySubjectName}</div>
+                                                                {displaySubtext && <div className="ssub" style={{ fontSize: ssubFontSize }}>{displaySubtext}</div>}
                                                             </>
                                                         ) : ''}
                                                     </td>
@@ -329,7 +422,7 @@ const ExamResultPrint = () => {
                                         })}
 
                                         {/* Grand Total */}
-                                        <tr className="gtotal">
+                                        <tr className="gtotal" style={{ height: rowHeight }}>
                                             <td colSpan="3" style={{ textAlign: 'left', paddingLeft: '8px', fontSize: '9px', fontWeight: '900', border: '1px solid #000', whiteSpace: 'nowrap' }}>
                                                 GRAND TOTAL OF MARKS OBTAINED OUT OF
                                             </td>
@@ -345,7 +438,7 @@ const ExamResultPrint = () => {
                             </div>
 
                             {/* Spacing spacer */}
-                            <div style={{ height: '7mm' }}></div>
+                            <div style={{ height: spacerHeight }}></div>
 
                             {/* BOTTOM SUMMARY TABLE positioned immediately below the main marks table */}
                             <div className="bot-wrap" style={{ position: 'relative', top: 'auto', left: 'auto', width: '143mm', zIndex: 10 }}>
@@ -360,12 +453,12 @@ const ExamResultPrint = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr style={{ height: '10mm' }}>
-                                            <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: '9px' }}>{exam?.examName || 'JANUARY - 2019'}</td>
-                                            <td className="td-blue" style={{ border: '1px solid #000', fontWeight: '900', fontSize: '9px', color: '#1565C0' }}>{result.somNumber || 'SOM-G0035'}</td>
-                                                        <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: '9px' }}>{totalPresentsText}</td>
-                                                        <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: '9px' }}>{marksPercentage}</td>
-                                            <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: '10px' }}>{result.grade || 'DISTINCTION'}</td>
+                                        <tr style={{ height: botTableHeight }}>
+                                            <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: botTableFontSize }}>{exam?.examName || 'JANUARY - 2019'}</td>
+                                            <td className="td-blue" style={{ border: '1px solid #000', fontWeight: '900', fontSize: botTableFontSize, color: '#1565C0' }}>{result.somNumber || 'SOM-G0035'}</td>
+                                                        <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: botTableFontSize }}>{totalPresentsText}</td>
+                                                        <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: botTableFontSize }}>{marksPercentage}</td>
+                                            <td style={{ border: '1px solid #000', fontWeight: '900', fontSize: `${parseFloat(botTableFontSize) + 1}px` }}>{result.grade || 'DISTINCTION'}</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -509,7 +602,7 @@ const ExamResultPrint = () => {
                                 color: '#111',
                                 letterSpacing: '0.3px'
                             }}>
-                                {studentPrefix} {student?.firstName} {student?.middleName} {student?.lastName}
+                                {studentPrefix} {student?.firstName?.toUpperCase()} {student?.lastName?.toUpperCase()}
                             </p>
 
                             {/* D/o or S/o parent text */}
@@ -519,9 +612,9 @@ const ExamResultPrint = () => {
                                 margin: '0 0 3mm 0',
                                 color: '#111'
                             }}>
-                                {student?.gender?.toLowerCase() === 'female' ? 'D/o' : 'S/o'} Shri {student?.fatherName || student?.middleName} On the {issueDate.isValid() ? issueDate.date() : '15'} day of the month {issueDate.isValid() ? issueDate.format('MMMM') : 'November'} <br />
+                                {student?.gender?.toLowerCase() === 'female' ? 'D/o' : 'S/o'} SHRI {(student?.fatherName || student?.middleName)?.toUpperCase()} On the {issueDate.isValid() ? issueDate.date() : '15'} day of the month {issueDate.isValid() ? issueDate.format('MMMM') : 'November'} <br />
                                 In the year {issueDate.isValid() ? yearToWords(issueDate.year()) : 'Two Thousand Eighteen'} for successfully completed a <br />
-                                <span style={{ fontWeight: 'bold' }}>{course?.duration || '12'} Months</span> course in
+                                <span style={{ fontWeight: 'bold' }}>{course?.duration || '12'} {course?.durationType || 'Months'}</span> course in
                             </p>
 
                             {/* Course name */}
@@ -568,8 +661,8 @@ const ExamResultPrint = () => {
                                 fontSize: '4.4mm',
                                 color: '#222'
                             }}>
-                                {subjects.length > 0 ? (
-                                    subjects.map((subj, i) => {
+                                {marksData.length > 0 ? (
+                                    marksData.map((subj, i) => {
                                         const subjectName = subj.subject?.name || subj.subjectName || subj.name || '';
                                         const details = getSubjectDetails(subjectName, i);
                                         return (
@@ -708,7 +801,6 @@ const ExamResultPrint = () => {
                         border-right: 1px solid #000;
                     }
                     .sub-col:last-child { border-right: none; }
-                    tbody tr { height: 11mm; }
                     .sname { font-size: 10px; font-weight: 900; text-transform: uppercase; line-height: 1.3; }
                     .ssub { font-size: 7px; font-weight: 600; color: #555; font-style: italic; margin-top: 1px; }
                     .gtotal td {

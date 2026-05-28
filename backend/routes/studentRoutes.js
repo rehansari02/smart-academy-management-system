@@ -18,7 +18,8 @@ const {
     getExamPendingStudents,
     getUniqueReferences,
     verifyAdmissionStatus,
-    checkUsername
+    checkUsername,
+    updateStudentDocuments
 } = require('../controllers/studentController');
 
 router.route('/exam-pending')
@@ -62,5 +63,8 @@ router.route('/:id/cancel')
 
 router.route('/:id/reactivate')
     .put(protect, checkPermission('Student', 'edit'), reactivateStudent);
+
+router.route('/:id/documents')
+    .put(protect, checkPermission('Student', 'edit'), updateStudentDocuments);
 
 module.exports = router;
