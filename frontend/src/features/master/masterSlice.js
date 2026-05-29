@@ -282,6 +282,20 @@ export const createExam = createAsyncThunk('master/createExam', async (data, thu
     } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
 });
 
+export const updateExam = createAsyncThunk('master/updateExam', async ({ id, data }, thunkAPI) => {
+    try {
+        const response = await axios.put(`${API_URL}exam-name/${id}`, data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const deleteExam = createAsyncThunk('master/deleteExam', async (id, thunkAPI) => {
+    try {
+        const response = await axios.delete(`${API_URL}exam-name/${id}`);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
 // --- Branch Thunks ---
 export const fetchBranches = createAsyncThunk('master/fetchBranches', async (_, thunkAPI) => {
     try {
@@ -620,6 +634,17 @@ const masterSlice = createSlice({
                 state.exams.push(action.payload);
                 state.isSuccess = true;
                 state.message = 'Exam Name Added Successfully';
+            })
+            .addCase(updateExam.fulfilled, (state, action) => {
+                const index = state.exams.findIndex(e => e._id === action.payload._id);
+                if (index !== -1) state.exams[index] = action.payload;
+                state.isSuccess = true;
+                state.message = 'Exam Name Updated Successfully';
+            })
+            .addCase(deleteExam.fulfilled, (state, action) => {
+                state.exams = state.exams.filter(e => e._id !== action.payload.id);
+                state.isSuccess = true;
+                state.message = 'Exam Name Deleted Successfully';
             })
             
             // --- Branches ---

@@ -298,7 +298,6 @@ const StudentWiseOutstanding = () => {
                             <th rowSpan="2" className="border border-blue-500 px-2 py-2 align-middle">Course</th>
                             <th rowSpan="2" className="border border-blue-500 px-2 py-2 align-middle">Mobile No.</th>
                             <th rowSpan="2" className="border border-blue-500 px-2 py-2 text-right align-middle">Outstanding</th>
-                            <th rowSpan="2" className="border border-blue-500 px-2 py-2 text-right align-middle">Adm. Pending</th>
                             <th colSpan="2" className="border border-blue-500 px-2 py-2 text-center">Follow Up</th>
                             <th rowSpan="2" className="border border-blue-500 px-2 py-2 align-middle">Rect. Date</th>
                             <th rowSpan="2" className="border border-blue-500 px-2 py-2 text-right align-middle">Rect. Amt</th>
@@ -324,20 +323,12 @@ const StudentWiseOutstanding = () => {
                                     <td className="border border-gray-300 px-2 py-1.5">{s.course?.shortName || s.course?.name || '-'}</td>
                                     <td className="border border-gray-300 px-2 py-1.5 text-center">{s.mobileParent || '-'}</td>
 
-                                    {/* Outstanding Amount: registration + upcoming EMI only */}
+                                    {/* Outstanding Amount: reg fees + upcoming EMI + admission pending - combined total */}
                                     <td className="border border-gray-300 px-2 py-1.5 text-right font-semibold text-red-600">
                                         {summaryLoading ? '...' : (() => {
-                                            const regEmi = (summary?.upcomingEMI || 0) + (summary?.pendingRegFees || 0);
-                                            return regEmi > 0 ? regEmi.toLocaleString('en-IN') : '-';
+                                            const total = (summary?.upcomingEMI || 0) + (summary?.pendingRegFees || 0) + (summary?.pendingAdmissionFees || 0);
+                                            return total > 0 ? total.toLocaleString('en-IN') : '-';
                                         })()}
-                                    </td>
-
-                                    {/* Admission Pending Amount: shown separately, not appended with +500 */}
-                                    <td className="border border-gray-300 px-2 py-1.5 text-right font-semibold text-orange-600">
-                                        {summaryLoading ? '...' : ((summary?.pendingAdmissionFees || 0) > 0
-                                            ? (summary.pendingAdmissionFees).toLocaleString('en-IN')
-                                            : '-'
-                                        )}
                                     </td>
 
                                     {/* Follow Up Columns */}
@@ -358,7 +349,7 @@ const StudentWiseOutstanding = () => {
                             );
                         }) : (
                             <tr>
-                                <td colSpan="13" className="border border-gray-300 px-4 py-8 text-center text-gray-500 italic">
+                                <td colSpan="12" className="border border-gray-300 px-4 py-8 text-center text-gray-500 italic">
                                     No records found matching criteria.
                                 </td>
                             </tr>

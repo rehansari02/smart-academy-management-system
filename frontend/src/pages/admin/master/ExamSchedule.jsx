@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchCourses, fetchExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, resetMasterStatus, fetchExams, createExam } from '../../../features/master/masterSlice';
+import { fetchCourses, fetchExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, resetMasterStatus, fetchExams, createExam, updateExam, deleteExam } from '../../../features/master/masterSlice';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { Plus, Search, RefreshCw, Edit, Trash2, Eye, X, Save, AlertCircle } from 'lucide-react';
+import { Plus, Search, RefreshCw, Edit, Trash2, Eye, X, Save, AlertCircle, Pencil, Check } from 'lucide-react';
 import axios from 'axios'; // For direct detail fetch
 
 const parseTimeToParts = (timeStr) => {
@@ -63,6 +63,8 @@ const ExamSchedule = () => {
   const [examSearch, setExamSearch] = useState('');
   const [showNewExamModal, setShowNewExamModal] = useState(false);
   const [newExamName, setNewExamName] = useState('');
+  const [editExamData, setEditExamData] = useState(null);
+  const [editExamName, setEditExamName] = useState('');
   const [coursesWithRequests, setCoursesWithRequests] = useState([]);
   const [isCoursesLoading, setIsCoursesLoading] = useState(false);
 
@@ -151,6 +153,41 @@ const ExamSchedule = () => {
       setExamSearch('');
     } else {
       toast.error(resultAction.payload || 'Failed to create Exam Name');
+    }
+  };
+
+  const handleEditExamClick = (exam) => {
+    setEditExamData(exam);
+    setEditExamName(exam.name);
+  };
+
+  const handleUpdateExamName = async () => {
+    if (!editExamName.trim()) {
+      toast.error('Exam name is required');
+      return;
+    }
+    if (!editExamData) return;
+    const resultAction = await dispatch(updateExam({ id: editExamData._id, data: { name: editExamName } }));
+    if (updateExam.fulfilled.match(resultAction)) {
+      toast.success('Exam name updated');
+      setEditExamData(null);
+      setEditExamName('');
+    } else {
+      toast.error(resultAction.payload || 'Failed to update Exam Name');
+    }
+  };
+
+  const handleDeleteExamName = async (examId, examName) => {
+    if (!window.confirm(`Are you sure you want to delete "${examName}"?`)) return;
+    const resultAction = await dispatch(deleteExam(examId));
+    if (deleteExam.fulfilled.match(resultAction)) {
+      toast.success('Exam name deleted');
+      // If the deleted exam was selected, clear the field
+      if (selectedExamName === examName) {
+        setValue('examName', '');
+      }
+    } else {
+      toast.error(resultAction.payload || 'Failed to delete Exam Name');
     }
   };
 
@@ -423,7 +460,7 @@ const ExamSchedule = () => {
                         </button>
                         
                         {isExamDropdownOpen && (
-                            <div className="absolute left-0 right-0 mt-1 bg-white border rounded shadow-lg z-50 max-h-[300px] overflow-y-auto p-2">
+                            <div className="absolute left-0 right-0 mt-1 bg-white border rounded shadow-lg z-50 max-h-[350px] overflow-y-auto p-2">
                                 <div className="flex gap-2 mb-2 p-1">
                                     <input 
                                         type="text" 
@@ -445,14 +482,36 @@ const ExamSchedule = () => {
                                         exams.filter(exam => exam.name.toLowerCase().includes(examSearch.toLowerCase())).map(exam => (
                                             <div 
                                                 key={exam._id} 
-                                                onClick={() => {
-                                                    setValue('examName', exam.name);
-                                                    setIsExamDropdownOpen(false);
-                                                    setExamSearch('');
-                                                }}
-                                                className="p-2 text-xs font-semibold hover:bg-blue-50 text-gray-700 cursor-pointer rounded transition-all"
+                                                className="group flex items-center gap-1 p-1.5 text-xs font-semibold hover:bg-blue-50 text-gray-700 cursor-pointer rounded transition-all"
                                             >
-                                                {exam.name}
+                                                <div 
+                                                    className="flex-1 min-w-0 py-1"
+                                                    onClick={() => {
+                                                        setValue('examName', exam.name);
+                                                        setIsExamDropdownOpen(false);
+                                                        setExamSearch('');
+                                                    }}
+                                                >
+                                                    {exam.name}
+                                                </div>
+                                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); handleEditExamClick(exam); }}
+                                                        className="p-1 rounded hover:bg-blue-200 text-blue-600"
+                                                        title="Edit exam name"
+                                                    >
+                                                        <Pencil size={12} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteExamName(exam._id, exam.name); }}
+                                                        className="p-1 rounded hover:bg-red-200 text-red-500"
+                                                        title="Delete exam name"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                </div>
                                             </div>
                                         ))
                                     ) : (
@@ -1009,7 +1068,7 @@ const ExamSchedule = () => {
         </div>
       )}
 
-      {/* --- QUICK ADD EXAM NAME MODAL --- */}
+      {/* --- CREATE / EDIT EXAM NAME MODAL --- */}
       {showNewExamModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-fadeIn">
           <div className="bg-white w-full max-w-md rounded-xl shadow-xl overflow-hidden p-6 border border-gray-100">
@@ -1041,6 +1100,45 @@ const ExamSchedule = () => {
                   className="bg-green-600 text-white px-5 py-2 rounded text-sm font-bold hover:bg-green-700"
                 >
                   Create
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- EDIT EXAM NAME INLINE MODAL --- */}
+      {editExamData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-xl overflow-hidden p-6 border border-gray-100">
+            <h3 className="text-lg font-bold mb-4 text-gray-900 flex items-center gap-2">
+              <Pencil size={18} className="text-blue-600" /> Edit Exam Name
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Exam Name</label>
+                <input 
+                  type="text" 
+                  value={editExamName} 
+                  onChange={(e) => setEditExamName(e.target.value)} 
+                  placeholder="e.g. Final Examination 2026" 
+                  className="border p-2 rounded w-full text-sm focus:ring-1 focus:ring-primary outline-none font-semibold"
+                />
+              </div>
+              <div className="flex gap-2 justify-end pt-2">
+                <button 
+                  type="button" 
+                  onClick={() => { setEditExamData(null); setEditExamName(''); }} 
+                  className="border px-4 py-2 rounded text-sm hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button" 
+                  onClick={handleUpdateExamName} 
+                  className="bg-blue-600 text-white px-5 py-2 rounded text-sm font-bold hover:bg-blue-700"
+                >
+                  <Check size={16} className="inline mr-1" /> Update
                 </button>
               </div>
             </div>

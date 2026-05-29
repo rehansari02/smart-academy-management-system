@@ -24,7 +24,7 @@ const TimeTableReport = () => {
     const { examSchedules, branches, isLoading } = useSelector((state) => state.master);
     const { user } = useSelector((state) => state.auth);
 
-    const [filters, setFilters] = useState({ courseId: 'All', branchId: 'All', status: 'active', search: '' });
+    const [filters, setFilters] = useState({ courseId: 'All', branchId: 'All', examName: 'All', status: 'active', search: '' });
 
     useEffect(() => {
         dispatch(fetchExamSchedules());
@@ -42,6 +42,7 @@ const TimeTableReport = () => {
                 if (filters.status === 'inactive') return schedule.isActive === false || schedule.isDeleted === true;
                 return schedule.isActive !== false && schedule.isDeleted !== true;
             })
+            .filter((schedule) => filters.examName === 'All' || schedule.examName === filters.examName)
             .filter((schedule) => {
                 if (!search) return true;
                 const text = [
@@ -52,7 +53,7 @@ const TimeTableReport = () => {
                 ].filter(Boolean).join(' ').toLowerCase();
                 return text.includes(search);
             });
-    }, [examSchedules, filters.branchId, filters.status, filters.search]);
+    }, [examSchedules, filters.branchId, filters.examName, filters.status, filters.search]);
 
     const availableCourses = useMemo(() => {
         const map = new Map();
@@ -62,6 +63,11 @@ const TimeTableReport = () => {
         });
         return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
     }, [baseSchedules]);
+
+    const examNames = useMemo(() => {
+        const names = new Set((examSchedules || []).map((s) => s.examName).filter(Boolean));
+        return Array.from(names).sort((a, b) => a.localeCompare(b));
+    }, [examSchedules]);
 
     const availableBranches = useMemo(() => {
         const map = new Map();
@@ -106,12 +112,30 @@ const TimeTableReport = () => {
         if (componentRef.current) printReport();
     };
 
+    const groupedSchedules = useMemo(() => {
+        const groups = {};
+        filteredSchedules.forEach(schedule => {
+            const courseId = getId(schedule.course);
+            const courseName = getCourseName(schedule);
+            if (!groups[courseId]) {
+                groups[courseId] = {
+                    id: courseId,
+                    name: courseName,
+                    shortName: schedule.course?.shortName || '',
+                    schedules: []
+                };
+            }
+            groups[courseId].schedules.push(schedule);
+        });
+        return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
+    }, [filteredSchedules]);
+
     const summary = useMemo(() => {
         const subjectCount = filteredSchedules.reduce((sum, schedule) => sum + (schedule.timeTable?.length || 0), 0);
         const studentCount = filteredSchedules.reduce((sum, schedule) => sum + (schedule.attendees?.length || 0), 0);
-        const courseCount = new Set(filteredSchedules.map((schedule) => getId(schedule.course)).filter(Boolean)).size;
+        const courseCount = groupedSchedules.length;
         return { subjectCount, studentCount, courseCount };
-    }, [filteredSchedules]);
+    }, [filteredSchedules, groupedSchedules]);
 
     const selectedCourseName = filters.courseId === 'All'
         ? 'All Courses'
@@ -160,7 +184,7 @@ const TimeTableReport = () => {
                         </div>
                     </div>
 
-                    <div className="mt-5 grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 md:grid-cols-2 xl:grid-cols-[1fr_18rem_16rem_11rem_auto_auto]">
+                    <div className="mt-5 grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 md:grid-cols-2 xl:grid-cols-[1fr_18rem_16rem_13rem_11rem_auto_auto]">
                         <div className="relative">
                             <input
                                 className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -187,6 +211,13 @@ const TimeTableReport = () => {
                             <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
                         </div>
                         <div className="relative">
+                            <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.examName} onChange={(e) => setFilters((prev) => ({ ...prev, examName: e.target.value, courseId: 'All' }))}>
+                                <option value="All">All Exams</option>
+                                {examNames.map((name) => <option key={name} value={name}>{name}</option>)}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
+                        </div>
+                        <div className="relative">
                             <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.status} onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value, courseId: 'All' }))}>
                                 <option value="active">Active Exams</option>
                                 <option value="inactive">Inactive Exams</option>
@@ -194,7 +225,7 @@ const TimeTableReport = () => {
                             </select>
                             <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
                         </div>
-                        <button onClick={() => setFilters({ courseId: 'All', branchId: 'All', status: 'active', search: '' })} className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                        <button onClick={() => setFilters({ courseId: 'All', branchId: 'All', examName: 'All', status: 'active', search: '' })} className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                             <RefreshCw size={16} /> Reset
                         </button>
                         <button onClick={handlePrint} className="flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700">
@@ -219,49 +250,65 @@ const TimeTableReport = () => {
                         <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{selectedCourseName} | Printed: {formatDate(new Date())}</p>
                     </div>
 
-                    {filteredSchedules.length === 0 ? (
+                    {groupedSchedules.length === 0 ? (
                         <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-10 text-center font-semibold text-slate-500">No exam schedules found for the selected filters.</div>
                     ) : (
-                        <div className="space-y-8">
-                            {filteredSchedules.map((schedule) => (
-                                <section key={schedule._id} className="break-inside-avoid overflow-hidden rounded border-2 border-slate-900">
-                                    <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 px-4 py-3 text-white">
-                                        <div>
-                                            <h4 className="text-base font-black uppercase">{schedule.examName || 'Unnamed Exam'}</h4>
-                                            <p className="text-xs font-semibold text-slate-200">{getCourseName(schedule)} | Students: {schedule.attendees?.length || 0}</p>
-                                        </div>
-                                        <span className="rounded bg-white px-3 py-1 text-xs font-black text-slate-900">REF {schedule._id?.slice(-6)?.toUpperCase()}</span>
+                        <div className="space-y-10">
+                            {groupedSchedules.map((group, gIdx) => (
+                                <div key={group.id || gIdx} className="break-inside-avoid">
+                                    {/* Course Header */}
+                                    <div className="mb-2 flex items-center justify-between rounded-t-lg border-2 border-slate-900 bg-slate-900 px-4 py-2">
+                                        <h4 className="text-sm font-black uppercase text-white">
+                                            {group.name} {group.shortName ? `(${group.shortName})` : ''}
+                                        </h4>
+                                        <span className="rounded bg-white px-3 py-0.5 text-xs font-black text-slate-900">
+                                            {group.schedules.length} Schedule{group.schedules.length !== 1 ? 's' : ''}
+                                        </span>
                                     </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full border-collapse text-xs">
-                                            <thead className="bg-slate-100 text-slate-900">
-                                                <tr className="uppercase">
-                                                    <th className="w-12 border border-slate-300 p-2 text-center">Sr</th>
-                                                    <th className="border border-slate-300 p-2 text-left">Subject</th>
-                                                    <th className="w-28 border border-slate-300 p-2 text-center">Date</th>
-                                                    <th className="w-36 border border-slate-300 p-2 text-center">Time</th>
-                                                    <th className="w-20 border border-slate-300 p-2 text-center">Theory</th>
-                                                    <th className="w-20 border border-slate-300 p-2 text-center">Practical</th>
-                                                    <th className="w-20 border border-slate-300 p-2 text-center">Total</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {(schedule.timeTable || []).map((item, index) => (
-                                                    <tr key={`${schedule._id}-${index}`}>
-                                                        <td className="border border-slate-300 p-2 text-center font-bold">{index + 1}</td>
-                                                        <td className="border border-slate-300 p-2 font-bold uppercase text-slate-900">{getSubjectName(item)}</td>
-                                                        <td className="border border-slate-300 p-2 text-center font-semibold">{formatDate(item.date)}</td>
-                                                        <td className="border border-slate-300 p-2 text-center font-semibold">{item.startTime || '-'} to {item.endTime || '-'}</td>
-                                                        <td className="border border-slate-300 p-2 text-center">{item.theory ?? 0}</td>
-                                                        <td className="border border-slate-300 p-2 text-center">{item.practical ?? 0}</td>
-                                                        <td className="border border-slate-300 p-2 text-center font-black">{item.total ?? 0}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+
+                                    <div className="space-y-5 pl-4 border-l-2 border-slate-300">
+                                        {group.schedules.map((schedule) => (
+                                            <section key={schedule._id} className="overflow-hidden rounded border border-slate-300">
+                                                <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-100 px-3 py-2">
+                                                    <div>
+                                                        <h4 className="text-sm font-black uppercase text-slate-900">{schedule.examName || 'Unnamed Exam'}</h4>
+                                                        <p className="text-xs font-semibold text-slate-500">Students: {schedule.attendees?.length || 0}</p>
+                                                    </div>
+                                                    <span className="rounded bg-white px-2 py-0.5 text-xs font-black text-slate-700 ring-1 ring-slate-300">#{schedule._id?.slice(-6)?.toUpperCase()}</span>
+                                                </div>
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full border-collapse text-xs">
+                                                        <thead className="bg-slate-50 text-slate-700">
+                                                            <tr className="uppercase">
+                                                                <th className="w-10 border border-slate-200 p-1.5 text-center">Sr</th>
+                                                                <th className="border border-slate-200 p-1.5 text-left">Subject</th>
+                                                                <th className="w-26 border border-slate-200 p-1.5 text-center">Date</th>
+                                                                <th className="w-34 border border-slate-200 p-1.5 text-center">Time</th>
+                                                                <th className="w-18 border border-slate-200 p-1.5 text-center">Theory</th>
+                                                                <th className="w-18 border border-slate-200 p-1.5 text-center">Practical</th>
+                                                                <th className="w-16 border border-slate-200 p-1.5 text-center">Total</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {(schedule.timeTable || []).map((item, index) => (
+                                                                <tr key={`${schedule._id}-${index}`} className="hover:bg-slate-50">
+                                                                    <td className="border border-slate-200 p-1.5 text-center font-bold">{index + 1}</td>
+                                                                    <td className="border border-slate-200 p-1.5 font-bold uppercase text-slate-900">{getSubjectName(item)}</td>
+                                                                    <td className="border border-slate-200 p-1.5 text-center font-semibold">{formatDate(item.date)}</td>
+                                                                    <td className="border border-slate-200 p-1.5 text-center font-semibold">{item.startTime || '-'} to {item.endTime || '-'}</td>
+                                                                    <td className="border border-slate-200 p-1.5 text-center">{item.theory ?? 0}</td>
+                                                                    <td className="border border-slate-200 p-1.5 text-center">{item.practical ?? 0}</td>
+                                                                    <td className="border border-slate-200 p-1.5 text-center font-black">{item.total ?? 0}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                {schedule.remarks && <div className="border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-xs"><span className="font-bold">Remarks:</span> {schedule.remarks}</div>}
+                                            </section>
+                                        ))}
                                     </div>
-                                    {schedule.remarks && <div className="border-t border-slate-300 bg-slate-50 px-4 py-2 text-xs"><span className="font-bold">Remarks:</span> {schedule.remarks}</div>}
-                                </section>
+                                </div>
                             ))}
                         </div>
                     )}

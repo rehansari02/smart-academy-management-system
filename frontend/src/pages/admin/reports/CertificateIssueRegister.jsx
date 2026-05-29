@@ -73,16 +73,32 @@ const CertificateIssueRegister = () => {
         return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
     }, [examResults]);
 
-    const filteredResults = useMemo(() => {
-        return baseResults
-            .filter((result) => filters.courseId === 'All' || getId(result.course) === filters.courseId)
-            .sort((a, b) => {
-                // Sort by course name first, then by regNo
-                const courseA = a.course?.name || '';
-                const courseB = b.course?.name || '';
-                if (courseA !== courseB) return courseA.localeCompare(courseB);
+    const groupedResults = useMemo(() => {
+        const filtered = baseResults.filter((result) => filters.courseId === 'All' || getId(result.course) === filters.courseId);
+
+        const groups = {};
+        filtered.forEach(result => {
+            const courseId = getId(result.course);
+            const courseName = result.course?.name || 'Unknown Course';
+            if (!groups[courseId]) {
+                groups[courseId] = {
+                    id: courseId,
+                    name: courseName,
+                    shortName: result.course?.shortName || '',
+                    results: []
+                };
+            }
+            groups[courseId].results.push(result);
+        });
+
+        // Sort students within each group by regNo
+        Object.values(groups).forEach(group => {
+            group.results.sort((a, b) => {
                 return (a.student?.regNo || '').localeCompare(b.student?.regNo || '', undefined, { numeric: true });
             });
+        });
+
+        return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
     }, [baseResults, filters.courseId]);
 
     const headerBranch = useMemo(() => {
@@ -109,19 +125,11 @@ const CertificateIssueRegister = () => {
         : availableCourses.find((course) => course._id === filters.courseId)?.name || 'Selected Course';
 
     const summary = useMemo(() => {
-        const uniqueStudents = new Set(filteredResults.map((result) => getId(result.student)).filter(Boolean)).size;
-        const uniqueCourses = new Set(filteredResults.map((result) => getId(result.course)).filter(Boolean)).size;
-        return { uniqueStudents, uniqueCourses };
-    }, [filteredResults]);
-
-    // Create a list of 20 rows (data + empty)
-    const displayRows = useMemo(() => {
-        const rows = [...filteredResults];
-        while (rows.length < 20) {
-            rows.push({ _id: `empty-${rows.length}`, isEmpty: true });
-        }
-        return rows;
-    }, [filteredResults]);
+        const allResults = groupedResults.flatMap((g) => g.results);
+        const uniqueStudents = new Set(allResults.map((result) => getId(result.student)).filter(Boolean)).size;
+        const uniqueCourses = groupedResults.length;
+        return { uniqueStudents, uniqueCourses, total: allResults.length };
+    }, [groupedResults]);
 
     if (isLoading && !examResults?.length) {
         return (
@@ -146,7 +154,7 @@ const CertificateIssueRegister = () => {
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><Award size={14} /> Issued</div><p className="mt-1 text-xl font-bold text-slate-900">{filteredResults.length}</p></div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><Award size={14} /> Issued</div><p className="mt-1 text-xl font-bold text-slate-900">{summary.total}</p></div>
                             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><Users size={14} /> Students</div><p className="mt-1 text-xl font-bold text-slate-900">{summary.uniqueStudents}</p></div>
                             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"><div className="flex items-center gap-2 text-xs font-semibold text-slate-500"><BookOpen size={14} /> Courses</div><p className="mt-1 text-xl font-bold text-slate-900">{summary.uniqueCourses}</p></div>
                             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"><div className="text-xs font-semibold text-slate-500">Selected</div><p className="mt-1 truncate text-sm font-bold text-slate-900">{selectedCourseName}</p></div>
@@ -191,7 +199,7 @@ const CertificateIssueRegister = () => {
                     </div>
                 </div>
 
-                <div ref={componentRef} className="print-container bg-white p-5 shadow-sm sm:p-7 border border-slate-200 rounded-lg">
+                <div ref={componentRef} className="print-container bg-white p-5 shadow-sm sm:p-7 border border-slate-200 rounded-lg" style={{ width: '297mm' }}>
                     {/* Page Header */}
                     <div className="mb-4 flex items-start justify-between">
                         <div className="flex items-center gap-3">
@@ -207,41 +215,58 @@ const CertificateIssueRegister = () => {
 
                     <div className="mb-6 text-center">
                         <h3 className="text-xl font-black text-slate-900 mb-1">Final Examination {filters.examName === 'All' ? moment().format('MMM - YYYY') : filters.examName}</h3>
-                        <p className="text-[10px] font-bold text-slate-700 uppercase leading-tight">
-                            ( Cat "Smart", Cat, A.D.C.A., C.C.A., M.C., C.T.D.P., C.A.B.T., C.D.P., D.P., C.T.D., T.D. )
-                        </p>
+
                     </div>
 
-                    <div className="overflow-x-auto">
-                        <table className="w-full border-collapse border border-slate-900 text-[9px] font-bold text-slate-900">
-                            <thead>
-                                <tr className="bg-slate-50">
-                                    <th className="w-8 border border-slate-900 p-1 text-center">Sr.</th>
-                                    <th className="w-24 border border-slate-900 p-1 text-center">REG.NO.</th>
-                                    <th className="border border-slate-900 p-1 text-left min-w-[150px]">STUDENTS NAME</th>
-                                    <th className="w-24 border border-slate-900 p-1 text-center">COURSE</th>
-                                    <th className="w-28 border border-slate-900 p-1 text-center">SR.NO. OF ST.O.M</th>
-                                    <th className="w-28 border border-slate-900 p-1 text-center">SR.NO. OF CERT.</th>
-                                    <th className="w-44 border border-slate-900 p-1 text-center">STUDENT / GARDIUN SIGN.</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {displayRows.map((result, index) => (
-                                    <tr key={result._id} style={{ height: '9mm' }}>
-                                        <td className="border border-slate-900 p-1 text-center">{index + 1}</td>
-                                        <td className="border border-slate-900 p-1 text-center font-mono">{result.isEmpty ? '' : (result.student?.regNo || '-')}</td>
-                                        <td className="border border-slate-900 p-1 text-left uppercase whitespace-nowrap">{result.isEmpty ? '' : studentName(result.student)}</td>
-                                        <td className="border border-slate-900 p-1 text-center uppercase">{result.isEmpty ? '' : (result.course?.shortName || result.course?.name || '-')}</td>
-                                        <td className="border border-slate-900 p-1 text-center uppercase">{result.isEmpty ? '' : (result.somNumber || '-')}</td>
-                                        <td className="border border-slate-900 p-1 text-center uppercase">{result.isEmpty ? '' : (result.csrNumber || result.certificateNumber || '-')}</td>
-                                        <td className="border border-slate-900 p-1">
-                                            {/* Space for signature */}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                    {groupedResults.length === 0 ? (
+                        <div className="border border-slate-300 bg-slate-50 p-10 text-center text-sm font-bold text-slate-500 rounded-lg">No certificate records found for the selected filters.</div>
+                    ) : (
+                        groupedResults.map((group, gIdx) => (
+                            <div key={group.id || gIdx} className="mb-8 break-inside-avoid">
+                                {/* Course Header */}
+                                <div className="flex justify-between items-center border border-slate-900 bg-slate-100 p-1.5 mb-0">
+                                    <h4 className="text-sm font-black text-blue-800 uppercase">
+                                        {group.name} {group.shortName ? `(${group.shortName})` : ''}
+                                    </h4>
+                                    <div className="text-[10px] font-bold text-slate-700">
+                                        Total Students: {group.results.length}
+                                    </div>
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                    <table className="w-full border-collapse border border-slate-900 text-[9px] font-bold text-slate-900">
+                                        <thead>
+                                            <tr className="bg-slate-50">
+                                                <th className="w-8 border border-slate-900 p-1 text-center">Sr.</th>
+                                                <th className="w-24 border border-slate-900 p-1 text-center">REG.NO.</th>
+                                                <th className="border border-slate-900 p-1 text-left min-w-[150px]">STUDENTS NAME</th>
+                                                <th className="w-20 border border-slate-900 p-1 text-center">COURSE</th>
+                                                <th className="w-28 border border-slate-900 p-1 text-center">SR.NO. OF ST.O.M</th>
+                                                <th className="w-28 border border-slate-900 p-1 text-center">SR.NO. OF CERT.</th>
+                                                <th className="w-44 border border-slate-900 p-1 text-center">STUDENT / GARDIUN SIGN.</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {group.results.map((result, index) => (
+                                                <tr key={result._id} style={{ height: '9mm' }}>
+                                                    <td className="border border-slate-900 p-1 text-center">{index + 1}</td>
+                                                    <td className="border border-slate-900 p-1 text-center font-mono">{result.student?.regNo || '-'}</td>
+                                                    <td className="border border-slate-900 p-1 text-left uppercase whitespace-nowrap">{studentName(result.student)}</td>
+                                                    <td className="border border-slate-900 p-1 text-center uppercase">{result.course?.shortName || result.course?.name || '-'}</td>
+                                                    <td className="border border-slate-900 p-1 text-center uppercase">{result.somNumber || '-'}</td>
+                                                    <td className="border border-slate-900 p-1 text-center uppercase">{result.csrNumber || result.certificateNumber || '-'}</td>
+                                                    <td className="border border-slate-900 p-1">
+                                                        {/* Space for signature */}
+                                                    </td>
+                                                </tr>
+                                            ))}
+
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        ))
+                    )}
 
                     {/* Footer Section */}
                     <div className="mt-10 flex items-end justify-between px-4">
@@ -262,12 +287,11 @@ const CertificateIssueRegister = () => {
                     .print-container {
                         border: 0 !important;
                         box-shadow: none !important;
-                        padding: 4mm 6mm !important;
-                        width: 210mm;
-                        min-height: 297mm;
+                        padding: 4mm !important;
+                        width: 297mm;
                     }
                     @page { 
-                        size: A4 portrait; 
+                        size: A4 landscape; 
                         margin: 0; 
                     }
                 }

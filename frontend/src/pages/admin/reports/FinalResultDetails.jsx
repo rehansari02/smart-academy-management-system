@@ -342,9 +342,7 @@ const FinalResultDetails = () => {
                         <img src={logo} alt="Institute Logo" className="h-14 w-auto object-contain" />
                         <div className="text-center flex-1 mx-4">
                             <h2 className="text-2xl font-black text-blue-800 uppercase tracking-tighter">Final Examination {filters.examName === 'All' ? moment().format('MMMM - YYYY') : filters.examName}</h2>
-                            <p className="text-[10px] font-bold text-slate-600 uppercase mt-1">
-                                (Cat 'Smart', Cat, A.D.C.A., C.C.A., M.C., C.T.D.P., C.A.B.T., C.D.P., D.F., C.T.D., T.D.)
-                            </p>
+
                         </div>
                         <div className="text-right text-[10px] font-bold text-slate-800">
                             <div>Date : <span className="ml-2 border-b border-slate-800 px-4">{moment().format('DD-MMM-YY')}</span></div>

@@ -396,9 +396,9 @@ const ReferenceIncentive = () => {
                       color="emerald"
                     />
                     <SummaryCard
-                      icon={<DollarSign size={20} className="text-blue-500" />}
-                      label="Total Revenue"
-                      value={formatAmount(globalSummary.totalFees)}
+                      icon={<TrendingUp size={20} className="text-blue-500" />}
+                      label="Total Incentive"
+                      value={formatAmount(globalSummary.totalIncentive)}
                       color="blue"
                     />
                     <SummaryCard
@@ -532,9 +532,9 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
     [monthlyTrend]
   );
 
-  const feeChartData = useMemo(() => [
-    { name: 'Paid', value: summary.totalPaid || 0 },
-    { name: 'Pending', value: Math.max(0, (summary.totalFees || 0) - (summary.totalPaid || 0)) }
+  const incentiveChartData = useMemo(() => [
+    { name: 'Paid', value: summary.paidIncentive || 0 },
+    { name: 'Pending', value: summary.pendingIncentive || 0 }
   ], [summary]);
 
   return (
@@ -561,7 +561,7 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatBox label="Students" value={summary.studentCount} />
           <StatBox label="Admitted" value={summary.admissionCount} className="text-emerald-300" />
-          <StatBox label="Total Fees" value={formatAmount(summary.totalFees)} />
+          <StatBox label="Total Rev." value={formatAmount(summary.totalFees)} />
           <StatBox label="Incentive" value={formatAmount(summary.totalIncentive)} className="text-amber-300" />
         </div>
       </div>
@@ -589,13 +589,13 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
           )}
         </ChartPanel>
 
-        <ChartPanel title="Fee Breakdown" subtitle="Paid vs Pending fees">
-          {feeChartData[0].value > 0 || feeChartData[1].value > 0 ? (
+        <ChartPanel title="Incentive Breakdown" subtitle="Paid vs Pending incentives">
+          {incentiveChartData[0].value > 0 || incentiveChartData[1].value > 0 ? (
             <div className="flex flex-col items-center">
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
                   <Pie
-                    data={feeChartData}
+                    data={incentiveChartData}
                     cx="50%"
                     cy="50%"
                     innerRadius={60}
@@ -603,7 +603,7 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
                     dataKey="value"
                     paddingAngle={3}
                   >
-                    {feeChartData.map((entry, index) => (
+                    {incentiveChartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={index === 0 ? '#10b981' : '#f59e0b'} />
                     ))}
                   </Pie>
@@ -621,16 +621,16 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
               </ResponsiveContainer>
               <div className="mt-2 grid w-full max-w-xs grid-cols-2 gap-3 text-center text-xs font-black">
                 <div className="rounded-xl bg-emerald-50 p-2 text-emerald-700">
-                  Paid: {formatAmount(summary.totalPaid)}
+                  Paid: {formatAmount(summary.paidIncentive)}
                 </div>
                 <div className="rounded-xl bg-amber-50 p-2 text-amber-700">
-                  Pending: {formatAmount(Math.max(0, (summary.totalFees || 0) - (summary.totalPaid || 0)))}
+                  Pending: {formatAmount(summary.pendingIncentive)}
                 </div>
               </div>
             </div>
           ) : (
             <div className="flex h-[260px] items-center justify-center rounded-xl bg-slate-50 text-sm font-semibold text-slate-400">
-              No fee data available
+              No incentive data available
             </div>
           )}
         </ChartPanel>
@@ -698,7 +698,6 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
                 <th className="p-3 text-left font-black">Student</th>
                 <th className="p-3 text-left font-black">Course</th>
                 <th className="p-3 text-left font-black">Commission</th>
-                <th className="p-3 text-right font-black">Total Fees</th>
                 <th className="p-3 text-right font-black">Incentive</th>
                 <th className="p-3 text-center font-black">Status</th>
                 <th className="w-24 p-3 text-center font-black">Action</th>
@@ -739,12 +738,11 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
                         : 'fixed per student'}
                     </div>
                   </td>
-                  <td className="p-3 text-right font-bold text-slate-700">{formatAmount(s.totalFees)}</td>
                   <td className="p-3 text-right">
                     <div className="font-black text-indigo-600">{formatAmount(s.incentive)}</div>
                     <div className="text-[10px] font-semibold text-slate-400">
                       {s.course?.commissionType === 'Percentage'
-                        ? `${s.course.commission}% × ${Number(s.totalFees || 0).toLocaleString('en-IN')}`
+                        ? `${s.course.commission}% of fees`
                         : `₹${Number(s.course?.commission || 0).toLocaleString('en-IN')} per student`}
                     </div>
                   </td>
@@ -768,7 +766,7 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
                   </td>
                 </tr>
               )) : (
-                <tr><td colSpan={9} className="p-8 text-center font-semibold text-slate-400">No students found.</td></tr>
+                <tr><td colSpan={8} className="p-8 text-center font-semibold text-slate-400">No students found.</td></tr>
               )}
             </tbody>
           </table>
@@ -790,7 +788,6 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div><span className="font-semibold text-slate-500">Course:</span> <span className="text-slate-700">{s.course?.name || '-'}</span></div>
-                <div><span className="font-semibold text-slate-500">Fees:</span> <span className="font-bold text-slate-700">{formatAmount(s.totalFees)}</span></div>
                 <div><span className="font-semibold text-slate-500">Incentive:</span> <span className="font-black text-indigo-600">{formatAmount(s.incentive)}</span></div>
                 <div className="text-right">
                   <button

@@ -27,7 +27,8 @@ export const MENU_CONFIG = [
       { title: 'Material', path: '/master/material' },
       { title: 'Free Learning', path: '/master/free-learning' },
       { title: 'Manage News', path: '/master/manage-news' },
-      { title: 'Topper Result', path: '/master/manage-toppers' }
+      { title: 'Topper Result', path: '/master/manage-toppers' },
+      { title: 'Our Team', path: '/master/manage-team' }
     ]
   },
   {
@@ -147,7 +148,7 @@ export const MENU_CONFIG = [
       { title: 'Cloudinary Management', path: '/utility/cloudinary-manager' },
       { title: 'SMS Station', path: '/utility/sms-station' },
       { title: 'Complain Box', path: '/utility/complains' },
-      { title: 'Downloads', path: '/utility/downloads' },
+      // { title: 'Downloads', path: '/utility/downloads' },
     ]
   }
 ];
@@ -189,6 +190,18 @@ export const getMenuSections = () => {
             }
         }
     });
+
+    // Add standalone pages that aren't in the menu navigation but need user rights
+    sections['Dashboard'] = ['Dashboard'];
+    
+    // Add Reference Incentive to the Home section (or create if not exists)
+    if (sections['Home']) {
+        if (!sections['Home'].includes('Reference Incentive')) {
+            sections['Home'].push('Reference Incentive');
+        }
+    } else {
+        sections['Home'] = ['Reference Incentive'];
+    }
     
     return sections;
 };

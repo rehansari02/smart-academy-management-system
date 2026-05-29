@@ -37,6 +37,7 @@ const OnlineAdmission = lazy(() => import("./pages/user/OnlineAdmission"));
 const TermsAndConditions = lazy(() => import("./pages/user/TermsAndConditions"));
 const VerifyStudent = lazy(() => import("./pages/user/VerifyStudent"));
 const PublicResultView = lazy(() => import("./pages/user/PublicResultView"));
+const OurTeamPage = lazy(() => import("./pages/user/OurTeamPage"));
 
 // Student Pages
 const StudentHome = lazy(() => import("./pages/student/StudentHome"));
@@ -83,6 +84,7 @@ const BranchMaster = lazy(() => import("./pages/admin/master/BranchMaster"));
 const Material = lazy(() => import("./pages/admin/master/Material"));
 const FreeLearning = lazy(() => import("./pages/admin/master/FreeLearning"));
 const ReferenceIncentive = lazy(() => import("./pages/admin/master/ReferenceIncentive"));
+const ManageTeam = lazy(() => import("./pages/admin/master/ManageTeam"));
 const CloudinaryManager = lazy(() => import("./pages/admin/utility/CloudinaryManager"));
 const LocationMaster = lazy(() => import("./pages/admin/utility/LocationMaster"));
 const SmsStation = lazy(() => import("./pages/admin/utility/SmsStation"));
@@ -406,6 +408,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <FreeLearning />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/manage-team"
+                element={
+                  <PrivateRoute>
+                    <ManageTeam />
                   </PrivateRoute>
                 }
               />
@@ -828,6 +838,7 @@ function App() {
                 />
                 <Route path="/facilities" element={<FacilitiesPage />} />
                 <Route path="/gallery" element={<GalleryPage />} />
+                <Route path="/our-team" element={<OurTeamPage />} />
                 <Route path="/franchise" element={<FranchisePage />} />
                 <Route path="/contact" element={<ContactPage />} />
                 <Route path="/blog" element={<BlogPage />} />

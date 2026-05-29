@@ -147,6 +147,7 @@ app.use("/api/sms", require("./routes/smsRoutes")); // SMS Routes
 app.use("/api/complains", require("./routes/complainRoutes")); // Complain Routes
 app.use("/api/contact", require("./routes/contactRoutes")); // Contact Routes
 app.use("/api/admin-dashboard", require("./routes/adminDashboardRoutes")); // Admin Dashboard
+app.use("/api/team", require("./routes/teamRoutes")); // Team Routes
 
 // Error Handler
 app.use(errorHandler);

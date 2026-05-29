@@ -73,6 +73,7 @@ const PublicNavbar = () => {
       ]
     },
     { name: 'Gallery', path: '/gallery' },
+    { name: 'Our Team', path: '/our-team' },
     { name: 'Franchise', path: '/franchise' },
     { name: 'Contact', path: '/contact' },
     { name: 'Blog', path: '/blog' },

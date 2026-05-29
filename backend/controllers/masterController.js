@@ -278,6 +278,44 @@ const createExam = asyncHandler(async (req, res) => {
     res.status(201).json(exam);
 });
 
+// @desc    Update Exam Name
+// @route   PUT /api/master/exam-name/:id
+const updateExam = asyncHandler(async (req, res) => {
+    const { name } = req.body;
+    const exam = await Exam.findById(req.params.id);
+    if (!exam) {
+        res.status(404);
+        throw new Error('Exam name not found');
+    }
+    if (name) {
+        const exists = await Exam.findOne({
+            _id: { $ne: req.params.id },
+            name: { $regex: new RegExp(`^${name.trim()}$`, 'i') },
+            isDeleted: false
+        });
+        if (exists) {
+            res.status(400);
+            throw new Error('Exam name already exists');
+        }
+        exam.name = name.trim();
+    }
+    const updated = await exam.save();
+    res.json(updated);
+});
+
+// @desc    Delete Exam Name
+// @route   DELETE /api/master/exam-name/:id
+const deleteExam = asyncHandler(async (req, res) => {
+    const exam = await Exam.findById(req.params.id);
+    if (!exam) {
+        res.status(404);
+        throw new Error('Exam name not found');
+    }
+    exam.isDeleted = true;
+    await exam.save();
+    res.json({ id: req.params.id, message: 'Exam Name Deleted Successfully' });
+});
+
 module.exports = { 
     getCourses, createCourse, updateCourse, deleteCourse, 
     getBatches, createBatch, updateBatch, deleteBatch,
@@ -285,5 +323,6 @@ module.exports = {
     createEmployee, getEmployees,
     getReferences, createReference,
     getEducations, createEducation,
-    getExams, createExam
+    getExams, createExam,
+    updateExam, deleteExam
 };
