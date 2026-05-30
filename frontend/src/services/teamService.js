@@ -36,6 +36,12 @@ const teamService = {
     deleteTeamMember: async (id) => {
         const response = await axios.delete(`${API_URL}/${id}`, { withCredentials: true });
         return response.data;
+    },
+
+    // Update sort order (batch)
+    updateSortOrder: async (members) => {
+        const response = await axios.put(`${API_URL}/sort-order`, { members }, { withCredentials: true });
+        return response.data;
     }
 };
 

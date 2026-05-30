@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Users, MapPin, Briefcase, Clock, BookOpen, ChevronDown, Search } from 'lucide-react';
+import { Users, Briefcase, Clock, BookOpen, Search } from 'lucide-react';
 import teamService from '../../services/teamService';
 import axios from 'axios';
 
@@ -76,26 +76,37 @@ const OurTeamPage = () => {
             </div>
 
             <div className="container mx-auto px-4 py-8">
-                {/* Filters */}
-                <div className="flex flex-col md:flex-row gap-4 mb-10 max-w-4xl mx-auto">
-                    {/* Branch Filter */}
-                    <div className="flex-1 relative">
-                        <MapPin size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <select
-                            value={selectedBranch}
-                            onChange={(e) => setSelectedBranch(e.target.value)}
-                            className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none appearance-none shadow-sm"
+                {/* Branch Tab Navigation & Search */}
+                <div className="max-w-6xl mx-auto mb-10">
+                    {/* Branch Tabs */}
+                    <div className="flex flex-wrap items-center gap-2 mb-6">
+                        <button
+                            onClick={() => setSelectedBranch('all')}
+                            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 ${
+                                selectedBranch === 'all'
+                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800'
+                            }`}
                         >
-                            <option value="all">All Branches</option>
-                            {branches.map(b => (
-                                <option key={b._id} value={b._id}>{b.name}</option>
-                            ))}
-                        </select>
-                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                            All
+                        </button>
+                        {branches.map(b => (
+                            <button
+                                key={b._id}
+                                onClick={() => setSelectedBranch(b._id)}
+                                className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 ${
+                                    selectedBranch === b._id
+                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800'
+                                }`}
+                            >
+                                {b.name}
+                            </button>
+                        ))}
                     </div>
 
                     {/* Search */}
-                    <div className="flex-1 relative">
+                    <div className="relative max-w-md">
                         <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
@@ -129,16 +140,6 @@ const OurTeamPage = () => {
                                 viewport={{ once: true }}
                                 transition={{ duration: 0.5 }}
                             >
-                                <div className="flex items-center gap-3 mb-8 pb-4 border-b-2 border-indigo-100">
-                                    <div className="p-2.5 bg-indigo-50 rounded-xl">
-                                        <MapPin size={22} className="text-indigo-600" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-2xl md:text-3xl font-black text-gray-900">{branch.name}</h2>
-                                        <p className="text-sm text-gray-500 font-medium">{members.length} Teacher{members.length > 1 ? 's' : ''}</p>
-                                    </div>
-                                </div>
-
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                     {members.map((member, idx) => (
                                         <TeamMemberCard key={member._id} member={member} index={idx} />
@@ -187,12 +188,6 @@ const TeamMemberCard = ({ member, index }) => {
                         </div>
                     </div>
                 )}
-                {/* Branch badge overlay */}
-                <div className="absolute top-3 left-3">
-                    <span className="px-3 py-1 bg-white/90 backdrop-blur-sm text-indigo-700 text-[10px] font-black uppercase tracking-wider rounded-full shadow-sm border border-indigo-100">
-                        {member.branch?.name || 'Main Branch'}
-                    </span>
-                </div>
             </div>
 
             {/* Info */}

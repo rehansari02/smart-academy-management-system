@@ -450,7 +450,7 @@ const PublicLayout = () => {
         href={whatsappLink}
         target="_blank"
         rel="noreferrer"
-        className="fixed bottom-5 right-5 z-[60] flex items-center justify-center rounded-full bg-[#25D366] p-3 text-white shadow-lg shadow-green-900/20 transition-transform hover:-translate-y-0.5 hover:shadow-xl"
+        className="fixed bottom-5 right-5 z-[60] flex items-center justify-center rounded-full bg-[#25D366] p-3 text-white shadow-lg shadow-green-900/20 animate-whatsapp-pulse"
         aria-label="Chat on WhatsApp"
         title="Chat on WhatsApp"
       >

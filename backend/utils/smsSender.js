@@ -35,10 +35,10 @@ const sendSMS = async (mobileNumber, message, category = 'General') => {
 
         // Check specific category
         let isCategoryEnabled = true;
-        if (category === 'Admission') isCategoryEnabled = setting.isAdmissionEnabled;
-        else if (category === 'Fees') isCategoryEnabled = setting.isFeesEnabled;
-        else if (category === 'Attendance') isCategoryEnabled = setting.isAttendanceEnabled;
-        else if (category === 'Inquiry') isCategoryEnabled = setting.isInquiryEnabled;
+        if (category === 'Admission') isCategoryEnabled = setting.isAdmissionEnabled ?? true;
+        else if (category === 'Fees') isCategoryEnabled = setting.isFeesEnabled ?? true;
+        else if (category === 'Attendance') isCategoryEnabled = setting.isAttendanceEnabled ?? true;
+        else if (category === 'Inquiry') isCategoryEnabled = setting.isInquiryEnabled ?? true;
 
         if (!isCategoryEnabled) {
             console.log(`SMS Skipped: SMS sending is disabled for category: ${category}`);

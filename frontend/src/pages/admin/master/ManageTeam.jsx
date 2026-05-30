@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Plus, Search, Edit, Trash2, X, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
+import { Users, Plus, Search, Edit, Trash2, X, Image as ImageIcon, Eye, EyeOff, ArrowUp, ArrowDown } from 'lucide-react';
 import teamService from '../../../services/teamService';
 import { toast } from 'react-toastify';
 import Cropper from 'react-easy-crop';
@@ -14,6 +14,7 @@ const ManageTeam = () => {
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedBranchFilter, setSelectedBranchFilter] = useState('');
 
     // Modal & Form
     const [showModal, setShowModal] = useState(false);
@@ -114,12 +115,21 @@ const ManageTeam = () => {
 
     const handleAddNew = () => {
         setEditMode(false);
+        // Auto-calculate sort order for the currently selected branch
+        const branchMembers = membersList.filter(m => {
+            const bId = typeof m.branch === 'object' ? m.branch?._id : m.branch;
+            return bId === selectedBranchFilter;
+        });
+        const nextSortOrder = branchMembers.length > 0
+            ? Math.max(...branchMembers.map(m => m.sortOrder || 0)) + 1
+            : 1;
         setFormData({
             name: '',
-            branch: '',
+            branch: selectedBranchFilter || '',
             profession: '',
             experience: '',
             subjects: '',
+            sortOrder: nextSortOrder,
             isActive: true
         });
         setImageFile(null);
@@ -225,11 +235,95 @@ const ManageTeam = () => {
         return branch;
     };
 
-    const filteredMembers = membersList.filter(m =>
-        m.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        m.profession?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        getBranchName(m.branch)?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Get members of the currently selected branch only
+    const currentBranchMembers = membersList
+        .filter(m => {
+            const branchId = typeof m.branch === 'object' ? m.branch?._id : m.branch;
+            return !selectedBranchFilter || branchId === selectedBranchFilter;
+        })
+        .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+    const filteredMembers = currentBranchMembers
+        .filter(m =>
+            !searchTerm ||
+            m.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            m.profession?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            getBranchName(m.branch)?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+
+    // All members grouped by branch (for "All Branches" view)
+    const groupedByBranch = branches.reduce((acc, branch) => {
+        const branchMembers = membersList
+            .filter(m => {
+                const bId = typeof m.branch === 'object' ? m.branch?._id : m.branch;
+                return bId === branch._id;
+            })
+            .filter(m =>
+                !searchTerm ||
+                m.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                m.profession?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                getBranchName(m.branch)?.toLowerCase().includes(searchTerm.toLowerCase())
+            )
+            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        if (branchMembers.length > 0) {
+            acc.push({ branch, members: branchMembers });
+        }
+        return acc;
+    }, []);
+
+    const handleMoveUp = async (index) => {
+        if (!selectedBranchFilter || index === 0) return;
+        const updated = [...filteredMembers];
+        const temp = updated[index - 1];
+        updated[index - 1] = updated[index];
+        updated[index] = temp;
+
+        const batch = updated.map((m, i) => ({
+            _id: m._id,
+            sortOrder: i + 1
+        }));
+
+        try {
+            await teamService.updateSortOrder(batch);
+            fetchMembers();
+        } catch (error) {
+            toast.error('Failed to update sort order');
+        }
+    };
+
+    const handleMoveDown = async (index) => {
+        if (!selectedBranchFilter || index === filteredMembers.length - 1) return;
+        const updated = [...filteredMembers];
+        const temp = updated[index + 1];
+        updated[index + 1] = updated[index];
+        updated[index] = temp;
+
+        const batch = updated.map((m, i) => ({
+            _id: m._id,
+            sortOrder: i + 1
+        }));
+
+        try {
+            await teamService.updateSortOrder(batch);
+            fetchMembers();
+        } catch (error) {
+            toast.error('Failed to update sort order');
+        }
+    };
+
+    const handleSortOrderEdit = async (memberId, newSortOrder) => {
+        const parsed = parseInt(newSortOrder, 10);
+        if (isNaN(parsed) || parsed < 1) return;
+
+        try {
+            const formData = new FormData();
+            formData.append('sortOrder', parsed);
+            await teamService.updateTeamMember(memberId, formData);
+            fetchMembers();
+        } catch (error) {
+            toast.error('Failed to update sort order');
+        }
+    };
 
     return (
         <div className="container mx-auto p-4 max-w-7xl">
@@ -252,9 +346,9 @@ const ManageTeam = () => {
                     </button>
                 </div>
 
-                {/* Search */}
-                <div className="mb-6 max-w-md">
-                    <div className="relative">
+                {/* Filters */}
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+                    <div className="relative md:max-w-md flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input
                             type="text"
@@ -264,6 +358,18 @@ const ManageTeam = () => {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
+                    <div className="md:w-64">
+                        <select
+                            value={selectedBranchFilter}
+                            onChange={(e) => setSelectedBranchFilter(e.target.value)}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-sm"
+                        >
+                            <option value="">All Branches</option>
+                            {branches.map(b => (
+                                <option key={b._id} value={b._id}>{b.name}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
 
                 {/* Table */}
@@ -271,6 +377,7 @@ const ManageTeam = () => {
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-gray-100 text-left text-sm text-gray-600 uppercase tracking-wider">
+                                <th className="p-3 border-b w-24">Sort</th>
                                 <th className="p-3 border-b">Sr No</th>
                                 <th className="p-3 border-b">Photo</th>
                                 <th className="p-3 border-b">Name</th>
@@ -284,12 +391,107 @@ const ManageTeam = () => {
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan="9" className="text-center p-8 text-gray-500">Loading team members...</td></tr>
+                                <tr><td colSpan="10" className="text-center p-8 text-gray-500">Loading team members...</td></tr>
                             ) : filteredMembers.length === 0 ? (
-                                <tr><td colSpan="9" className="text-center p-8 text-gray-500">No team members found.</td></tr>
+                                <tr><td colSpan="10" className="text-center p-8 text-gray-500">No team members found.</td></tr>
+                            ) : !selectedBranchFilter ? (
+                                /* Grouped by branch view for "All Branches" */
+                                groupedByBranch.map(({ branch, members }) => (
+                                    <React.Fragment key={branch._id}>
+                                        <tr className="bg-indigo-50">
+                                            <td colSpan="10" className="px-3 py-2 text-xs font-bold text-indigo-700 uppercase tracking-wider">
+                                                {branch.name} — {members.length} Teacher{members.length > 1 ? 's' : ''}
+                                            </td>
+                                        </tr>
+                                        {members.map((member, idx) => (
+                                            <tr key={member._id} className="hover:bg-gray-50 text-sm border-b transition-colors">
+                                                <td className="p-3 text-center text-gray-300">
+                                                    <span className="text-xs">{member.sortOrder || idx + 1}</span>
+                                                </td>
+                                                <td className="p-3 text-gray-500 font-medium">{idx + 1}</td>
+                                                <td className="p-3">
+                                                    <div className="w-12 h-12 rounded-full overflow-hidden border shadow-sm bg-gray-100">
+                                                        <img
+                                                            src={member.image || 'https://via.placeholder.com/150'}
+                                                            alt={member.name}
+                                                            className="w-full h-full object-cover"
+                                                            onError={(e) => { e.target.src = 'https://via.placeholder.com/150'; }}
+                                                        />
+                                                    </div>
+                                                </td>
+                                                <td className="p-3 font-semibold text-gray-800">{member.name}</td>
+                                                <td className="p-3">
+                                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-bold">
+                                                        {getBranchName(member.branch)}
+                                                    </span>
+                                                </td>
+                                                <td className="p-3 text-gray-600">{member.profession}</td>
+                                                <td className="p-3 text-gray-600">{member.experience}</td>
+                                                <td className="p-3">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {Array.isArray(member.subjects) && member.subjects.length > 0 ? (
+                                                            member.subjects.map((sub, i) => (
+                                                                <span key={i} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-medium">{sub}</span>
+                                                            ))
+                                                        ) : (
+                                                            <span className="text-gray-400 text-xs">-</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="p-3">
+                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${member.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                        {member.isActive ? 'Active' : 'Inactive'}
+                                                    </span>
+                                                </td>
+                                                <td className="p-3 text-center">
+                                                    <div className="flex justify-center gap-2">
+                                                        <button onClick={() => handleToggleActive(member)} className={`p-1 ${member.isActive ? 'text-green-500 hover:text-green-700' : 'text-gray-400 hover:text-gray-600'}`} title={member.isActive ? 'Deactivate' : 'Activate'}>
+                                                            {member.isActive ? <Eye size={16} /> : <EyeOff size={16} />}
+                                                        </button>
+                                                        <button onClick={() => handleEdit(member)} className="text-blue-500 hover:text-blue-700 p-1" title="Edit">
+                                                            <Edit size={16} />
+                                                        </button>
+                                                        <button onClick={() => handleDelete(member._id)} className="text-red-500 hover:text-red-700 p-1" title="Delete">
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </React.Fragment>
+                                ))
                             ) : (
+                                /* Single branch view with reorder controls */
                                 filteredMembers.map((member, index) => (
                                     <tr key={member._id} className="hover:bg-gray-50 text-sm border-b transition-colors">
+                                        <td className="p-3">
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={() => handleMoveUp(index)}
+                                                    disabled={searchTerm !== '' || index === 0}
+                                                    className={`p-1 rounded ${searchTerm !== '' || index === 0 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-indigo-600 hover:bg-indigo-50'}`}
+                                                    title={searchTerm ? "Clear search to reorder" : "Move Up"}
+                                                >
+                                                    <ArrowUp size={14} />
+                                                </button>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    defaultValue={member.sortOrder || index + 1}
+                                                    onBlur={(e) => handleSortOrderEdit(member._id, e.target.value)}
+                                                    className="w-10 text-center text-xs font-bold text-gray-500 border border-gray-200 rounded bg-transparent focus:bg-white focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none"
+                                                    title="Edit sort order number"
+                                                />
+                                                <button
+                                                    onClick={() => handleMoveDown(index)}
+                                                    disabled={searchTerm !== '' || index === filteredMembers.length - 1}
+                                                    className={`p-1 rounded ${searchTerm !== '' || index === filteredMembers.length - 1 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-indigo-600 hover:bg-indigo-50'}`}
+                                                    title={searchTerm ? "Clear search to reorder" : "Move Down"}
+                                                >
+                                                    <ArrowDown size={14} />
+                                                </button>
+                                            </div>
+                                        </td>
                                         <td className="p-3 text-gray-500 font-medium">{index + 1}</td>
                                         <td className="p-3">
                                             <div className="w-12 h-12 rounded-full overflow-hidden border shadow-sm bg-gray-100">
@@ -313,9 +515,7 @@ const ManageTeam = () => {
                                             <div className="flex flex-wrap gap-1">
                                                 {Array.isArray(member.subjects) && member.subjects.length > 0 ? (
                                                     member.subjects.map((sub, i) => (
-                                                        <span key={i} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-medium">
-                                                            {sub}
-                                                        </span>
+                                                        <span key={i} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-medium">{sub}</span>
                                                     ))
                                                 ) : (
                                                     <span className="text-gray-400 text-xs">-</span>

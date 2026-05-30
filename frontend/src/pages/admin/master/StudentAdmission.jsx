@@ -1638,7 +1638,8 @@ const StudentAdmission = () => {
                       No Courses Found
                     </p>
                   ) : (
-                    <table className="w-full text-sm">
+                    <div>
+                    <table className="hidden md:table w-full text-sm">
                       <thead className="bg-gray-50 text-left sticky top-0">
                         <tr>
                           <th className="p-2">Name</th>
@@ -1675,6 +1676,35 @@ const StudentAdmission = () => {
                         ))}
                       </tbody>
                     </table>
+                    <div className="md:hidden space-y-2 p-2">
+                      {courses.map((c) => {
+                        const isSelected = watchCourseSelection === c._id;
+                        return (
+                          <div
+                            key={c._id}
+                            onClick={() => setValue("selectedCourseId", c._id)}
+                            className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition ${
+                              isSelected
+                                ? "border-blue-500 bg-blue-50 shadow-sm"
+                                : "border-gray-200 bg-white hover:border-blue-300"
+                            }`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-800 text-sm truncate">{c.name}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                ₹{c.courseFees} • {c.duration} {c.durationType}
+                              </p>
+                            </div>
+                            <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center ml-2 ${
+                              isSelected ? "border-blue-600 bg-blue-600" : "border-gray-300"
+                            }`}>
+                              {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1688,7 +1718,7 @@ const StudentAdmission = () => {
                     <div className="col-span-1 md:col-span-4 mb-2">
                       <label className="label mb-2">Select Batch <span className="text-red-500">*</span></label>
                       <div className="border rounded-lg overflow-hidden max-h-60 overflow-y-auto bg-white shadow-sm">
-                        <table className="w-full text-sm">
+                        <table className="hidden md:table w-full text-sm">
                           <thead className="bg-gray-100 text-left sticky top-0 border-b">
                             <tr>
                               <th className="p-3 w-12 text-center">#</th>
@@ -1779,6 +1809,67 @@ const StudentAdmission = () => {
                           </tbody>
                         </table>
                       </div>
+                      <div className="md:hidden space-y-2 mt-2">
+                        {batches
+                          .filter(
+                            (b) =>
+                              b.course === watchCourseSelection ||
+                              b.courses?.some(
+                                (c) => (c._id || c) === watchCourseSelection
+                              )
+                          )
+                          .map((b) => {
+                            const activeCount =
+                              b.courseCounts?.[watchCourseSelection] || 0;
+                            const isSelected =
+                              watchSelectedBatch === b.name;
+                            return (
+                              <div
+                                key={b._id}
+                                onClick={() =>
+                                  setValue("selectedBatch", b.name)
+                                }
+                                className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition ${
+                                  isSelected
+                                    ? "border-blue-500 bg-blue-50 shadow-sm"
+                                    : "border-gray-200 bg-white hover:border-blue-300"
+                                }`}
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold text-gray-800 text-sm">{b.name}</p>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    {b.startTime} - {b.endTime}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                                    activeCount > 0
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-gray-100 text-gray-500"
+                                  }`}>
+                                    {activeCount} students
+                                  </span>
+                                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                    isSelected ? "border-blue-600 bg-blue-600" : "border-gray-300"
+                                  }`}>
+                                    {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        {batches.filter(
+                          (b) =>
+                            b.course === watchCourseSelection ||
+                            b.courses?.some(
+                              (c) => (c._id || c) === watchCourseSelection
+                            )
+                        ).length === 0 && (
+                          <p className="p-4 text-center text-gray-500 text-sm">
+                            No batches available for this course.
+                          </p>
+                        )}
+                      </div>
                     </div>
 
                     {/* Start Date and Payment Plan - Now available in Edit Mode too */}
@@ -1812,7 +1903,7 @@ const StudentAdmission = () => {
                     {/* Document Verification Section */}
                     <div className="col-span-4 bg-purple-50 p-4 rounded border border-purple-200 mt-4">
                       <label className="label text-purple-800 mb-3 block">Document Verification Status</label>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
                           <input
                             type="checkbox"
@@ -1870,7 +1961,7 @@ const StudentAdmission = () => {
                   <div className="bg-slate-800 text-white p-3 font-bold text-sm">
                     C. Admission Preview
                   </div>
-                  <table className="w-full text-sm">
+                  <table className="hidden md:table w-full text-sm">
                     <thead className="bg-gray-100 border-b text-left">
                       <tr>
                         <th className="p-3">Sr.No</th>
@@ -1946,8 +2037,68 @@ const StudentAdmission = () => {
                       </tfoot>
                     )}
                   </table>
-                </div>
-              )}
+                    <div className="md:hidden divide-y divide-gray-100">
+                      {previewCourses.map((item, index) => (
+                        <div key={item.id} className="p-3 space-y-2">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-gray-800 text-sm">{item.courseName}</p>
+                              <p className="text-xs text-gray-500">{item.batch} | {item.batchTime}</p>
+                            </div>
+                            <span className="text-sm font-bold text-green-700 flex-shrink-0 ml-2">₹{item.fees}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                            <div>
+                              <span className="text-gray-400">Duration:</span> {courses.find(c => c._id === item.courseId)?.duration} {courses.find(c => c._id === item.courseId)?.durationType}
+                            </div>
+                            <div>
+                              <span className="text-gray-400">Registration:</span> {item.registrationFees !== undefined ? `₹${item.registrationFees}` : (item.emiConfig ? `₹${item.emiConfig.registrationFees}` : '-')}
+                            </div>
+                            <div>
+                              <span className="text-gray-400">Monthly:</span> {item.emiConfig ? `₹${item.emiConfig.monthlyInstallment} x ${item.emiConfig.months}` : '-'}
+                            </div>
+                            <div>
+                              <span className="text-gray-400">Start:</span> {item.startDate}
+                            </div>
+                          </div>
+                          {item.paymentType === "Monthly" && item.emiConfig && (
+                            <p className="text-xs text-yellow-700 bg-yellow-50 p-2 rounded">
+                              <strong>Monthly Breakdown:</strong> Total: ₹{item.fees} | Registration: ₹{item.emiConfig.registrationFees} | EMI: ₹{item.emiConfig.monthlyInstallment} x {item.emiConfig.months} Months
+                            </p>
+                          )}
+                          {!isUpdateMode && (
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setValue("selectedCourseId", item.courseId);
+                                  setValue("selectedBatch", item.batch);
+                                  setValue("batchStartDate", item.startDate);
+                                  setValue("paymentType", item.paymentType);
+                                  const newList = previewCourses.filter((_, i) => i !== index);
+                                  setPreviewCourses(newList);
+                                }}
+                                className="text-xs text-blue-600 font-semibold px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-50 flex items-center gap-1"
+                              >
+                                <Edit2 size={12} /> Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newList = previewCourses.filter((_, i) => i !== index);
+                                  setPreviewCourses(newList);
+                                }}
+                                className="text-xs text-red-600 font-semibold px-3 py-1.5 rounded border border-red-200 hover:bg-red-50 flex items-center gap-1"
+                              >
+                                <Trash2 size={12} /> Remove
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
               {/* Payment Option - Only show in Create Mode */}
               {!isUpdateMode && previewCourses.length > 0 && (

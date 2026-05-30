@@ -415,8 +415,8 @@ const FeeCollection = () => {
                                 {...register('amountPaid', { 
                                     required: true,
                                     validate: (value) => {
-                                        if (paymentSummary && Number(value) > paymentSummary.dueAmount) {
-                                            return `Exceeds Total Course Due (Max: ₹${paymentSummary.dueAmount})`;
+                                        if (paymentSummary && Number(value) > paymentSummary.outstandingAmount) {
+                                            return `Exceeds Current Outstanding (Max: ₹${paymentSummary.outstandingAmount?.toLocaleString('en-IN')})`;
                                         }
                                         return true;
                                     }
@@ -427,28 +427,32 @@ const FeeCollection = () => {
                             />
                             {errors.amountPaid && <p className="text-red-500 text-xs mt-1">{errors.amountPaid.message}</p>}
                              {paymentSummary && (
-                                <p className="text-xs text-red-500 mt-1 font-semibold flex flex-wrap gap-x-3">
-                                    <span>
-                                        Outstanding: {(() => {
-                                            const regEmi = (paymentSummary.upcomingEMI || 0) + (paymentSummary.pendingRegFees || 0);
-                                            const adm = paymentSummary.pendingAdmissionFees || 0;
-                                            if (regEmi > 0 && adm > 0) return `₹${regEmi.toLocaleString('en-IN')} + ${adm.toLocaleString('en-IN')}`;
-                                            if (regEmi > 0) return `₹${regEmi.toLocaleString('en-IN')}`;
-                                            if (adm > 0) return `₹${adm.toLocaleString('en-IN')}`;
-                                            return '₹0';
-                                        })()}
-                                    </span>
-                                    <span className="text-gray-300">|</span>
-                                    <span>
-                                        Total Due: {(() => {
-                                            const totalDue = paymentSummary.dueAmount || 0;
-                                            const pendingAdm = paymentSummary.pendingAdmissionFees || 0;
-                                            const pendingCourse = Math.max(0, totalDue - pendingAdm);
-                                            if (pendingCourse > 0 && pendingAdm > 0) return `₹${pendingCourse.toLocaleString('en-IN')} + ${pendingAdm.toLocaleString('en-IN')}`;
-                                            return `₹${totalDue.toLocaleString('en-IN')}`;
-                                        })()}
-                                    </span>
-                                </p>
+                                <div className="text-xs text-gray-600 mt-1 space-y-1 bg-blue-50 rounded p-2 border border-blue-100">
+                                    <div className="flex justify-between">
+                                        <span className="text-purple-700 font-semibold">Admission Fee:</span>
+                                        <span>₹{paymentSummary.admissionFee?.toLocaleString('en-IN')} / Paid: ₹{paymentSummary.admissionPaid?.toLocaleString('en-IN')} / <span className="text-red-500 font-semibold">Out: ₹{paymentSummary.admissionOutstanding?.toLocaleString('en-IN')}</span></span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-indigo-700 font-semibold">Registration Fee:</span>
+                                        <span>₹{paymentSummary.registrationFee?.toLocaleString('en-IN')} / Paid: ₹{paymentSummary.registrationPaid?.toLocaleString('en-IN')} / <span className="text-red-500 font-semibold">Out: ₹{paymentSummary.registrationOutstanding?.toLocaleString('en-IN')}</span></span>
+                                    </div>
+                                    {paymentSummary.feesMethod === 'Monthly' && (
+                                        <div className="flex justify-between">
+                                            <span className="text-blue-700 font-semibold">Installment:</span>
+                                            <span>Current: ₹{paymentSummary.currentInstallmentDue?.toLocaleString('en-IN')} / Prev Out: ₹{paymentSummary.previousOutstanding?.toLocaleString('en-IN')}</span>
+                                        </div>
+                                    )}
+                                    {paymentSummary.installmentPrepaid > 0 && (
+                                        <div className="flex justify-between text-green-700">
+                                            <span className="font-semibold">Advance / Credit:</span>
+                                            <span className="font-bold">-₹{paymentSummary.installmentPrepaid?.toLocaleString('en-IN')}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between border-t border-blue-200 pt-1 font-bold text-red-600">
+                                        <span>Total Due:</span>
+                                        <span>₹{paymentSummary.outstandingAmount?.toLocaleString('en-IN')}</span>
+                                    </div>
+                                </div>
                             )}                        </div>
                         {/* Payment Mode */}
                         <div>
@@ -659,7 +663,7 @@ const FeeCollection = () => {
                 {selectedStudent && paymentSummary && (
                     <div className="flex flex-col gap-6 animate-slideInRight">
                         
-                        {/* Section 1: Receive Detail Summary (Vertical Card) */}
+                        {/* Section 1: Fee Detail Summary (Comprehensive Card) */}
                         <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100">
                              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 border-b border-blue-100 flex items-center gap-2">
                                 <DollarSign className="text-purple-600"/> 
@@ -679,60 +683,96 @@ const FeeCollection = () => {
                                     </div>
                                 </div>
 
-                                <div className="text-center mb-6 w-full text-balance">
+                                <div className="text-center mb-4 w-full text-balance">
                                     <h3 className="text-xl font-bold text-gray-800 leading-tight">
                                         {selectedStudent.firstName} {selectedStudent.middleName ? `${selectedStudent.middleName} ` : ''}{selectedStudent.lastName}
                                     </h3>
                                     <p className="text-sm text-purple-600 font-medium mt-1">
                                         {selectedStudent.course?.name || 'N/A'}
                                     </p>
-                                    <div className="mt-2 text-[10px] text-gray-500 font-bold uppercase tracking-widest bg-gray-100 py-1 rounded">
-                                        Total Fees: ₹{paymentSummary.courseFee?.toLocaleString('en-IN')} + ₹{paymentSummary.admissionFee?.toLocaleString('en-IN')}
+                                     <div className="mt-2 text-[10px] text-gray-500 font-bold uppercase tracking-widest bg-gray-100 py-1 rounded">
+                                        Total Fees: ₹{paymentSummary.totalFees?.toLocaleString('en-IN')}
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3 w-full">
-                                    <div className="bg-green-50 p-3 rounded-lg border border-green-100 text-center">
-                                        <p className="text-[10px] text-green-600 uppercase font-bold tracking-wider">Received</p>
-                                        <p className="text-lg font-bold text-green-700">₹{paymentSummary.totalReceived?.toLocaleString('en-IN')}</p>
+                                {/* === FEE BREAKDOWN TABLE === */}
+                                <div className="w-full space-y-2 text-xs">
+                                    {/* Admission Fee Row */}
+                                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-bold text-purple-700">Admission Fee</span>
+                                            <span className="font-bold text-gray-800">₹{paymentSummary.admissionFee?.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between text-gray-600 mt-1">
+                                            <span>Paid: <span className="font-semibold text-green-600">₹{paymentSummary.admissionPaid?.toLocaleString('en-IN')}</span></span>
+                                            <span>Outstanding: <span className="font-semibold text-red-600">₹{paymentSummary.admissionOutstanding?.toLocaleString('en-IN')}</span></span>
+                                        </div>
                                     </div>
-                                    <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 text-center">
-                                        <p className="text-[10px] text-orange-600 uppercase font-bold tracking-wider">Total Due</p>
-                                        <p className="text-lg font-bold text-orange-700">
-                                            {(() => {
-                                                const totalDue = paymentSummary.dueAmount || 0;
-                                                const pendingAdm = paymentSummary.pendingAdmissionFees || 0;
-                                                const pendingCourse = Math.max(0, totalDue - pendingAdm);
-                                                
-                                                if (pendingCourse > 0 && pendingAdm > 0) {
-                                                    return `₹${pendingCourse.toLocaleString('en-IN')} + ${pendingAdm.toLocaleString('en-IN')}`;
-                                                }
-                                                return `₹${totalDue.toLocaleString('en-IN')}`;
-                                            })()}
-                                        </p>
+
+                                    {/* Registration Fee Row */}
+                                    <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-100">
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-bold text-indigo-700">Registration Fee</span>
+                                            <span className="font-bold text-gray-800">₹{paymentSummary.registrationFee?.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between text-gray-600 mt-1">
+                                            <span>Paid: <span className="font-semibold text-green-600">₹{paymentSummary.registrationPaid?.toLocaleString('en-IN')}</span></span>
+                                            <span>Outstanding: <span className="font-semibold text-red-600">₹{paymentSummary.registrationOutstanding?.toLocaleString('en-IN')}</span></span>
+                                        </div>
                                     </div>
-                                    <div className="bg-red-50 p-3 rounded-lg border border-red-100 text-center col-span-2">
-                                        <p className="text-[10px] text-red-600 uppercase font-bold tracking-wider">Current Outstanding</p>
-                                        <p className="text-2xl font-bold text-red-700">
-                                            {(() => {
-                                                const regEmi = (paymentSummary.upcomingEMI || 0) + (paymentSummary.pendingRegFees || 0);
-                                                const adm = paymentSummary.pendingAdmissionFees || 0;
-                                                
-                                                if (regEmi > 0 && adm > 0) {
-                                                    return `₹${regEmi.toLocaleString('en-IN')} + ${adm.toLocaleString('en-IN')}`;
-                                                } else if (regEmi > 0) {
-                                                    return `₹${regEmi.toLocaleString('en-IN')}`;
-                                                } else if (adm > 0) {
-                                                    return `₹${adm.toLocaleString('en-IN')}`;
-                                                }
-                                                return '₹0';
-                                            })()}
-                                        </p>
+
+                                    {/* Course Fee Breakdown */}
+                                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="font-bold text-blue-700">Course Fee</span>
+                                            <span className="font-bold text-gray-800">₹{paymentSummary.courseFee?.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between text-gray-600">
+                                            <span>Reg Fee: ₹{paymentSummary.registrationFee?.toLocaleString('en-IN')}</span>
+                                            <span>Remaining: <span className="font-semibold">₹{paymentSummary.remainingCourseFee?.toLocaleString('en-IN')}</span></span>
+                                        </div>
+                                        {paymentSummary.feesMethod === 'Monthly' && (
+                                            <>
+                                                <div className="border-t border-blue-200 mt-2 pt-2 space-y-1">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-blue-700 font-semibold">Current Installment Due:</span>
+                                                        <span className="font-bold text-blue-800">₹{paymentSummary.currentInstallmentDue?.toLocaleString('en-IN')}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-orange-700 font-semibold">Previous Outstanding:</span>
+                                                        <span className="font-bold text-orange-700">₹{paymentSummary.previousOutstanding?.toLocaleString('en-IN')}</span>
+                                                    </div>
+                                                    {paymentSummary.installmentPrepaid > 0 && (
+                                                        <div className="flex justify-between">
+                                                            <span className="text-green-700 font-semibold">Advance / Credit:</span>
+                                                            <span className="font-bold text-green-700">-₹{paymentSummary.installmentPrepaid?.toLocaleString('en-IN')}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {/* Summary Box */}
+                                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                        <div className="flex justify-between text-gray-600">
+                                            <span>Total Received:</span>
+                                            <span className="font-bold text-green-700">₹{paymentSummary.totalReceived?.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between mt-1">
+                                            <span>Total Due (All):</span>
+                                            <span className="font-bold text-orange-700">₹{paymentSummary.dueAmount?.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between mt-1 border-t border-gray-300 pt-1 text-sm">
+                                            <span className="font-bold text-red-700">Current Outstanding:</span>
+                                            <span className="font-bold text-red-700 text-lg">₹{paymentSummary.outstandingAmount?.toLocaleString('en-IN')}</span>
+                                        </div>
                                     </div>
                                 </div>
+
                                 <div className="bg-gray-50 p-2 rounded text-center w-full mt-3 text-xs text-gray-500 border border-gray-100">
-                                    Plan: {paymentSummary.feesMethod} <br/>
-                                    {paymentSummary.emiStructure}
+                                    Plan: {paymentSummary.feesMethod} 
+                                    {paymentSummary.emiStructure && <><br/>{paymentSummary.emiStructure}</>}
                                 </div>
                             </div>
                         </div>

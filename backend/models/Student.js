@@ -83,6 +83,7 @@ const studentSchema = new mongoose.Schema(
     pendingFees: { type: Number, default: 0 }, // CHANGED: Added default
     isAdmissionFeesPaid: { type: Boolean, default: false },
     admissionFeeAmount: { type: Number, default: 0 }, // Actual admission fee paid
+    registrationFeeAmount: { type: Number, default: 0 }, // Actual registration fee paid
 
     // Link to User Login
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", unique: true, sparse: true },

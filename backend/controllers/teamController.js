@@ -12,6 +12,12 @@ exports.createTeamMember = async (req, res) => {
 
         const parsedSubjects = subjects ? (Array.isArray(subjects) ? subjects : subjects.split(',').map(s => s.trim()).filter(Boolean)) : [];
 
+        // Auto-calculate next sortOrder for this branch
+        const lastMember = await TeamMember.findOne({ branch })
+            .sort({ sortOrder: -1 })
+            .select('sortOrder');
+        const nextSortOrder = (lastMember?.sortOrder || 0) + 1;
+
         const member = new TeamMember({
             name,
             image,
@@ -19,6 +25,7 @@ exports.createTeamMember = async (req, res) => {
             profession,
             experience,
             subjects: parsedSubjects,
+            sortOrder: nextSortOrder,
             isActive: isActive !== undefined ? isActive : true
         });
 
@@ -37,7 +44,7 @@ exports.getAllTeamMembers = async (req, res) => {
     try {
         const members = await TeamMember.find({ isDeleted: { $ne: true } })
             .populate('branch', 'name shortCode')
-            .sort({ createdAt: -1 });
+            .sort({ sortOrder: 1 });
         res.status(200).json(members);
     } catch (error) {
         console.error('Error fetching team members:', error);
@@ -54,7 +61,7 @@ exports.getPublicTeamMembers = async (req, res) => {
 
         const members = await TeamMember.find(filter)
             .populate('branch', 'name shortCode')
-            .sort({ createdAt: -1 });
+            .sort({ sortOrder: 1 });
         res.status(200).json(members);
     } catch (error) {
         console.error('Error fetching public team members:', error);
@@ -77,7 +84,7 @@ exports.getTeamMemberById = async (req, res) => {
 // Update Team Member
 exports.updateTeamMember = async (req, res) => {
     try {
-        const { name, branch, profession, experience, subjects, isActive } = req.body;
+        const { name, branch, profession, experience, subjects, isActive, sortOrder } = req.body;
         const updateData = { name, branch, profession, experience };
 
         if (req.file) {
@@ -90,6 +97,13 @@ exports.updateTeamMember = async (req, res) => {
 
         if (isActive !== undefined) {
             updateData.isActive = isActive === 'true' || isActive === true;
+        }
+
+        if (sortOrder !== undefined) {
+            const parsed = parseInt(sortOrder, 10);
+            if (!isNaN(parsed)) {
+                updateData.sortOrder = parsed;
+            }
         }
 
         const updated = await TeamMember.findByIdAndUpdate(
@@ -107,6 +121,7 @@ exports.updateTeamMember = async (req, res) => {
 };
 
 // Delete Team Member (Soft Delete)
+// Delete Team Member (Soft Delete)
 exports.deleteTeamMember = async (req, res) => {
     try {
         const deleted = await TeamMember.findByIdAndUpdate(
@@ -119,5 +134,28 @@ exports.deleteTeamMember = async (req, res) => {
     } catch (error) {
         console.error('Error deleting team member:', error);
         res.status(500).json({ message: 'Error deleting team member', error: error.message });
+    }
+};
+
+// Update Sort Order
+exports.updateSortOrder = async (req, res) => {
+    try {
+        const { members } = req.body;
+        if (!Array.isArray(members)) {
+            return res.status(400).json({ message: 'Members array is required' });
+        }
+
+        const ops = members.map((m, index) => ({
+            updateOne: {
+                filter: { _id: m._id },
+                update: { $set: { sortOrder: m.sortOrder || index + 1 } }
+            }
+        }));
+
+        await TeamMember.bulkWrite(ops);
+        res.status(200).json({ message: 'Sort order updated successfully' });
+    } catch (error) {
+        console.error('Error updating sort order:', error);
+        res.status(500).json({ message: 'Error updating sort order', error: error.message });
     }
 };

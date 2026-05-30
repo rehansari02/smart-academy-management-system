@@ -8,11 +8,15 @@ const {
     getPublicTeamMembers,
     getTeamMemberById,
     updateTeamMember,
-    deleteTeamMember
+    deleteTeamMember,
+    updateSortOrder
 } = require('../controllers/teamController');
 
 // Public route
 router.get('/public', getPublicTeamMembers);
+
+// Update sort order (batch)
+router.put('/sort-order', protect, updateSortOrder);
 
 // Protected admin routes
 router.route('/')

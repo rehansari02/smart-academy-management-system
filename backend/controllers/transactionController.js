@@ -128,16 +128,29 @@ const attachReceiptDisplayInfo = (receipts) => {
   }
 
   let installmentNumber = 0;
-  return receipts.map((receipt) => {
-    const role = receiptRole.get(receiptId(receipt)) || "installment";
-    const displayInstallmentNumber = role === "installment" ? ++installmentNumber : 0;
+  const purposeOrder = { admission: 0, registration: 1, installment: 2 };
+  return receipts
+    .map((receipt) => {
+      const role = receiptRole.get(receiptId(receipt)) || "installment";
+      const displayInstallmentNumber = role === "installment" ? ++installmentNumber : 0;
 
-    return {
-      ...receipt,
-      receiptPurpose: role,
-      displayInstallmentNumber
-    };
-  });
+      return {
+        ...receipt,
+        receiptPurpose: role,
+        displayInstallmentNumber
+      };
+    })
+    .sort((a, b) => {
+      // Sort by purpose: Admission first, Registration second, then Installments
+      const aOrder = purposeOrder[a.receiptPurpose] ?? 3;
+      const bOrder = purposeOrder[b.receiptPurpose] ?? 3;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      // Within same purpose: installments by number; admission/registration by date
+      if (a.receiptPurpose === 'installment') {
+        return (a.displayInstallmentNumber || 0) - (b.displayInstallmentNumber || 0);
+      }
+      return new Date(a.date || a.createdAt || 0) - new Date(b.date || b.createdAt || 0);
+    });
 };
 
 // --- INQUIRY ---
@@ -639,7 +652,9 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
       // If already paid, increment the amount
       student.admissionFeeAmount = (student.admissionFeeAmount || 0) + Number(amountPaid);
     }
-    // We do NOT subtract from student.pendingFees because pendingFees is for the course balance
+  } else if (receiptPurpose.purpose === "registration") {
+    // Registration fee payment — track on student record
+    student.registrationFeeAmount = (student.registrationFeeAmount || 0) + Number(amountPaid);
   } else {
     // Normal fee payment reduces the course balance
     student.pendingFees = Math.max(0, student.pendingFees - Number(amountPaid));
@@ -718,12 +733,13 @@ const updateFeeReceipt = asyncHandler(async (req, res) => {
       if (student) {
         const diff = Number(req.body.amountPaid) - Number(receipt.amountPaid);
         const isAdmission = (receipt.remarks || "").toLowerCase().includes("admission");
+        const isRegistration = (receipt.remarks || "").toLowerCase().includes("registration");
         
         if (isAdmission) {
-            // Update admission fee tracking
             student.admissionFeeAmount = (student.admissionFeeAmount || 0) + diff;
+        } else if (isRegistration) {
+            student.registrationFeeAmount = Math.max(0, (student.registrationFeeAmount || 0) + diff);
         } else {
-            // Update course balance
             student.pendingFees = Math.max(0, student.pendingFees - diff);
         }
         await student.save();
@@ -752,6 +768,8 @@ const updateFeeReceipt = asyncHandler(async (req, res) => {
   }
 });
 
+
+
 // @desc Delete Fee Receipt
 const deleteFeeReceipt = asyncHandler(async (req, res) => {
   const receipt = await FeeReceipt.findById(req.params.id);
@@ -760,11 +778,15 @@ const deleteFeeReceipt = asyncHandler(async (req, res) => {
     const student = await Student.findById(receipt.student);
     if (student) {
       const isAdmission = (receipt.remarks || "").toLowerCase().includes("admission");
+      const isRegistration = (receipt.remarks || "").toLowerCase().includes("registration");
+      
       if (isAdmission) {
           student.admissionFeeAmount = Math.max(0, (student.admissionFeeAmount || 0) - Number(receipt.amountPaid));
           if (student.admissionFeeAmount === 0) {
               student.isAdmissionFeesPaid = false;
           }
+      } else if (isRegistration) {
+          student.registrationFeeAmount = Math.max(0, (student.registrationFeeAmount || 0) - Number(receipt.amountPaid));
       } else {
           student.pendingFees = student.pendingFees + Number(receipt.amountPaid);
       }
@@ -778,6 +800,8 @@ const deleteFeeReceipt = asyncHandler(async (req, res) => {
     throw new Error("Receipt not found");
   }
 });
+
+
 
 const getStudentFees = asyncHandler(async (req, res) => {
   let receipts = await FeeReceipt.find({
@@ -842,169 +866,145 @@ const getStudentLedger = asyncHandler(async (req, res) => {
 });
 
 // @desc    Get Student Payment Summary
+// Rewritten to match the new fee structure:
+//   - Admission Fee (separate)
+//   - Registration Fee (part of course, tracked on student)
+//   - Remaining Course Fee divided into installments
+//   - Outstanding carries forward month to month
 const getStudentPaymentSummary = asyncHandler(async (req, res) => {
   const student = await Student.findById(req.params.studentId).populate("course");
-  
+
   if (!student) {
     res.status(404);
     throw new Error("Student not found");
   }
 
-  const receipts = await FeeReceipt.find({ student: student._id });
-  const totalReceived = receipts.reduce((acc, curr) => acc + curr.amountPaid, 0);
+  const receipts = await FeeReceipt.find({ student: student._id }).sort({ date: 1, createdAt: 1 }).lean();
+  const totalReceived = receipts.reduce((acc, curr) => acc + Number(curr.amountPaid || 0), 0);
 
-  // --- Total & Due Calculation (Preserved) ---
-  const courseAdmissionFee = student.course && student.course.admissionFees ? student.course.admissionFees : 0;
-  const paidAdmissionFee = student.admissionFeeAmount || 0;
-  const effectiveAdmissionFee = Math.max(courseAdmissionFee, paidAdmissionFee);
-  const totalFees = (student.totalFees || 0) + effectiveAdmissionFee;
-  
-  // Total Remaining Balance
-  const dueAmount = totalFees - totalReceived;
+  // --- Fee Structure ---
+  const course = student.course || {};
+  const admissionFee = Number(course.admissionFees || 0);
+  const registrationFee = Number(course.registrationFees || 0);
+  const courseFee = Number(student.totalFees || 0); // total course fee BEFORE reg fee
+  // Remaining course fee after registration is what gets split into installments
+  const remainingCourseFee = Math.max(0, courseFee - registrationFee);
+  const totalFees = admissionFee + courseFee; // grand total = admission + course
 
-  // --- NEW OUTSTANDING CALCULATION (Per User Requirement) ---
-  let outstandingAmount = 0;
+  // --- Admission Fee Tracking ---
+  const admissionPaidFromReceipts = receipts
+    .filter(r => (r.remarks || '').toLowerCase().includes('admission'))
+    .reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
+  const admissionPaidFromStudent = Number(student.admissionFeeAmount || 0);
+  const admissionPaid = Math.max(admissionPaidFromReceipts, admissionPaidFromStudent);
+  const admissionOutstanding = Math.max(0, admissionFee - admissionPaid);
+
+  // --- Registration Fee Tracking ---
+  const regPaidFromReceipts = receipts
+    .filter(r => (r.remarks || '').toLowerCase().includes('registration'))
+    .reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
+  const regPaidFromStudent = Number(student.registrationFeeAmount || 0);
+  const registrationPaid = Math.max(regPaidFromReceipts, regPaidFromStudent);
+  const registrationOutstanding = Math.max(0, registrationFee - registrationPaid);
+
   const feesMethod = student.paymentPlan || "One Time";
   let emiStructure = null;
+  let currentInstallmentDue = 0;
+  let previousOutstanding = 0;
+  let installmentPrepaid = 0;
   let upcomingEMI = 0;
 
-  // 1. Calculate Pending Registration Fees
-  // "registration amount is decided in the course"
-  const courseRegFees = student.course && student.course.registrationFees ? Number(student.course.registrationFees) : 0;
-  const sortedReceipts = [...receipts].sort((a, b) => {
-      const aTime = new Date(a.date || a.createdAt || 0).getTime();
-      const bTime = new Date(b.date || b.createdAt || 0).getTime();
-      if (aTime !== bTime) return aTime - bTime;
-      return Number(a.receiptNo || 0) - Number(b.receiptNo || 0);
-  });
-  const receiptRole = new Map();
-  const receiptId = (receipt) => receipt._id.toString();
-  const receiptAmount = (receipt) => Number(receipt.amountPaid || 0);
-  const receiptRemarks = (receipt) => (receipt.remarks || "").toLowerCase();
-  
-  // 1.5 Calculate Pending Admission Fees
-  // courseAdmissionFee is already declared above
-  
-  // Calculate total admission fees paid from receipts. Older receipts may not
-  // have remarks, so infer the admission receipt from the stored admission
-  // amount when possible.
-  sortedReceipts.forEach(r => {
-      if (receiptRemarks(r).includes("admission")) {
-          receiptRole.set(receiptId(r), "admission");
-      }
-  });
+  if (feesMethod === "Monthly") {
+    const monthlyInstallment = Number(student.emiDetails?.monthlyInstallment || 0);
+    const months = Number(student.emiDetails?.months || 0);
+    if (monthlyInstallment && months) {
+      emiStructure = `₹${monthlyInstallment.toLocaleString('en-IN')} x ${months} months`;
+    }
 
-  let totalAdmissionPaid = sortedReceipts
-      .filter(r => receiptRole.get(receiptId(r)) === "admission")
-      .reduce((acc, curr) => acc + receiptAmount(curr), 0);
+    // Calculate installments due based on months elapsed since start
+    const startDate = student.batchStartDate || student.admissionDate || student.createdAt;
+    const start = startDate ? new Date(startDate) : new Date();
+    const now = new Date();
 
-  const recordedAdmissionPaid = student.admissionFeeAmount || 0;
-  if (recordedAdmissionPaid > totalAdmissionPaid) {
-      for (const receipt of sortedReceipts) {
-          const id = receiptId(receipt);
-          if (receiptRole.has(id)) continue;
+    if (monthlyInstallment > 0 && startDate && !Number.isNaN(start.getTime())) {
+      // Installments become due starting from the month AFTER admission
+      // e.g. May admission → June is first installment due
+      const monthsElapsed = Math.max(0,
+        (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth())
+      );
 
-          const remainingAdmission = recordedAdmissionPaid - totalAdmissionPaid;
-          if (remainingAdmission <= 0) break;
+      // Total installments that should have been paid so far
+      const installmentsDue = Math.min(monthsElapsed, months);
 
-          if (receiptAmount(receipt) <= remainingAdmission) {
-              receiptRole.set(id, "admission");
-              totalAdmissionPaid += receiptAmount(receipt);
-          }
-      }
-  }
-  
-  // We also check student.admissionFeeAmount for backward compatibility if needed, 
-  // but receipts should cover it. Let's take the max to be safe.
-  const effectiveAdmissionPaid = Math.max(totalAdmissionPaid, recordedAdmissionPaid);
-  const pendingAdmissionFees = Math.max(0, courseAdmissionFee - effectiveAdmissionPaid);
+      // Total scheduled installment amount so far
+      const totalScheduledInstallmentDue = installmentsDue * monthlyInstallment;
 
-  // "when student pays registration fees" - filter receipts by remarks
-  // "registration". Older registration receipts can be blank, so after
-  // admission is removed, assign the earliest remaining receipts to
-  // registration until the course registration fee is covered.
-  for (const receipt of sortedReceipts) {
-      if (!receiptRole.has(receiptId(receipt)) && receiptRemarks(receipt).includes("registration")) {
-          receiptRole.set(receiptId(receipt), "registration");
-          break;
-      }
-  }
+      // What the user has paid towards installments (exclude admission & registration receipts)
+      const installmentReceipts = receipts.filter(r => {
+        const remarks = (r.remarks || '').toLowerCase();
+        return !remarks.includes('admission') && !remarks.includes('registration');
+      });
+      const totalInstallmentPaid = installmentReceipts.reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
 
-  let totalRegPaid = sortedReceipts
-      .filter(r => receiptRole.get(receiptId(r)) === "registration")
-      .reduce((acc, curr) => acc + receiptAmount(curr), 0);
+      // Scheduled amount due from PRIOR months (before this month) — never negative
+      const priorScheduled = Math.max(0, installmentsDue - 1) * monthlyInstallment;
 
-  const hasRegistrationPayment = totalRegPaid > 0;
+      // Previous outstanding = what was due in PRIOR months minus what was paid
+      previousOutstanding = Math.max(0, priorScheduled - totalInstallmentPaid);
 
-  if (!hasRegistrationPayment) {
-      for (const receipt of sortedReceipts) {
-          const id = receiptId(receipt);
-          if (receiptRole.has(id)) continue;
+      // Any excess payment beyond prior months is a prepayment credit toward current/next installment
+      installmentPrepaid = Math.max(0, totalInstallmentPaid - priorScheduled);
 
-          const looksLikeOldRegistration =
-              !receiptRemarks(receipt) &&
-              Number(receipt.installmentNumber || 1) <= 2;
+      // Current installment for this month — full amount (prepayment credit applied to total below)
+      currentInstallmentDue = installmentsDue > 0 ? monthlyInstallment : 0;
 
-          if (looksLikeOldRegistration) {
-              receiptRole.set(id, "registration");
-              totalRegPaid += receiptAmount(receipt);
-          }
-      }
-  }
-  
-  // "pending registration fees... is our outstanding amount"
-  const pendingRegFees = hasRegistrationPayment || totalRegPaid > 0 ? 0 : courseRegFees;
-
-  if (student.paymentPlan === "Monthly") {
-      // Monthly Plan Logic:
-      // "outstanding amount should show with upcoming EMI + pending registration amount + pending admission amount"
-
-      const monthlyInstallment = student.emiDetails && student.emiDetails.monthlyInstallment ? Number(student.emiDetails.monthlyInstallment) : 0;
-      const months = student.emiDetails && student.emiDetails.months ? Number(student.emiDetails.months) : 0;
-
-      if (monthlyInstallment && months) {
-          emiStructure = `₹${monthlyInstallment} x ${months} months`;
-      }
-
-      const startDate = student.batchStartDate || student.admissionDate || student.createdAt;
-      const start = new Date(startDate);
-      const now = new Date();
-
-      if (monthlyInstallment > 0 && !Number.isNaN(start.getTime())) {
-          const monthlyReceipts = sortedReceipts.filter(r => !receiptRole.has(receiptId(r)));
-          const totalMonthlyPaid = monthlyReceipts.reduce((acc, curr) => acc + receiptAmount(curr), 0);
-
-          // EMI starts from the month after batch/admission month.
-          // Example: April admission makes May the first due month.
-          const dueInstallments = Math.max(
-              0,
-              ((now.getFullYear() - start.getFullYear()) * 12) + (now.getMonth() - start.getMonth())
-          );
-          const monthlyPlanTotal = Math.max(0, (student.totalFees || 0) - courseRegFees);
-          const scheduledMonthlyDue = Math.min(dueInstallments * monthlyInstallment, monthlyPlanTotal);
-          const remainingCourseBalance = Math.max(0, dueAmount - pendingRegFees - pendingAdmissionFees);
-
-          upcomingEMI = Math.max(0, scheduledMonthlyDue - totalMonthlyPaid);
-          upcomingEMI = Math.min(upcomingEMI, remainingCourseBalance);
-      }
-      
-      outstandingAmount = pendingRegFees + pendingAdmissionFees + upcomingEMI;
-
+      // upcomingEMI = what's unpaid from total scheduled installments
+      upcomingEMI = Math.max(0, totalScheduledInstallmentDue - totalInstallmentPaid);
+      // Cap at remaining course fee
+      upcomingEMI = Math.min(upcomingEMI, remainingCourseFee);
+    }
   } else {
-      // One Time Plan Logic:
-      // "if one time plan holder then show only pending registration fees as outstanding amount + pending admission fees"
-      outstandingAmount = pendingRegFees + pendingAdmissionFees;
+    // One Time — whole course fee minus what's been paid is the installment due
+    const nonAdmissionNonRegReceipts = receipts.filter(r => {
+      const remarks = (r.remarks || '').toLowerCase();
+      return !remarks.includes('admission') && !remarks.includes('registration');
+    });
+    const courseAmountPaid = nonAdmissionNonRegReceipts.reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
+    currentInstallmentDue = Math.max(0, remainingCourseFee - courseAmountPaid);
+    previousOutstanding = 0;
   }
+
+  // --- Outstanding Calculation ---
+  // Total Due = Current Installment Due + Registration Outstanding + Admission Outstanding + Previous Outstanding
+  const totalDue = currentInstallmentDue + registrationOutstanding + admissionOutstanding + previousOutstanding;
+
+  // Apply prepayment credit to reduce total outstanding immediately
+  // (student's advance payments reduce what they owe today, not just when installment becomes due)
+  const outstandingAmount = Math.max(0, totalDue - installmentPrepaid);
+
+  // For backward compatibility, keep dueAmount as the full remaining balance
+  const dueAmount = Math.max(0, totalFees - totalReceived);
 
   res.json({
     totalReceived,
-    dueAmount, // Total Balance
-    outstandingAmount, // Current Due (Reg + EMI or Reg Only)
-    pendingRegFees,
-    pendingAdmissionFees,
-    courseFee: student.totalFees || 0,
-    admissionFee: effectiveAdmissionFee,
-    upcomingEMI,
+    dueAmount, // Full remaining balance (backward compat)
+    outstandingAmount, // Current actionable due
+    // Admission Fee breakdown
+    admissionFee,
+    admissionPaid,
+    admissionOutstanding,
+    // Registration Fee breakdown
+    registrationFee,
+    registrationPaid,
+    registrationOutstanding,
+    // Installment breakdown
+    currentInstallmentDue,
+    previousOutstanding,
+    installmentPrepaid,
+    // Course fee breakdown
+    courseFee,
+    remainingCourseFee,
+    // Plans
     feesMethod,
     emiStructure,
     totalFees,

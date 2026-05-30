@@ -41,6 +41,8 @@ app.use(helmet());
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
+  "http://192.168.10.55:5173",
+  "http://192.168.10.55:5174",
   "https://smartinstituteonline.com",
   "https://www.smartinstituteonline.com",
   "https://smar.smartinstituteonline.com",

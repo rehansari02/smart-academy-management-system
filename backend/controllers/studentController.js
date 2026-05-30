@@ -256,31 +256,35 @@ const createStudent = asyncHandler(async (req, res) => {
         const batchTime = batchDoc ? `${batchDoc.startTime} to ${batchDoc.endTime}` : 'N/A';
         const fullName = `${student.firstName} ${student.lastName}`;
 
-        const smsMessage = `Welcome to Smart Institute, Dear, ${fullName}. your admission has been successfully completed. Enrollment No. ${student.enrollmentNo}, course ${courseName}, Batch Time ${batchTime}`;
-
-        const contacts = [...new Set([student.mobileStudent, student.mobileParent, student.contactHome].filter(Boolean))]; 
-        
-        // Always send Welcome SMS (Enrollment)
-        await Promise.all(contacts.map(num => sendSMS(num, smsMessage, 'Admission')))
-            .then(() => console.log('Admission Welcome SMS sent successfully'))
-            .catch(err => console.error('Admission Welcome SMS failed', err));
-
-        if (isAdmissionFeesPaid) {
-            // Wait 2 seconds before sending the Fee SMS to ensure Enrollment SMS arrives first
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            // Send Fee SMS (Admission Fee)
-            const feeSmsMessage = `Dear, ${fullName}. Your Course fees ${feeDetails.amount} has been deposited for Admission Fees. Thank you,\nSmart Institute`;
-            console.log(`Sending Admission Fee SMS to: ${contacts.join(', ')} | Msg: ${feeSmsMessage}`);
-            await Promise.all(contacts.map(num => sendSMS(num, feeSmsMessage, 'Fees')))
-                .catch(err => console.error('Admission Fee SMS failed', err));
-        }
+        const smsMessage = `Welcome to Smart Institute, Dear, ${fullName}. your admission has been successfully completed. Enrollment No. ${student.enrollmentNo}, course ${courseName}, Batch Time ${batchTime}`;        const contacts = [...new Set([student.mobileStudent, student.mobileParent, student.contactHome].filter(Boolean))]; 
 
         // Remove from Admin "Online Admission" list when admission fee paid (student created from inquiry)
         if (student.inquiryId && isAdmissionFeesPaid) {
             await Inquiry.findByIdAndUpdate(student.inquiryId, { source: 'Converted', status: 'Complete' });
         }
 
+        // Send response immediately — do NOT block on SMS
         res.status(201).json(student);
+
+        // === Send SMS asynchronously AFTER response ===
+        
+        // 1. Send Enrollment Welcome SMS (fire & forget)
+        console.log(`Sending Enrollment Welcome SMS to: ${contacts.join(', ')}`);
+        Promise.all(contacts.map(num => sendSMS(num, smsMessage, 'Admission')))
+            .then(() => console.log('Admission Welcome SMS sent successfully'))
+            .catch(err => console.error('Admission Welcome SMS failed', err));
+
+        // 2. If admission fee was paid, wait 2 seconds then send Fee SMS
+        if (isAdmissionFeesPaid && feeDetails && Number(feeDetails.amount) > 0) {
+            setTimeout(() => {
+                const purpose = (feeDetails.remarks || 'Admission Fee');
+                const feeSmsMessage = `Dear, ${fullName}. Your Course fees ${feeDetails.amount} has been deposited for ${purpose}, Reg.No. ${student.enrollmentNo}. Thank you, Smart Institute`;
+                console.log(`Sending Admission Fee SMS to: ${contacts.join(', ')} | Msg: ${feeSmsMessage}`);
+                Promise.all(contacts.map(num => sendSMS(num, feeSmsMessage, 'Fees')))
+                    .then(() => console.log('Admission Fee SMS sent successfully'))
+                    .catch(err => console.error('Admission Fee SMS failed', err));
+            }, 2000);
+        }
     } catch (error) {
         res.status(400);
         throw new Error('Invalid Student Data: ' + error.message);
@@ -462,7 +466,7 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
                 }
 
                 if (feeDetails && Number(feeDetails.amount) > 0) {
-                    const feeSmsMessage = `Dear, ${student.firstName} ${student.middleName ? student.middleName + ' ' : ''}${student.lastName}. Your Course fees ${feeDetails.amount} has been deposited for Registration Fees, Reg.No. ${finalRegNo}. Thank you,\nSmart Institute`;
+                    const feeSmsMessage = `Dear, ${student.firstName} ${student.lastName}. Your Course fees ${feeDetails.amount} has been deposited for Registration Fees, Reg.No. ${finalRegNo}. Thank you, Smart Institute`;
                     Promise.all(contacts.map(num => sendSMS(num, feeSmsMessage, 'Fees')))
                         .catch(err => console.error('Registration Fee SMS failed', err));
                 }

@@ -326,7 +326,7 @@ const StudentWiseOutstanding = () => {
                                     {/* Outstanding Amount: reg fees + upcoming EMI + admission pending - combined total */}
                                     <td className="border border-gray-300 px-2 py-1.5 text-right font-semibold text-red-600">
                                         {summaryLoading ? '...' : (() => {
-                                            const total = (summary?.upcomingEMI || 0) + (summary?.pendingRegFees || 0) + (summary?.pendingAdmissionFees || 0);
+                                            const total = (summary?.outstandingAmount || summary?.dueAmount || 0);
                                             return total > 0 ? total.toLocaleString('en-IN') : '-';
                                         })()}
                                     </td>
