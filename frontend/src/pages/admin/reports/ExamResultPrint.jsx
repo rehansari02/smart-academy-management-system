@@ -271,35 +271,37 @@ const ExamResultPrint = () => {
 
     // --- Dynamic Layout Calculations for Marksheet ---
     const numSubjects = marksData.length;
-    let rowHeight = '11mm';
+    let rowHeight = '10.2mm';
     let snameFontSize = '10px';
     let ssubFontSize = '7px';
     let tableFontSize = '9.5px';
-    let spacerHeight = '7mm';
-    let headingMarginTop = '4mm';
-    let headingMarginBottom = '3.5mm';
-    let detailsMarginBottom = '4mm';
+    let spacerHeight = '4mm';
+    let headingMarginTop = '3mm';
+    let headingMarginBottom = '3mm';
+    let detailsMarginBottom = '3.5mm';
     let botTableHeight = '10mm';
     let botTableFontSize = '9px';
+    let dateIssueMarginTop = '8mm';
 
     if (numSubjects > 6) {
         // More aggressive scaling to fit into the pre-printed space
         const overflow = numSubjects - 6;
-        // Target: fit numSubjects into the space of 6 rows (approx 66mm)
-        const calculatedHeight = 66 / numSubjects;
+        // Target: fit numSubjects into the space of 6 rows (approx 61mm)
+        const calculatedHeight = 61 / numSubjects;
         rowHeight = `${Math.max(6.5, calculatedHeight)}mm`;
         
         snameFontSize = `${Math.max(7, 10 - (overflow * 0.7))}px`;
         ssubFontSize = `${Math.max(5.5, 7 - (overflow * 0.3))}px`;
         tableFontSize = `${Math.max(7.5, 9.5 - (overflow * 0.4))}px`;
         
-        spacerHeight = `${Math.max(1, 7 - (overflow * 1.5))}mm`;
-        headingMarginTop = `${Math.max(0.5, 4 - (overflow * 1.0))}mm`;
-        headingMarginBottom = `${Math.max(0.5, 3.5 - (overflow * 0.8))}mm`;
-        detailsMarginBottom = `${Math.max(1, 4 - (overflow * 0.8))}mm`;
+        spacerHeight = `${Math.max(1, 4 - (overflow * 0.5))}mm`;
+        headingMarginTop = `${Math.max(0.5, 3 - (overflow * 0.5))}mm`;
+        headingMarginBottom = `${Math.max(0.5, 3 - (overflow * 0.5))}mm`;
+        detailsMarginBottom = `${Math.max(1, 3.5 - (overflow * 0.5))}mm`;
         
         botTableHeight = `${Math.max(6, 10 - (overflow * 0.8))}mm`;
         botTableFontSize = `${Math.max(7, 9 - (overflow * 0.5))}px`;
+        dateIssueMarginTop = `${Math.max(6, 14 + (overflow * 5))}mm`;
     }
 
     const studentPrefix = student?.gender?.toLowerCase() === 'female' ? 'MISS.' : 'MR.';
@@ -345,7 +347,7 @@ const ExamResultPrint = () => {
                                         </tr>
                                         <tr style={{ height: '5.2mm' }}>
                                             <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>FATHER NAME</td>
-                                            <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>: {fatherPrefix} {(student?.fatherName || student?.middleName)?.toUpperCase()}</td>
+                                            <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>: {fatherPrefix} {(student?.fatherName || student?.middleName)?.toUpperCase()} {student?.lastName?.toUpperCase()}</td>
                                         </tr>
                                         <tr style={{ height: '5.2mm' }}>
                                             <td style={{ border: 'none', fontWeight: '900', padding: 0, fontSize: '3.5mm' }}>COURSE</td>
@@ -465,7 +467,7 @@ const ExamResultPrint = () => {
                             </div>
 
                             {/* Date of issue and CSR number positioned dynamically in the fluid blank area with zero overlap */}
-                            <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginTop: '8mm', width: '100%', fontFamily: 'Arial, sans-serif', color: '#000' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginTop: dateIssueMarginTop, width: '100%', fontFamily: 'Arial, sans-serif', color: '#000' }}>
                                 <div style={{ fontSize: '3.6mm', fontWeight: '900' }}>
                                     Date of issue : {issueDate.isValid() ? issueDate.format('DD MMMM YYYY') : '15 May 2019'}
                                 </div>
@@ -612,7 +614,7 @@ const ExamResultPrint = () => {
                                 margin: '0 0 3mm 0',
                                 color: '#111'
                             }}>
-                                {student?.gender?.toLowerCase() === 'female' ? 'D/o' : 'S/o'} SHRI {(student?.fatherName || student?.middleName)?.toUpperCase()} On the {issueDate.isValid() ? issueDate.date() : '15'} day of the month {issueDate.isValid() ? issueDate.format('MMMM') : 'November'} <br />
+                                {student?.gender?.toLowerCase() === 'female' ? 'D/o' : 'S/o'} SHRI {(student?.fatherName || student?.middleName)?.toUpperCase()} {student?.lastName?.toUpperCase()} On the {issueDate.isValid() ? issueDate.date() : '15'} day of the month {issueDate.isValid() ? issueDate.format('MMMM') : 'November'} <br />
                                 In the year {issueDate.isValid() ? yearToWords(issueDate.year()) : 'Two Thousand Eighteen'} for successfully completed a <br />
                                 <span style={{ fontWeight: 'bold' }}>{course?.duration || '12'} {course?.durationType || 'Months'}</span> course in
                             </p>
