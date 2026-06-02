@@ -688,19 +688,19 @@ const ExamResultPrint = () => {
                         {/* Absolute positioned Certificate Details block on bottom left */}
                         <div style={{
                             position: 'absolute',
-                            bottom: '66mm',
+                            bottom: '58mm',
                             left: '22mm',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '1.2mm',
                             zIndex: 20,
                             fontFamily: 'Arial, sans-serif',
-                            fontWeight: 'bold',
+                            fontWeight: '900',
                             fontSize: '3.4mm',
                             color: '#000',
                             textAlign: 'left'
                         }}>
-                            <p>Certificate No.: {result.certificateNumber || result._id?.slice(-4).toUpperCase() || '0001'}</p>
+                            <p>Certificate No : {result.certificateNumber || result._id?.slice(-4).toUpperCase() || '0001'}</p>
                             <p>Date of issue : {issueDate.isValid() ? issueDate.format('DD MMMM YYYY') : '15 May 2019'}</p>
                         </div>
                     </>

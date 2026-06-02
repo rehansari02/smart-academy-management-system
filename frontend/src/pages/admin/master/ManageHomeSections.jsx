@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { Image as ImageIcon, Save } from 'lucide-react';
 import homeSectionService from '../../../services/homeSectionService';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const SECTIONS = [
     {
@@ -23,6 +25,7 @@ const ManageHomeSections = () => {
     const [previews, setPreviews] = useState({ md_message: null, heritage: null });
     const [files, setFiles] = useState({ md_message: null, heritage: null });
     const [saving, setSaving] = useState({ md_message: false, heritage: false });
+    const { edit } = useUserRights('Home Sub-Sections');
 
     useEffect(() => {
         homeSectionService.getAllSections().then(sections => {
@@ -50,6 +53,10 @@ const ManageHomeSections = () => {
     };
 
     const handleSave = async (key) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit home sub-sections.");
+            return;
+        }
         setSaving(prev => ({ ...prev, [key]: true }));
         try {
             const form = new FormData();

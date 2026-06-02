@@ -8,11 +8,14 @@ import expenseService from '../../../services/expenseService';
 import expenseCategoryService from '../../../services/expenseCategoryService';
 import Loading from '../../../components/Loading';
 import { getBranches } from '../../../features/master/branchSlice';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const Expenses = () => {
     const dispatch = useDispatch();
     const { user } = useSelector((state) => state.auth);
     const { branches } = useSelector((state) => state.branch);
+    const { add, edit, delete: canDelete } = useUserRights('Expenses');
     const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
     const userBranchId = typeof user?.branchId === 'object' ? user.branchId?._id : user?.branchId;
     const userBranchName = user?.branchDetails?.name || user?.branchName || 'My Branch';
@@ -141,6 +144,10 @@ const Expenses = () => {
 
     const handleExpenseSubmit = async (e) => {
         e.preventDefault();
+        if (editingExpenseId ? !edit : !add) {
+            showPermissionDenied(`You don't have authority to ${editingExpenseId ? 'edit' : 'add'} expenses.`);
+            return;
+        }
         
         if (!expenseData.amount || !expenseData.reason || !expenseData.category || !expenseData.branch) {
             return toast.error('Please fill all required fields');
@@ -178,6 +185,10 @@ const Expenses = () => {
     };
 
     const handleDeleteExpense = async (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete expenses.");
+            return;
+        }
         const result = await Swal.fire({
             title: 'Are you sure?',
             text: "You won't be able to revert this!",
@@ -216,6 +227,10 @@ const Expenses = () => {
     const handleCategorySubmit = async (e) => {
         e.preventDefault();
         if(!categoryName.trim()) return toast.error('Category name is required');
+        if (editingCategoryId ? !edit : !add) {
+            showPermissionDenied(`You don't have authority to ${editingCategoryId ? 'edit' : 'add'} expense categories.`);
+            return;
+        }
 
         try {
             setIsSubmitting(true);
@@ -244,6 +259,10 @@ const Expenses = () => {
     };
 
     const handleDeleteCategory = async (id) => {
+         if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete expense categories.");
+            return;
+         }
          const result = await Swal.fire({
             title: 'Delete Category?',
             text: "Ensure no expenses are currently linked to this category.",

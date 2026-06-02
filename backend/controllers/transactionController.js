@@ -5,9 +5,12 @@ const Batch = require("../models/Batch");
 const Counter = require("../models/Counter");
 const Education = require("../models/Education");
 const Reference = require("../models/Reference");
+const Course = require("../models/Course");
+const Branch = require("../models/Branch");
 const asyncHandler = require("express-async-handler");
 const generateEnrollmentNumber = require("../utils/enrollmentGenerator");
 const sendSMS = require("../utils/smsSender"); // Moved to top for global use
+const XLSX = require("xlsx");
 
 const getReceiptPurpose = (receipt) => {
   const remarks = (receipt?.remarks || "").toLowerCase();
@@ -159,15 +162,23 @@ const attachReceiptDisplayInfo = (receipts) => {
 const getInquiries = asyncHandler(async (req, res) => {
   const { startDate, endDate, status, studentName, referenceBy, source, dateFilterType } =
     req.query;
+  const shouldPaginate = req.query.page !== undefined || req.query.limit !== undefined || req.query.pageSize !== undefined;
+  const page = Math.max(1, Number(req.query.page || 1));
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit || req.query.pageSize || 10)));
+  const skip = (page - 1) * limit;
 
   let query = { isDeleted: false };
 
   // Date Filters
-  if (startDate && endDate) {
-    const dateField = dateFilterType || "inquiryDate";
-    const start = new Date(startDate);
+  const dateField = dateFilterType || "inquiryDate";
+  const shouldDefaultToday = source && ["Online", "Walk-in", "DSR"].includes(source) && !startDate && !endDate;
+  const effectiveStartDate = startDate || (shouldDefaultToday ? new Date() : null);
+  const effectiveEndDate = endDate || (shouldDefaultToday ? new Date() : null);
+
+  if (effectiveStartDate && effectiveEndDate) {
+    const start = new Date(effectiveStartDate);
     start.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
+    const end = new Date(effectiveEndDate);
     end.setHours(23, 59, 59, 999);
     query[dateField] = { $gte: start, $lte: end };
   }
@@ -207,7 +218,7 @@ const getInquiries = asyncHandler(async (req, res) => {
     ? { followUpDate: 1, createdAt: -1 }
     : { createdAt: -1 };
 
-  const inquiries = await Inquiry.find(query)
+  let inquiryQuery = Inquiry.find(query)
     .populate("interestedCourse", "name")
     .populate("allocatedTo", "name")
     .populate("followUpBy", "name username")
@@ -215,7 +226,29 @@ const getInquiries = asyncHandler(async (req, res) => {
     .populate("branchId", "name shortCode")
     .sort(sort);
 
-  res.json(inquiries);
+  if (shouldPaginate) {
+    inquiryQuery = inquiryQuery.skip(skip).limit(limit);
+  }
+
+  const [inquiries, total] = await Promise.all([
+    inquiryQuery,
+    shouldPaginate ? Inquiry.countDocuments(query) : Promise.resolve(0),
+  ]);
+
+  if (!shouldPaginate) {
+    return res.json(inquiries);
+  }
+
+  res.json({
+    data: inquiries,
+    pagination: {
+      page,
+      limit,
+      pageSize: limit,
+      count: total,
+      pages: Math.max(1, Math.ceil(total / limit)),
+    },
+  });
 });
 
 // @desc Create Inquiry
@@ -315,6 +348,221 @@ const createInquiry = asyncHandler(async (req, res) => {
   ]);
 
   res.status(201).json(inquiry);
+});
+
+const normalizeExcelKey = (value) => String(value || "")
+  .toLowerCase()
+  .replace(/[^a-z0-9]/g, "");
+
+const normalizeBranchLookupKey = (value) => {
+  const key = normalizeExcelKey(value);
+  const aliases = {
+    gododara: "godadara",
+    godadra: "godadara",
+    godadara: "godadara",
+  };
+
+  return aliases[key] || key;
+};
+
+const excelValue = (row, keys) => {
+  for (const key of keys) {
+    const normalizedKey = normalizeExcelKey(key);
+    if (row[normalizedKey] !== undefined && row[normalizedKey] !== null && String(row[normalizedKey]).trim() !== "") {
+      return row[normalizedKey];
+    }
+  }
+  return "";
+};
+
+const parseExcelDate = (value) => {
+  if (!value) return undefined;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === "number") {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed) return new Date(parsed.y, parsed.m - 1, parsed.d, parsed.H || 0, parsed.M || 0, parsed.S || 0);
+  }
+
+  const text = String(value).trim();
+  const ddmmyyyy = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/);
+  if (ddmmyyyy) {
+    const year = ddmmyyyy[3].length === 2 ? `20${ddmmyyyy[3]}` : ddmmyyyy[3];
+    return new Date(Number(year), Number(ddmmyyyy[2]) - 1, Number(ddmmyyyy[1]));
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+};
+
+const combineDateAndTime = (dateValue, timeValue) => {
+  const date = parseExcelDate(dateValue);
+  if (!date) return undefined;
+
+  if (timeValue instanceof Date && !Number.isNaN(timeValue.getTime())) {
+    date.setHours(timeValue.getHours(), timeValue.getMinutes(), 0, 0);
+    return date;
+  }
+
+  const timeText = String(timeValue || "").trim();
+  if (timeText) {
+    const match = timeText.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+    if (match) {
+      let hours = Number(match[1]);
+      const minutes = Number(match[2] || 0);
+      const meridian = match[3]?.toUpperCase();
+      if (meridian === "PM" && hours < 12) hours += 12;
+      if (meridian === "AM" && hours === 12) hours = 0;
+      date.setHours(hours, minutes, 0, 0);
+    }
+  }
+
+  return date;
+};
+
+// @desc Import Inquiry rows from Excel
+const importInquiries = asyncHandler(async (req, res) => {
+  if (!req.file?.buffer) {
+    res.status(400);
+    throw new Error("Please upload an Excel file");
+  }
+
+  const source = req.body.source || "Walk-in";
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+  if (!rawRows.length) {
+    res.status(400);
+    throw new Error("Excel sheet has no inquiry rows");
+  }
+
+  const rows = rawRows.map((row) => Object.entries(row).reduce((map, [key, value]) => {
+    map[normalizeExcelKey(key)] = value;
+    return map;
+  }, {}));
+
+  const courses = await Course.find({ isDeleted: false }).select("_id name shortName").lean();
+  const branches = await Branch.find({}).select("_id name shortCode").lean();
+  const courseByName = new Map();
+  courses.forEach((course) => {
+    courseByName.set(normalizeExcelKey(course.name), course._id);
+    courseByName.set(normalizeExcelKey(course.shortName), course._id);
+  });
+  const branchByName = new Map();
+  branches.forEach((branch) => {
+    branchByName.set(normalizeBranchLookupKey(branch.name), branch._id);
+    branchByName.set(normalizeBranchLookupKey(branch.shortCode), branch._id);
+  });
+
+  const errors = [];
+  const docs = [];
+
+  rows.forEach((row, index) => {
+    const rowNo = index + 2;
+    const firstName = String(excelValue(row, ["First Name", "Student First Name", "Name"])).trim();
+    const lastName = String(excelValue(row, ["Last Name", "Surname"])).trim();
+    const contactStudent = String(excelValue(row, ["S - Student Contact", "Student Contact", "Contact Student", "Mobile Student", "Mobile"])).trim();
+
+    if (!firstName) {
+      errors.push(`Row ${rowNo}: First Name is required`);
+      return;
+    }
+
+    if (!lastName) {
+      errors.push(`Row ${rowNo}: Last Name is required`);
+      return;
+    }
+
+    if (!contactStudent) {
+      errors.push(`Row ${rowNo}: S - Student Contact is required`);
+      return;
+    }
+
+    const courseText = excelValue(row, ["Interested Course", "Course", "Course Name", "Course Short Name"]);
+    const branchText = excelValue(row, ["Branch", "Branch Name", "Branch Code"]);
+    const courseKey = normalizeExcelKey(courseText);
+    const branchKey = normalizeBranchLookupKey(branchText);
+    if (courseText && !courseByName.has(courseKey)) {
+      errors.push(`Row ${rowNo}: Course not found (${courseText})`);
+      return;
+    }
+    if (branchText && !branchByName.has(branchKey)) {
+      errors.push(`Row ${rowNo}: Branch not found (${branchText})`);
+      return;
+    }
+
+    const followUpDate = combineDateAndTime(
+      excelValue(row, ["Follow-up Date", "Follow Up Date", "Update Date"]),
+      excelValue(row, ["Follow-up Time", "Follow Up Time", "Time"])
+    );
+
+    const doc = {
+      source,
+      firstName,
+      middleName: String(excelValue(row, ["Father/Husband Name", "Middle Name", "Father Name", "Husband Name"])).trim(),
+      relationType: String(excelValue(row, ["Relation Type"])).trim() === "Husband" ? "Husband" : "Father",
+      lastName,
+      email: String(excelValue(row, ["Email", "Email Address"])).trim(),
+      gender: ["Male", "Female", "Other"].includes(String(excelValue(row, ["Gender"])).trim())
+        ? String(excelValue(row, ["Gender"])).trim()
+        : "Male",
+      dob: parseExcelDate(excelValue(row, ["Date of Birth", "DOB"])),
+      contactHome: String(excelValue(row, ["H - Home Contact", "Home Contact", "Contact Home"])).trim(),
+      contactStudent,
+      contactParent: String(excelValue(row, ["P - Parent Contact", "Parent Contact", "Contact Parent", "Mobile Parent"])).trim(),
+      state: String(excelValue(row, ["State"])).trim() || "Gujarat",
+      city: String(excelValue(row, ["City"])).trim() || "Surat",
+      address: String(excelValue(row, ["Address"])).trim(),
+      education: String(excelValue(row, ["Education"])).trim(),
+      referenceBy: String(excelValue(row, ["Reference", "Reference By"])).trim(),
+      inquiryDate: parseExcelDate(excelValue(row, ["Inquiry Date", "Date"])) || new Date(),
+      status: ["Open", "Close", "Complete", "Recall", "InProgress", "Pending", "Converted"].includes(String(excelValue(row, ["Status"])).trim())
+        ? String(excelValue(row, ["Status"])).trim()
+        : "Open",
+      followUpDate,
+      nextVisitingDate: followUpDate,
+      followUpDetails: String(excelValue(row, ["Details", "Follow-up Details", "Follow Up Details", "Remarks"])).trim(),
+      allocatedTo: req.user?._id,
+    };
+
+    if (courseText) {
+      doc.interestedCourse = courseByName.get(courseKey);
+    }
+
+    if (req.user && req.user.role !== "Super Admin" && req.user.branchId) {
+      doc.branchId = req.user.branchId;
+    } else if (branchText) {
+      doc.branchId = branchByName.get(branchKey);
+    }
+
+    if (followUpDate) {
+      doc.followUpCount = 1;
+      doc.followUpBy = req.user?._id;
+      doc.followUpHistory = [{
+        date: followUpDate,
+        remarks: doc.followUpDetails || "Inquiry Created (Excel Import)",
+        status: doc.status,
+        followUpBy: req.user?._id,
+        createdAt: new Date()
+      }];
+    }
+
+    docs.push(doc);
+  });
+
+  if (!docs.length) {
+    res.status(400);
+    throw new Error(errors.join("; ") || "No valid inquiry rows found");
+  }
+
+  const created = await Inquiry.insertMany(docs, { ordered: false });
+
+  res.status(201).json({
+    imported: created.length,
+    skipped: errors.length,
+    errors: errors.slice(0, 25),
+    message: `${created.length} inquiries imported successfully${errors.length ? `, ${errors.length} rows skipped` : ""}`
+  });
 });
 
 // @desc Update Inquiry
@@ -477,20 +725,28 @@ const calculateTotalPaid = async (studentId) => {
 
 // @desc Get Fee Receipts with Filters
 const getFeeReceipts = asyncHandler(async (req, res) => {
-  const { startDate, endDate, receiptNo, paymentMode, studentId, studentName, reference } = req.query;
+  const { startDate, endDate, receiptNo, paymentMode, studentId, studentName, reference, search } = req.query;
+  const shouldPaginate = req.query.page !== undefined || req.query.limit !== undefined || req.query.pageSize !== undefined;
+  const page = Math.max(1, Number(req.query.page || 1));
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit || req.query.pageSize || 10)));
+  const skip = (page - 1) * limit;
 
   let query = {};
 
   // Date Filters - make them optional individually
-  if (startDate || endDate) {
+  const shouldDefaultToday = shouldPaginate && !startDate && !endDate;
+  const effectiveStartDate = startDate || (shouldDefaultToday ? new Date() : null);
+  const effectiveEndDate = endDate || (shouldDefaultToday ? new Date() : null);
+
+  if (effectiveStartDate || effectiveEndDate) {
     query.date = {};
-    if (startDate) {
-      const start = new Date(startDate);
+    if (effectiveStartDate) {
+      const start = new Date(effectiveStartDate);
       start.setHours(0, 0, 0, 0);
       query.date.$gte = start;
     }
-    if (endDate) {
-      const end = new Date(endDate);
+    if (effectiveEndDate) {
+      const end = new Date(effectiveEndDate);
       end.setHours(23, 59, 59, 999);
       query.date.$lte = end;
     }
@@ -507,6 +763,39 @@ const getFeeReceipts = asyncHandler(async (req, res) => {
 
   if (receiptNo) query.receiptNo = { $regex: receiptNo, $options: "i" };
   if (paymentMode) query.paymentMode = paymentMode;
+
+  if (search) {
+      const searchClean = String(search).trim();
+      const searchNameParts = searchClean.split(/\s+/);
+      const searchStudentFilters = [
+          { firstName: { $regex: searchClean, $options: "i" } },
+          { lastName: { $regex: searchClean, $options: "i" } },
+          { middleName: { $regex: searchClean, $options: "i" } },
+          { regNo: { $regex: searchClean, $options: "i" } },
+          { enrollmentNo: { $regex: searchClean, $options: "i" } },
+          { mobileStudent: { $regex: searchClean, $options: "i" } },
+          { mobileParent: { $regex: searchClean, $options: "i" } },
+      ];
+
+      if (searchNameParts.length > 1) {
+          searchStudentFilters.push({
+              $and: [
+                  { firstName: { $regex: searchNameParts[0], $options: "i" } },
+                  { lastName: { $regex: searchNameParts[searchNameParts.length - 1], $options: "i" } },
+              ],
+          });
+      }
+
+      const matchingStudents = await Student.find({
+          isDeleted: false,
+          $or: searchStudentFilters,
+      }).select("_id");
+
+      query.$or = [
+          { receiptNo: { $regex: searchClean, $options: "i" } },
+          { student: { $in: matchingStudents.map((s) => s._id) } },
+      ];
+  }
   
   // Student & Reference Filter
   if (studentId || studentName || reference) {
@@ -547,11 +836,20 @@ const getFeeReceipts = asyncHandler(async (req, res) => {
       query.student = { $in: matchingStudents.map(s => s._id) };
   }
 
-  let receipts = await FeeReceipt.find(query)
+  let receiptQuery = FeeReceipt.find(query)
     .populate("student", "firstName lastName regNo enrollmentNo middleName mobileStudent mobileParent batch totalFees pendingFees branchName emiDetails admissionFeeAmount")
     .populate("course", "name shortName admissionFees")
     .populate("branch", "name shortCode address city state phone mobile email") // Populate full Branch details for print rendering
     .sort({ createdAt: -1 });
+
+  if (shouldPaginate) {
+    receiptQuery = receiptQuery.skip(skip).limit(limit);
+  }
+
+  let [receipts, total] = await Promise.all([
+    receiptQuery,
+    shouldPaginate ? FeeReceipt.countDocuments(query) : Promise.resolve(0),
+  ]);
 
   // Add calculated fields for each receipt
   receipts = await Promise.all(receipts.map(async (receipt) => {
@@ -567,7 +865,20 @@ const getFeeReceipts = asyncHandler(async (req, res) => {
       return receiptObj;
   }));
 
-  res.json(receipts);
+  if (!shouldPaginate) {
+    return res.json(receipts);
+  }
+
+  res.json({
+    data: receipts,
+    pagination: {
+      page,
+      limit,
+      pageSize: limit,
+      count: total,
+      pages: Math.max(1, Math.ceil(total / limit)),
+    },
+  });
 });
 
 // @desc Create Fee Receipt
@@ -871,6 +1182,103 @@ const getStudentLedger = asyncHandler(async (req, res) => {
 //   - Registration Fee (part of course, tracked on student)
 //   - Remaining Course Fee divided into installments
 //   - Outstanding carries forward month to month
+const calculateStudentPaymentSummary = (student, receipts) => {
+  const totalReceived = receipts.reduce((acc, curr) => acc + Number(curr.amountPaid || 0), 0);
+
+  const course = student.course || {};
+  const admissionFee = Number(course.admissionFees || 0);
+  const registrationFee = Number(course.registrationFees || 0);
+  const courseFee = Number(student.totalFees || 0);
+  const remainingCourseFee = Math.max(0, courseFee - registrationFee);
+  const totalFees = admissionFee + courseFee;
+
+  const admissionPaidFromReceipts = receipts
+    .filter(r => (r.remarks || '').toLowerCase().includes('admission'))
+    .reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
+  const admissionPaidFromStudent = Number(student.admissionFeeAmount || 0);
+  const admissionPaid = Math.max(admissionPaidFromReceipts, admissionPaidFromStudent);
+  const admissionOutstanding = Math.max(0, admissionFee - admissionPaid);
+
+  const regPaidFromReceipts = receipts
+    .filter(r => (r.remarks || '').toLowerCase().includes('registration'))
+    .reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
+  const regPaidFromStudent = Number(student.registrationFeeAmount || 0);
+  const registrationPaid = Math.max(regPaidFromReceipts, regPaidFromStudent);
+  const registrationOutstanding = Math.max(0, registrationFee - registrationPaid);
+
+  const feesMethod = student.paymentPlan || "One Time";
+  let emiStructure = null;
+  let currentInstallmentDue = 0;
+  let previousOutstanding = 0;
+  let installmentPrepaid = 0;
+
+  if (feesMethod === "Monthly") {
+    const monthlyInstallment = Number(student.emiDetails?.monthlyInstallment || 0);
+    const months = Number(student.emiDetails?.months || 0);
+    if (monthlyInstallment && months) {
+      emiStructure = `₹${monthlyInstallment.toLocaleString('en-IN')} x ${months} months`;
+    }
+
+    const startDate = student.batchStartDate || student.admissionDate || student.createdAt;
+    const start = startDate ? new Date(startDate) : new Date();
+    const now = new Date();
+
+    if (monthlyInstallment > 0 && startDate && !Number.isNaN(start.getTime())) {
+      const monthsElapsed = Math.max(0,
+        (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth())
+      );
+      const installmentsDue = Math.min(monthsElapsed, months);
+      const totalScheduledInstallmentDue = installmentsDue * monthlyInstallment;
+
+      const installmentReceipts = receipts.filter(r => {
+        const remarks = (r.remarks || '').toLowerCase();
+        return !remarks.includes('admission') && !remarks.includes('registration');
+      });
+      const totalInstallmentPaid = installmentReceipts.reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
+      const priorScheduled = Math.max(0, installmentsDue - 1) * monthlyInstallment;
+
+      previousOutstanding = Math.max(0, priorScheduled - totalInstallmentPaid);
+      installmentPrepaid = Math.max(0, totalInstallmentPaid - priorScheduled);
+      currentInstallmentDue = installmentsDue > 0 ? monthlyInstallment : 0;
+
+      let upcomingEMI = Math.max(0, totalScheduledInstallmentDue - totalInstallmentPaid);
+      upcomingEMI = Math.min(upcomingEMI, remainingCourseFee);
+    }
+  } else {
+    const nonAdmissionNonRegReceipts = receipts.filter(r => {
+      const remarks = (r.remarks || '').toLowerCase();
+      return !remarks.includes('admission') && !remarks.includes('registration');
+    });
+    const courseAmountPaid = nonAdmissionNonRegReceipts.reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
+    currentInstallmentDue = Math.max(0, remainingCourseFee - courseAmountPaid);
+    previousOutstanding = 0;
+  }
+
+  const totalDue = currentInstallmentDue + registrationOutstanding + admissionOutstanding + previousOutstanding;
+  const outstandingAmount = Math.max(0, totalDue - installmentPrepaid);
+  const dueAmount = Math.max(0, totalFees - totalReceived);
+
+  return {
+    totalReceived,
+    dueAmount,
+    outstandingAmount,
+    admissionFee,
+    admissionPaid,
+    admissionOutstanding,
+    registrationFee,
+    registrationPaid,
+    registrationOutstanding,
+    currentInstallmentDue,
+    previousOutstanding,
+    installmentPrepaid,
+    courseFee,
+    remainingCourseFee,
+    feesMethod,
+    emiStructure,
+    totalFees,
+  };
+};
+
 const getStudentPaymentSummary = asyncHandler(async (req, res) => {
   const student = await Student.findById(req.params.studentId).populate("course");
 
@@ -880,6 +1288,7 @@ const getStudentPaymentSummary = asyncHandler(async (req, res) => {
   }
 
   const receipts = await FeeReceipt.find({ student: student._id }).sort({ date: 1, createdAt: 1 }).lean();
+  return res.json(calculateStudentPaymentSummary(student, receipts));
   const totalReceived = receipts.reduce((acc, curr) => acc + Number(curr.amountPaid || 0), 0);
 
   // --- Fee Structure ---
@@ -1011,6 +1420,40 @@ const getStudentPaymentSummary = asyncHandler(async (req, res) => {
   });
 });
 
+const getStudentPaymentSummaries = asyncHandler(async (req, res) => {
+  const ids = (Array.isArray(req.body.ids) ? req.body.ids : String(req.query.ids || '').split(','))
+    .map(id => String(id).trim())
+    .filter(Boolean);
+
+  if (!ids.length) {
+    return res.json({});
+  }
+
+  const students = await Student.find({ _id: { $in: ids }, isDeleted: false })
+    .populate("course")
+    .lean();
+  const receipts = await FeeReceipt.find({ student: { $in: ids } })
+    .sort({ date: 1, createdAt: 1 })
+    .lean();
+
+  const receiptsByStudent = receipts.reduce((map, receipt) => {
+    const key = receipt.student.toString();
+    if (!map[key]) map[key] = [];
+    map[key].push(receipt);
+    return map;
+  }, {});
+
+  const summaries = {};
+  students.forEach(student => {
+    summaries[student._id.toString()] = calculateStudentPaymentSummary(
+      student,
+      receiptsByStudent[student._id.toString()] || []
+    );
+  });
+
+  res.json(summaries);
+});
+
 // @desc    Get Student Payment History
 const getStudentPaymentHistory = asyncHandler(async (req, res) => {
   const receipts = await FeeReceipt.find({ student: req.params.studentId })
@@ -1109,6 +1552,7 @@ const getNextReceiptNo = asyncHandler(async (req, res) => {
 module.exports = {
   getInquiries,
   createInquiry,
+  importInquiries,
   updateInquiryStatus,
   createFeeReceipt,
   getStudentFees,
@@ -1118,6 +1562,7 @@ module.exports = {
   getStudentLedger,
   getNextReceiptNo,
   getStudentPaymentSummary,
+  getStudentPaymentSummaries,
   getStudentPaymentHistory,
   generateReceiptReport,
 };

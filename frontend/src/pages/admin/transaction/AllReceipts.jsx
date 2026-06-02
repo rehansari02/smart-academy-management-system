@@ -17,14 +17,14 @@ import StudentSearch from '../../../components/StudentSearch';
 
 const AllReceipts = () => {
     const dispatch = useDispatch();
-    const { receipts, isLoading } = useSelector(state => state.transaction);
+    const { receipts, receiptPagination, isLoading } = useSelector(state => state.transaction);
     const { employees } = useSelector(state => state.employees);
     const { branches } = useSelector(state => state.master);
     const { user } = useSelector(state => state.auth);
     
     // Filters State
     const [filters, setFilters] = useState({
-        startDate: '', 
+        startDate: moment().format('YYYY-MM-DD'),
         endDate: moment().format('YYYY-MM-DD'),
         receiptNo: '',
         paymentMode: '',
@@ -32,7 +32,9 @@ const AllReceipts = () => {
         search: '',
         studentName: '',
         reference: '',
-        branchId: user?.role === 'Super Admin' ? '' : (user?.branchId || '')
+        branchId: user?.role === 'Super Admin' ? '' : (user?.branchId || ''),
+        page: 1,
+        limit: 10
     });
 
     const [printingReceipt, setPrintingReceipt] = useState(null);
@@ -44,13 +46,32 @@ const AllReceipts = () => {
     const totalAmount = useMemo(() => (receipts || []).reduce((sum, receipt) => sum + Number(receipt?.amountPaid || 0), 0), [receipts]);
     const totalColumns = user && user.role === 'Super Admin' ? 9 : 8;
 
+    const buildReceiptParams = (sourceFilters) => {
+        const params = { ...sourceFilters };
+        if (params.branchId && typeof params.branchId === 'object') {
+            params.branchId = params.branchId._id;
+        }
+
+        Object.keys(params).forEach((key) => {
+            if (params[key] === '' || params[key] === null || params[key] === undefined) {
+                delete params[key];
+            }
+        });
+
+        return params;
+    };
+
     useEffect(() => {
         // Initial fetch
+        const today = moment().format('YYYY-MM-DD');
         const initialFilters = {
-            endDate: moment().format('YYYY-MM-DD'),
-            branchId: user?.role === 'Super Admin' ? '' : (user?.branchId || '')
+            startDate: today,
+            endDate: today,
+            branchId: user?.role === 'Super Admin' ? '' : (user?.branchId || ''),
+            page: 1,
+            limit: 10
         };
-        dispatch(fetchFeeReceipts(initialFilters));
+        dispatch(fetchFeeReceipts(buildReceiptParams(initialFilters)));
         dispatch(fetchEmployees({ pageSize: 1000 }));
         if (user?.role === 'Super Admin') {
             dispatch(fetchBranches());
@@ -59,40 +80,50 @@ const AllReceipts = () => {
 
     const handleFilterChange = (e) => {
         const { name, value } = e.target;
-        setFilters(prev => ({ ...prev, [name]: value }));
+        setFilters(prev => ({ ...prev, [name]: value, page: 1 }));
     };
 
     const handleStudentSelect = (id, student) => {
         setFilters(prev => ({ 
             ...prev, 
             studentId: id || '', 
-            studentName: student ? `${student.firstName} ${student.lastName}` : '' 
+            studentName: student ? `${student.firstName} ${student.lastName}` : '',
+            page: 1
         }));
     };
 
-    const applyFilters = () => {
-        const params = { ...filters };
-        // Normalize branchId if it's an object
-        if (params.branchId && typeof params.branchId === 'object') {
-            params.branchId = params.branchId._id;
-        }
-        dispatch(fetchFeeReceipts(params));
+    const applyFilters = (override = {}) => {
+        const safeOverride = override && !override.nativeEvent ? override : {};
+        const nextFilters = { ...filters, ...safeOverride };
+        setFilters(nextFilters);
+        dispatch(fetchFeeReceipts(buildReceiptParams(nextFilters)));
+    };
+
+    const handleSearch = () => {
+        applyFilters({ page: 1 });
     };
 
     const resetFilters = () => {
+        const today = moment().format('YYYY-MM-DD');
         const resetObj = {
-            startDate: '',
-            endDate: moment().format('YYYY-MM-DD'),
+            startDate: today,
+            endDate: today,
             receiptNo: '',
             paymentMode: '',
             studentId: '',
             search: '',
             studentName: '',
             reference: '',
-            branchId: user?.role === 'Super Admin' ? '' : (user?.branchId || '')
+            branchId: user?.role === 'Super Admin' ? '' : (user?.branchId || ''),
+            page: 1,
+            limit: 10
         };
         setFilters(resetObj);
-        dispatch(fetchFeeReceipts(resetObj)); 
+        dispatch(fetchFeeReceipts(buildReceiptParams(resetObj))); 
+    };
+
+    const fetchPage = (page) => {
+        applyFilters({ page });
     };
 
     const handleDelete = (id) => {
@@ -149,7 +180,7 @@ const AllReceipts = () => {
             <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Receipts</p>
-                    <p className="mt-1 text-2xl font-bold text-gray-900">{receipts?.length || 0}</p>
+                    <p className="mt-1 text-2xl font-bold text-gray-900">{receiptPagination?.count || 0}</p>
                 </div>
                 <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Total Amount</p>
@@ -189,6 +220,17 @@ const AllReceipts = () => {
                             value={filters.endDate} 
                             onChange={handleFilterChange} 
                             className="w-full border p-1 rounded text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs text-gray-500">Search</label>
+                        <input
+                            type="text"
+                            name="search"
+                            value={filters.search}
+                            onChange={handleFilterChange}
+                            className="w-full border p-1 rounded text-sm h-8"
+                            placeholder="Receipt, student, mobile..."
                         />
                     </div>
                      <div>
@@ -263,7 +305,7 @@ const AllReceipts = () => {
                         <button onClick={resetFilters} className="bg-gray-200 p-2 rounded hover:bg-gray-300 text-gray-700 w-full flex justify-center" title="Reset">
                             <RefreshCw size={18}/>
                         </button>
-                        <button onClick={applyFilters} className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700 w-full flex justify-center">
+                        <button onClick={handleSearch} className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700 w-full flex justify-center">
                             Search
                         </button>
                     </div>
@@ -295,7 +337,7 @@ const AllReceipts = () => {
                              {receipts && receipts.length > 0 ? (
                                 receipts.map((receipt, index) => (
                                     <tr key={receipt._id} className="group hover:bg-blue-50 border-b border-gray-100 transition-colors">
-                                        <td className="p-2 border text-center">{index + 1}</td>
+                                        <td className="p-2 border text-center">{((receiptPagination?.page || 1) - 1) * (receiptPagination?.pageSize || 10) + index + 1}</td>
                                         <td className="p-2 border whitespace-nowrap">{moment(receipt.date).format('DD/MM/YYYY')}</td>
                                         <td className="p-2 border font-mono text-blue-600">{receipt.receiptNo}</td>
                                         <td className="p-2 border font-medium text-gray-900">
@@ -374,6 +416,32 @@ const AllReceipts = () => {
                     </table>
                 )}
              </div>
+
+            {receiptPagination && receiptPagination.pages > 1 && (
+                <div className="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-sm">
+                    <div className="text-gray-600">
+                        Page {receiptPagination.page} of {receiptPagination.pages} | Total {receiptPagination.count} receipts
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => fetchPage((receiptPagination.page || 1) - 1)}
+                            disabled={(receiptPagination.page || 1) <= 1}
+                            className="px-3 py-1.5 rounded border bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                        >
+                            Previous
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => fetchPage((receiptPagination.page || 1) + 1)}
+                            disabled={(receiptPagination.page || 1) >= (receiptPagination.pages || 1)}
+                            className="px-3 py-1.5 rounded border bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* === EDIT MODAL === */}
             <EditReceiptModal 

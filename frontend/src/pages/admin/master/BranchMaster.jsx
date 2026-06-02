@@ -5,6 +5,8 @@ import { fetchStates, fetchCities } from '../../../features/master/masterSlice';
 import { toast } from 'react-toastify';
 import { Edit, Trash2, Plus, Search, X, Eye, EyeOff } from 'lucide-react';
 import { TableSkeleton } from '../../../components/common/SkeletonLoader';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const BranchMaster = () => {
     const dispatch = useDispatch();
@@ -33,6 +35,7 @@ const BranchMaster = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [showDirectorPassword, setShowDirectorPassword] = useState(false);
     const [filteredCities, setFilteredCities] = useState([]);
+    const { add, edit, delete: canDelete } = useUserRights('Branch');
 
     useEffect(() => {
         if (isError) {
@@ -79,6 +82,14 @@ const BranchMaster = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (isEditMode && !edit) {
+            showPermissionDenied("You don't have authority to edit branches.");
+            return;
+        }
+        if (!isEditMode && !add) {
+            showPermissionDenied("You don't have authority to add branches.");
+            return;
+        }
         try {
             if (isEditMode) {
                 await dispatch(updateBranch({ id: editId, branchData: formData })).unwrap();
@@ -115,6 +126,10 @@ const BranchMaster = () => {
     };
 
     const handleDelete = async (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete branches.");
+            return;
+        }
         if (window.confirm('Are you sure you want to delete this branch?')) {
             try {
                 await dispatch(deleteBranch(id)).unwrap();

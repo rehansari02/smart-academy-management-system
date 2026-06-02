@@ -347,15 +347,15 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-700">Contact (Student) <span className="text-red-500">*</span></label>
-                                    <input {...register('contactStudent', { required: true })} className="w-full border p-2 rounded text-sm" placeholder="Mobile No" />
+                                    <label className="block text-xs font-bold text-gray-700">H - Home Contact</label>
+                                    <input {...register('contactHome')} className="w-full border p-2 rounded text-sm" placeholder="Home No" />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-700">Contact (Home)</label>
-                                    <input {...register('contactHome')} className="w-full border p-2 rounded text-sm" placeholder="Landline/Other" />
+                                    <label className="block text-xs font-bold text-gray-700">S - Student Contact <span className="text-red-500">*</span></label>
+                                    <input {...register('contactStudent', { required: true })} className="w-full border p-2 rounded text-sm" placeholder="Student Mobile No" />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-700">Contact (Parent)</label>
+                                    <label className="block text-xs font-bold text-gray-700">P - Parent Contact</label>
                                     <input {...register('contactParent')} className="w-full border p-2 rounded text-sm" placeholder="Parent No" />
                                 </div>
 

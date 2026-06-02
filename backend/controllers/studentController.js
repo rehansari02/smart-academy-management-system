@@ -21,7 +21,7 @@ const getStudents = asyncHandler(async (req, res) => {
         page = 1, pageSize = 10, courseFilter, studentName,
         hasPendingFees, reference, startDate, endDate,
         isRegistered, isAdmissionFeesPaid, batch, branchId,
-        sortBy = '-createdAt', ids, isActive
+        sortBy = '-admissionDate -createdAt', ids, isActive
     } = req.query;
     
     let query = { isDeleted: false };
@@ -102,7 +102,7 @@ const getStudents = asyncHandler(async (req, res) => {
         .populate('userId', 'username')
         .limit(limit)
         .skip(limit * (pageNum - 1))
-        .sort(sortBy || '-createdAt')
+        .sort(sortBy || '-admissionDate -createdAt')
         .lean();
 
     const studentIds = students.map(s => s._id);

@@ -10,6 +10,7 @@ import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
 import { toast } from 'react-toastify';
+import axios from 'axios';
 
 const StudentAttendanceReport = () => {
     const dispatch = useDispatch();
@@ -18,6 +19,7 @@ const StudentAttendanceReport = () => {
     const { students } = useSelector((state) => state.students);
     const { employees } = useSelector((state) => state.employees);
     const { user } = useSelector((state) => state.auth);
+    const [attendanceClosures, setAttendanceClosures] = useState([]);
 
     const [filters, setFilters] = useState({
         month: moment().format('YYYY-MM'),
@@ -32,6 +34,7 @@ const StudentAttendanceReport = () => {
     const [reportData, setReportData] = useState([]);
     const [daysInMonth, setDaysInMonth] = useState([]);
     const componentRef = useRef(null);
+    const isFirstFilterSyncRef = useRef(true);
 
     const [showReport, setShowReport] = useState(true);
 
@@ -49,6 +52,23 @@ const StudentAttendanceReport = () => {
             pageSize: 3000
         }));
     }, [dispatch, user]);
+
+    const fetchAttendanceClosures = async (fromDate, toDate) => {
+        try {
+            const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/attendance/manage`, {
+                params: {
+                    fromDate,
+                    toDate,
+                    limit: 1000
+                },
+                withCredentials: true
+            });
+            setAttendanceClosures(Array.isArray(data) ? data : (data.items || []));
+        } catch (error) {
+            console.error('Failed to load attendance calendar', error);
+            setAttendanceClosures([]);
+        }
+    };
 
     // Generate Month Days Helper
     const getDaysInMonth = (yearMonth) => {
@@ -68,7 +88,12 @@ const StudentAttendanceReport = () => {
     };
 
     const handleFilterChange = (e) => {
-        setFilters({ ...filters, [e.target.name]: e.target.value });
+        const { name, value } = e.target;
+        setFilters(prev => ({
+            ...prev,
+            [name]: value,
+            ...(name === 'courseFilter' ? { studentName: '' } : {})
+        }));
     };
 
     const handleStudentSelect = (id, student) => {
@@ -87,6 +112,7 @@ const StudentAttendanceReport = () => {
         });
         setShowReport(false);
         setReportData([]);
+        setAttendanceClosures([]);
     };
 
     const handleSearch = () => {
@@ -119,15 +145,39 @@ const StudentAttendanceReport = () => {
         if (filters.studentName) studentParams.studentName = filters.studentName;
 
         dispatch(fetchStudents(studentParams));
+        fetchAttendanceClosures(startDate, endDate);
 
         setDaysInMonth(getDaysInMonth(filters.month));
         setShowReport(true);
     };
 
+    useEffect(() => {
+        if (isFirstFilterSyncRef.current) {
+            isFirstFilterSyncRef.current = false;
+            return;
+        }
+
+        if (!filters.month) return;
+
+        handleSearch();
+        // Intentionally refresh on high-level filters only; student typing still uses the button.
+    }, [filters.month, filters.courseFilter, filters.batch, filters.branchId, filters.reference]);
+
     // Calculate Report Data
     useEffect(() => {
         if (students && attendanceList && daysInMonth.length > 0) {
             const attendanceMap = {};
+            const closureMap = {};
+
+            attendanceClosures.forEach((closure) => {
+                const start = moment(closure.startDate).startOf('day');
+                const end = moment(closure.endDate || closure.startDate).endOf('day');
+                const current = start.clone();
+                while (current.isSameOrBefore(end, 'day')) {
+                    closureMap[current.format('YYYY-MM-DD')] = closure.type || 'Holiday';
+                    current.add(1, 'day');
+                }
+            });
 
             attendanceList.forEach(record => {
                 const dateKey = moment(record.date).format('YYYY-MM-DD');
@@ -147,12 +197,17 @@ const StudentAttendanceReport = () => {
                 let presentCount = 0;
                 let absentCount = 0;
                 let sundayCount = 0;
+                let closureCount = 0;
                 let daysData = {};
 
                 daysInMonth.forEach(day => {
-                    if (day.isSunday) {
+                    const closureType = closureMap[day.fullDate];
+                    if (day.isSunday || closureType === 'Sunday') {
                         daysData[day.date] = 'S';
                         sundayCount++;
+                    } else if (closureType) {
+                        daysData[day.date] = closureType === 'Vacation' ? 'V' : 'H';
+                        closureCount++;
                     } else {
                         const status = attendanceMap[day.fullDate]?.[student._id];
                         if (status) {
@@ -165,7 +220,7 @@ const StudentAttendanceReport = () => {
                     }
                 });
 
-                const totalWD = daysInMonth.length - sundayCount;
+                const totalWD = daysInMonth.length - sundayCount - closureCount;
                 const percentage = totalWD > 0 ? ((presentCount / totalWD) * 100).toFixed(2) : 0;
 
                 return {
@@ -176,7 +231,7 @@ const StudentAttendanceReport = () => {
                         absent: absentCount,
                         wd: totalWD,
                         sundays: sundayCount,
-                        festival: 0,
+                        festival: closureCount,
                         rank: percentage
                     }
                 };
@@ -186,7 +241,7 @@ const StudentAttendanceReport = () => {
 
             setReportData(processedData);
         }
-    }, [students, attendanceList, daysInMonth]);
+    }, [students, attendanceList, daysInMonth, attendanceClosures]);
 
     useEffect(() => {
         const originalTitle = document.title;
@@ -308,8 +363,13 @@ const StudentAttendanceReport = () => {
                             label="Student Name"
                             placeholder="Search by name..."
                             onSelect={handleStudentSelect}
+                            selectedValue={filters.studentName}
                             displayField="name"
-                            additionalFilters={{ isRegistered: 'true', branchId: filters.branchId }}
+                            additionalFilters={{
+                                isRegistered: 'true',
+                                branchId: filters.branchId,
+                                courseFilter: filters.courseFilter || undefined
+                            }}
                         />
                     </div>
                     <div>
@@ -388,6 +448,7 @@ const StudentAttendanceReport = () => {
                                     <span className="text-green-700">P - PRESENT</span>
                                     <span className="text-red-600">A - ABSENT</span>
                                     <span className="text-red-800">S - SUNDAYS</span>
+                                    <span className="text-red-700">H - HOLIDAY</span>
                                 </div>
                             </div>
                         </div>
@@ -436,6 +497,8 @@ const StudentAttendanceReport = () => {
                                                 const status = std.daysData[day.date];
                                                 let cellClass = "border border-gray-200 p-0 text-[10px] md:text-sm print:text-[8px] ";
                                                 if (status === 'S') cellClass += "bg-red-700 text-white font-bold";
+                                                else if (status === 'H') cellClass += "bg-red-50 text-red-700 font-bold";
+                                                else if (status === 'V') cellClass += "bg-orange-50 text-orange-700 font-bold";
                                                 else if (status === 'P') cellClass += "text-green-600 font-bold";
                                                 else if (status === 'A') cellClass += "text-red-600 font-bold";
                                                 else cellClass += "text-gray-300";

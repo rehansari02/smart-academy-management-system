@@ -10,7 +10,17 @@ import {
   deleteTemplate 
 } from '../../../features/userRights/userRightsSlice';
 import { toast } from 'react-toastify';
-import { Save, CheckSquare, Square, Trash2, Plus } from 'lucide-react';import { getMenuSections } from '../../../utils/menuConfig';
+import { Save, CheckSquare, Square, Trash2, Plus } from 'lucide-react';
+import { getMenuSections, getAllPermissionPages } from '../../../utils/menuConfig';
+import { normalizePermissionRecord } from '../../../utils/permissionUtils';
+
+const buildDefaultPermissions = () => getAllPermissionPages().map(page => ({
+  page,
+  view: false,
+  add: false,
+  edit: false,
+  delete: false
+}));
 
 const UserRights = () => {
   const dispatch = useDispatch();
@@ -20,17 +30,7 @@ const UserRights = () => {
   
   // Local State
   const [selectedEmployee, setSelectedEmployee] = useState('');
-  const [permissions, setPermissions] = useState(() => {
-    // Initialize with all pages from sections
-    const allPages = Object.values(getMenuSections()).flat();
-    return allPages.map(page => ({
-      page,
-      view: false,
-      add: false,
-      edit: false,
-      delete: false
-    }));
-  });
+  const [permissions, setPermissions] = useState(buildDefaultPermissions);
   const [activeTab, setActiveTab] = useState('Master'); // Default Tab
 
   // Redux State
@@ -58,21 +58,21 @@ const UserRights = () => {
       // Flatten all pages from SECTIONS to ensure we have a complete list
       const allPages = Object.values(sections).flat();
       
-      const mergedPermissions = allPages.map(page => {
-        const existing = rights.permissions.find(p => p.page === page);
-        
-        if (existing) {
-          // Use existing data with proper boolean conversion
-          return {
-            page,
-            view: Boolean(existing.view),
-            add: Boolean(existing.add),
-            edit: Boolean(existing.edit),
-            delete: Boolean(existing.delete)
-          };
-        }
-        return { page, view: false, add: false, edit: false, delete: false };
-      });
+        const mergedPermissions = allPages.map(page => {
+          const existing = rights.permissions.find(p => p.page === page);
+          
+          if (existing) {
+            // Use existing data with proper boolean conversion
+            return normalizePermissionRecord({
+              page,
+              view: Boolean(existing.view),
+              add: Boolean(existing.add),
+              edit: Boolean(existing.edit),
+              delete: Boolean(existing.delete)
+            });
+          }
+          return { page, view: false, add: false, edit: false, delete: false };
+        });
       
       setPermissions(mergedPermissions);
     }
@@ -86,19 +86,9 @@ const UserRights = () => {
     const empId = e.target.value;
     setSelectedEmployee(empId);
     if (empId) {
-      const employee = employees.find(emp => emp._id === empId);
-      
-      if (employee && employee.userAccount) {
-        // Extract the user ID from userAccount (could be object or string)
-        const userId = typeof employee.userAccount === 'object' 
-          ? employee.userAccount._id 
-          : employee.userAccount;
-        
-        dispatch(fetchUserRights(userId));
-      } else {
-        toast.warning("This employee is not linked to a User Account.");
-        setPermissions([]);
-      }
+      dispatch(fetchUserRights(empId));
+    } else {
+      setPermissions(buildDefaultPermissions());
     }
   };
 
@@ -109,21 +99,21 @@ const UserRights = () => {
     if (templateId) {
       const tmpl = templates.find(t => t._id === templateId);
       if (tmpl) {
-        // Merge template permissions with current state structure
-        const newPerms = permissions.map(p => {
-            const tmplPerm = tmpl.permissions.find(tp => tp.page === p.page);
-            return tmplPerm ? { 
-                ...p, 
-                view: tmplPerm.view, 
-                add: tmplPerm.add, 
-                edit: tmplPerm.edit, 
-                delete: tmplPerm.delete 
-            } : p;
-        });
-        setPermissions(newPerms);
+          // Merge template permissions with current state structure
+          const newPerms = permissions.map(p => {
+              const tmplPerm = tmpl.permissions.find(tp => tp.page === p.page);
+              return tmplPerm ? normalizePermissionRecord({
+                  ...p,
+                  view: tmplPerm.view,
+                  add: tmplPerm.add,
+                  edit: tmplPerm.edit,
+                  delete: tmplPerm.delete
+              }) : p;
+          });
+          setPermissions(newPerms);
+        }
       }
-    }
-  };
+    };
 
   const handleCreateTemplate = () => {
     if (!newTemplateName.trim()) {
@@ -146,9 +136,38 @@ const UserRights = () => {
 
   // Toggle specific checkbox
   const handleCheckboxChange = (pageName, field, value) => {
-    setPermissions(prev => prev.map(p => 
-      p.page === pageName ? { ...p, [field]: value } : p
-    ));
+      setPermissions(prev => prev.map(p => {
+        if (p.page !== pageName) return p;
+        const next = { ...p, [field]: value };
+        if (field === 'view' && !value) {
+          next.add = false;
+          next.edit = false;
+          next.delete = false;
+        }
+        if (field === 'add') {
+          if (value) next.view = true;
+          else {
+            next.edit = false;
+            next.delete = false;
+          }
+        }
+        if (field === 'edit') {
+          if (value) {
+            next.view = true;
+            next.add = true;
+          } else {
+            next.delete = false;
+          }
+        }
+        if (field === 'delete') {
+          if (value) {
+            next.view = true;
+            next.add = true;
+            next.edit = true;
+          }
+        }
+        return normalizePermissionRecord(next);
+      }));
   };
 
   // Select all options for a specific row (Page)
@@ -163,30 +182,32 @@ const UserRights = () => {
 
   // Select all options for a specific column (Action) - ONLY FOR CURRENT TAB
   const handleColumnSelectAll = (field, isChecked) => {
-    const visiblePages = sections[activeTab] || [];
-    setPermissions(prev => prev.map(p => {
-      if (visiblePages.includes(p.page)) {
-        return { ...p, [field]: isChecked };
-      }
-      return p;
-    }));
-  };
-
-  // Helper to extract userId from employee's userAccount
-  const getUserId = (employee) => {
-    if (!employee?.userAccount) return null;
-    return typeof employee.userAccount === 'object' 
-      ? employee.userAccount._id 
-      : employee.userAccount;
+      const visiblePages = sections[activeTab] || [];
+      setPermissions(prev => prev.map(p => {
+        if (visiblePages.includes(p.page)) {
+          const next = { ...p, [field]: isChecked };
+          return normalizePermissionRecord(next);
+        }
+        return p;
+      }));
   };
 
   const onSave = () => {
     const employee = employees.find(emp => emp._id === selectedEmployee);
-    const userId = getUserId(employee);
-    if (userId) {
-      dispatch(saveUserRights({ userId, permissions }));
+    if (employee?._id) {
+      dispatch(saveUserRights({
+        employeeId: employee._id,
+        userId: employee.userAccount
+          ? (typeof employee.userAccount === 'object' ? employee.userAccount._id : employee.userAccount)
+          : undefined,
+        permissions
+      })).then((result) => {
+        if (saveUserRights.fulfilled.match(result)) {
+          dispatch(fetchUserRights(employee._id));
+        }
+      });
     } else {
-      toast.error("Cannot save: Employee not linked to a User Account.");
+      toast.error("Cannot save: Employee not found.");
     }
   };
   // Filter permissions based on active tab
@@ -207,7 +228,7 @@ const UserRights = () => {
             >
                 <option value="">-- Select Employee --</option>
                 {filteredEmployees.map(emp => (
-                <option key={emp._id} value={emp._id}>{emp.name}</option> // Removed ({emp.type}) as it might be redundant or confusing if type is internal code
+                <option key={emp._id} value={emp._id}>{emp.name}</option>
                 ))}
             </select>
             </div>
@@ -243,10 +264,10 @@ const UserRights = () => {
                     <Plus size={18}/> Create Template
                  </button>
 
-                <button 
-                    onClick={() => {
-                        setPermissions(prev => prev.map(p => ({ ...p, view: true, add: true, edit: true, delete: true })))
-                    }}
+                    <button 
+                      onClick={() => {
+                        setPermissions(prev => prev.map(p => normalizePermissionRecord({ ...p, view: true, add: true, edit: true, delete: true })))
+                      }}
                     className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300 flex items-center gap-2"
                 >
                     <CheckSquare size={18}/> Select All

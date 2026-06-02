@@ -3,6 +3,8 @@ import { toast } from 'react-toastify';
 import { Plus, Search, Image as ImageIcon, Edit2, Trash2, X, Upload, ArrowLeft, CheckCircle, Camera, Layers, Tag, Eye, EyeOff, ExternalLink, PlayCircle } from 'lucide-react';
 import Swal from 'sweetalert2';
 import galleryService from '../../../services/galleryService';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const getYoutubeVideoId = (parsed) => {
     const pathParts = parsed.pathname.split('/').filter(Boolean);
@@ -159,6 +161,7 @@ const ImagePanel = ({ gallery, onBack, onUpdated }) => {
     const [uploading, setUploading] = useState(false);
     const [current, setCurrent] = useState({ ...gallery });
     const currentLink = getGalleryLinkInfo(current.videoLink);
+    const { add, delete: canDelete } = useUserRights('Gallery');
 
     const refresh = async () => {
         const data = await galleryService.getGalleryById(gallery._id);
@@ -173,6 +176,10 @@ const ImagePanel = ({ gallery, onBack, onUpdated }) => {
     };
 
     const handleUpload = async () => {
+        if (!add) {
+            showPermissionDenied("You don't have authority to upload gallery photos.");
+            return;
+        }
         if (!files.length) return toast.error('Select at least one image');
         setUploading(true);
         const fd = new FormData();
@@ -188,6 +195,10 @@ const ImagePanel = ({ gallery, onBack, onUpdated }) => {
     };
 
     const handleDeleteImg = (imgUrl) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete gallery photos.");
+            return;
+        }
         Swal.fire({
             title: 'Delete this photo?', icon: 'warning',
             showCancelButton: true, confirmButtonColor: '#d33',
@@ -307,6 +318,7 @@ const ManageGallery = () => {
     const [form, setForm] = useState({ title: '', description: '', category: '', videoLink: '', isActive: true });
     const [files, setFiles] = useState([]);
     const [previews, setPreviews] = useState([]);
+    const { add, edit, delete: canDelete } = useUserRights('Gallery');
 
     const fetchData = async () => {
         try { 
@@ -328,6 +340,10 @@ const ManageGallery = () => {
 
     const handleCreateCategory = async (e) => {
         e.preventDefault();
+        if (!add) {
+            showPermissionDenied("You don't have authority to create gallery categories.");
+            return;
+        }
         if (!newCatName.trim()) return;
         setCatLoading(true);
         try {
@@ -343,6 +359,10 @@ const ManageGallery = () => {
     };
 
     const handleToggleCategoryActive = async (cat) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to update gallery categories.");
+            return;
+        }
         try {
             await galleryService.updateCategory(cat._id, { isActive: !cat.isActive });
             toast.success('Category status updated');
@@ -353,6 +373,10 @@ const ManageGallery = () => {
     };
 
     const handleToggleGalleryActive = async (g) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to update gallery albums.");
+            return;
+        }
         try {
             await galleryService.updateGallery(g._id, { isActive: !g.isActive });
             toast.success(`Event album is now ${!g.isActive ? 'Visible' : 'Hidden'} on website`);
@@ -363,6 +387,10 @@ const ManageGallery = () => {
     };
 
     const handleDeleteCategory = async (id, name) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete gallery categories.");
+            return;
+        }
         Swal.fire({
             title: `Delete Category "${name}"?`,
             text: "This will remove the category from selection options.",
@@ -384,6 +412,10 @@ const ManageGallery = () => {
     };
 
     const openCreate = () => {
+        if (!add) {
+            showPermissionDenied("You don't have authority to create gallery albums.");
+            return;
+        }
         setEditItem(null);
         setForm({ title: '', description: '', category: categoryList[0]?.name || '', videoLink: '', isActive: true });
         setFiles([]); setPreviews([]);
@@ -391,6 +423,10 @@ const ManageGallery = () => {
     };
 
     const openEdit = (g) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit gallery albums.");
+            return;
+        }
         setEditItem(g);
         setForm({ title: g.title, description: g.description, category: g.category, videoLink: g.videoLink || '', isActive: g.isActive });
         setFiles([]); setPreviews([]);
@@ -406,6 +442,10 @@ const ManageGallery = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (editItem ? !edit : !add) {
+            showPermissionDenied(`You don't have authority to ${editItem ? 'edit' : 'create'} gallery albums.`);
+            return;
+        }
         if (!form.title) return toast.error('Title is required');
         if (!form.category) return toast.error('Please select or create a category first');
         if (!editItem && files.length === 0 && (!form.videoLink || !form.videoLink.trim())) {
@@ -437,6 +477,10 @@ const ManageGallery = () => {
     };
 
     const handleDelete = (id, title) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete gallery albums.");
+            return;
+        }
         Swal.fire({ title: `Delete "${title}"?`, text: 'All photos & links will be removed!', icon: 'warning',
             showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'Yes, delete!'
         }).then(async r => {

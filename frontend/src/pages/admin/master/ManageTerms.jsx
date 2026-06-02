@@ -2,11 +2,14 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { Save, FileText } from 'lucide-react';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const ManageTerms = () => {
     const [content, setContent] = useState('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const { edit } = useUserRights('Manage Terms');
 
     useEffect(() => {
         fetchTerms();
@@ -25,6 +28,10 @@ const ManageTerms = () => {
     };
 
     const handleSave = async () => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit terms.");
+            return;
+        }
         if (!content.trim()) return toast.error("Content cannot be empty");
         
         setSaving(true);

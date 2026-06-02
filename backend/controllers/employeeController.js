@@ -3,6 +3,43 @@ const User = require('../models/User');
 const sendSMS = require('../utils/smsSender');
 const asyncHandler = require('express-async-handler');
 
+const enrichEmployeesWithUserAccounts = async (employees) => {
+    const missingUsernames = [...new Set(
+        employees
+            .filter((employee) => !employee.userAccount && employee.loginUsername)
+            .map((employee) => String(employee.loginUsername).trim())
+            .filter(Boolean)
+    )];
+
+    if (!missingUsernames.length) {
+        return employees;
+    }
+
+    const users = await User.find({
+        username: { $in: missingUsernames }
+    }).select('_id username').lean();
+
+    const userByUsername = new Map(
+        users.map((user) => [String(user.username).trim().toLowerCase(), user])
+    );
+
+    return employees.map((employee) => {
+        if (employee.userAccount || !employee.loginUsername) {
+            return employee;
+        }
+
+        const linkedUser = userByUsername.get(String(employee.loginUsername).trim().toLowerCase());
+        if (!linkedUser) {
+            return employee;
+        }
+
+        return {
+            ...employee,
+            userAccount: linkedUser,
+        };
+    });
+};
+
 // @desc    Get Employees with Filters
 const getEmployees = asyncHandler(async (req, res) => {
     const { joiningFrom, joiningTo, gender, searchBy, searchValue } = req.query;
@@ -51,8 +88,14 @@ const getEmployees = asyncHandler(async (req, res) => {
         query.branchId = req.query.branchId;
     }
 
-    const employees = await Employee.find(query).populate('branchId', 'name shortCode').populate('userAccount', 'username').sort({ createdAt: -1 });
-    res.json(employees);
+    const employees = await Employee.find(query)
+        .populate('branchId', 'name shortCode')
+        .populate('userAccount', 'username')
+        .sort({ createdAt: -1 });
+
+    const enrichedEmployees = await enrichEmployeesWithUserAccounts(employees.map((employee) => employee.toObject()));
+
+    res.json(enrichedEmployees);
 });
 
 // @desc    Create Employee
@@ -190,7 +233,9 @@ const createEmployee = asyncHandler(async (req, res) => {
         }
 
         // Populate branchId for the immediate response
-        const populatedEmployee = await Employee.findById(employee._id).populate('branchId', 'name shortCode');
+        const populatedEmployee = await Employee.findById(employee._id)
+            .populate('branchId', 'name shortCode')
+            .populate('userAccount', 'username');
 
         res.status(201).json(populatedEmployee);
 
@@ -266,7 +311,8 @@ const updateEmployee = asyncHandler(async (req, res) => {
 
     // Re-fetch to populate
     const populatedEmployee = await Employee.findById(updatedEmployee._id)
-        .populate('branchId', 'name shortCode');
+        .populate('branchId', 'name shortCode')
+        .populate('userAccount', 'username');
 
     res.json(populatedEmployee);
 });

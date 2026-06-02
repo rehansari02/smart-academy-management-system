@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { Trash2, RefreshCw, Filter, ImageIcon, ExternalLink, AlertTriangle } from 'lucide-react';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const CloudinaryManager = () => {
     const [images, setImages] = useState([]);
@@ -9,6 +11,7 @@ const CloudinaryManager = () => {
     const [filter, setFilter] = useState('All'); // All, Used, Unused
     const [nextCursor, setNextCursor] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
+    const { delete: canDelete } = useUserRights('Cloudinary Management');
 
     const fetchImages = async (cursor = null) => {
         try {
@@ -38,6 +41,10 @@ const CloudinaryManager = () => {
     }, []);
 
     const handleDelete = async (public_id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete cloudinary images.");
+            return;
+        }
         if (!window.confirm("Are you sure you want to delete this image? This action cannot be undone.")) return;
 
         try {

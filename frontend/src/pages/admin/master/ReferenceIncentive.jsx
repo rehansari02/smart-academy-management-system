@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { getBranches } from '../../../features/master/branchSlice';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const API = `${import.meta.env.VITE_API_URL}/admin-dashboard/reference-incentive`;
 
@@ -57,8 +59,31 @@ const ReferenceIncentive = () => {
   }, [dispatch]);
 
   const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
-  const formatAmount = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
+  const formatMoney = (value) =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0
+    }).format(Number(value || 0));
   const formatDate = (date) => date ? new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+
+  const getCommissionType = (course) => {
+    const raw = String(course?.commissionType || '').trim().toLowerCase();
+    if (raw === 'percentage' || raw === '%') return 'Percentage';
+    if (raw === 'amount' || raw === 'rupee' || raw === 'rs') return 'Amount';
+    const value = Number(course?.commission || 0);
+    return value > 0 && value <= 100 ? 'Percentage' : 'Amount';
+  };
+  const formatCommissionValue = (course) => {
+    const type = getCommissionType(course);
+    const value = Number(course?.commission || 0);
+    return type === 'Percentage' ? `${value}%` : formatMoney(value);
+  };
+  const getCommissionNote = (course) => {
+    const type = getCommissionType(course);
+    const value = Number(course?.commission || 0);
+    return type === 'Percentage' ? `${value}% of total fees` : `${formatMoney(value)} per student`;
+  };
 
   const fetchData = async (reference) => {
     setLoading(true);
@@ -321,7 +346,7 @@ const ReferenceIncentive = () => {
                             <span className="text-emerald-600">{ref.admissionCount} admitted</span>
                           </div>
                           <div className="mt-1 text-xs font-bold text-indigo-600">
-                            {formatAmount(ref.totalIncentive)}
+                            {formatMoney(ref.totalIncentive)}
                           </div>
                         </div>
                         <ChevronRight size={14} className={`mt-2 shrink-0 ${
@@ -342,7 +367,7 @@ const ReferenceIncentive = () => {
                     </div>
                     <div className="rounded-lg bg-white p-2">
                       <p className="text-slate-500">Total Incentive</p>
-                      <p className="text-indigo-600">{formatAmount(globalSummary?.totalIncentive || 0)}</p>
+                      <p className="text-indigo-600">{formatMoney(globalSummary?.totalIncentive || 0)}</p>
                     </div>
                   </div>
                 </div>
@@ -361,7 +386,7 @@ const ReferenceIncentive = () => {
                 <TeacherPerformanceDetail
                   teacherName={activeReference}
                   data={selectedData}
-                  formatAmount={formatAmount}
+                  formatMoney={formatMoney}
                   formatDate={formatDate}
                   onBack={handleBack}
                   onRefresh={() => fetchData(activeReference)}
@@ -398,13 +423,13 @@ const ReferenceIncentive = () => {
                     <SummaryCard
                       icon={<TrendingUp size={20} className="text-blue-500" />}
                       label="Total Incentive"
-                      value={formatAmount(globalSummary.totalIncentive)}
+                      value={formatMoney(globalSummary.totalIncentive)}
                       color="blue"
                     />
                     <SummaryCard
                       icon={<Trophy size={20} className="text-purple-500" />}
                       label="Incentives Accrued"
-                      value={formatAmount(globalSummary.totalIncentive)}
+                      value={formatMoney(globalSummary.totalIncentive)}
                       color="purple"
                       highlight
                     />
@@ -453,11 +478,30 @@ function IncentiveStatusBadge({ status, paidAt, paidBy, formatDate }) {
 }
 
 /* ===== Teacher Performance Detail View ===== */
-function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate, onBack, onRefresh }) {
+function TeacherPerformanceDetail({ teacherName, data, formatMoney, formatDate, onBack, onRefresh }) {
   const summary = data.summary || {};
   const students = data.students || [];
   const recentReceipts = data.recentReceipts || [];
   const monthlyTrend = data.monthlyTrend || [];
+  const { edit } = useUserRights('Reference Incentive');
+
+  const getCommissionType = (course) => {
+    const raw = String(course?.commissionType || '').trim().toLowerCase();
+    if (raw === 'percentage' || raw === '%') return 'Percentage';
+    if (raw === 'amount' || raw === 'rupee' || raw === 'rs') return 'Amount';
+    const value = Number(course?.commission || 0);
+    return value > 0 && value <= 100 ? 'Percentage' : 'Amount';
+  };
+  const formatCommissionValue = (course) => {
+    const type = getCommissionType(course);
+    const value = Number(course?.commission || 0);
+    return type === 'Percentage' ? `${value}%` : formatMoney(value);
+  };
+  const getCommissionNote = (course) => {
+    const type = getCommissionType(course);
+    const value = Number(course?.commission || 0);
+    return type === 'Percentage' ? `${value}% of total fees` : `${formatMoney(value)} per student`;
+  };
 
   // --- Incentive Status Management ---
   const [selectedStudents, setSelectedStudents] = useState(new Set());
@@ -485,6 +529,10 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
   };
 
   const handleBulkUpdate = async (status) => {
+    if (!edit) {
+      showPermissionDenied("You don't have authority to update incentive status.");
+      return;
+    }
     if (selectedStudents.size === 0) return;
     setBulkUpdating(true);
     try {
@@ -505,6 +553,10 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
   };
 
   const handleIndividualUpdate = async (studentId, currentStatus) => {
+    if (!edit) {
+      showPermissionDenied("You don't have authority to update incentive status.");
+      return;
+    }
     const newStatus = currentStatus === 'Paid' ? 'Pending' : 'Paid';
     setUpdatingStudent(studentId);
     try {
@@ -561,8 +613,8 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatBox label="Students" value={summary.studentCount} />
           <StatBox label="Admitted" value={summary.admissionCount} className="text-emerald-300" />
-          <StatBox label="Total Rev." value={formatAmount(summary.totalFees)} />
-          <StatBox label="Incentive" value={formatAmount(summary.totalIncentive)} className="text-amber-300" />
+          <StatBox label="Total Rev." value={formatMoney(summary.totalFees)} />
+          <StatBox label="Incentive" value={formatMoney(summary.totalIncentive)} className="text-amber-300" />
         </div>
       </div>
 
@@ -609,7 +661,7 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
                   </Pie>
                   <Tooltip
                     contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
-                    formatter={(value) => [formatAmount(value), 'Amount']}
+                    formatter={(value) => [formatMoney(value), 'Amount']}
                   />
                   <Legend
                     verticalAlign="bottom"
@@ -621,10 +673,10 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
               </ResponsiveContainer>
               <div className="mt-2 grid w-full max-w-xs grid-cols-2 gap-3 text-center text-xs font-black">
                 <div className="rounded-xl bg-emerald-50 p-2 text-emerald-700">
-                  Paid: {formatAmount(summary.paidIncentive)}
+                  Paid: {formatMoney(summary.paidIncentive)}
                 </div>
                 <div className="rounded-xl bg-amber-50 p-2 text-amber-700">
-                  Pending: {formatAmount(summary.pendingIncentive)}
+                  Pending: {formatMoney(summary.pendingIncentive)}
                 </div>
               </div>
             </div>
@@ -681,7 +733,7 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
             <p className="text-xs font-semibold text-slate-500">{students.length} student(s)</p>
           </div>
           <div className="rounded-lg bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">
-            Incentive: {formatAmount(summary.totalIncentive)}
+            Incentive: {formatMoney(summary.totalIncentive)}
           </div>
         </div>
 
@@ -723,27 +775,23 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
                     )}
                   </td>
                   <td className="p-3">
-                    {s.course?.commissionType === 'Percentage' ? (
+                    {getCommissionType(s.course) === 'Percentage' ? (
                       <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-0.5 text-[11px] font-black text-indigo-700">
-                        {s.course.commission}%
+                        {formatCommissionValue(s.course)}
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-600">
-                        {formatAmount(s.course?.commission)}
+                        {formatCommissionValue(s.course)}
                       </span>
                     )}
                     <div className="mt-0.5 text-[10px] font-semibold text-slate-400">
-                      {s.course?.commissionType === 'Percentage'
-                        ? `${s.course.commission}% of total fees`
-                        : 'fixed per student'}
+                      {getCommissionNote(s.course)}
                     </div>
                   </td>
                   <td className="p-3 text-right">
-                    <div className="font-black text-indigo-600">{formatAmount(s.incentive)}</div>
+                    <div className="font-black text-indigo-600">{formatMoney(s.incentive)}</div>
                     <div className="text-[10px] font-semibold text-slate-400">
-                      {s.course?.commissionType === 'Percentage'
-                        ? `${s.course.commission}% of fees`
-                        : `₹${Number(s.course?.commission || 0).toLocaleString('en-IN')} per student`}
+                      {getCommissionNote(s.course)}
                     </div>
                   </td>
                   <td className="p-3 text-center">
@@ -788,7 +836,7 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div><span className="font-semibold text-slate-500">Course:</span> <span className="text-slate-700">{s.course?.name || '-'}</span></div>
-                <div><span className="font-semibold text-slate-500">Incentive:</span> <span className="font-black text-indigo-600">{formatAmount(s.incentive)}</span></div>
+                <div><span className="font-semibold text-slate-500">Incentive:</span> <span className="font-black text-indigo-600">{formatMoney(s.incentive)}</span></div>
                 <div className="text-right">
                   <button
                     onClick={() => handleIndividualUpdate(s._id, s.incentiveStatus)}
@@ -846,7 +894,7 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
                     <td className="p-3">
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600">{r.paymentMode}</span>
                     </td>
-                    <td className="p-3 text-right font-black text-emerald-700">{formatAmount(r.amountPaid)}</td>
+                    <td className="p-3 text-right font-black text-emerald-700">{formatMoney(r.amountPaid)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -861,7 +909,7 @@ function TeacherPerformanceDetail({ teacherName, data, formatAmount, formatDate,
                     <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-slate-100 text-[11px] font-bold text-slate-500">{idx + 1}</span>
                     <span className="font-bold text-slate-800">{r.receiptNo}</span>
                   </div>
-                  <span className="font-black text-emerald-700">{formatAmount(r.amountPaid)}</span>
+                  <span className="font-black text-emerald-700">{formatMoney(r.amountPaid)}</span>
                 </div>
                 <div className="text-xs text-slate-500">
                   {r.student ? `${r.student.firstName || ''} ${r.student.lastName || ''}` : '-'} &middot; {r.paymentMode} &middot; {formatDate(r.date)}
@@ -938,3 +986,4 @@ const ChartPanel = ({ title, subtitle, children }) => (
 );
 
 export default ReferenceIncentive;
+

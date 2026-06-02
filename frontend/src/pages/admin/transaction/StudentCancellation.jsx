@@ -5,12 +5,15 @@ import { fetchBranches } from '../../../features/master/masterSlice';
 import { XCircle, UserX, Search, Filter, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'react-toastify';
 import StudentSearch from '../../../components/StudentSearch';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const StudentCancellation = () => {
   const dispatch = useDispatch();
   const { students, isLoading } = useSelector((state) => state.students);
   const { branches } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
+  const { edit } = useUserRights('Student Cancellation');
 
   const [filters, setFilters] = useState({
     startDate: '',
@@ -56,11 +59,19 @@ const StudentCancellation = () => {
   };
 
   const handleCancelClick = (student) => {
+    if (!edit) {
+      showPermissionDenied("You don't have authority to cancel student admissions.");
+      return;
+    }
     setSelectedStudent(student);
     setShowConfirmModal(true);
   };
 
   const handleReactivateClick = (student) => {
+    if (!edit) {
+      showPermissionDenied("You don't have authority to reactivate students.");
+      return;
+    }
     dispatch(reactivateStudent(student._id)).then((result) => {
       if (result.meta.requestStatus === 'fulfilled') {
         toast.success('Student admission reactivated successfully');

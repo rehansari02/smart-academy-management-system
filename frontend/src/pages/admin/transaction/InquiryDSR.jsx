@@ -9,15 +9,26 @@ import { getBranches } from '../../../features/master/branchSlice';
 import SmartTable from '../../../components/ui/SmartTable';
 import InquiryForm from '../../../components/transaction/InquiryForm'; // Imported reusable form
 import InquiryViewModal from '../../../components/transaction/InquiryViewModal';
+import InquiryImportButton from '../../../components/transaction/InquiryImportButton';
+import InquiryPaginationFooter from '../../../components/transaction/InquiryPaginationFooter';
 import TimePicker12Hour from '../../../components/common/TimePicker12Hour';
 import StudentSearch from '../../../components/StudentSearch';
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 import {
     Plus, Search, X, CalendarClock, FileText, Edit, Trash2, Calendar, Eye, RefreshCw, Printer
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../../utils/dateUtils';
 import Swal from 'sweetalert2';
+
+const getTodayDate = () => {
+    const date = new Date();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
+};
 
 // Follow Up Modal (Specific to Action Button)
 const FollowUpModal = ({ inquiry, onClose, onSave }) => {
@@ -128,10 +139,11 @@ const FollowUpModal = ({ inquiry, onClose, onSave }) => {
 
 const InquiryDSR = () => {
     const dispatch = useDispatch();
-    const { inquiries, isSuccess, message } = useSelector((state) => state.transaction);
+    const { inquiries, inquiryPagination, isSuccess, message } = useSelector((state) => state.transaction);
     const { employees } = useSelector((state) => state.employees);
     const { user } = useSelector((state) => state.auth);
     const { branches } = useSelector((state) => state.branch);
+    const { add, edit, delete: canDelete } = useUserRights('Inquiry - DSR');
 
     // Only show reference names that actually exist in loaded DSR inquiries
     const activeReferences = [...new Set(
@@ -139,11 +151,17 @@ const InquiryDSR = () => {
     )].sort();
 
     // Filter defaults to DSR
-    const [filters, setFilters] = useState({ startDate: '', endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '', branchId: '', source: 'DSR', dateFilterType: 'followUpDate' });
+    const [filters, setFilters] = useState({ startDate: getTodayDate(), endDate: getTodayDate(), status: '', studentName: '', referenceBy: '', branchId: '', source: 'DSR', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 });
     const [modal, setModal] = useState({ type: null, data: null });
 
     const handlePrintList = () => {
         window.print();
+    };
+
+    const fetchPage = (page) => {
+        const nextFilters = { ...filters, page };
+        setFilters(nextFilters);
+        dispatch(fetchInquiries(nextFilters));
     };
 
     useEffect(() => { dispatch(fetchInquiries(filters)); dispatch(fetchCourses()); dispatch(fetchEmployees()); dispatch(fetchReferences()); if (user?.role === 'Super Admin') dispatch(getBranches()); }, [dispatch]);
@@ -169,6 +187,10 @@ const InquiryDSR = () => {
     };
 
     const handleDelete = (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete DSR inquiries.");
+            return;
+        }
         Swal.fire({
             title: 'Are you sure?',
             text: "You won't be able to revert this DSR entry deletion!",
@@ -193,12 +215,12 @@ const InquiryDSR = () => {
         { header: 'Date', render: r => new Date(r.inquiryDate).toLocaleDateString('en-GB') }, // dd/mm/yyyy format
         { header: 'Student Name', render: r => <span className="font-bold text-gray-700">{r.firstName} {r.middleName ? r.middleName + ' ' : ''}{r.lastName || ''}</span> },
         { 
-            header: 'Contact', 
+            header: 'Contact (H/S/P)', 
             render: r => (
                 <div className="text-[10px] space-y-0.5">
-                    <div><span className="font-bold text-gray-400">G:</span> {r.contactParent || '-'}</div>
                     <div><span className="font-bold text-gray-400">H:</span> {r.contactHome || '-'}</div>
                     <div><span className="font-bold text-gray-400">S:</span> {r.contactStudent || '-'}</div>
+                    <div><span className="font-bold text-gray-400">P:</span> {r.contactParent || '-'}</div>
                 </div>
             ) 
         },
@@ -216,10 +238,22 @@ const InquiryDSR = () => {
         {
             header: 'Action', render: r => (
                 <div className="flex gap-2">
-                    <button onClick={() => setModal({ type: 'followup', data: r })} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100" title="Update Status">
+                    <button onClick={() => {
+                        if (!edit) {
+                            showPermissionDenied("You don't have authority to update DSR inquiries.");
+                            return;
+                        }
+                        setModal({ type: 'followup', data: r });
+                    }} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100" title="Update Status">
                         <CalendarClock size={14} />
                     </button>
-                    <button onClick={() => setModal({ type: 'form', data: r })} className="bg-blue-50 text-blue-600 border border-blue-200 p-1.5 rounded hover:bg-blue-100" title="Edit">
+                    <button onClick={() => {
+                        if (!edit) {
+                            showPermissionDenied("You don't have authority to edit DSR inquiries.");
+                            return;
+                        }
+                        setModal({ type: 'form', data: r });
+                    }} className="bg-blue-50 text-blue-600 border border-blue-200 p-1.5 rounded hover:bg-blue-100" title="Edit">
                         <Edit size={14} />
                     </button>
                     <button onClick={() => handleDelete(r._id)} className="bg-red-50 text-red-600 border border-red-200 p-1.5 rounded hover:bg-red-100" title="Delete">
@@ -279,14 +313,26 @@ const InquiryDSR = () => {
                         <p className="text-xs text-gray-500">Daily Sales Report inquiries management</p>
                     </div>
                     <span className="bg-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm ml-2">
-                        Total: {inquiries?.length || 0}
+                        Total: {inquiryPagination?.count || 0}
                     </span>
                 </div>
                 <div className="flex gap-2">
+                    <InquiryImportButton
+                        source="DSR"
+                        onImported={() => dispatch(fetchInquiries(filters))}
+                        canImport={add}
+                        permissionMessage="You don't have authority to add DSR inquiries."
+                    />
                     <button onClick={handlePrintList} className="bg-green-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 hover:bg-green-700 font-bold transition-all transform hover:scale-105">
                         <Printer size={18} /> Print List
                     </button>
-                    <button onClick={() => setModal({ type: 'form' })} className="bg-blue-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 hover:bg-blue-700 font-bold transition-all transform hover:scale-105">
+                    <button onClick={() => {
+                        if (!add) {
+                            showPermissionDenied("You don't have authority to add DSR inquiries.");
+                            return;
+                        }
+                        setModal({ type: 'form' });
+                    }} className="bg-blue-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 hover:bg-blue-700 font-bold transition-all transform hover:scale-105">
                         <Plus size={18} /> Add DSR Inquiry
                     </button>
                 </div>
@@ -303,22 +349,22 @@ const InquiryDSR = () => {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div>
                             <label className="text-xs text-gray-500 font-semibold mb-1 block">Date Type</label>
-                            <select value={filters.dateFilterType} onChange={e => setFilters({ ...filters, dateFilterType: e.target.value })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            <select value={filters.dateFilterType} onChange={e => setFilters({ ...filters, dateFilterType: e.target.value, page: 1 })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                                 <option value="inquiryDate">Inquiry Date</option>
                                 <option value="followUpDate">Follow-up Date</option>
                             </select>
                         </div>
                         <div>
                             <label className="text-xs text-gray-500 font-semibold mb-1 block">From Date</label>
-                            <input type="date" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                            <input type="date" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value, page: 1 })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
                         <div>
                             <label className="text-xs text-gray-500 font-semibold mb-1 block">To Date</label>
-                            <input type="date" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                            <input type="date" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value, page: 1 })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                         </div>
                         <div>
                             <label className="text-xs text-gray-500 font-semibold mb-1 block">Status</label>
-                            <select value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            <select value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value, page: 1 })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                                 <option value="">All Status</option>
                                 <option value="Open">Open</option>
                                 <option value="InProgress">InProgress</option>
@@ -338,9 +384,9 @@ const InquiryDSR = () => {
                                 additionalFilters={{ source: 'DSR' }}
                                 onSelect={(id, student) => {
                                     if (student) {
-                                        setFilters({ ...filters, studentName: student.firstName });
+                                        setFilters({ ...filters, studentName: student.firstName, page: 1 });
                                     } else {
-                                        setFilters({ ...filters, studentName: '' });
+                                        setFilters({ ...filters, studentName: '', page: 1 });
                                     }
                                 }}
                                 placeholder="Search by Name for DSR..."
@@ -351,7 +397,7 @@ const InquiryDSR = () => {
                             <SearchableDropdown 
                                 options={activeReferences}
                                 value={filters.referenceBy}
-                                onSelect={(val) => setFilters({ ...filters, referenceBy: val })}
+                                onSelect={(val) => setFilters({ ...filters, referenceBy: val, page: 1 })}
                                 label="Reference By"
                                 placeholder="Search Reference..."
                             />
@@ -359,7 +405,7 @@ const InquiryDSR = () => {
                         {user?.role === 'Super Admin' && (
                             <div>
                                 <label className="text-xs text-gray-500 font-semibold mb-1 block">Branch</label>
-                                <select value={filters.branchId} onChange={e => setFilters({ ...filters, branchId: e.target.value })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                                <select value={filters.branchId} onChange={e => setFilters({ ...filters, branchId: e.target.value, page: 1 })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                                     <option value="">All Branches</option>
                                     {branches?.map((branch) => (
                                         <option key={branch._id} value={branch._id}>{branch.name}</option>
@@ -373,7 +419,8 @@ const InquiryDSR = () => {
                     <div className="grid grid-cols-2 gap-4 pt-2">
                         <button
                             onClick={() => {
-                                const resetState = { startDate: '', endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '', branchId: '', source: 'DSR', dateFilterType: 'followUpDate' };
+                                const today = getTodayDate();
+                                const resetState = { startDate: today, endDate: today, status: '', studentName: '', referenceBy: '', branchId: '', source: 'DSR', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 };
                                 setFilters(resetState);
                                 dispatch(fetchInquiries(resetState));
                             }}
@@ -382,7 +429,11 @@ const InquiryDSR = () => {
                             <RefreshCw size={16} /> Reset
                         </button>
                         <button
-                            onClick={() => dispatch(fetchInquiries(filters))}
+                            onClick={() => {
+                                const nextFilters = { ...filters, page: 1 };
+                                setFilters(nextFilters);
+                                dispatch(fetchInquiries(nextFilters));
+                            }}
                             className="bg-blue-600 text-white px-6 py-2.5 rounded hover:bg-blue-700 font-medium transition text-sm flex items-center justify-center gap-2"
                         >
                             <Search size={16} /> Search
@@ -394,7 +445,7 @@ const InquiryDSR = () => {
             <div className="bg-white rounded-lg shadow overflow-x-auto border printable-table-container">
                 <div className="print-only-header mb-6 text-center">
                     <h1 className="text-2xl font-bold text-blue-800 uppercase tracking-wide">DSR Inquiry List</h1>
-                    <p className="text-xs text-gray-500 mt-1">Generated on {new Date().toLocaleDateString('en-GB')} | Total Inquiries: {inquiries?.length || 0}</p>
+                    <p className="text-xs text-gray-500 mt-1">Generated on {new Date().toLocaleDateString('en-GB')} | Total Inquiries: {inquiryPagination?.count || 0}</p>
                 </div>
                 <table className="w-full border-collapse min-w-[1100px]">
                     <thead>
@@ -403,7 +454,7 @@ const InquiryDSR = () => {
                             <th className="p-2 border font-semibold">Inquiry Date</th>
                             {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
                             <th className="p-2 border font-semibold">Student Name</th>
-                            <th className="p-2 border font-semibold text-center w-36">Contact</th>
+                            <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                             <th className="p-2 border font-semibold">Gender</th>
                             <th className="p-2 border font-semibold text-center">Status</th>
                             <th className="p-2 border font-semibold">Followup Date</th>
@@ -416,27 +467,27 @@ const InquiryDSR = () => {
                     <tbody>
                         {inquiries && inquiries.length > 0 ? inquiries.map((inquiry, index) => (
                             <tr key={inquiry._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
-                                <td className="p-2 border text-center">{index + 1}</td>
+                                <td className="p-2 border text-center">{((inquiryPagination?.page || 1) - 1) * (inquiryPagination?.pageSize || 10) + index + 1}</td>
                                 <td className="p-2 border text-gray-700">{formatDate(inquiry.inquiryDate)}</td>
                                 {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{inquiry.branchId?.name || '-'}</td>}
                                 <td className="p-2 border font-bold text-gray-800">{inquiry.firstName} {inquiry.lastName}</td>
                                 <td className="p-0 border align-top">
-                                    <div className="flex border-b border-gray-200 last:border-b-0">
-                                        <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">G</div>
-                                        <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
-                                            {inquiry.contactParent || '-'}
-                                        </div>
-                                    </div>
                                     <div className="flex border-b border-gray-200 last:border-b-0">
                                         <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">H</div>
                                         <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
                                             {inquiry.contactHome || '-'}
                                         </div>
                                     </div>
-                                    <div className="flex">
+                                    <div className="flex border-b border-gray-200 last:border-b-0">
                                         <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">S</div>
                                         <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
                                             {inquiry.contactStudent || '-'}
+                                        </div>
+                                    </div>
+                                    <div className="flex">
+                                        <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">P</div>
+                                        <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
+                                            {inquiry.contactParent || '-'}
                                         </div>
                                     </div>
                                 </td>
@@ -478,6 +529,12 @@ const InquiryDSR = () => {
                     </tbody>
                 </table>
             </div>
+
+            <InquiryPaginationFooter
+                pagination={inquiryPagination}
+                count={inquiries?.length || 0}
+                onPageChange={fetchPage}
+            />
 
             {/* Reusable Form Modal */}
             {modal.type === 'form' && (

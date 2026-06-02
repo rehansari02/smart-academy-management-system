@@ -6,6 +6,7 @@ import { fetchMyPermissions } from '../../features/userRights/userRightsSlice';
 import { Menu, X, ChevronDown, ChevronRight, LogOut, User as UserIcon, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MENU_CONFIG } from '../../utils/menuConfig';
+import { normalizePermissionFlags } from '../../utils/permissionUtils';
 import ProfileSettingsModal from '../user/ProfileSettingsModal';
 import logoImage from '../../assets/logo2.png';
 import { toast } from 'react-toastify';
@@ -86,7 +87,7 @@ const Navbar = () => {
              const visibleNested = sub.subItems.filter(nested => {
                  const pageName = `${sub.title} - ${nested.title}`;
                  const perm = myPermissions.find(p => p.page === pageName);
-                 return perm && perm.view === true;
+                 return perm && normalizePermissionFlags(perm).view === true;
              });
              
              // If we have visible nested items, we keep this parent sub-item, 
@@ -101,7 +102,7 @@ const Navbar = () => {
         }
 
         const perm = myPermissions.find(p => p.page === sub.title);
-        return perm && perm.view === true;
+        return perm && normalizePermissionFlags(perm).view === true;
       }) : [];
 
       if (visibleSubItems.length > 0) return { ...item, subItems: visibleSubItems };

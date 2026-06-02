@@ -6,6 +6,8 @@ import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../../../utils/cropUtils';
 import Swal from 'sweetalert2';
 import axios from 'axios';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const ManageTeam = () => {
     // --- State ---
@@ -20,6 +22,7 @@ const ManageTeam = () => {
     const [showModal, setShowModal] = useState(false);
     const [editMode, setEditMode] = useState(false);
     const [currentId, setCurrentId] = useState(null);
+    const { add, edit, delete: canDelete } = useUserRights('Our Team');
     const [formData, setFormData] = useState({
         name: '',
         branch: '',
@@ -168,6 +171,10 @@ const ManageTeam = () => {
     };
 
     const handleDelete = async (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete team members.");
+            return;
+        }
         const result = await Swal.fire({
             title: 'Are you sure?',
             text: "You won't be able to revert this deletion!",
@@ -213,9 +220,17 @@ const ManageTeam = () => {
 
         try {
             if (editMode) {
+                if (!edit) {
+                    showPermissionDenied("You don't have authority to edit team members.");
+                    return;
+                }
                 await teamService.updateTeamMember(currentId, data);
                 toast.success("Team member updated successfully");
             } else {
+                if (!add) {
+                    showPermissionDenied("You don't have authority to add team members.");
+                    return;
+                }
                 await teamService.createTeamMember(data);
                 toast.success("Team member created successfully");
             }

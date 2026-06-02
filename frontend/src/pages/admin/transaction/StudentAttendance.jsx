@@ -15,11 +15,14 @@ import {
     Calendar, Users, Clock, Save, RotateCcw, Eye, Trash2, 
     PlusCircle, X, CheckSquare, Square, Search, Edit
 } from 'lucide-react';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const StudentAttendance = () => {
     const dispatch = useDispatch();
     const { attendanceList, currentAttendanceStudents, attendanceStatus, isSuccess, message, isLoading } = useSelector(state => state.attendance);
     const { batches } = useSelector(state => state.master); // Get batches for dropdown
+    const { add, edit, delete: canDelete } = useUserRights('Student Attendance');
 
     // View Mode: 'list' or 'form' or 'view-details'
     const [viewMode, setViewMode] = useState('list'); 
@@ -181,6 +184,10 @@ const StudentAttendance = () => {
     };
 
     const handleEdit = (record) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit student attendance.");
+            return;
+        }
         setIsEditing(true);
         setViewMode('form');
         setFormData({
@@ -244,6 +251,10 @@ const StudentAttendance = () => {
     };
 
     const handleDelete = (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete student attendance.");
+            return;
+        }
         if(window.confirm('Delete this attendance record?')) {
             dispatch(deleteStudentAttendance(id)).then(() => {
                 dispatch(fetchStudentAttendanceHistory(filters));
@@ -270,6 +281,10 @@ const StudentAttendance = () => {
                         onClick={() => {
                             setFormData({ date: new Date().toISOString().split('T')[0], batchId: '', batchName: '', batchTime: '', remarks: '' });
                             setAttendanceGrid([]);
+                            if (!add) {
+                                showPermissionDenied("You don't have authority to add student attendance.");
+                                return;
+                            }
                             dispatch(resetAttendanceState());
                             setIsEditing(false);
                             setViewMode('form');

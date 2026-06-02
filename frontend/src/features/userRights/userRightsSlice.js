@@ -5,6 +5,10 @@ import axios from 'axios';
 const API_URL = `${import.meta.env.VITE_API_URL}/user-rights/`;
 axios.defaults.withCredentials = true;
 
+const getErrorMessage = (error) => (
+  error.response?.data?.message || error.message || 'Request failed'
+);
+
 // Fetch Rights for a specific user (Admin usage)
 export const fetchUserRights = createAsyncThunk('userRights/fetch', async (userId, thunkAPI) => {
   try {
@@ -12,7 +16,7 @@ export const fetchUserRights = createAsyncThunk('userRights/fetch', async (userI
     const response = await axios.get(API_URL + userId);
     return response.data;
   } catch (error) {
-    return thunkAPI.rejectWithValue(error.response.data.message);
+    return thunkAPI.rejectWithValue(getErrorMessage(error));
   }
 });
 
@@ -22,7 +26,7 @@ export const saveUserRights = createAsyncThunk('userRights/save', async (data, t
     const response = await axios.post(API_URL, data);
     return response.data;
   } catch (error) {
-    return thunkAPI.rejectWithValue(error.response.data.message);
+    return thunkAPI.rejectWithValue(getErrorMessage(error));
   }
 });
 
@@ -32,7 +36,7 @@ export const fetchMyPermissions = createAsyncThunk('userRights/fetchMy', async (
     const response = await axios.get(API_URL + 'me');
     return response.data;
   } catch (error) {
-    return thunkAPI.rejectWithValue(error.response.data.message);
+    return thunkAPI.rejectWithValue(getErrorMessage(error));
   }
 });
 
@@ -42,7 +46,7 @@ export const fetchTemplates = createAsyncThunk('userRights/fetchTemplates', asyn
     const response = await axios.get(API_URL + 'templates');
     return response.data;
   } catch (error) {
-    return thunkAPI.rejectWithValue(error.response.data.message);
+    return thunkAPI.rejectWithValue(getErrorMessage(error));
   }
 });
 
@@ -52,7 +56,7 @@ export const createTemplate = createAsyncThunk('userRights/createTemplate', asyn
     const response = await axios.post(API_URL + 'templates', data);
     return response.data;
   } catch (error) {
-    return thunkAPI.rejectWithValue(error.response.data.message);
+    return thunkAPI.rejectWithValue(getErrorMessage(error));
   }
 });
 
@@ -62,7 +66,7 @@ export const deleteTemplate = createAsyncThunk('userRights/deleteTemplate', asyn
     await axios.delete(API_URL + 'templates/' + id);
     return id;
   } catch (error) {
-    return thunkAPI.rejectWithValue(error.response.data.message);
+    return thunkAPI.rejectWithValue(getErrorMessage(error));
   }
 });
 
@@ -91,8 +95,9 @@ const userRightsSlice = createSlice({
         state.isLoading = false;
         state.rights = action.payload;
       })
-      .addCase(saveUserRights.fulfilled, (state) => {
+      .addCase(saveUserRights.fulfilled, (state, action) => {
         state.isLoading = false;
+        state.rights = action.payload;
         state.isSuccess = true;
         state.message = 'Rights saved successfully';
       })

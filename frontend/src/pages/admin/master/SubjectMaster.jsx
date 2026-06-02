@@ -4,6 +4,8 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchSubjects, createSubject, updateSubject, deleteSubject, resetMasterStatus } from '../../../features/master/masterSlice';
 import { toast } from 'react-toastify';
 import { Search, Plus, X, BookOpen, Edit, Trash2, Loader, Eye, RotateCcw } from 'lucide-react';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const SubjectMaster = () => {
   const dispatch = useDispatch();
@@ -12,6 +14,7 @@ const SubjectMaster = () => {
   const [showForm, setShowForm] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [currentId, setCurrentId] = useState(null);
+  const { add, edit, delete: canDelete } = useUserRights('Subject');
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm();
 
@@ -44,8 +47,16 @@ const SubjectMaster = () => {
 
   const onSubmit = (data) => {
     if (editMode) {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit subjects.");
+            return;
+        }
         dispatch(updateSubject({ id: currentId, data }));
     } else {
+        if (!add) {
+            showPermissionDenied("You don't have authority to add subjects.");
+            return;
+        }
         dispatch(createSubject(data));
     }
   };
@@ -72,6 +83,10 @@ const SubjectMaster = () => {
   };
 
   const handleDelete = (id) => {
+      if (!canDelete) {
+          showPermissionDenied("You don't have authority to delete subjects.");
+          return;
+      }
       if(window.confirm("Are you sure you want to delete this subject?")) {
           dispatch(deleteSubject(id));
       }

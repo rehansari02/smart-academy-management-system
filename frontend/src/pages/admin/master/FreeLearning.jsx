@@ -10,10 +10,13 @@ import {
 import { Search, RefreshCw, Plus, Edit, Trash2, Save, X, CheckSquare, Square } from 'lucide-react';
 import { toast } from 'react-toastify';
 import moment from 'moment';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const FreeLearning = () => {
     const dispatch = useDispatch();
     const { freeLearningQuestions, isLoading, isSuccess, message } = useSelector((state) => state.master);
+    const { add, edit, delete: canDelete } = useUserRights('Free Learning');
     
     // Filter State
     const [filters, setFilters] = useState({
@@ -86,6 +89,10 @@ const FreeLearning = () => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        if (formData.id ? !edit : !add) {
+            showPermissionDenied(`You don't have authority to ${formData.id ? 'edit' : 'add'} free learning questions.`);
+            return;
+        }
         
         // Validation
         if (!formData.question || formData.options.some(opt => !opt.trim())) {
@@ -108,6 +115,10 @@ const FreeLearning = () => {
     };
 
     const handleEdit = (q) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit free learning questions.");
+            return;
+        }
         setFormData({
             id: q._id,
             question: q.question,
@@ -120,6 +131,10 @@ const FreeLearning = () => {
     };
 
     const handleDelete = (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete free learning questions.");
+            return;
+        }
         if (window.confirm("Are you sure you want to delete this question?")) {
             dispatch(deleteFreeLearningQuestion(id));
         }

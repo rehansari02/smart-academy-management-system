@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Mail, Phone, MapPin, Trash2, Eye, X, Calendar, Clock, MessageSquare } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 const API_URL = import.meta.env.VITE_API_URL;
 
 const ManageContact = () => {
@@ -11,6 +13,7 @@ const ManageContact = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [selectedContact, setSelectedContact] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
+  const { delete: canDelete } = useUserRights('Manage Contacts');
   // Initialize with today's date so it auto-shows today's records
   const getTodayStr = () => new Date().toISOString().split('T')[0];
   const [startDate, setStartDate] = useState(getTodayStr);
@@ -66,6 +69,10 @@ const ManageContact = () => {
   };
 
   const handleDelete = async (id) => {
+    if (!canDelete) {
+      showPermissionDenied("You don't have authority to delete contacts.");
+      return;
+    }
     if (window.confirm('Are you sure you want to delete this message?')) {
       try {
         await axios.delete(`${API_URL}/contact/${id}`, {

@@ -4,6 +4,8 @@ import { Trophy, Plus, Search, Edit, Trash2, X, Image as ImageIcon, ChevronDown 
 import topperService from '../../../services/topperService';
 import { fetchCourses, fetchExamSchedules, fetchExamResults } from '../../../features/master/masterSlice';
 import { toast } from 'react-toastify';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const ManageToppers = () => {
     const dispatch = useDispatch();
@@ -19,6 +21,7 @@ const ManageToppers = () => {
     const [showModal, setShowModal] = useState(false);
     const [editMode, setEditMode] = useState(false);
     const [currentId, setCurrentId] = useState(null);
+    const { add, edit, delete: canDelete } = useUserRights('Topper Result');
     const [formData, setFormData] = useState({
         name: '',
         course: '',
@@ -116,6 +119,10 @@ const ManageToppers = () => {
     };
 
     const handleDelete = async (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete topper results.");
+            return;
+        }
         if (window.confirm('Are you sure you want to delete this topper result?')) {
             try {
                 await topperService.deleteTopper(id);
@@ -145,9 +152,17 @@ const ManageToppers = () => {
 
         try {
             if (editMode) {
+                if (!edit) {
+                    showPermissionDenied("You don't have authority to edit topper results.");
+                    return;
+                }
                 await topperService.updateTopper(currentId, data);
                 toast.success("Topper result updated successfully");
             } else {
+                if (!add) {
+                    showPermissionDenied("You don't have authority to add topper results.");
+                    return;
+                }
                 await topperService.createTopper(data);
                 toast.success("Topper result created successfully");
             }

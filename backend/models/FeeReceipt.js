@@ -48,5 +48,7 @@ feeReceiptSchema.index({ branch: 1, receiptNo: 1 }, { unique: true }); // Compou
 // feeReceiptSchema.index({ receiptNo: 1 });
 feeReceiptSchema.index({ date: -1 });
 feeReceiptSchema.index({ createdAt: -1 }); // Optimized for sorting last Created
+feeReceiptSchema.index({ branch: 1, date: -1, createdAt: -1 });
+feeReceiptSchema.index({ date: -1, createdAt: -1 });
 
 module.exports = mongoose.model("FeeReceipt", feeReceiptSchema);

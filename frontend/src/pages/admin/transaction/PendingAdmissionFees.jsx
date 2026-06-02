@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, Link } from "react-router-dom";
-import {
+import { 
   fetchStudents,
   deleteStudent,
 } from "../../../features/student/studentSlice";
@@ -16,6 +16,8 @@ import {
   Edit,
 } from "lucide-react";
 import SearchableFilterInput from "../../../components/SearchableFilterInput";
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 import moment from "moment";
 
 const getStudentFullName = (student) => [student.firstName, student.middleName, student.lastName].filter(Boolean).join(" ");
@@ -23,6 +25,7 @@ const getUniqueValues = (values) => [...new Set(values.map(value => String(value
 
 const PendingAdmissionFees = () => {
   const dispatch = useDispatch();
+  const { delete: canDelete } = useUserRights('Pending Admission Fees');
   const navigate = useNavigate();
   const { students, pagination, isLoading } = useSelector(
     (state) => state.students
@@ -97,6 +100,10 @@ const PendingAdmissionFees = () => {
   };
 
   const handleDelete = (id) => {
+    if (!canDelete) {
+      showPermissionDenied("You don't have authority to delete pending admission fee records.");
+      return;
+    }
     if (
       window.confirm(
         "Are you sure you want to delete this student record? This cannot be undone."

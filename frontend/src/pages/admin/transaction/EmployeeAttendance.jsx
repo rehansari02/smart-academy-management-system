@@ -14,10 +14,13 @@ import {
     PlusCircle, CheckSquare, Square, Edit
 } from 'lucide-react';
 import axios from 'axios';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const EmployeeAttendance = () => {
     const dispatch = useDispatch();
     const { attendanceList, currentAttendanceEmployees, attendanceStatus, isSuccess, message, isLoading } = useSelector(state => state.attendance);
+    const { add, edit, delete: canDelete } = useUserRights('Employee Attendance');
 
     const [viewMode, setViewMode] = useState('list'); 
     
@@ -159,6 +162,10 @@ const EmployeeAttendance = () => {
     };
 
     const handleDelete = (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete employee attendance.");
+            return;
+        }
         if(window.confirm('Delete this attendance record?')) {
             dispatch(deleteEmployeeAttendance(id)).then(() => {
                 dispatch(fetchEmployeeAttendanceHistory(filters));
@@ -172,6 +179,10 @@ const EmployeeAttendance = () => {
     };
 
     const handleEdit = (record) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit employee attendance.");
+            return;
+        }
         setIsEditing(true);
         setViewMode('form');
         setFormData({
@@ -206,7 +217,11 @@ const EmployeeAttendance = () => {
                         onClick={() => {
                             setFormData({ date: new Date().toISOString().split('T')[0], remarks: '' });
                             setAttendanceGrid([]);
-                            dispatch(resetAttendanceState());
+                            if (!add) {
+                                showPermissionDenied("You don't have authority to add employee attendance.");
+                                return;
+                            }
+                            dispatch(resetAttendanceState()); 
                             setIsEditing(false);
                             setViewMode('form');
                         }}

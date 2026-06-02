@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchStudents, resetStudentLogin, resetStatus, deleteStudent, fetchUniqueReferences } from '../../../features/student/studentSlice';
 import { fetchCourses, fetchBatches, fetchBranches } from '../../../features/master/masterSlice';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Edit, Printer, FileText, CheckSquare, Square, Search, RefreshCw, Plus, Lock, X, Save, Trash2 } from 'lucide-react';
 import StudentSearch from '../../../components/StudentSearch';
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
@@ -10,12 +10,16 @@ import { toast } from 'react-toastify';
 import moment from 'moment';
 import { TableSkeleton } from '../../../components/common/SkeletonLoader';
 import Swal from 'sweetalert2';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const StudentList = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { students, pagination, isLoading, isSuccess, message, uniqueReferences } = useSelector((state) => state.students);
   const { courses, branches } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
+  const { view, add, edit, delete: canDelete } = useUserRights('Student');
   
   // Filter States - UPDATED KEYS TO MATCH BACKEND
   const [filters, setFilters] = useState({
@@ -28,7 +32,8 @@ const StudentList = () => {
     branchId: '',
     pageSize: 10,
     page: 1,
-    isRegistered: ''
+    isRegistered: '',
+    sortBy: '-admissionDate -createdAt'
   });
 
   // Applied Filters (Triggers API call)
@@ -113,16 +118,21 @@ const StudentList = () => {
         branchId: '',
         pageSize: 10, 
         page: 1, 
-        isRegistered: ''
+        isRegistered: '',
+        sortBy: '-admissionDate -createdAt'
     };
     setFilters(initial);
     setAppliedFilters(initial);
   };
 
   const handleOpenResetModal = (student) => {
+      if (!edit) {
+          showPermissionDenied("You don't have authority to reset student login.");
+          return;
+      }
       setResetData({ 
           id: student._id, 
-          username: student.userId?.username || '', 
+          username: student.userId?.username || '',
           password: ''
       });
       setShowPassword(false);
@@ -140,13 +150,8 @@ const StudentList = () => {
   };
 
   const handleDelete = (id) => {
-      if (user?.role !== 'Super Admin') {
-          Swal.fire({
-              title: 'Access Denied',
-              text: 'Only Super Admin can delete students. Please contact the Admin.',
-              icon: 'error',
-              confirmButtonColor: '#d33',
-          });
+      if (!canDelete) {
+          showPermissionDenied("You don't have authority to delete students.");
           return;
       }
       
@@ -300,9 +305,19 @@ const StudentList = () => {
             </select>
             <label className="text-sm text-gray-600">entries</label>
         </div>
-        <Link to="/master/student/new" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-2 shadow text-sm font-medium">
+        <button
+            type="button"
+            onClick={() => {
+                if (!add) {
+                    showPermissionDenied("You don't have authority to add students.");
+                    return;
+                }
+                navigate('/master/student/new');
+            }}
+            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-2 shadow text-sm font-medium"
+        >
             <Plus size={18}/> New Admission
-        </Link>
+        </button>
       </div>
 
       {/* --- Table Section --- */}
@@ -323,7 +338,7 @@ const StudentList = () => {
               <th className="p-2 border font-semibold">Student Name</th>
               {/* <th className="p-2 border font-semibold">Father/Husband</th> */}
               {/* <th className="p-2 border font-semibold">Last Name</th> */}
-              <th className="p-2 border font-semibold">Mobile</th>
+              <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
               <th className="p-2 border font-semibold">Course</th>
               <th className="p-2 border font-semibold">Duration</th>
               <th className="p-2 border font-semibold">Branch</th>
@@ -346,7 +361,26 @@ const StudentList = () => {
                 {/* <td className="p-2 border">{s.middleName || '-'}</td>
                 <td className="p-2 border">{s.lastName}</td> */}
 
-                <td className="p-2 border text-gray-600">{s.mobileStudent}</td>
+                <td className="p-0 border align-top">
+                    <div className="flex border-b border-gray-200">
+                        <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">H</div>
+                        <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
+                            {s.contactHome || '-'}
+                        </div>
+                    </div>
+                    <div className="flex border-b border-gray-200">
+                        <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">S</div>
+                        <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
+                            {s.mobileStudent || '-'}
+                        </div>
+                    </div>
+                    <div className="flex">
+                        <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">P</div>
+                        <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
+                            {s.mobileParent || '-'}
+                        </div>
+                    </div>
+                </td>
 
                 <td className="p-2 border font-semibold text-blue-800">{s.course?.name || '-'}</td>
                 <td className="p-2 border">{s.course ? `${s.course.duration} ${s.course.durationType}` : '-'}</td>
@@ -385,9 +419,20 @@ const StudentList = () => {
                         <button onClick={() => handleOpenResetModal(s)} className="bg-yellow-50 text-yellow-600 p-1 rounded border border-yellow-200 hover:bg-yellow-100 transition" title="Reset Login">
                             <Lock size={14}/>
                         </button>
-                        <Link to={`/master/student/new?updateId=${s._id}`} className="bg-orange-50 text-orange-600 p-1 rounded border border-orange-200 hover:bg-orange-100 transition" title="Update">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (!edit) {
+                                    showPermissionDenied("You don't have authority to edit students.");
+                                    return;
+                                }
+                                navigate(`/master/student/new?updateId=${s._id}`);
+                            }}
+                            className="bg-orange-50 text-orange-600 p-1 rounded border border-orange-200 hover:bg-orange-100 transition"
+                            title="Update"
+                        >
                             <Edit size={14}/>
-                        </Link>
+                        </button>
                         <button onClick={() => handleDelete(s._id)} className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" title="Delete">
                             <Trash2 size={14}/>
                         </button>

@@ -9,11 +9,14 @@ import {
 } from '../../../features/master/masterSlice';
 
 import { Search, RefreshCw, Edit, Printer, Award, Trash2, Plus } from 'lucide-react';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const ExamResult = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { examSchedules, examResults, batches } = useSelector((state) => state.master);
+  const { delete: canDelete } = useUserRights('Exam Result');
 
   // Local State for Filters
   const [filters, setFilters] = useState({ examName: '', courseId: '', studentId: '' });
@@ -83,6 +86,10 @@ const ExamResult = () => {
   };
 
   const handleDelete = (result) => {
+    if (!canDelete) {
+      showPermissionDenied("You don't have authority to delete exam results.");
+      return;
+    }
     if (window.confirm(`Are you sure you want to delete the result for ${result.student?.firstName} ${result.student?.lastName}?`)) {
       dispatch(deleteExamResult(result._id));
     }

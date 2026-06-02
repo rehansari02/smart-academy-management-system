@@ -309,11 +309,10 @@ const FinalResultDetails = () => {
                             <Search className="absolute left-3 top-3 text-slate-400" size={18} />
                         </div>
                         <div className="relative min-w-0 flex-[1_1_13rem]">
-                            <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.branchId} onChange={(e) => setFilters((prev) => ({ ...prev, branchId: e.target.value, courseId: 'All' }))}>
-                                <option value="All">All Branches</option>
-                                {availableBranches.map((branch) => <option key={branch._id} value={branch._id}>{branch.name}</option>)}
+                            <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.examName} onChange={(e) => setFilters((prev) => ({ ...prev, examName: e.target.value, courseId: 'All' }))}>
+                                <option value="All">All Exams</option>
+                                {examNames.map((name) => <option key={name} value={name}>{name}</option>)}
                             </select>
-                            <Building2 className="absolute left-3 top-3 text-slate-400" size={18} />
                             <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
                         </div>
                         <div className="relative min-w-0 flex-[1_1_13rem]">
@@ -325,10 +324,11 @@ const FinalResultDetails = () => {
                             <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
                         </div>
                         <div className="relative min-w-0 flex-[1_1_13rem]">
-                            <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.examName} onChange={(e) => setFilters((prev) => ({ ...prev, examName: e.target.value, courseId: 'All' }))}>
-                                <option value="All">All Exams</option>
-                                {examNames.map((name) => <option key={name} value={name}>{name}</option>)}
+                            <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.branchId} onChange={(e) => setFilters((prev) => ({ ...prev, branchId: e.target.value, courseId: 'All' }))}>
+                                <option value="All">All Branches</option>
+                                {availableBranches.map((branch) => <option key={branch._id} value={branch._id}>{branch.name}</option>)}
                             </select>
+                            <Building2 className="absolute left-3 top-3 text-slate-400" size={18} />
                             <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
                         </div>
                         <button onClick={() => setFilters({ courseId: 'All', branchId: 'All', examName: 'All', search: '' })} className="flex flex-[0_1_8rem] items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><RefreshCw size={16} /> Reset</button>

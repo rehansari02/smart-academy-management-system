@@ -13,6 +13,8 @@ import InquiryViewModal from '../../../components/transaction/InquiryViewModal';
 import { useForm } from 'react-hook-form';
 import TimePicker12Hour from '../../../components/common/TimePicker12Hour';
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 // --- SUB-COMPONENT: Follow Up Form ---
 const FollowUpForm = ({ inquiry, onClose, onSave }) => {
@@ -116,6 +118,7 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
 
 const TodaysVisitedReport = () => {
     const navigate = useNavigate();
+    const { add, edit, delete: canDelete } = useUserRights('Activity Visitor Report');
     
     const handlePrintList = () => {
         window.print();
@@ -277,12 +280,36 @@ const TodaysVisitedReport = () => {
         setShowViewModal(true);
     };
 
+    const handleOpenVisitorFollowUp = (visitor) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to update visitor follow-ups.");
+            return;
+        }
+        setFollowUpVisitor(visitor);
+    };
+
+    const handleTakeAdmission = (visitor) => {
+        if (!add) {
+            showPermissionDenied("You don't have authority to take admission from visitors.");
+            return;
+        }
+        navigate('/master/student-admission', { state: { visitorData: visitor } });
+    };
+
     const handleEdit = (visitor) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit visitors.");
+            return;
+        }
         // Navigate to Visitors page with pre-filled data
         navigate('/transaction/visitors', { state: { visitorData: visitor } });
     };
 
     const handleDelete = async (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete visitors.");
+            return;
+        }
         if (window.confirm('Are you sure you want to delete this visitor?')) {
             try {
                 await visitorService.deleteVisitor(id);
@@ -296,6 +323,10 @@ const TodaysVisitedReport = () => {
     };
 
     const handleSaveVisitorFollowUp = async (id, data) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to update visitor follow-ups.");
+            return;
+        }
         try {
             await visitorService.createVisitorFollowUp(data);
             toast.success("Visitor follow-up saved");
@@ -308,6 +339,10 @@ const TodaysVisitedReport = () => {
     };
 
     const handleDeleteVisitorFollowUp = async (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete visitor follow-ups.");
+            return;
+        }
         if (window.confirm('Are you sure you want to delete this visitor follow-up?')) {
             try {
                 await visitorService.deleteVisitorFollowUp(id);
@@ -321,6 +356,10 @@ const TodaysVisitedReport = () => {
     };
 
     const handleDeleteInquiry = async (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete inquiries.");
+            return;
+        }
         if (window.confirm('Are you sure you want to delete this inquiry?')) {
             try {
                 await axios.delete(`${import.meta.env.VITE_API_URL}/transaction/inquiry/${id}`, { withCredentials: true });
@@ -334,6 +373,10 @@ const TodaysVisitedReport = () => {
     };
 
     const handleSaveInquiry = async ({ id, data }) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit inquiries.");
+            return;
+        }
         try {
             await axios.put(`${import.meta.env.VITE_API_URL}/transaction/inquiry/${id}`, data, { withCredentials: true });
             toast.success("Inquiry Updated Successfully");
@@ -345,6 +388,10 @@ const TodaysVisitedReport = () => {
     };
 
     const handleSaveFollowUp = async ({ id, data }) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to update inquiry follow-ups.");
+            return;
+        }
         try {
             await axios.put(`${import.meta.env.VITE_API_URL}/transaction/inquiry/${id}`, data, { withCredentials: true });
             toast.success("Follow-up Updated");
@@ -667,10 +714,10 @@ const TodaysVisitedReport = () => {
                                             </td>
                                             <td className="p-2 border text-center sticky right-0 bg-white print:hidden">
                                                 <div className="flex justify-center gap-1">
-                                                    <button onClick={() => setFollowUpVisitor(visitor)} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100 transition" title="Visitor Follow-up">
+                                                    <button onClick={() => handleOpenVisitorFollowUp(visitor)} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100 transition" title="Visitor Follow-up">
                                                         <CalendarClock size={14} />
                                                     </button>
-                                                    <button onClick={() => navigate('/master/student-admission', { state: { visitorData: visitor } })} className="bg-green-50 text-green-600 border border-green-200 p-1.5 rounded hover:bg-green-100 transition" title="Take Admission">
+                                                    <button onClick={() => handleTakeAdmission(visitor)} className="bg-green-50 text-green-600 border border-green-200 p-1.5 rounded hover:bg-green-100 transition" title="Take Admission">
                                                         <GraduationCap size={14} />
                                                     </button>
                                                     <button onClick={() => handleView(visitor)} className="bg-indigo-50 text-indigo-600 border border-indigo-200 p-1.5 rounded hover:bg-indigo-100 transition" title="View Details">
@@ -757,13 +804,27 @@ const TodaysVisitedReport = () => {
                                             <td className="p-2 border text-gray-700">{followUpBy?.name || followUpBy?.username || '-'}</td>
                                             <td className="p-2 border text-center sticky right-0 bg-white print:hidden">
                                                 <div className="flex justify-center gap-1">
-                                                    <button onClick={() => isVisitorFollowUp ? setFollowUpVisitor({ ...visitor, latestVisitorFollowUp: hist, followUpDetails: hist.remark }) : setShowFollowUpModal(inquiry)} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100 transition" title="Follow Up">
+                                                    <button onClick={() => {
+                                                        if (!edit) {
+                                                            showPermissionDenied("You don't have authority to update follow-ups.");
+                                                            return;
+                                                        }
+                                                        return isVisitorFollowUp
+                                                            ? setFollowUpVisitor({ ...visitor, latestVisitorFollowUp: hist, followUpDetails: hist.remark })
+                                                            : setShowFollowUpModal(inquiry);
+                                                    }} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100 transition" title="Follow Up">
                                                         <CalendarClock size={14} />
                                                     </button>
                                                     <button onClick={() => isVisitorFollowUp ? handleView(visitor) : setViewInquiry(inquiry)} className="bg-indigo-50 text-indigo-600 border border-indigo-200 p-1.5 rounded hover:bg-indigo-100 transition" title="View Details">
                                                         <Eye size={14} />
                                                     </button>
-                                                    <button onClick={() => isVisitorFollowUp ? handleEdit(visitor) : setEditInquiryData(inquiry)} className="bg-blue-50 text-blue-600 border border-blue-200 p-1.5 rounded hover:bg-blue-100 transition" title="Edit">
+                                                    <button onClick={() => {
+                                                        if (!edit) {
+                                                            showPermissionDenied("You don't have authority to edit this record.");
+                                                            return;
+                                                        }
+                                                        return isVisitorFollowUp ? handleEdit(visitor) : setEditInquiryData(inquiry);
+                                                    }} className="bg-blue-50 text-blue-600 border border-blue-200 p-1.5 rounded hover:bg-blue-100 transition" title="Edit">
                                                         <Edit size={14} />
                                                     </button>
                                                     <button onClick={() => isVisitorFollowUp ? handleDeleteVisitorFollowUp(hist._id) : handleDeleteInquiry(inquiry._id)} className="bg-red-50 text-red-600 border border-red-200 p-1.5 rounded hover:bg-red-100 transition" title={isVisitorFollowUp ? 'Delete Follow-up' : 'Delete Inquiry'}>

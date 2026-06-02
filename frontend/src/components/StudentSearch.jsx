@@ -4,6 +4,8 @@ import { ChevronDown, X, Check } from 'lucide-react';
 
 const StudentSearch = ({ 
     onSelect, 
+    onQueryChange,
+    selectedValue,
     label, 
     placeholder = "Search student by name or reg no...", 
     defaultSelectedId, 
@@ -13,7 +15,8 @@ const StudentSearch = ({
     additionalFilters = {}, // Allow passing extra filters like { isRegistered: 'false' }
     mode = 'student', // 'student' or 'inquiry'
     displayField = 'name', // 'name' or 'regNo'
-    includeCancelled = false
+    includeCancelled = false,
+    onlyWithOutstanding = false
 }) => {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
@@ -21,6 +24,7 @@ const StudentSearch = ({
     const [loading, setLoading] = useState(false);
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [initialLoadDone, setInitialLoadDone] = useState(false);
+    const suppressNextSearchRef = useRef(false);
     
     const wrapperRef = useRef(null);
     const inputRef = useRef(null);
@@ -33,6 +37,10 @@ const StudentSearch = ({
     // Debounce Logic
     useEffect(() => {
         const delayDebounceFn = setTimeout(() => {
+            if (suppressNextSearchRef.current) {
+                suppressNextSearchRef.current = false;
+                return;
+            }
             if (query && query.length >= 2) { // Start searching after 2 chars
                 searchStudents();
             } else {
@@ -77,14 +85,48 @@ const StudentSearch = ({
         }
     };
 
-    // Load all students/inquiries with pending status on mount (optional based on props?)
-    // Actually, for inquiry filter, we might not want to load ALL on mount if there are thousands.
-    // Keeping logic consistent for now but checking if mode='student' for original behavior
     useEffect(() => {
-        if (!initialLoadDone && !defaultSelectedId) {
+        if (defaultSelectedId) {
+            return;
+        }
+
+        if (query && query.length >= 2) {
+            searchStudents();
+        } else {
             loadAllStudents();
         }
     }, [JSON.stringify(additionalFilters)]);
+
+    useEffect(() => {
+        if (typeof selectedValue === 'string' && selectedValue !== query) {
+            setQuery(selectedValue);
+        }
+    }, [selectedValue]);
+
+    const filterOutstandingStudents = async (items) => {
+        if (!onlyWithOutstanding || mode !== 'student' || !items.length) {
+            return items;
+        }
+
+        const ids = items.map((item) => item._id).filter(Boolean);
+        if (!ids.length) return [];
+
+        try {
+            const { data } = await axios.post(
+                `${import.meta.env.VITE_API_URL}/transaction/students/payment-summaries`,
+                { ids },
+                { withCredentials: true }
+            );
+
+            return items.filter((item) => {
+                const summary = data?.[item._id];
+                return Number(summary?.outstandingAmount || summary?.dueAmount || 0) > 0;
+            });
+        } catch (error) {
+            console.error("Failed to filter outstanding students", error);
+            return [];
+        }
+    };
 
     const loadAllStudents = async () => {
         setLoading(true);
@@ -92,6 +134,7 @@ const StudentSearch = ({
             const params = {
                 pageSize: 50, // Show more students initially
                 isCancelled: includeCancelled ? 'all' : 'false',
+                sortBy: '-admissionDate -createdAt',
                 ...additionalFilters
             };
             
@@ -100,7 +143,7 @@ const StudentSearch = ({
             if (mode === 'inquiry') {
                 setResults(Array.isArray(data) ? data : (data.inquiries || [])); // Handle potential diff response structure
             } else {
-                setResults(data.students || []); 
+                setResults(await filterOutstandingStudents(data.students || [])); 
             }
 
         } catch (error) {
@@ -119,6 +162,7 @@ const StudentSearch = ({
                 studentName: query,
                 pageSize: query ? 10 : 50, // Show more when no search query
                 isCancelled: includeCancelled ? 'all' : 'false',
+                sortBy: '-admissionDate -createdAt',
                 ...additionalFilters
             };
             
@@ -127,7 +171,7 @@ const StudentSearch = ({
             if (mode === 'inquiry') {
                 setResults(Array.isArray(data) ? data : (data.inquiries || []));
             } else {
-                setResults(data.students || []); 
+                setResults(await filterOutstandingStudents(data.students || [])); 
             }
             
             setIsOpen(true);
@@ -150,8 +194,12 @@ const StudentSearch = ({
             labelText = `${item.firstName} ${item.middleName || ''} ${item.lastName}`.trim().replace(/\s+/g, ' ');
         }
         
+        suppressNextSearchRef.current = true;
         setQuery(labelText);
         setIsOpen(false);
+        if (onQueryChange) {
+            onQueryChange(labelText, item);
+        }
         if (onSelect) {
             onSelect(item._id, item); // Pass simplified ID and full object
         }
@@ -160,8 +208,12 @@ const StudentSearch = ({
     const clearSelection = (e) => {
         e.stopPropagation();
         setSelectedStudent(null);
+        suppressNextSearchRef.current = true;
         setQuery('');
         setResults([]);
+        if (onQueryChange) {
+            onQueryChange('', null);
+        }
         if (onSelect) {
             onSelect('', null);
         }
@@ -191,6 +243,8 @@ const StudentSearch = ({
                     value={query}
                     onChange={(e) => {
                         setQuery(e.target.value);
+                        suppressNextSearchRef.current = false;
+                        if (onQueryChange) onQueryChange(e.target.value, null);
                         if (!isOpen && e.target.value) setIsOpen(true);
                         if (!e.target.value) {
                              setSelectedStudent(null);

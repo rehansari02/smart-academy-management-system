@@ -1,18 +1,36 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { protect } = require('../middlewares/authMiddleware');
 const { checkPermission } = require('../middlewares/permissionMiddleware');
 const { 
-    getInquiries, createInquiry, updateInquiryStatus,
+    getInquiries, createInquiry, importInquiries, updateInquiryStatus,
     createFeeReceipt, getStudentFees,
     getFeeReceipts, updateFeeReceipt, deleteFeeReceipt,
     getStudentLedger,
     getNextReceiptNo,
     getStudentPaymentSummary,
+    getStudentPaymentSummaries,
     getStudentPaymentHistory,
     generateReceiptReport
 } = require('../controllers/transactionController');
 const upload = require('../middlewares/uploadMiddleware'); // Import Upload Middleware
+const excelUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 1024 * 1024 * 10 },
+    fileFilter: (req, file, cb) => {
+        const allowed = [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel',
+            'text/csv',
+            'application/csv'
+        ];
+        if (allowed.includes(file.mimetype) || /\.(xlsx|xls|csv)$/i.test(file.originalname)) {
+            return cb(null, true);
+        }
+        cb(new Error('Only .xlsx, .xls, or .csv files are allowed'));
+    }
+});
 
 // --- Inquiry Routes ---
 // Custom middleware to allow Inquiry View for Branch Directors/Admins automatically
@@ -30,6 +48,8 @@ router.post('/public/inquiry', upload.single('studentPhoto'), createInquiry);
 router.route('/inquiry')
     .get(protect, allowInquiryView, getInquiries)
     .post(protect, checkPermission('Inquiry', 'add'), upload.single('studentPhoto'), createInquiry); // Added Middleware
+
+router.post('/inquiry/import', protect, checkPermission('Inquiry', 'add'), excelUpload.single('file'), importInquiries);
 
 router.route('/inquiry/:id')
     .put(protect, checkPermission('Inquiry', 'edit'), upload.single('studentPhoto'), updateInquiryStatus); // Added Middleware
@@ -51,6 +71,10 @@ router.route('/fees/student/:studentId')
     .get(protect, checkPermission('Fees Receipt', 'view'), getStudentFees);
 
 // --- New Payment Summary & History Routes ---
+router.route('/students/payment-summaries')
+    .get(protect, checkPermission('Fees Receipt', 'view'), getStudentPaymentSummaries)
+    .post(protect, checkPermission('Fees Receipt', 'view'), getStudentPaymentSummaries);
+
 router.route('/student/:studentId/payment-summary')
     .get(protect, checkPermission('Fees Receipt', 'view'), getStudentPaymentSummary);
 

@@ -184,7 +184,7 @@ const TimeTableReport = () => {
                         </div>
                     </div>
 
-                    <div className="mt-5 grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 md:grid-cols-2 xl:grid-cols-[1fr_18rem_16rem_13rem_11rem_auto_auto]">
+                    <div className="mt-5 grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 md:grid-cols-2 xl:grid-cols-[1fr_16rem_18rem_13rem_11rem_auto_auto]">
                         <div className="relative">
                             <input
                                 className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -195,11 +195,10 @@ const TimeTableReport = () => {
                             <Search className="absolute left-3 top-3 text-slate-400" size={18} />
                         </div>
                         <div className="relative">
-                            <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.branchId} onChange={(e) => setFilters((prev) => ({ ...prev, branchId: e.target.value, courseId: 'All' }))}>
-                                <option value="All">All Branches</option>
-                                {availableBranches.map((branch) => <option key={branch._id} value={branch._id}>{branch.name}</option>)}
+                            <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.examName} onChange={(e) => setFilters((prev) => ({ ...prev, examName: e.target.value, courseId: 'All' }))}>
+                                <option value="All">All Exams</option>
+                                {examNames.map((name) => <option key={name} value={name}>{name}</option>)}
                             </select>
-                            <Building2 className="absolute left-3 top-3 text-slate-400" size={18} />
                             <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
                         </div>
                         <div className="relative">
@@ -211,10 +210,11 @@ const TimeTableReport = () => {
                             <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
                         </div>
                         <div className="relative">
-                            <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.examName} onChange={(e) => setFilters((prev) => ({ ...prev, examName: e.target.value, courseId: 'All' }))}>
-                                <option value="All">All Exams</option>
-                                {examNames.map((name) => <option key={name} value={name}>{name}</option>)}
+                            <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.branchId} onChange={(e) => setFilters((prev) => ({ ...prev, branchId: e.target.value, courseId: 'All' }))}>
+                                <option value="All">All Branches</option>
+                                {availableBranches.map((branch) => <option key={branch._id} value={branch._id}>{branch.name}</option>)}
                             </select>
+                            <Building2 className="absolute left-3 top-3 text-slate-400" size={18} />
                             <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
                         </div>
                         <div className="relative">

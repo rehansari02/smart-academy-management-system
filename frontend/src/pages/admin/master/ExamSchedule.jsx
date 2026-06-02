@@ -6,6 +6,8 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { Plus, Search, RefreshCw, Edit, Trash2, Eye, X, Save, AlertCircle, Pencil, Check } from 'lucide-react';
 import axios from 'axios'; // For direct detail fetch
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const parseTimeToParts = (timeStr) => {
     if (!timeStr) return { hour: '10', minute: '00', period: 'AM' };
@@ -46,9 +48,10 @@ const buildTimeStr = (hour, minute, period) => {
 };
 
 const ExamSchedule = () => {
-  const dispatch = useDispatch();
-  const location = useLocation();
+    const dispatch = useDispatch();
+    const location = useLocation();
   const { courses, examSchedules, exams, isSuccess, message, isLoading } = useSelector((state) => state.master);
+  const { add, edit, delete: canDelete } = useUserRights('Exam Schedule');
   
   // Local State
   const [showForm, setShowForm] = useState(false);
@@ -140,6 +143,10 @@ const ExamSchedule = () => {
   };
 
   const handleCreateExamName = async () => {
+    if (!add) {
+      showPermissionDenied("You don't have authority to add exam names.");
+      return;
+    }
     if (!newExamName.trim()) {
       toast.error('Exam name is required');
       return;
@@ -162,6 +169,10 @@ const ExamSchedule = () => {
   };
 
   const handleUpdateExamName = async () => {
+    if (!edit) {
+      showPermissionDenied("You don't have authority to edit exam names.");
+      return;
+    }
     if (!editExamName.trim()) {
       toast.error('Exam name is required');
       return;
@@ -178,6 +189,10 @@ const ExamSchedule = () => {
   };
 
   const handleDeleteExamName = async (examId, examName) => {
+    if (!canDelete) {
+      showPermissionDenied("You don't have authority to delete exam names.");
+      return;
+    }
     if (!window.confirm(`Are you sure you want to delete "${examName}"?`)) return;
     const resultAction = await dispatch(deleteExam(examId));
     if (deleteExam.fulfilled.match(resultAction)) {
@@ -307,6 +322,10 @@ const ExamSchedule = () => {
   };
 
   const onSubmit = (data) => {
+    if (editMode ? !edit : !add) {
+      showPermissionDenied(`You don't have authority to ${editMode ? 'edit' : 'add'} exam schedules.`);
+      return;
+    }
     const finalData = { 
         ...data, 
         attendees: selectedAttendees,
@@ -366,6 +385,10 @@ const ExamSchedule = () => {
   };
 
   const handleDelete = (id) => {
+    if (!canDelete) {
+      showPermissionDenied("You don't have authority to delete exam schedules.");
+      return;
+    }
     if(window.confirm("Are you sure?")) dispatch(deleteExamSchedule(id));
   };
 

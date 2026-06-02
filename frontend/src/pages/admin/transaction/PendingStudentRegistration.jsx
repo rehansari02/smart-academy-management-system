@@ -7,6 +7,8 @@ import { Eye, Edit, Printer, Trash2, Search, RefreshCw, UserPlus, CheckCircle } 
 import { toast } from 'react-toastify';
 import moment from 'moment';
 import SearchableFilterInput from '../../../components/SearchableFilterInput';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const getStudentFullName = (student) => [student.firstName, student.middleName, student.lastName].filter(Boolean).join(' ');
 const getUniqueValues = (values) => [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))];
@@ -16,6 +18,7 @@ const PendingStudentRegistration = () => {
   const navigate = useNavigate();
   const { students, pagination = {}, isLoading, isSuccess, message } = useSelector((state) => state.students);  const { user } = useSelector((state) => state.auth);
   const { branches } = useSelector((state) => state.branch);
+  const { add, edit, delete: canDelete } = useUserRights('Pending Student Registration');
 
   // Filters
   const [filters, setFilters] = useState({
@@ -66,6 +69,10 @@ const PendingStudentRegistration = () => {
   };
 
   const handleDelete = (id) => {
+      if (!canDelete) {
+          showPermissionDenied("You don't have authority to delete pending registrations.");
+          return;
+      }
       if (window.confirm("Are you sure you want to permanently delete this student? This action cannot be undone and will delete all associated receipts.")) {
           dispatch(deleteStudent(id));
       }
@@ -91,6 +98,10 @@ const PendingStudentRegistration = () => {
   };
 
   const handleRegister = (id) => {
+    if (!add) {
+      showPermissionDenied("You don't have authority to register students.");
+      return;
+    }
     navigate(`/transaction/student-registration-process/${id}`);
   };
 
@@ -286,7 +297,7 @@ const PendingStudentRegistration = () => {
                             <CheckCircle size={14}/> 
                         </button>
 
-                        <Link to={`/master/student/new?updateId=${s._id}&returnUrl=/transaction/pending-registration`} className="bg-orange-50 text-orange-600 p-1.5 rounded border border-orange-200 hover:bg-orange-100 transition" title="Edit">
+                        <Link to={`/master/student/new?updateId=${s._id}&returnUrl=/transaction/pending-registration`} onClick={(e) => { if (!edit) { e.preventDefault(); showPermissionDenied("You don't have authority to edit pending registrations."); } }} className="bg-orange-50 text-orange-600 p-1.5 rounded border border-orange-200 hover:bg-orange-100 transition" title="Edit">
                             <Edit size={14}/>
                         </Link>
 

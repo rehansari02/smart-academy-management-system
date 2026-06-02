@@ -5,8 +5,11 @@ import { toast } from 'react-toastify';
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../../../utils/cropUtils';
 import Swal from 'sweetalert2';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const ManageBanners = () => {
+    const { add, edit, delete: canDelete } = useUserRights('Banner Home');
     // --- State ---
     const [bannersList, setBannersList] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -97,6 +100,10 @@ const ManageBanners = () => {
     };
 
     const handleAddNew = () => {
+        if (!add) {
+            showPermissionDenied("You don't have authority to add banners.");
+            return;
+        }
         setEditMode(false);
         setFormData({
             title: '',
@@ -110,6 +117,10 @@ const ManageBanners = () => {
     };
 
     const handleEdit = (banner) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit banners.");
+            return;
+        }
         setEditMode(true);
         setCurrentId(banner._id);
         setFormData({
@@ -122,6 +133,10 @@ const ManageBanners = () => {
     };
 
     const handleToggleActive = async (banner) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to update banner status.");
+            return;
+        }
         try {
             const data = new FormData();
             data.append('title', banner.title || '');
@@ -135,6 +150,10 @@ const ManageBanners = () => {
     };
 
     const handleDelete = async (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete banners.");
+            return;
+        }
         const result = await Swal.fire({
             title: 'Are you sure?',
             text: "You won't be able to revert this banner deletion!",
@@ -159,6 +178,10 @@ const ManageBanners = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (editMode ? !edit : !add) {
+            showPermissionDenied(`You don't have authority to ${editMode ? 'edit' : 'add'} banners.`);
+            return;
+        }
         
         if (!editMode && !imageFile) {
             toast.error('Please select an image for the banner');

@@ -14,7 +14,7 @@ export const fetchInquiries = createAsyncThunk(
       const response = await axios.get(API_URL + "inquiry", {
         params: filters,
       });
-      return Array.isArray(response.data) ? response.data : [];
+      return response.data;
     } catch (error) {
       return thunkAPI.rejectWithValue(error.message);
     }
@@ -79,7 +79,7 @@ export const fetchFeeReceipts = createAsyncThunk(
   async (filters = {}, thunkAPI) => {
     try {
       const response = await axios.get(API_URL + "fees", { params: filters });
-      return Array.isArray(response.data) ? response.data : [];
+      return response.data;
     } catch (error) {
       return thunkAPI.rejectWithValue(error.message);
     }
@@ -132,7 +132,9 @@ const transactionSlice = createSlice({
   name: "transaction",
   initialState: {
     inquiries: [],
+    inquiryPagination: { page: 1, limit: 10, pageSize: 10, count: 0, pages: 1 },
     receipts: [],
+    receiptPagination: { page: 1, limit: 10, pageSize: 10, count: 0, pages: 1 },
     ledgerData: null, // Store ledger data
     isLoading: false,
     isSuccess: false,
@@ -148,7 +150,25 @@ const transactionSlice = createSlice({
   extraReducers: (builder) => {
     builder
       .addCase(fetchInquiries.fulfilled, (state, action) => {
-        state.inquiries = action.payload;
+        if (Array.isArray(action.payload)) {
+          state.inquiries = action.payload;
+          state.inquiryPagination = {
+            page: 1,
+            limit: action.payload.length || 10,
+            pageSize: action.payload.length || 10,
+            count: action.payload.length,
+            pages: 1,
+          };
+        } else {
+          state.inquiries = Array.isArray(action.payload?.data) ? action.payload.data : [];
+          state.inquiryPagination = action.payload?.pagination || {
+            page: 1,
+            limit: 10,
+            pageSize: 10,
+            count: state.inquiries.length,
+            pages: 1,
+          };
+        }
       })
       .addCase(createInquiry.fulfilled, (state, action) => {
         state.inquiries.unshift(action.payload);
@@ -175,7 +195,25 @@ const transactionSlice = createSlice({
         state.receipts.unshift(action.payload);
       })
       .addCase(fetchFeeReceipts.fulfilled, (state, action) => {
-        state.receipts = action.payload;
+        if (Array.isArray(action.payload)) {
+          state.receipts = action.payload;
+          state.receiptPagination = {
+            page: 1,
+            limit: action.payload.length || 10,
+            pageSize: action.payload.length || 10,
+            count: action.payload.length,
+            pages: 1,
+          };
+        } else {
+          state.receipts = Array.isArray(action.payload?.data) ? action.payload.data : [];
+          state.receiptPagination = action.payload?.pagination || {
+            page: 1,
+            limit: 10,
+            pageSize: 10,
+            count: state.receipts.length,
+            pages: 1,
+          };
+        }
       })
       .addCase(updateFeeReceipt.fulfilled, (state, action) => {
         const index = state.receipts.findIndex(

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middlewares/authMiddleware');
+const { protect, admin } = require('../middlewares/authMiddleware');
 const { 
     getUserRights, 
     saveUserRights, 
@@ -14,6 +14,8 @@ const {
 router.use(protect);
 
 router.get('/me', getMyRights);
+
+router.use(admin);
 
 // Template Routes (Order matters: defined before /:userId)
 router.get('/templates', getTemplates);

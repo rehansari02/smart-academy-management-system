@@ -29,7 +29,7 @@ const StudentWiseOutstanding = () => {
         studentName: '',
         reference: '',
         pageNumber: 1,
-        pageSize: 100 // Default to showing more for report
+        pageSize: 5000 // Fetch enough rows so the report can filter outstanding-only locally
     });
 
     const [appliedFilters, setAppliedFilters] = useState(filters);
@@ -67,22 +67,19 @@ const StudentWiseOutstanding = () => {
         Promise.resolve().then(() => {
             if (!cancelled) setSummaryLoading(true);
         });
-        Promise.all(
-            students.map((s) =>
-                axios
-                    .get(`${API_URL}/transaction/student/${s._id}/payment-summary`, { withCredentials: true })
-                    .then((res) => ({ id: s._id, ...res.data }))
-                    .catch(() => ({ id: s._id, outstandingAmount: 0, dueAmount: 0 }))
-            )
-        ).then((results) => {
+        const ids = students.map((s) => s._id).filter(Boolean);
+        axios
+            .post(`${API_URL}/transaction/students/payment-summaries`, { ids }, { withCredentials: true })
+            .then((res) => {
             if (cancelled) return;
-            const map = {};
-            results.forEach((r) => {
-                map[r.id] = r;
-            });
-            setPaymentSummaryMap(map);
+            setPaymentSummaryMap(res.data || {});
             setSummaryLoading(false);
-        });
+        })
+            .catch(() => {
+                if (cancelled) return;
+                setPaymentSummaryMap({});
+                setSummaryLoading(false);
+            });
         return () => { cancelled = true; };
     }, [students]);
 
@@ -104,7 +101,7 @@ const StudentWiseOutstanding = () => {
             studentName: '',
             reference: '',
             pageNumber: 1,
-            pageSize: 100
+            pageSize: 5000
         };
         setFilters(initial);
         setAppliedFilters(initial);
@@ -172,21 +169,37 @@ const StudentWiseOutstanding = () => {
         return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
+    const getOutstandingTotal = (student) => {
+        const summary = paymentSummaryMap[student._id];
+        if (!summary) return 0;
+        return Number(summary.outstandingAmount || summary.dueAmount || 0);
+    };
+
     const sortedStudents = students && students.length > 0
         ? [...students].sort((a, b) => {
-            const dateA = a.admissionDate ? new Date(a.admissionDate) : null;
-            const dateB = b.admissionDate ? new Date(b.admissionDate) : null;
-            if (!dateA && !dateB) return 0;
-            if (!dateA) return 1;
-            if (!dateB) return -1;
-            const dayA = dateA.getDate();
-            const dayB = dateB.getDate();
-            if (dayA !== dayB) return dayA - dayB;
-            const monthA = dateA.getMonth();
-            const monthB = dateB.getMonth();
-            return monthA - monthB;
+            const timeA = a.admissionDate ? new Date(a.admissionDate).getTime() : 0;
+            const timeB = b.admissionDate ? new Date(b.admissionDate).getTime() : 0;
+            return timeB - timeA;
         })
         : [];
+
+    const outstandingStudents = summaryLoading
+        ? []
+        : sortedStudents.filter((student) => getOutstandingTotal(student) > 0);
+
+    const reportTotals = outstandingStudents.reduce((acc, student) => {
+        const summary = paymentSummaryMap[student._id] || {};
+        const outstandingAmount = Number(summary.outstandingAmount || summary.dueAmount || 0);
+        const dueAmount = Number(summary.dueAmount || 0);
+        acc.totalStudents += 1;
+        acc.totalOutstanding += outstandingAmount;
+        acc.totalDue += dueAmount;
+        return acc;
+    }, {
+        totalStudents: 0,
+        totalOutstanding: 0,
+        totalDue: 0
+    });
 
     return (
         <div className="container mx-auto p-4 max-w-7xl">
@@ -309,7 +322,13 @@ const StudentWiseOutstanding = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {sortedStudents.length > 0 ? sortedStudents.map((s, index) => {
+                        {summaryLoading ? (
+                            <tr>
+                                <td colSpan="12" className="border border-gray-300 px-4 py-8 text-center text-gray-500 italic">
+                                    Calculating outstanding fees...
+                                </td>
+                            </tr>
+                        ) : outstandingStudents.length > 0 ? outstandingStudents.map((s, index) => {
                             const summary = paymentSummaryMap[s._id];
                             const dueAmount = summary?.dueAmount ?? 0;
                             return (
@@ -350,12 +369,41 @@ const StudentWiseOutstanding = () => {
                         }) : (
                             <tr>
                                 <td colSpan="12" className="border border-gray-300 px-4 py-8 text-center text-gray-500 italic">
-                                    No records found matching criteria.
+                                    No students found with remaining outstanding fees.
                                 </td>
                             </tr>
                         )}
                     </tbody>
                 </table>
+
+                <div className="mt-4 print:mt-2">
+                    <table className="w-full border-collapse border border-gray-300 text-xs">
+                        <thead>
+                            <tr className="bg-slate-100 text-slate-700">
+                                <th className="border border-gray-300 px-3 py-2 text-left" colSpan="2">Footer Totals</th>
+                                <th className="border border-gray-300 px-3 py-2 text-right">Students</th>
+                                <th className="border border-gray-300 px-3 py-2 text-right">Outstanding</th>
+                                <th className="border border-gray-300 px-3 py-2 text-right">Due Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr className="bg-white">
+                                <td className="border border-gray-300 px-3 py-2 font-semibold text-slate-600" colSpan="2">
+                                    Grand Total
+                                </td>
+                                <td className="border border-gray-300 px-3 py-2 text-right font-bold text-slate-800">
+                                    {reportTotals.totalStudents}
+                                </td>
+                                <td className="border border-gray-300 px-3 py-2 text-right font-bold text-red-600">
+                                    {reportTotals.totalOutstanding > 0 ? formatAmount(reportTotals.totalOutstanding) : '-'}
+                                </td>
+                                <td className="border border-gray-300 px-3 py-2 text-right font-bold text-blue-600">
+                                    {reportTotals.totalDue > 0 ? formatAmount(reportTotals.totalDue) : '-'}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     );

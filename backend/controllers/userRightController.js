@@ -1,19 +1,74 @@
 const asyncHandler = require('express-async-handler');
 const UserRight = require('../models/UserRight');
 const User = require('../models/User');
+const Employee = require('../models/Employee');
 
 const UserRightTemplate = require('../models/UserRightTemplate');
+
+const normalizePermissionFlags = (permission = {}) => {
+    const view = Boolean(permission.view);
+    const add = Boolean(permission.add);
+    const edit = Boolean(permission.edit);
+    const del = Boolean(permission.delete);
+
+    return {
+        view: view || add || edit || del,
+        add: add || edit || del,
+        edit: edit || del,
+        delete: del,
+    };
+};
+
+const resolveUserFromTargetId = async (targetId) => {
+    if (!targetId) return null;
+
+    const directUser = await User.findById(targetId).select('_id').lean();
+    if (directUser) return directUser;
+
+    const employee = await Employee.findById(targetId).select('userAccount loginUsername email name mobile').lean();
+    if (!employee) return null;
+
+    if (employee.userAccount) {
+        const linkedUser = await User.findById(employee.userAccount).select('_id').lean();
+        if (linkedUser) return linkedUser;
+    }
+
+    const usernameCandidates = [employee.loginUsername, employee.email, employee.mobile, employee.name]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+
+    for (const candidate of usernameCandidates) {
+        const user = await User.findOne({
+            $or: [
+                { username: candidate },
+                { email: candidate },
+                { mobile: candidate },
+                { name: candidate },
+            ]
+        }).select('_id').lean();
+
+        if (user) return user;
+    }
+
+    return null;
+};
 
 // @desc    Get User Rights by User ID
 // @route   GET /api/user-rights/:userId
 // @access  Private/Admin
 const getUserRights = asyncHandler(async (req, res) => {
-    const rights = await UserRight.findOne({ user: req.params.userId });
+    const user = await resolveUserFromTargetId(req.params.userId);
+    if (!user) {
+        res.status(404);
+        throw new Error('Linked user account not found');
+    }
+
+    const rights = await UserRight.findOne({ user: user._id });
     if (rights) {
         res.json(rights);
     } else {
         // Return default empty structure if no rights exist yet
-        res.json({ user: req.params.userId, permissions: [] });
+        res.json({ user: user._id, permissions: [] });
     }
 });
 
@@ -21,18 +76,39 @@ const getUserRights = asyncHandler(async (req, res) => {
 // @route   POST /api/user-rights
 // @access  Private/Admin
 const saveUserRights = asyncHandler(async (req, res) => {
-    const { userId, permissions } = req.body;
+    const { userId, employeeId, permissions } = req.body;
+    const targetId = userId || employeeId;
 
-    let rights = await UserRight.findOne({ user: userId });
+    if (!targetId) {
+        res.status(400);
+        throw new Error('Employee or user account is required to save rights');
+    }
+
+    const user = await resolveUserFromTargetId(targetId);
+    if (!user) {
+        res.status(404);
+        throw new Error('Linked user account not found');
+    }
+
+    const normalizedPermissions = Array.isArray(permissions)
+        ? permissions
+            .filter((permission) => permission && permission.page)
+      .map((permission) => ({
+                  page: String(permission.page).trim(),
+                  ...normalizePermissionFlags(permission),
+              }))
+        : [];
+
+    let rights = await UserRight.findOne({ user: user._id });
 
     if (rights) {
-        rights.permissions = permissions;
+        rights.permissions = normalizedPermissions;
         const updatedRights = await rights.save();
         res.json(updatedRights);
     } else {
         rights = await UserRight.create({
-            user: userId,
-            permissions
+            user: user._id,
+            permissions: normalizedPermissions
         });
         res.status(201).json(rights);
     }
@@ -68,7 +144,14 @@ const createTemplate = asyncHandler(async (req, res) => {
 
     const template = await UserRightTemplate.create({
         name,
-        permissions
+        permissions: Array.isArray(permissions)
+            ? permissions
+                .filter((permission) => permission && permission.page)
+                .map((permission) => ({
+                    page: String(permission.page).trim(),
+                    ...normalizePermissionFlags(permission),
+                }))
+            : []
     });
 
     res.status(201).json(template);

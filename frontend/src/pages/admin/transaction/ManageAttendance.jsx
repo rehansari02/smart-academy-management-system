@@ -75,6 +75,19 @@ const ManageAttendance = () => {
         });
     };
 
+    const getTypeBadgeClass = (type) => {
+        switch (type) {
+            case 'Holiday':
+                return 'bg-red-50 text-red-700 border-red-200';
+            case 'Sunday':
+                return 'bg-red-100 text-red-800 border-red-200';
+            case 'Vacation':
+                return 'bg-orange-50 text-orange-700 border-orange-200';
+            default:
+                return 'bg-blue-50 text-blue-700 border-blue-200';
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
 
@@ -275,7 +288,7 @@ const ManageAttendance = () => {
                                             {(pagination.page - 1) * pagination.limit + index + 1}
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className="rounded bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">{item.type}</span>
+                                            <span className={`rounded border px-2 py-1 text-xs font-semibold ${getTypeBadgeClass(item.type)}`}>{item.type}</span>
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="font-semibold text-gray-800">{item.title}</div>

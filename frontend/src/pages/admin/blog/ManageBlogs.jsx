@@ -7,9 +7,12 @@ import {
     Calendar, User, Tag, Eye, Save, RotateCcw, Loader 
 } from 'lucide-react';
 import moment from 'moment';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const ManageBlogs = () => {
     const dispatch = useDispatch();
+    const { add, edit, delete: canDelete } = useUserRights('Manage Blogs');
     const { blogs = [], isLoading, isSuccess, isError, message } = useSelector((state) => state.blogs);
     
     console.log("Current Blogs in State:", blogs);
@@ -66,6 +69,10 @@ const ManageBlogs = () => {
 
     const openForm = (blog = null) => {
         if (blog) {
+            if (!edit) {
+                showPermissionDenied("You don't have authority to edit blogs.");
+                return;
+            }
             setEditMode(true);
             setCurrentId(blog._id);
             setFormData({
@@ -78,6 +85,10 @@ const ManageBlogs = () => {
             });
             setPreviewImage(blog.image ? (blog.image.startsWith('http') ? blog.image : `http://localhost:5000/${blog.image}`) : null);
         } else {
+            if (!add) {
+                showPermissionDenied("You don't have authority to add blogs.");
+                return;
+            }
             setEditMode(false);
             setCurrentId(null);
             setFormData({
@@ -104,6 +115,14 @@ const ManageBlogs = () => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        if (editMode && !edit) {
+            showPermissionDenied("You don't have authority to edit blogs.");
+            return;
+        }
+        if (!editMode && !add) {
+            showPermissionDenied("You don't have authority to add blogs.");
+            return;
+        }
         
         const data = new FormData();
         Object.keys(formData).forEach(key => {
@@ -121,6 +140,10 @@ const ManageBlogs = () => {
     };
 
     const handleDelete = (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete blogs.");
+            return;
+        }
         if (window.confirm('Are you sure you want to delete this blog?')) {
             dispatch(deleteBlog(id));
         }
@@ -161,9 +184,9 @@ const ManageBlogs = () => {
                         />
                     </div>
                     <div className="flex gap-2">
-                        <button onClick={() => dispatch(fetchBlogs())} className="p-2.5 text-gray-500 hover:bg-gray-100 rounded-xl transition" title="Refresh">
-                            <RotateCcw size={20} />
-                        </button>
+                    <button onClick={() => dispatch(fetchBlogs())} className="p-2.5 text-gray-500 hover:bg-gray-100 rounded-xl transition" title="Refresh">
+                        <RotateCcw size={20} />
+                    </button>
                     </div>
                 </div>
 

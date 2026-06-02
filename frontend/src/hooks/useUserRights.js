@@ -1,4 +1,5 @@
 import { useSelector } from 'react-redux';
+import { normalizePermissionFlags } from '../utils/permissionUtils';
 
 /**
  * Custom hook to check user permissions for a specific page.
@@ -32,11 +33,13 @@ export const useUserRights = (pageName) => {
     };
   }
 
+  const effective = normalizePermissionFlags(permission);
+
   return {
-    view: permission.view,
-    add: permission.add,
-    edit: permission.edit,
-    delete: permission.delete,
-    hasPermission: permission.view // Alias for 'view' mainly used for route guarding
+    view: effective.view,
+    add: effective.add,
+    edit: effective.edit,
+    delete: effective.delete,
+    hasPermission: effective.view // Alias for 'view' mainly used for route guarding
   };
 };

@@ -14,10 +14,13 @@ import {
 import { toast } from 'react-toastify';
 import { Edit, Trash2, Plus, Search, X } from 'lucide-react';
 import { TableSkeleton } from '../../../components/common/SkeletonLoader';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const LocationMaster = () => {
     const dispatch = useDispatch();
     const { states, cities, isLoading, isSuccess, message } = useSelector((state) => state.master);
+    const { add, edit, delete: canDelete } = useUserRights('Location');
 
     // State Management
     const [showStateModal, setShowStateModal] = useState(false);
@@ -46,12 +49,20 @@ const LocationMaster = () => {
 
     // --- STATE HANDLERS ---
     const handleAddState = () => {
+        if (!add) {
+            showPermissionDenied("You don't have authority to add locations.");
+            return;
+        }
         setStateFormData({ name: '', isActive: true });
         setEditStateId(null);
         setShowStateModal(true);
     };
 
     const handleEditState = (state) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit locations.");
+            return;
+        }
         setStateFormData({ name: state.name, isActive: state.isActive });
         setEditStateId(state._id);
         setShowStateModal(true);
@@ -59,6 +70,10 @@ const LocationMaster = () => {
 
     const handleStateSubmit = async (e) => {
         e.preventDefault();
+        if (editStateId ? !edit : !add) {
+            showPermissionDenied(`You don't have authority to ${editStateId ? 'edit' : 'add'} locations.`);
+            return;
+        }
         try {
             if (editStateId) {
                 await dispatch(updateState({ id: editStateId, data: stateFormData })).unwrap();
@@ -73,6 +88,10 @@ const LocationMaster = () => {
     };
 
     const handleDeleteState = async (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete locations.");
+            return;
+        }
         if (window.confirm('Are you sure you want to delete this state? All associated cities will also be deleted.')) {
             try {
                 await dispatch(deleteState(id)).unwrap();
@@ -86,12 +105,20 @@ const LocationMaster = () => {
 
     // --- CITY HANDLERS ---
     const handleAddCity = () => {
+        if (!add) {
+            showPermissionDenied("You don't have authority to add locations.");
+            return;
+        }
         setCityFormData({ name: '', stateId: '', isActive: true });
         setEditCityId(null);
         setShowCityModal(true);
     };
 
     const handleEditCity = (city) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit locations.");
+            return;
+        }
         setCityFormData({
             name: city.name,
             stateId: city.stateId?._id || city.stateId,
@@ -103,6 +130,10 @@ const LocationMaster = () => {
 
     const handleCitySubmit = async (e) => {
         e.preventDefault();
+        if (editCityId ? !edit : !add) {
+            showPermissionDenied(`You don't have authority to ${editCityId ? 'edit' : 'add'} locations.`);
+            return;
+        }
         if (!cityFormData.stateId) {
             toast.error('Please select a state');
             return;
@@ -121,6 +152,10 @@ const LocationMaster = () => {
     };
 
     const handleDeleteCity = async (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete locations.");
+            return;
+        }
         if (window.confirm('Are you sure you want to delete this city?')) {
             try {
                 await dispatch(deleteCity(id)).unwrap();

@@ -8,9 +8,12 @@ import VisitorForm from '../../../components/transaction/VisitorForm';
 import VisitorViewModal from '../../../components/transaction/VisitorViewModal';
 import VisitorFollowUpModal from '../../../components/transaction/VisitorFollowUpModal';
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const TodaysVisitorsList = () => {
     const navigate = useNavigate();
+    const { add, edit, delete: canDelete } = useUserRights('Todays Visitors List');
     
     const handlePrintList = () => {
         window.print();
@@ -93,6 +96,10 @@ const TodaysVisitorsList = () => {
     };
 
     const handleDelete = async (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete visitors.");
+            return;
+        }
         if (window.confirm('Are you sure you want to delete this visitor?')) {
             try {
                 await visitorService.deleteVisitor(id);
@@ -104,6 +111,10 @@ const TodaysVisitorsList = () => {
     };
 
     const handleAddNew = () => {
+        if (!add) {
+            showPermissionDenied("You don't have authority to add visitors.");
+            return;
+        }
         setSelectedVisitor(null);
         setShowModal(true);
     };
@@ -113,7 +124,27 @@ const TodaysVisitorsList = () => {
         setShowViewModal(true);
     };
 
+    const handleOpenFollowUp = (visitor) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to update visitor follow-ups.");
+            return;
+        }
+        setFollowUpVisitor(visitor);
+    };
+
+    const handleTakeAdmission = (visitor) => {
+        if (!add) {
+            showPermissionDenied("You don't have authority to take admission from visitors.");
+            return;
+        }
+        navigate('/master/student-admission', { state: { visitorData: visitor } });
+    };
+
     const handleEdit = (visitor) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit visitors.");
+            return;
+        }
         setSelectedVisitor(visitor);
         setShowModal(true);
     };
@@ -124,6 +155,10 @@ const TodaysVisitorsList = () => {
     };
 
     const handleSaveFollowUp = async (id, data) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to update visitor follow-ups.");
+            return;
+        }
         try {
             await visitorService.createVisitorFollowUp(data);
             setFollowUpVisitor(null);
@@ -360,21 +395,21 @@ const TodaysVisitorsList = () => {
                                         </td>
                                         <td className="p-2 text-center print:hidden">
                                             <div className="flex gap-2 justify-center">
-                                                <button onClick={() => setFollowUpVisitor(visitor)} className="bg-purple-50 text-purple-600 hover:bg-purple-100 p-1.5 rounded border border-purple-200 transition" title="Visitor Follow-up">
+                                                <button onClick={() => handleOpenFollowUp(visitor)} className="bg-purple-50 text-purple-600 hover:bg-purple-100 p-1.5 rounded border border-purple-200 transition" title="Visitor Follow-up">
                                                     <PhoneCall size={14} />
                                                 </button>
-                                                <button onClick={() => navigate('/master/student-admission', { state: { visitorData: visitor } })} className="bg-green-50 text-green-600 hover:bg-green-100 p-1.5 rounded border border-green-200 transition" title="Take Admission">
+                                                <button onClick={() => handleTakeAdmission(visitor)} className="bg-green-50 text-green-600 hover:bg-green-100 p-1.5 rounded border border-green-200 transition" title="Take Admission">
                                                     <GraduationCap size={14} />
                                                 </button>
-                                                <button onClick={() => handleView(visitor)} className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 p-1.5 rounded border border-indigo-200 transition" title="View Profile">
-                                                    <Eye size={14} />
-                                                </button>
+                        <button onClick={() => handleView(visitor)} className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 p-1.5 rounded border border-indigo-200 transition" title="View Profile">
+                            <Eye size={14} />
+                        </button>
                                                 <button onClick={() => handleEdit(visitor)} className="bg-blue-50 text-blue-600 hover:bg-blue-100 p-1.5 rounded border border-blue-200 transition" title="Edit">
                                                     <Edit size={14} />
                                                 </button>
-                                                <button onClick={() => handleDelete(visitor._id)} className="bg-red-50 text-red-600 hover:bg-red-100 p-1.5 rounded border border-red-200 transition" title="Delete">
-                                                    <Trash2 size={14} />
-                                                </button>
+                        <button onClick={() => handleDelete(visitor._id)} className="bg-red-50 text-red-600 hover:bg-red-100 p-1.5 rounded border border-red-200 transition" title="Delete">
+                            <Trash2 size={14} />
+                        </button>
                                             </div>
                                         </td>
                                     </tr>

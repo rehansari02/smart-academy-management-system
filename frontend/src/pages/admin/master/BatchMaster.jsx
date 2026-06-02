@@ -8,6 +8,8 @@ import {
 import { toast } from 'react-toastify';
 import { Search, Plus, X, Clock, Users, Edit2, Trash2, CheckSquare, Square, RefreshCw } from 'lucide-react';
 import { TableSkeleton } from '../../../components/common/SkeletonLoader';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const BatchMaster = () => {
   const dispatch = useDispatch();
@@ -18,6 +20,7 @@ const BatchMaster = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentBatchId, setCurrentBatchId] = useState(null);
   const [selectedCourses, setSelectedCourses] = useState([]); // Array of Course IDs
+  const { add, edit, delete: canDelete } = useUserRights('Batch');
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm();
 
@@ -109,6 +112,10 @@ const BatchMaster = () => {
   };
 
   const handleDelete = (id) => {
+      if (!canDelete) {
+          showPermissionDenied("You don't have authority to delete batches.");
+          return;
+      }
       if(window.confirm('Are you sure you want to delete this batch?')) {
           dispatch(deleteBatch(id));
       }
@@ -137,11 +144,19 @@ const BatchMaster = () => {
       }
       const payload = { ...data, courses: selectedCourses };
       
-      if (isEditing) {
-          dispatch(updateBatch({ id: currentBatchId, data: payload }));
-      } else {
-          dispatch(createBatch(payload)); 
+    if (isEditing) {
+      if (!edit) {
+        showPermissionDenied("You don't have authority to edit batches.");
+        return;
       }
+      dispatch(updateBatch({ id: currentBatchId, data: payload }));
+    } else {
+      if (!add) {
+        showPermissionDenied("You don't have authority to add batches.");
+        return;
+      }
+      dispatch(createBatch(payload)); 
+    }
   };
 
   // Filter only Faculty for dropdown

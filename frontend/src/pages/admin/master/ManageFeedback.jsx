@@ -3,6 +3,8 @@ import { toast } from 'react-toastify';
 import { MessageSquare, Star, Trash2, Eye, X, CheckCircle, Clock, Inbox, Filter, Search, TrendingUp } from 'lucide-react';
 import Swal from 'sweetalert2';
 import axios from 'axios';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const API = `${import.meta.env.VITE_API_URL}/feedback`;
 
@@ -31,8 +33,13 @@ const FeedbackModal = ({ fb, onClose, onUpdated }) => {
     const [status, setStatus] = useState(fb.status);
     const [note, setNote] = useState(fb.adminNote || '');
     const [saving, setSaving] = useState(false);
+    const { edit } = useUserRights('Feedback & Support');
 
     const handleSave = async () => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to update feedback.");
+            return;
+        }
         setSaving(true);
         try {
             await axios.put(`${API}/${fb._id}`, { status, adminNote: note }, { withCredentials: true });
@@ -131,6 +138,7 @@ const ManageFeedback = () => {
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState('All');
     const [filterCategory, setFilterCategory] = useState('All');
+    const { delete: canDelete } = useUserRights('Feedback & Support');
 
     const fetchAll = async () => {
         try {
@@ -160,6 +168,10 @@ const ManageFeedback = () => {
     };
 
     const handleDelete = (id, name) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete feedback.");
+            return;
+        }
         Swal.fire({ title: `Delete feedback from "${name}"?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'Delete' })
             .then(async r => {
                 if (r.isConfirmed) {

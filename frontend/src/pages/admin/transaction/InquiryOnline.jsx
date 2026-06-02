@@ -8,6 +8,8 @@ import { getBranches } from '../../../features/master/branchSlice';
 import InquiryForm from '../../../components/transaction/InquiryForm';
 import StudentSearch from '../../../components/StudentSearch';
 import InquiryViewModal from '../../../components/transaction/InquiryViewModal';
+import InquiryImportButton from '../../../components/transaction/InquiryImportButton';
+import InquiryPaginationFooter from '../../../components/transaction/InquiryPaginationFooter';
 import SmartTable from '../../../components/ui/SmartTable';
 import { Search, RefreshCw, CalendarClock, Globe, X, Edit, Trash2, Eye, Calendar, Printer } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -18,6 +20,15 @@ import SearchableDropdown from '../../../components/common/SearchableDropdown';
 // --- SUB-COMPONENT: Follow Up Form ---
 import { formatDate } from '../../../utils/dateUtils';
 import Swal from 'sweetalert2';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
+
+const getTodayDate = () => {
+    const date = new Date();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
+};
 
 // ... (imports remain)
 
@@ -131,10 +142,11 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
 
 const InquiryOnline = () => {
     const dispatch = useDispatch();
-    const { inquiries, isSuccess, message } = useSelector((state) => state.transaction);
+    const { inquiries, inquiryPagination, isSuccess, message } = useSelector((state) => state.transaction);
     const { employees } = useSelector((state) => state.employees);
     const { user } = useSelector((state) => state.auth);
     const { branches } = useSelector((state) => state.branch);
+    const { add, edit, delete: canDelete } = useUserRights('Inquiry - Online');
 
     const activeReferences = [...new Set(
         inquiries.map(i => i.referenceBy).filter(Boolean)
@@ -147,18 +159,26 @@ const InquiryOnline = () => {
 
     // Filter State
     const [filters, setFilters] = useState({
-        startDate: '',
-        endDate: new Date().toISOString().split('T')[0],
+        startDate: getTodayDate(),
+        endDate: getTodayDate(),
         status: '',
         studentName: '',
         referenceBy: '',
         branchId: '',
-        dateFilterType: 'followUpDate',
-        source: 'Online' // Locked to Online
+        dateFilterType: 'inquiryDate',
+        source: 'Online', // Locked to Online
+        page: 1,
+        pageSize: 10
     });
 
     const handlePrintList = () => {
         window.print();
+    };
+
+    const fetchPage = (page) => {
+        const nextFilters = { ...filters, page };
+        setFilters(nextFilters);
+        dispatch(fetchInquiries(nextFilters));
     };
 
     useEffect(() => {
@@ -182,13 +202,14 @@ const InquiryOnline = () => {
     }, [isSuccess, message, dispatch, pendingModalSave, filters]);
 
     const handleFilterChange = (e) => {
-        setFilters({ ...filters, [e.target.name]: e.target.value });
+        setFilters({ ...filters, [e.target.name]: e.target.value, page: 1 });
     };
 
     const handleResetFilters = () => {
+        const today = getTodayDate();
         const resetState = {
-            startDate: new Date().toISOString().split('T')[0], endDate: new Date().toISOString().split('T')[0], status: '', studentName: '', referenceBy: '',
-            branchId: '', dateFilterType: 'followUpDate', source: 'Online'
+            startDate: today, endDate: today, status: '', studentName: '', referenceBy: '',
+            branchId: '', dateFilterType: 'inquiryDate', source: 'Online', page: 1, pageSize: 10
         };
         setFilters(resetState);
         dispatch(fetchInquiries(resetState));
@@ -241,12 +262,12 @@ const InquiryOnline = () => {
         { header: 'Date', render: (row) => formatDate(row.inquiryDate) },
         { header: 'Student Name', render: r => <span className="font-bold text-gray-700">{r.firstName} {r.middleName ? r.middleName + ' ' : ''}{r.lastName || ''}</span> },
         { 
-            header: 'Contact', 
+            header: 'Contact (H/S/P)', 
             render: r => (
                 <div className="text-[10px] space-y-0.5">
-                    <div><span className="font-bold text-gray-400">G:</span> {r.contactParent || '-'}</div>
                     <div><span className="font-bold text-gray-400">H:</span> {r.contactHome || '-'}</div>
                     <div><span className="font-bold text-gray-400">S:</span> {r.contactStudent || '-'}</div>
+                    <div><span className="font-bold text-gray-400">P:</span> {r.contactParent || '-'}</div>
                 </div>
             ) 
         },
@@ -265,13 +286,22 @@ const InquiryOnline = () => {
         {
             header: 'Action', render: r => (
                 <div className="flex gap-2">
-                    <button onClick={() => setShowFollowUpModal(r)} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100" title="Follow Up">
+                    <button onClick={() => {
+                        if (!edit) return showPermissionDenied("You don't have authority to update online inquiries.");
+                        setShowFollowUpModal(r);
+                    }} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100" title="Follow Up">
                         <CalendarClock size={14} />
                     </button>
-                    <button onClick={() => setEditModalData(r)} className="bg-blue-50 text-blue-600 border border-blue-200 p-1.5 rounded hover:bg-blue-100" title="Edit">
+                    <button onClick={() => {
+                        if (!edit) return showPermissionDenied("You don't have authority to edit online inquiries.");
+                        setEditModalData(r);
+                    }} className="bg-blue-50 text-blue-600 border border-blue-200 p-1.5 rounded hover:bg-blue-100" title="Edit">
                         <Edit size={14} />
                     </button>
-                    <button onClick={() => handleDelete(r._id)} className="bg-red-50 text-red-600 border border-red-200 p-1.5 rounded hover:bg-red-100" title="Delete">
+                    <button onClick={() => {
+                        if (!canDelete) return showPermissionDenied("You don't have authority to delete online inquiries.");
+                        handleDelete(r._id);
+                    }} className="bg-red-50 text-red-600 border border-red-200 p-1.5 rounded hover:bg-red-100" title="Delete">
                         <Trash2 size={14} />
                     </button>
                 </div>
@@ -330,12 +360,20 @@ const InquiryOnline = () => {
                         <p className="text-xs text-gray-500">Manage inquiries received from Website or Social Media</p>
                     </div>
                     <span className="bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm ml-2">
-                        Total: {inquiries?.length || 0}
+                        Total: {inquiryPagination?.count || 0}
                     </span>
                 </div>
-                <button onClick={handlePrintList} className="bg-green-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 hover:bg-green-700 font-bold transition-all transform hover:scale-105">
-                    <Printer size={18} /> Print List
-                </button>
+                <div className="flex gap-2">
+                    <InquiryImportButton
+                        source="Online"
+                        onImported={() => dispatch(fetchInquiries(filters))}
+                        canImport={add}
+                        permissionMessage="You don't have authority to add online inquiries."
+                    />
+                    <button onClick={handlePrintList} className="bg-green-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 hover:bg-green-700 font-bold transition-all transform hover:scale-105">
+                        <Printer size={18} /> Print List
+                    </button>
+                </div>
             </div>
 
             {/* --- FILTER SECTION --- */}
@@ -384,9 +422,9 @@ const InquiryOnline = () => {
                                 additionalFilters={{ source: 'Online' }}
                                 onSelect={(id, student) => {
                                     if (student) {
-                                        setFilters({ ...filters, studentName: student.firstName });
+                                        setFilters({ ...filters, studentName: student.firstName, page: 1 });
                                     } else {
-                                        setFilters({ ...filters, studentName: '' });
+                                        setFilters({ ...filters, studentName: '', page: 1 });
                                     }
                                 }}
                                 placeholder="Search by Name for Online Inquiries..."
@@ -408,7 +446,7 @@ const InquiryOnline = () => {
                             <SearchableDropdown
                                 options={activeReferences}
                                 value={filters.referenceBy}
-                                onSelect={(val) => setFilters({ ...filters, referenceBy: val })}
+                                onSelect={(val) => setFilters({ ...filters, referenceBy: val, page: 1 })}
                                 label="Reference By"
                                 placeholder="Search or type Reference..."
                             />
@@ -424,7 +462,11 @@ const InquiryOnline = () => {
                             <RefreshCw size={16} /> Reset
                         </button>
                         <button
-                            onClick={() => dispatch(fetchInquiries(filters))}
+                            onClick={() => {
+                                const nextFilters = { ...filters, page: 1 };
+                                setFilters(nextFilters);
+                                dispatch(fetchInquiries(nextFilters));
+                            }}
                             className="bg-blue-600 text-white px-6 py-2.5 rounded hover:bg-blue-700 font-medium transition text-sm flex items-center justify-center gap-2"
                         >
                             <Search size={16} /> Search
@@ -437,7 +479,7 @@ const InquiryOnline = () => {
             <div className="bg-white rounded-lg shadow overflow-x-auto border printable-table-container">
                 <div className="print-only-header mb-6 text-center">
                     <h1 className="text-2xl font-bold text-blue-800 uppercase tracking-wide">Online Inquiry List</h1>
-                    <p className="text-xs text-gray-500 mt-1">Generated on {new Date().toLocaleDateString('en-GB')} | Total Inquiries: {inquiries?.length || 0}</p>
+                    <p className="text-xs text-gray-500 mt-1">Generated on {new Date().toLocaleDateString('en-GB')} | Total Inquiries: {inquiryPagination?.count || 0}</p>
                 </div>
                 <table className="w-full border-collapse min-w-[1100px]">
                     <thead>
@@ -446,7 +488,7 @@ const InquiryOnline = () => {
                             <th className="p-2 border font-semibold">Inquiry Date</th>
                             {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
                             <th className="p-2 border font-semibold">Student Name</th>
-                            <th className="p-2 border font-semibold text-center w-36">Contact</th>
+                            <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                             <th className="p-2 border font-semibold">Gender</th>
                             <th className="p-2 border font-semibold text-center">Status</th>
                             <th className="p-2 border font-semibold">Followup Date</th>
@@ -459,27 +501,27 @@ const InquiryOnline = () => {
                     <tbody>
                         {inquiries && inquiries.length > 0 ? inquiries.map((inquiry, index) => (
                             <tr key={inquiry._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
-                                <td className="p-2 border text-center">{index + 1}</td>
+                                <td className="p-2 border text-center">{((inquiryPagination?.page || 1) - 1) * (inquiryPagination?.pageSize || 10) + index + 1}</td>
                                 <td className="p-2 border text-gray-700">{formatDate(inquiry.inquiryDate)}</td>
                                 {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{inquiry.branchId?.name || '-'}</td>}
                                 <td className="p-2 border font-bold text-gray-800">{inquiry.firstName} {inquiry.lastName}</td>
                                 <td className="p-0 border align-top">
-                                    <div className="flex border-b border-gray-200 last:border-b-0">
-                                        <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">G</div>
-                                        <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
-                                            {inquiry.contactParent || '-'}
-                                        </div>
-                                    </div>
                                     <div className="flex border-b border-gray-200 last:border-b-0">
                                         <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">H</div>
                                         <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
                                             {inquiry.contactHome || '-'}
                                         </div>
                                     </div>
-                                    <div className="flex">
+                                    <div className="flex border-b border-gray-200 last:border-b-0">
                                         <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">S</div>
                                         <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
                                             {inquiry.contactStudent || '-'}
+                                        </div>
+                                    </div>
+                                    <div className="flex">
+                                        <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">P</div>
+                                        <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
+                                            {inquiry.contactParent || '-'}
                                         </div>
                                     </div>
                                 </td>
@@ -521,6 +563,12 @@ const InquiryOnline = () => {
                     </tbody>
                 </table>
             </div>
+
+            <InquiryPaginationFooter
+                pagination={inquiryPagination}
+                count={inquiries?.length || 0}
+                onPageChange={fetchPage}
+            />
 
             {/* Follow Up Modal */}
             {showFollowUpModal && (

@@ -222,6 +222,14 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
         throw new Error('Invalid branch selected');
     }
 
+    const resolveCommissionType = (courseInfo) => {
+        const raw = String(courseInfo?.commissionType || '').trim().toLowerCase();
+        if (raw === 'percentage' || raw === '%') return 'Percentage';
+        if (raw === 'amount' || raw === 'rupee' || raw === 'rs') return 'Amount';
+        const commission = Number(courseInfo?.commission || 0);
+        return commission > 0 && commission <= 100 ? 'Percentage' : 'Amount';
+    };
+
     const { start, end } = buildRange({ period, fromDate, toDate });
     const dateMatch = { $gte: start, $lte: end };
 
@@ -247,7 +255,19 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
             $addFields: {
                 calculatedIncentive: {
                     $cond: [
-                        { $eq: ['$courseInfo.commissionType', 'Percentage'] },
+                        {
+                            $or: [
+                                { $eq: ['$courseInfo.commissionType', 'Percentage'] },
+                                { $eq: ['$courseInfo.commissionType', '%'] },
+                                {
+                                    $and: [
+                                        { $eq: [{ $ifNull: ['$courseInfo.commissionType', ''] }, ''] },
+                                        { $gt: [{ $ifNull: ['$courseInfo.commission', 0] }, 0] },
+                                        { $lte: [{ $ifNull: ['$courseInfo.commission', 0] }, 100] }
+                                    ]
+                                }
+                            ]
+                        },
                         { $multiply: [{ $divide: [{ $ifNull: ['$courseInfo.commission', 0] }, 100] }, '$totalFees'] },
                         { $ifNull: ['$courseInfo.commission', 0] }
                     ]
@@ -297,7 +317,7 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
         const studentsWithIncentive = students.map(s => {
             let incentive = 0;
             if (s.course) {
-                if (s.course.commissionType === 'Percentage') {
+                if (resolveCommissionType(s.course) === 'Percentage') {
                     incentive = (s.course.commission / 100) * (s.totalFees || 0);
                 } else {
                     incentive = s.course.commission || 0;

@@ -5,6 +5,8 @@ import { fetchSubjects } from '../../../features/master/masterSlice';
 import { toast } from 'react-toastify';
 import moment from 'moment';
 import { Search, Save, RefreshCw, Trash2, Edit, FileText, Plus, X, Download } from 'lucide-react';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const Material = () => {
     const dispatch = useDispatch();
@@ -34,6 +36,7 @@ const Material = () => {
     };
     const [formData, setFormData] = useState(initialForm);
     const [showForm, setShowForm] = useState(false); // Default to false (List View)
+    const { add, edit, delete: canDelete } = useUserRights('Material');
 
     useEffect(() => {
         dispatch(fetchSubjects());
@@ -87,9 +90,17 @@ const Material = () => {
             fd.append('document', formData.document);
         }
 
-        if (formData.id) {
+      if (formData.id) {
+            if (!edit) {
+                showPermissionDenied("You don't have authority to edit materials.");
+                return;
+            }
             dispatch(updateMaterial({ id: formData.id, data: fd }));
         } else {
+            if (!add) {
+                showPermissionDenied("You don't have authority to add materials.");
+                return;
+            }
             dispatch(createMaterial(fd));
         }
     };
@@ -115,6 +126,10 @@ const Material = () => {
     };
 
     const handleDelete = (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete materials.");
+            return;
+        }
         if (window.confirm('Are you sure you want to delete this material?')) {
             dispatch(deleteMaterial(id));
         }

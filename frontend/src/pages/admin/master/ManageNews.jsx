@@ -3,6 +3,8 @@ import { FileText, Plus, Search, Edit, Trash2, X, AlertCircle } from 'lucide-rea
 import newsService from '../../../services/newsService';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../../utils/dateUtils';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const ManageNews = () => {
     // --- State ---
@@ -23,6 +25,7 @@ const ManageNews = () => {
     const [showModal, setShowModal] = useState(false);
     const [editMode, setEditMode] = useState(false);
     const [currentId, setCurrentId] = useState(null);
+    const { add, edit, delete: canDelete } = useUserRights('Manage News');
     const [formData, setFormData] = useState({
         title: '',
         smallDetail: '',
@@ -109,6 +112,10 @@ const ManageNews = () => {
     };
 
     const handleDelete = async (id) => {
+        if (!canDelete) {
+            showPermissionDenied("You don't have authority to delete news.");
+            return;
+        }
         if (window.confirm('Are you sure you want to delete this news item?')) {
             try {
                 await newsService.deleteNews(id);
@@ -126,9 +133,17 @@ const ManageNews = () => {
         setSubmitting(true);
         try {
             if (editMode) {
+                if (!edit) {
+                    showPermissionDenied("You don't have authority to edit news.");
+                    return;
+                }
                 await newsService.updateNews(currentId, formData);
                 toast.success("News updated successfully");
             } else {
+                if (!add) {
+                    showPermissionDenied("You don't have authority to add news.");
+                    return;
+                }
                 await newsService.createNews(formData);
                 toast.success("News created successfully");
             }

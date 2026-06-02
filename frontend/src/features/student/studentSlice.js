@@ -22,6 +22,9 @@ export const fetchStudents = createAsyncThunk(
         queryParams.isCancelled = false;
       }
       delete queryParams.includeCancelled; // Remove from params as it's not a backend param
+      if (!queryParams.sortBy) {
+        queryParams.sortBy = '-admissionDate -createdAt';
+      }
 
       const response = await axios.get(API_URL, { params: queryParams });
       return response.data;

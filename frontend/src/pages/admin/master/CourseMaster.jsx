@@ -8,6 +8,8 @@ import {
 import { toast } from 'react-toastify';
 import { Search, Plus, X, Edit2, Trash2, BookOpen, Check, Layers, Eye, Upload, RefreshCw, Clock } from 'lucide-react';
 import { TableSkeleton } from '../../../components/common/SkeletonLoader';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const CourseMaster = () => {
   const dispatch = useDispatch();
@@ -21,6 +23,7 @@ const CourseMaster = () => {
   const [selectedSubjectMap, setSelectedSubjectMap] = useState({});
   const [viewingSubjects, setViewingSubjects] = useState(null); // For viewing subjects in table
   const [previewImage, setPreviewImage] = useState(null); // Image Preview State
+  const { add, edit, delete: canDelete } = useUserRights('Course');
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm();
   const commissionType = watch('commissionType') || 'Percentage';
@@ -131,6 +134,10 @@ const CourseMaster = () => {
   };
 
   const handleDelete = (id) => {
+      if (!canDelete) {
+        showPermissionDenied("You don't have authority to delete courses.");
+        return;
+      }
       if(window.confirm('Are you sure you want to delete this course?')) {
           dispatch(deleteCourse(id));
       }
@@ -145,11 +152,19 @@ const CourseMaster = () => {
 
       const payload = { ...data, subjects: subjectsArray };
 
-      if (isEditing) {
-          dispatch(updateCourse({ id: currentCourseId, data: payload }));
-      } else {
-          dispatch(createCourse(payload));
+    if (isEditing) {
+      if (!edit) {
+        showPermissionDenied("You don't have authority to edit courses.");
+        return;
       }
+      dispatch(updateCourse({ id: currentCourseId, data: payload }));
+    } else {
+      if (!add) {
+        showPermissionDenied("You don't have authority to add courses.");
+        return;
+      }
+      dispatch(createCourse(payload));
+    }
   };
 
   // Unique Course Types for Filter
