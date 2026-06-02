@@ -231,6 +231,7 @@ const EmployeeMaster = () => {
       setPreviewImage(emp.photo || null);
       reset({
           ...emp,
+          loginUsername: emp.userAccount?.username || emp.loginUsername || '',
           branchId: emp.branchId ? (typeof emp.branchId === 'object' ? emp.branchId._id : emp.branchId) : '',
           dob: emp.dob ? emp.dob.split('T')[0] : '',
           dateOfJoining: emp.dateOfJoining ? emp.dateOfJoining.split('T')[0] : '',
@@ -859,7 +860,17 @@ const EmployeeMaster = () => {
                                 {!editMode && <span className="text-[10px] bg-yellow-200 px-2 py-1 rounded text-yellow-800">Auto-Generated</span>}
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div><label className="block text-xs font-bold text-gray-700">Login Username</label><input {...register('loginUsername')} readOnly={!editMode} className="w-full border p-2 rounded text-sm mt-1 bg-gray-100 cursor-not-allowed"/></div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700">Login Username</label>
+                                    <input 
+                                        {...register('loginUsername')} 
+                                        readOnly={!editMode || user?.role !== 'Super Admin'} 
+                                        className={`w-full border p-2 rounded text-sm mt-1 ${editMode && user?.role === 'Super Admin' ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'}`}
+                                    />
+                                    {editMode && user?.role !== 'Super Admin' && (
+                                        <p className="text-[10px] text-gray-400 mt-0.5">Only Super Admin can change username</p>
+                                    )}
+                                </div>
                                 <div><label className="block text-xs font-bold text-gray-700">Password</label><input type="text" {...register('loginPassword')} placeholder={editMode ? "Leave empty to keep current" : ""} className="w-full border p-2 rounded text-sm mt-1 bg-white"/></div>
                                 <div className="flex items-end pb-2"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" {...register('isLoginActive')} defaultChecked className="w-4 h-4 text-green-600"/><span className="text-sm font-bold text-gray-700">Login Active?</span></label></div>
                             </div>

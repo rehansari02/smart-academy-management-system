@@ -381,7 +381,6 @@ const StudentList = () => {
                         </div>
                     </div>
                 </td>
-
                 <td className="p-2 border font-semibold text-blue-800">{s.course?.name || '-'}</td>
                 <td className="p-2 border">{s.course ? `${s.course.duration} ${s.course.durationType}` : '-'}</td>
 

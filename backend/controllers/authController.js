@@ -96,6 +96,88 @@ const loginUser = asyncHandler(async (req, res) => {
         });
     }
 
+    // 3. Fallback: Try Employee lookup for legacy employees (imported without User links)
+    if (!user) {
+        const Employee = require('../models/Employee');
+        const employee = await Employee.findOne({
+            $or: [
+                { loginUsername: email },
+                { email: email }
+            ],
+            isDeleted: false
+        });
+
+        if (employee) {
+            // Try to find linked user by userAccount
+            if (employee.userAccount) {
+                user = await User.findById(employee.userAccount);
+            }
+
+            // Try to find user by loginUsername (legacy username)
+            if (!user && employee.loginUsername) {
+                user = await User.findOne({ username: employee.loginUsername });
+            }
+
+            // If user found but employee not linked, fix the link for future lookups
+            if (user && !employee.userAccount) {
+                employee.userAccount = user._id;
+                await employee.save();
+            }
+
+            // --- AUTO-CREATE USER ACCOUNT for legacy employees who have NO User at all ---
+            if (!user) {
+                // Auto-generate a username from email prefix, mobile, or a fallback
+                const generatedUsername = employee.loginUsername ||
+                    (employee.email ? employee.email.split('@')[0] : null) ||
+                    employee.mobile ||
+                    `emp_${employee._id}`;
+
+                const defaultPassword = employee.mobile || 'smart@123';
+
+                // Resolve branch name if branchId is set
+                let branchName = 'Main';
+                if (employee.branchId) {
+                    try {
+                        const branch = await require('../models/Branch').findById(employee.branchId);
+                        if (branch) branchName = branch.name;
+                    } catch (e) { /* ignore branch lookup errors */ }
+                }
+
+                try {
+                    const newUser = await User.create({
+                        name: employee.name,
+                        username: generatedUsername,
+                        email: employee.email || `${generatedUsername}@employee.local`,
+                        password: defaultPassword,
+                        role: employee.type || 'Faculty',
+                        isActive: true,
+                        mobile: employee.mobile,
+                        gender: employee.gender,
+                        address: employee.address,
+                        education: employee.education || employee.qualification,
+                        branchId: employee.branchId,
+                        branchName: branchName,
+                    });
+
+                    // Link the employee to the new User
+                    employee.userAccount = newUser._id;
+                    if (!employee.loginUsername) {
+                        employee.loginUsername = generatedUsername;
+                    }
+                    await employee.save();
+
+                    user = newUser;
+                } catch (createError) {
+                    console.error('[Auth] Failed to auto-create User for legacy employee:', createError.message);
+                    // If creation fails (e.g. duplicate username), try to find by the generated username
+                    if (createError.code === 11000 && createError.keyPattern?.username) {
+                        user = await User.findOne({ username: generatedUsername });
+                    }
+                }
+            }
+        }
+    }
+
     if (user && (await user.matchPassword(password))) {
         // Enforce Role Check if provided (Security Level)
         if (role && user.role !== role) {

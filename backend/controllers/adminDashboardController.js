@@ -212,8 +212,11 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
     const { period = 'today', fromDate, toDate, reference } = req.query;
     let branchId = req.query.branchId || '';
 
-    if (req.user.role !== 'Super Admin') {
-        branchId = req.user.branchId;
+    // Relaxation: For Reference Incentive, we don't force branchId filter for non-admins 
+    // unless they explicitly selected one. Teachers might refer students to other branches.
+    // Security is already handled by 'referenceFilter' below.
+    if (req.user.role !== 'Super Admin' && !req.query.branchId) {
+        branchId = ''; // Ignore user.branchId auto-filter for incentives
     }
 
     const branchObjectId = normalizeBranchId(branchId);
@@ -233,13 +236,29 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
     const { start, end } = buildRange({ period, fromDate, toDate });
     const dateMatch = { $gte: start, $lte: end };
 
+    // Determine reference scope for non-super admins
+    let referenceFilter = { $exists: true, $ne: '', $ne: null, $ne: 'Direct' };
+    if (req.user.role !== 'Super Admin') {
+        // Only show this user's references
+        // We match against full name, first name, or username for better compatibility
+        const firstName = req.user.name ? req.user.name.split(' ')[0] : '';
+        const searchTerms = [
+            req.user.name,
+            firstName,
+            req.user.username
+        ].filter(t => t && t.trim().length > 0)
+         .map(t => `^\\s*${t.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\s*$`); // Escape, anchor and handle spaces
+        
+        referenceFilter = { $regex: searchTerms.join('|'), $options: 'i' };
+    }
+
     // Get all unique references with aggregation and incentive calculation
     const allRefs = await Student.aggregate([
         {
             $match: {
                 isDeleted: false,
                 ...(branchObjectId ? { branchId: branchObjectId } : {}),
-                reference: { $exists: true, $ne: '', $ne: null, $ne: 'Direct' }
+                reference: referenceFilter
             }
         },
         {
@@ -300,10 +319,27 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
 
     // If a specific reference is selected, get detailed data
     let referenceDetail = null;
-    if (reference) {
+    
+    // For non-super admins, if they haven't selected a reference, 
+    // we can auto-select their own reference to show them data immediately
+    let selectedRef = reference;
+    if (req.user.role !== 'Super Admin' && !selectedRef) {
+        selectedRef = req.user.name;
+    }
+
+    if (selectedRef) {
+        // If not super admin, ensure they can only see their own details
+        let finalReferenceMatch;
+        if (req.user.role === 'Super Admin') {
+            finalReferenceMatch = { $regex: `^\\s*${selectedRef.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\s*$`, $options: 'i' };
+        } else {
+            // Re-use the flexible referenceFilter for non-admins
+            finalReferenceMatch = referenceFilter;
+        }
+
         const studentQuery = {
             isDeleted: false,
-            reference: { $regex: `^${reference}$`, $options: 'i' },
+            reference: finalReferenceMatch,
             ...(branchObjectId ? { branchId: branchObjectId } : {})
         };
 
@@ -418,7 +454,15 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
     }
 
     res.json({
-        filters: { period, fromDate, toDate, branchId: branchObjectId ? branchObjectId.toString() : '', start, end, reference },
+        filters: { 
+            period, 
+            fromDate, 
+            toDate, 
+            branchId: branchObjectId ? branchObjectId.toString() : '', 
+            start, 
+            end, 
+            reference: reference || (req.user.role !== 'Super Admin' ? req.user.name : '')
+        },
         references: allRefs,
         selectedReference: referenceDetail
     });

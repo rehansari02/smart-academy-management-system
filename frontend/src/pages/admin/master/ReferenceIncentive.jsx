@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -97,7 +97,15 @@ const ReferenceIncentive = () => {
       };
       const { data } = await axios.get(API, { params, withCredentials: true });
       setRefData(data);
-      if (!reference) {
+      
+      // Auto-select for non-super admins to show their own data immediately
+      if (!isSuperAdmin && data.selectedReference && !activeReference) {
+        // Use the actual reference name from data if available, or the user's name
+        const refName = data.filters?.reference || user?.name || 'My Referrals';
+        setActiveReference(refName);
+      }
+
+      if (!reference && isSuperAdmin) {
         setActiveReference(null);
       }
     } catch (error) {
@@ -198,17 +206,19 @@ const ReferenceIncentive = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-black uppercase tracking-wide text-slate-500">Date Filter</label>
-                <button
-                  onClick={() => setShowSidebar(!showSidebar)}
-                  className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-black transition ${
-                    showSidebar
-                      ? 'bg-primary/10 text-primary'
-                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                  }`}
-                >
-                  <Menu size={14} />
-                  {showSidebar ? 'Hide Teachers' : 'Show Teachers'}
-                </button>
+                {isSuperAdmin && (
+                  <button
+                    onClick={() => setShowSidebar(!showSidebar)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-black transition ${
+                      showSidebar
+                        ? 'bg-primary/10 text-primary'
+                        : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Menu size={14} />
+                    {showSidebar ? 'Hide Teachers' : 'Show Teachers'}
+                  </button>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">
@@ -283,7 +293,7 @@ const ReferenceIncentive = () => {
         {/* Main Layout */}
         <div className="flex flex-col gap-5 lg:flex-row">
           {/* Sidebar */}
-          {showSidebar && (
+          {isSuperAdmin && showSidebar && (
             <div className="w-full shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:w-72">
               <div className="border-b border-slate-200 bg-gradient-to-r from-indigo-600 to-purple-600 p-4 text-white">
                 <div className="flex items-center justify-between">
@@ -445,7 +455,9 @@ const ReferenceIncentive = () => {
                     Teacher <span className="text-indigo-600">Incentive</span> Dashboard
                   </h2>
                   <p className="mt-3 max-w-md text-sm font-semibold text-slate-500">
-                    Select a teacher from the sidebar to view their referral metrics, earned commissions, and student enrollment history.
+                    {isSuperAdmin 
+                      ? "Select a teacher from the sidebar to view their referral metrics, earned commissions, and student enrollment history."
+                      : "You don't have any referrals recorded for the selected period."}
                   </p>
                   <div className="mt-8 flex items-center gap-2 text-xs font-bold text-slate-400">
                     <span className="rounded-full bg-slate-100 px-3 py-1.5">{refData?.references?.length || 0} reference sources</span>

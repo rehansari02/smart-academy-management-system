@@ -2,41 +2,19 @@ const Employee = require('../models/Employee');
 const User = require('../models/User');
 const sendSMS = require('../utils/smsSender');
 const asyncHandler = require('express-async-handler');
+const mongoose = require('mongoose');
 
 const enrichEmployeesWithUserAccounts = async (employees) => {
-    const missingUsernames = [...new Set(
-        employees
-            .filter((employee) => !employee.userAccount && employee.loginUsername)
-            .map((employee) => String(employee.loginUsername).trim())
-            .filter(Boolean)
-    )];
-
-    if (!missingUsernames.length) {
-        return employees;
-    }
-
-    const users = await User.find({
-        username: { $in: missingUsernames }
-    }).select('_id username').lean();
-
-    const userByUsername = new Map(
-        users.map((user) => [String(user.username).trim().toLowerCase(), user])
-    );
-
+    // Only fix employees who have a populated userAccount._id (actual DB link)
+    // Do NOT match by loginUsername — that causes false display of same username
+    // for multiple employees who don't actually have linked User accounts.
     return employees.map((employee) => {
-        if (employee.userAccount || !employee.loginUsername) {
+        // If employee already has a properly linked userAccount from populate, keep it
+        if (employee.userAccount && typeof employee.userAccount === 'object' && employee.userAccount._id) {
             return employee;
         }
-
-        const linkedUser = userByUsername.get(String(employee.loginUsername).trim().toLowerCase());
-        if (!linkedUser) {
-            return employee;
-        }
-
-        return {
-            ...employee,
-            userAccount: linkedUser,
-        };
+        // If employee has no linked userAccount, don't try to fake one
+        return employee;
     });
 };
 
@@ -264,10 +242,23 @@ const createEmployee = asyncHandler(async (req, res) => {
 
 // @desc    Update Employee
 const updateEmployee = asyncHandler(async (req, res) => {
+    console.log("--- [Debug] updateEmployee Started ---");
+    console.log("ID:", req.params.id);
+    console.log("Req Body Keys:", Object.keys(req.body));
+
     const { id } = req.params;
     const { 
-        name, type, isLoginActive, loginPassword 
+        name, type, isLoginActive, loginPassword, loginUsername, email, mobile
     } = req.body;
+
+    // Sanitize branchId - empty string or invalid string can cause CastError
+    if (req.body.branchId === '' || req.body.branchId === 'undefined' || req.body.branchId === 'null') {
+        delete req.body.branchId;
+        req.body.branchId = null;
+    } else if (req.body.branchId && !mongoose.Types.ObjectId.isValid(req.body.branchId)) {
+        console.log("[Debug] Invalid branchId provided:", req.body.branchId);
+        delete req.body.branchId;
+    }
 
     if (req.file) {
         req.body.photo = req.file.path.replace(/\\/g, "/");
@@ -280,23 +271,121 @@ const updateEmployee = asyncHandler(async (req, res) => {
     }
 
     if (employee.userAccount) {
-        const userUpdate = { name, role: type, isActive: isLoginActive };
-        if (loginPassword && loginPassword.trim() !== '') {
-            const user = await User.findById(employee.userAccount);
-            if(user) {
-                user.password = loginPassword;
-                user.name = name;
-                user.role = type;
-                user.isActive = isLoginActive;
-                await user.save();
-            }
+        let user = await User.findById(employee.userAccount);
+
+        // If the linked User was deleted, clear the reference so the
+        // !employee.userAccount block below handles User creation/update properly
+        if (!user) {
+            employee.userAccount = null;
         } else {
-            await User.findByIdAndUpdate(employee.userAccount, userUpdate);
+            // User exists — update credentials
+            // Update username if provided and changed — with duplicate check
+            if (loginUsername && loginUsername !== user.username) {
+                const usernameExists = await User.findOne({
+                    username: loginUsername,
+                    _id: { $ne: user._id }
+                });
+                if (usernameExists) {
+                    res.status(400);
+                    throw new Error(`Username '${loginUsername}' is already taken.`);
+                }
+                user.username = loginUsername;
+            }
+
+            if (loginPassword && loginPassword.trim() !== '') {
+                user.password = loginPassword;
+            }
+
+            if (name !== undefined) user.name = name;
+            if (type !== undefined) user.role = type || user.role;
+            if (isLoginActive !== undefined) user.isActive = isLoginActive;
+
+            // Handle Email Conflict gracefully during update
+            const newEmail = req.body.email || employee.email;
+            if (newEmail && newEmail !== user.email) {
+                const emailExists = await User.findOne({ email: newEmail, _id: { $ne: user._id } });
+                if (!emailExists) {
+                    user.email = newEmail;
+                } else {
+                    console.log(`[Debug] Email conflict for ${newEmail}, skipping email update for User account`);
+                }
+            }
+
+            await user.save();
         }
     }
 
-    // Update employee using save() to ensure all hooks/types run correctly
-    // We already fetched 'employee' above
+    // Create or re-create User for employees WITHOUT userAccount
+    // Handles: only password provided, only username provided, or both
+    if (!employee.userAccount) {
+        const hasLoginCredential = loginUsername || (loginPassword && loginPassword.trim() !== '');
+
+        if (hasLoginCredential) {
+            // Auto-generate username from employee data if not provided
+            let effectiveUsername = loginUsername || 
+                (employee.email ? employee.email.split('@')[0] : null) ||
+                employee.mobile ||
+                `emp_${employee._id}`;
+
+            // Ensure the auto-generated username is unique — append numbers if taken
+            // NEVER auto-link to another employee's User account
+            let userExists = await User.findOne({ username: effectiveUsername });
+            if (userExists) {
+                if (loginUsername) {
+                    // Admin explicitly typed this username — it's taken, throw error
+                    res.status(400);
+                    throw new Error(`Username '${loginUsername}' is already taken.`);
+                }
+                // Auto-generated username is taken — append random suffix to make it unique
+                const randomSuffix = Math.floor(100 + Math.random() * 900);
+                effectiveUsername = `${effectiveUsername}${randomSuffix}`;
+                // Double-check the new one is also unique (very unlikely to collide)
+                while (await User.findOne({ username: effectiveUsername })) {
+                    effectiveUsername = `${effectiveUsername}${Math.floor(Math.random() * 10)}`;
+                }
+            }
+
+            const effectivePassword = (loginPassword && loginPassword.trim() !== '') 
+                ? loginPassword 
+                : (employee.mobile || 'smart@123');
+
+            // Handle Email Conflict gracefully during creation
+            let effectiveEmail = req.body.email || employee.email;
+            if (effectiveEmail) {
+                const emailExists = await User.findOne({ email: effectiveEmail });
+                if (emailExists) {
+                    console.log(`[Debug] Email conflict for ${effectiveEmail}, creating user WITHOUT email`);
+                    effectiveEmail = undefined; // Don't set email if it's already taken
+                }
+            }
+
+            const newUser = await User.create({
+                name: name || employee.name,
+                username: effectiveUsername,
+                email: effectiveEmail,
+                password: effectivePassword,
+                role: type || employee.type,
+                isActive: isLoginActive !== undefined ? isLoginActive : employee.isLoginActive,
+                mobile: req.body.mobile || employee.mobile,
+                gender: req.body.gender || employee.gender,
+                address: req.body.address || employee.address,
+                education: req.body.qualification || employee.qualification || employee.education,
+                branchId: req.body.branchId || employee.branchId,
+            });
+
+            employee.userAccount = newUser._id;
+
+            // Send SMS with login credentials
+            const smsMobile = req.body.mobile || employee.mobile;
+            if (smsMobile && effectivePassword) {
+                const message = `Dear, ${name || employee.name}. Your Registration process has been successfully completed. User ID-${effectiveUsername}, Password-${effectivePassword}, smart institute.`;
+                sendSMS(smsMobile, message, 'General');
+            }
+        }
+    }
+
+    // Update employee using save() — use validateModifiedOnly so old invalid data
+    // from CSV import (e.g. gender='M', type mismatch) doesn't block valid updates
     Object.keys(req.body).forEach(key => {
         // Prevent updating immutable fields if any, or _id
         if (key !== '_id' && key !== 'userAccount' && key !== 'createdAt' && key !== 'updatedAt') {
@@ -307,7 +396,7 @@ const updateEmployee = asyncHandler(async (req, res) => {
     // Explicitly set type if provided
     if (type) employee.type = type;
 
-    const updatedEmployee = await employee.save();
+    const updatedEmployee = await employee.save({ validateModifiedOnly: true });
 
     // Re-fetch to populate
     const populatedEmployee = await Employee.findById(updatedEmployee._id)
