@@ -109,6 +109,8 @@ studentSchema.index({ course: 1 });
 studentSchema.index({ branchId: 1 });
 studentSchema.index({ batch: 1 });
 studentSchema.index({ admissionDate: -1 });
+studentSchema.index({ isDeleted: 1, reference: 1, admissionDate: -1 });
+studentSchema.index({ isDeleted: 1, branchId: 1, reference: 1, admissionDate: -1 });
 studentSchema.index({ email: 1 });
 studentSchema.index({ mobileParent: 1 });
 studentSchema.index({ createdAt: -1 }); // Optimized for "Latest Students" queries

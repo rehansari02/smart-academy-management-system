@@ -9,6 +9,10 @@ const mongoose = require('mongoose');
 const RECENT_LIST_LIMIT = 5;
 
 const buildRange = ({ period = 'today', fromDate, toDate }) => {
+    if (period === 'all') {
+        return { start: null, end: null };
+    }
+
     const now = new Date();
     const start = new Date(now);
     const end = new Date(now);
@@ -209,8 +213,20 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
 // @desc    Get Reference Incentive Dashboard Data
 // @route   GET /api/admin-dashboard/reference-incentive
 const getReferenceIncentive = asyncHandler(async (req, res) => {
-    const { period = 'today', fromDate, toDate, reference } = req.query;
+    const {
+        period = 'today',
+        fromDate,
+        toDate,
+        reference,
+        studentPeriod,
+        studentFromDate,
+        studentToDate,
+        incentiveStatus
+    } = req.query;
     let branchId = req.query.branchId || '';
+    const detailPage = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const detailLimit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 100);
+    const detailSkip = (detailPage - 1) * detailLimit;
 
     // Relaxation: For Reference Incentive, we don't force branchId filter for non-admins 
     // unless they explicitly selected one. Teachers might refer students to other branches.
@@ -234,7 +250,13 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
     };
 
     const { start, end } = buildRange({ period, fromDate, toDate });
-    const dateMatch = { $gte: start, $lte: end };
+    const dateMatch = start && end ? { $gte: start, $lte: end } : null;
+    const detailRange = buildRange({
+        period: studentPeriod || period,
+        fromDate: studentFromDate || fromDate,
+        toDate: studentToDate || toDate
+    });
+    const detailDateMatch = detailRange.start && detailRange.end ? { $gte: detailRange.start, $lte: detailRange.end } : null;
 
     // Determine reference scope for non-super admins
     let referenceFilter = { $exists: true, $ne: '', $ne: null, $ne: 'Direct' };
@@ -258,7 +280,8 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
             $match: {
                 isDeleted: false,
                 ...(branchObjectId ? { branchId: branchObjectId } : {}),
-                reference: referenceFilter
+                reference: referenceFilter,
+                ...(dateMatch ? { admissionDate: dateMatch } : {})
             }
         },
         {
@@ -340,14 +363,79 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
         const studentQuery = {
             isDeleted: false,
             reference: finalReferenceMatch,
+            ...(detailDateMatch ? { admissionDate: detailDateMatch } : {}),
+            ...(['Paid', 'Pending'].includes(incentiveStatus) ? { incentiveStatus } : {}),
             ...(branchObjectId ? { branchId: branchObjectId } : {})
         };
 
-        const students = await Student.find(studentQuery)
-            .populate('course', 'name duration durationType shortName commission commissionType')
-            .populate('branchId', 'name')
-            .sort({ admissionDate: -1 })
-            .lean();
+        const [
+            studentTotal,
+            students,
+            detailSummaryAgg
+        ] = await Promise.all([
+            Student.countDocuments(studentQuery),
+            Student.find(studentQuery)
+                .populate('course', 'name duration durationType shortName commission commissionType')
+                .populate('branchId', 'name')
+                .sort({ admissionDate: -1, createdAt: -1 })
+                .skip(detailSkip)
+                .limit(detailLimit)
+                .lean(),
+            Student.aggregate([
+                { $match: studentQuery },
+                {
+                    $lookup: {
+                        from: 'courses',
+                        localField: 'course',
+                        foreignField: '_id',
+                        as: 'courseInfo'
+                    }
+                },
+                { $unwind: { path: '$courseInfo', preserveNullAndEmptyArrays: true } },
+                {
+                    $addFields: {
+                        calculatedIncentive: {
+                            $cond: [
+                                {
+                                    $or: [
+                                        { $eq: ['$courseInfo.commissionType', 'Percentage'] },
+                                        { $eq: ['$courseInfo.commissionType', '%'] },
+                                        {
+                                            $and: [
+                                                { $eq: [{ $ifNull: ['$courseInfo.commissionType', ''] }, ''] },
+                                                { $gt: [{ $ifNull: ['$courseInfo.commission', 0] }, 0] },
+                                                { $lte: [{ $ifNull: ['$courseInfo.commission', 0] }, 100] }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                { $multiply: [{ $divide: [{ $ifNull: ['$courseInfo.commission', 0] }, 100] }, '$totalFees'] },
+                                { $ifNull: ['$courseInfo.commission', 0] }
+                            ]
+                        }
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        studentCount: { $sum: 1 },
+                        admissionCount: { $sum: { $cond: [{ $ne: ['$admissionDate', null] }, 1, 0] } },
+                        registrationCount: { $sum: { $cond: ['$isRegistered', 1, 0] } },
+                        totalFees: { $sum: '$totalFees' },
+                        pendingFees: { $sum: '$pendingFees' },
+                        totalIncentive: { $sum: '$calculatedIncentive' },
+                        pendingIncentive: {
+                            $sum: { $cond: [{ $eq: ['$incentiveStatus', 'Paid'] }, 0, '$calculatedIncentive'] }
+                        },
+                        paidIncentive: {
+                            $sum: { $cond: [{ $eq: ['$incentiveStatus', 'Paid'] }, '$calculatedIncentive', 0] }
+                        }
+                    }
+                }
+            ])
+        ]);
+
+        const studentIds = await Student.distinct('_id', studentQuery);
 
         // Calculate incentive for each student in the detailed view
         const studentsWithIncentive = students.map(s => {
@@ -362,14 +450,12 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
             return { ...s, incentive };
         });
 
-        const studentIds = students.map(s => s._id);
-
         // Get fee receipts for these students
         const receipts = await FeeReceipt.aggregate([
             {
                 $match: {
                     student: { $in: studentIds },
-                    date: dateMatch
+                    ...(detailDateMatch ? { date: detailDateMatch } : {})
                 }
             },
             {
@@ -402,7 +488,7 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
         // Get recent receipts for these students (with populate)
         const recentReceipts = await FeeReceipt.find({
             student: { $in: studentIds },
-            date: dateMatch
+            ...(detailDateMatch ? { date: detailDateMatch } : {})
         })
             .populate('student', 'firstName middleName lastName enrollmentNo regNo')
             .sort({ date: -1, createdAt: -1 })
@@ -414,7 +500,7 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
             {
                 $match: {
                     ...studentQuery,
-                    admissionDate: dateMatch
+                    ...(detailDateMatch ? { admissionDate: detailDateMatch } : {})
                 }
             },
             {
@@ -429,10 +515,35 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
             },
             { $sort: { '_id.year': 1, '_id.month': 1 } }
         ]);
+        const detailSummary = detailSummaryAgg[0] || {
+            studentCount: 0,
+            admissionCount: 0,
+            registrationCount: 0,
+            totalFees: 0,
+            pendingFees: 0,
+            totalIncentive: 0,
+            pendingIncentive: 0,
+            paidIncentive: 0
+        };
+        const feeSummary = receipts[0] || { totalPaid: 0, receiptCount: 0, admissionPaid: 0, registrationPaid: 0 };
 
         referenceDetail = {
             students: studentsWithIncentive,
-            feeSummary: receipts[0] || { totalPaid: 0, receiptCount: 0, admissionPaid: 0, registrationPaid: 0 },
+            pagination: {
+                page: detailPage,
+                limit: detailLimit,
+                total: studentTotal,
+                pages: Math.max(Math.ceil(studentTotal / detailLimit), 1)
+            },
+            filters: {
+                period: studentPeriod || period,
+                fromDate: studentFromDate || fromDate,
+                toDate: studentToDate || toDate,
+                incentiveStatus: ['Paid', 'Pending'].includes(incentiveStatus) ? incentiveStatus : '',
+                start: detailRange.start,
+                end: detailRange.end
+            },
+            feeSummary,
             recentReceipts,
             monthlyTrend: monthlyTrend.map(t => ({
                 label: `${t._id.month}/${t._id.year}`,
@@ -440,15 +551,8 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
                 fees: t.totalFees
             })),
             summary: {
-                studentCount: students.length,
-                admissionCount: students.filter(s => s.admissionDate).length,
-                registrationCount: students.filter(s => s.isRegistered).length,
-                totalFees: students.reduce((sum, s) => sum + (s.totalFees || 0), 0),
-                pendingFees: students.reduce((sum, s) => sum + (s.pendingFees || 0), 0),
-                totalPaid: (receipts[0] || { totalPaid: 0 }).totalPaid,
-                totalIncentive: studentsWithIncentive.reduce((sum, s) => sum + (s.incentive || 0), 0),
-                pendingIncentive: studentsWithIncentive.reduce((sum, s) => sum + (s.incentiveStatus === 'Paid' ? 0 : (s.incentive || 0)), 0),
-                paidIncentive: studentsWithIncentive.reduce((sum, s) => sum + (s.incentiveStatus === 'Paid' ? (s.incentive || 0) : 0), 0)
+                ...detailSummary,
+                totalPaid: feeSummary.totalPaid
             }
         };
     }
@@ -461,7 +565,13 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
             branchId: branchObjectId ? branchObjectId.toString() : '', 
             start, 
             end, 
-            reference: reference || (req.user.role !== 'Super Admin' ? req.user.name : '')
+            reference: reference || (req.user.role !== 'Super Admin' ? req.user.name : ''),
+            studentPeriod: studentPeriod || period,
+            studentFromDate: studentFromDate || fromDate,
+            studentToDate: studentToDate || toDate,
+            incentiveStatus: ['Paid', 'Pending'].includes(incentiveStatus) ? incentiveStatus : '',
+            page: detailPage,
+            limit: detailLimit
         },
         references: allRefs,
         selectedReference: referenceDetail

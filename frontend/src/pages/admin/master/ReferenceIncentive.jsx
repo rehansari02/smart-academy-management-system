@@ -33,6 +33,7 @@ import { showPermissionDenied } from '../../../utils/permissionAlert';
 const API = `${import.meta.env.VITE_API_URL}/admin-dashboard/reference-incentive`;
 
 const periodOptions = [
+  { value: 'all', label: 'All' },
   { value: 'today', label: 'Today' },
   { value: 'yesterday', label: 'Yesterday' },
   { value: 'week', label: 'Week' },
@@ -40,6 +41,12 @@ const periodOptions = [
   { value: 'year', label: 'Year' },
   { value: 'custom', label: 'Custom' }
 ];
+const incentiveStatusOptions = [
+  { value: '', label: 'All Status' },
+  { value: 'Pending', label: 'Pending' },
+  { value: 'Paid', label: 'Paid' }
+];
+const STUDENTS_PAGE_LIMIT = 10;
 
 const ReferenceIncentive = () => {
   const navigate = useNavigate();
@@ -52,6 +59,8 @@ const ReferenceIncentive = () => {
   const [activeReference, setActiveReference] = useState(null);
   const [refSearch, setRefSearch] = useState('');
   const [filters, setFilters] = useState({ period: 'month', branchId: '', fromDate: '', toDate: '' });
+  const [studentFilters, setStudentFilters] = useState({ period: 'month', fromDate: '', toDate: '', incentiveStatus: '' });
+  const [studentPage, setStudentPage] = useState(1);
   const [showSidebar, setShowSidebar] = useState(true);
 
   useEffect(() => {
@@ -85,15 +94,23 @@ const ReferenceIncentive = () => {
     return type === 'Percentage' ? `${value}% of total fees` : `${formatMoney(value)} per student`;
   };
 
-  const fetchData = async (reference) => {
+  const fetchData = async (reference, options = {}) => {
     setLoading(true);
     try {
+      const detailFilters = options.studentFilters || studentFilters;
+      const detailPage = options.studentPage || studentPage;
       const params = {
         period: filters.period,
+        page: detailPage,
+        limit: STUDENTS_PAGE_LIMIT,
         ...(reference && { reference }),
         ...(filters.branchId && { branchId: filters.branchId }),
         ...(filters.period === 'custom' && filters.fromDate && { fromDate: filters.fromDate }),
-        ...(filters.period === 'custom' && filters.toDate && { toDate: filters.toDate })
+        ...(filters.period === 'custom' && filters.toDate && { toDate: filters.toDate }),
+        ...(reference && { studentPeriod: detailFilters.period }),
+        ...(reference && detailFilters.period === 'custom' && detailFilters.fromDate && { studentFromDate: detailFilters.fromDate }),
+        ...(reference && detailFilters.period === 'custom' && detailFilters.toDate && { studentToDate: detailFilters.toDate }),
+        ...(reference && detailFilters.incentiveStatus && { incentiveStatus: detailFilters.incentiveStatus })
       };
       const { data } = await axios.get(API, { params, withCredentials: true });
       setRefData(data);
@@ -121,9 +138,16 @@ const ReferenceIncentive = () => {
     return () => clearTimeout(timer);
   }, [filters]);
 
+  useEffect(() => {
+    if (!activeReference) return undefined;
+    const timer = setTimeout(() => fetchData(activeReference), 300);
+    return () => clearTimeout(timer);
+  }, [studentFilters, studentPage]);
+
   const handleReferenceClick = (refName) => {
     setActiveReference(refName);
-    fetchData(refName);
+    setStudentPage(1);
+    fetchData(refName, { studentPage: 1 });
   };
 
   const handleBack = () => {
@@ -133,6 +157,8 @@ const ReferenceIncentive = () => {
 
   const handleReset = () => {
     setFilters({ period: 'month', branchId: '', fromDate: '', toDate: '' });
+    setStudentFilters({ period: 'month', fromDate: '', toDate: '', incentiveStatus: '' });
+    setStudentPage(1);
     setActiveReference(null);
   };
 
@@ -200,13 +226,13 @@ const ReferenceIncentive = () => {
           </div>
         </div>
 
-        {/* Filters Panel */}
-        <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_auto] xl:items-end">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black uppercase tracking-wide text-slate-500">Date Filter</label>
-                {isSuperAdmin && (
+        {/* Super Admin employee/sidebar filters */}
+        {isSuperAdmin && (
+          <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_auto] xl:items-end">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black uppercase tracking-wide text-slate-500">Date Filter</label>
                   <button
                     onClick={() => setShowSidebar(!showSidebar)}
                     className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-black transition ${
@@ -218,32 +244,30 @@ const ReferenceIncentive = () => {
                     <Menu size={14} />
                     {showSidebar ? 'Hide Teachers' : 'Show Teachers'}
                   </button>
-                )}
-              </div>
+                </div>
 
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">
-                {periodOptions.map(option => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setFilters(prev => ({
-                      ...prev,
-                      period: option.value,
-                      ...(option.value !== 'custom' ? { fromDate: '', toDate: '' } : {})
-                    }))}
-                    className={`rounded-xl border px-3 py-2 text-sm font-bold transition ${
-                      filters.period === option.value
-                        ? 'border-primary bg-primary text-white shadow-sm'
-                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-white'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">
+                  {periodOptions.map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFilters(prev => ({
+                        ...prev,
+                        period: option.value,
+                        ...(option.value !== 'custom' ? { fromDate: '', toDate: '' } : {})
+                      }))}
+                      className={`rounded-xl border px-3 py-2 text-sm font-bold transition ${
+                        filters.period === option.value
+                          ? 'border-primary bg-primary text-white shadow-sm'
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-white'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                {isSuperAdmin && (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                   <div>
                     <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Branch</label>
                     <select
@@ -257,38 +281,38 @@ const ReferenceIncentive = () => {
                       ))}
                     </select>
                   </div>
-                )}
 
-                {filters.period === 'custom' && (
-                  <>
-                    <div>
-                      <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">From</label>
-                      <input
-                        type="date"
-                        value={filters.fromDate}
-                        onChange={(e) => setFilters(prev => ({ ...prev, fromDate: e.target.value }))}
-                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-primary"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">To</label>
-                      <input
-                        type="date"
-                        value={filters.toDate}
-                        onChange={(e) => setFilters(prev => ({ ...prev, toDate: e.target.value }))}
-                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-primary"
-                      />
-                    </div>
-                  </>
-                )}
+                  {filters.period === 'custom' && (
+                    <>
+                      <div>
+                        <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">From</label>
+                        <input
+                          type="date"
+                          value={filters.fromDate}
+                          onChange={(e) => setFilters(prev => ({ ...prev, fromDate: e.target.value }))}
+                          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">To</label>
+                        <input
+                          type="date"
+                          value={filters.toDate}
+                          onChange={(e) => setFilters(prev => ({ ...prev, toDate: e.target.value }))}
+                          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-primary"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
 
-            <button onClick={handleReset} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 text-sm font-black text-slate-700 hover:bg-slate-200">
-              <RefreshCw size={16} /> Reset
-            </button>
+              <button onClick={handleReset} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 text-sm font-black text-slate-700 hover:bg-slate-200">
+                <RefreshCw size={16} /> Reset
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Main Layout */}
         <div className="flex flex-col gap-5 lg:flex-row">
@@ -400,6 +424,13 @@ const ReferenceIncentive = () => {
                   formatDate={formatDate}
                   onBack={handleBack}
                   onRefresh={() => fetchData(activeReference)}
+                  studentFilters={studentFilters}
+                  onStudentFiltersChange={(nextFilters) => {
+                    setStudentFilters(nextFilters);
+                    setStudentPage(1);
+                  }}
+                  studentPage={studentPage}
+                  onStudentPageChange={setStudentPage}
                 />
               ) : (
                 <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
@@ -490,9 +521,21 @@ function IncentiveStatusBadge({ status, paidAt, paidBy, formatDate }) {
 }
 
 /* ===== Teacher Performance Detail View ===== */
-function TeacherPerformanceDetail({ teacherName, data, formatMoney, formatDate, onBack, onRefresh }) {
+function TeacherPerformanceDetail({
+  teacherName,
+  data,
+  formatMoney,
+  formatDate,
+  onBack,
+  onRefresh,
+  studentFilters,
+  onStudentFiltersChange,
+  studentPage,
+  onStudentPageChange
+}) {
   const summary = data.summary || {};
   const students = data.students || [];
+  const pagination = data.pagination || { page: studentPage || 1, limit: STUDENTS_PAGE_LIMIT, total: students.length, pages: 1 };
   const recentReceipts = data.recentReceipts || [];
   const monthlyTrend = data.monthlyTrend || [];
   const { edit } = useUserRights('Reference Incentive');
@@ -519,6 +562,10 @@ function TeacherPerformanceDetail({ teacherName, data, formatMoney, formatDate, 
   const [selectedStudents, setSelectedStudents] = useState(new Set());
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [updatingStudent, setUpdatingStudent] = useState(null);
+
+  useEffect(() => {
+    setSelectedStudents(new Set());
+  }, [students]);
 
   const handleSelectStudent = (studentId) => {
     setSelectedStudents(prev => {
@@ -600,6 +647,8 @@ function TeacherPerformanceDetail({ teacherName, data, formatMoney, formatDate, 
     { name: 'Paid', value: summary.paidIncentive || 0 },
     { name: 'Pending', value: summary.pendingIncentive || 0 }
   ], [summary]);
+  const firstStudentNo = pagination.total ? ((pagination.page - 1) * pagination.limit) + 1 : 0;
+  const lastStudentNo = Math.min(pagination.page * pagination.limit, pagination.total || 0);
 
   return (
     <div className="space-y-5">
@@ -628,6 +677,82 @@ function TeacherPerformanceDetail({ teacherName, data, formatMoney, formatDate, 
           <StatBox label="Total Rev." value={formatMoney(summary.totalFees)} />
           <StatBox label="Incentive" value={formatMoney(summary.totalIncentive)} className="text-amber-300" />
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 className="text-sm font-black text-slate-900">Referred Student Filter</h3>
+            <p className="text-xs font-semibold text-slate-500">Filter this teacher's students by admission date</p>
+          </div>
+          <span className="rounded-lg bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">
+            {pagination.total || 0} student(s)
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">
+          {periodOptions.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onStudentFiltersChange({
+                ...studentFilters,
+                period: option.value,
+                ...(option.value !== 'custom' ? { fromDate: '', toDate: '' } : {})
+              })}
+              className={`rounded-xl border px-3 py-2 text-sm font-bold transition ${
+                studentFilters.period === option.value
+                  ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-white'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {incentiveStatusOptions.map(option => (
+            <button
+              key={option.value || 'all-status'}
+              type="button"
+              onClick={() => onStudentFiltersChange({
+                ...studentFilters,
+                incentiveStatus: option.value
+              })}
+              className={`rounded-xl border px-3 py-2 text-sm font-bold transition ${
+                studentFilters.incentiveStatus === option.value
+                  ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-white'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        {studentFilters.period === 'custom' && (
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">From</label>
+              <input
+                type="date"
+                value={studentFilters.fromDate}
+                onChange={(e) => onStudentFiltersChange({ ...studentFilters, fromDate: e.target.value })}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">To</label>
+              <input
+                type="date"
+                value={studentFilters.toDate}
+                onChange={(e) => onStudentFiltersChange({ ...studentFilters, toDate: e.target.value })}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Charts Row */}
@@ -742,7 +867,9 @@ function TeacherPerformanceDetail({ teacherName, data, formatMoney, formatDate, 
               <GraduationCap size={16} />
               Students Referred
             </h3>
-            <p className="text-xs font-semibold text-slate-500">{students.length} student(s)</p>
+            <p className="text-xs font-semibold text-slate-500">
+              Showing {firstStudentNo}-{lastStudentNo} of {pagination.total || 0} student(s)
+            </p>
           </div>
           <div className="rounded-lg bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">
             Incentive: {formatMoney(summary.totalIncentive)}
@@ -775,7 +902,7 @@ function TeacherPerformanceDetail({ teacherName, data, formatMoney, formatDate, 
                       {selectedStudents.has(s._id) ? <CheckSquare size={14} className="text-indigo-600" /> : <Square size={14} className="text-slate-400" />}
                     </button>
                   </td>
-                  <td className="w-10 p-3 text-center text-xs font-bold text-slate-400">{idx + 1}</td>
+                  <td className="w-10 p-3 text-center text-xs font-bold text-slate-400">{((pagination.page - 1) * pagination.limit) + idx + 1}</td>
                   <td className="p-3">
                     <div className="font-bold text-slate-800">{s.firstName} {s.lastName}</div>
                     <div className="text-[10px] font-semibold text-slate-400">ID: {s.regNo || s.enrollmentNo || 'N/A'}</div>
@@ -841,7 +968,7 @@ function TeacherPerformanceDetail({ teacherName, data, formatMoney, formatDate, 
                   <button onClick={() => handleSelectStudent(s._id)} className="hover:text-indigo-600 transition-colors">
                     {selectedStudents.has(s._id) ? <CheckSquare size={16} className="text-indigo-600" /> : <Square size={16} className="text-slate-400" />}
                   </button>
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-slate-100 text-[11px] font-bold text-slate-500">{idx + 1}</span>
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-slate-100 text-[11px] font-bold text-slate-500">{((pagination.page - 1) * pagination.limit) + idx + 1}</span>
                   <span className="text-sm font-bold text-slate-800">{s.firstName} {s.lastName}</span>
                 </div>
                 <IncentiveStatusBadge status={s.incentiveStatus} paidAt={s.incentivePaidAt} paidBy={s.incentivePaidBy} formatDate={formatDate} />
@@ -867,6 +994,32 @@ function TeacherPerformanceDetail({ teacherName, data, formatMoney, formatDate, 
             </div>
           )) : <div className="p-8 text-center font-semibold text-slate-400">No students found.</div>}
         </div>
+
+        {pagination.pages > 1 && (
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs font-bold text-slate-500">
+              Page {pagination.page} of {pagination.pages}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onStudentPageChange(Math.max((pagination.page || 1) - 1, 1))}
+                disabled={pagination.page <= 1}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => onStudentPageChange(Math.min((pagination.page || 1) + 1, pagination.pages || 1))}
+                disabled={pagination.page >= pagination.pages}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Recent Payments */}

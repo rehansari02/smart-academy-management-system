@@ -204,27 +204,27 @@ const Navbar = () => {
 
   return (
     <>
-      <header className="fixed top-0 w-full z-50 bg-white shadow-md border-b border-gray-200 transition-all duration-300 h-16">
-        <div className="container mx-auto px-4 h-full">
-          <div className="flex justify-between items-center h-full">
+      <header className="fixed top-0 w-full z-50 bg-white shadow-md border-b border-gray-200 transition-all duration-300 h-20">
+        <div className="mx-auto h-full w-full px-3 sm:px-4">
+          <div className="flex h-full items-center gap-3">
               {/* Logo Section */}
-              <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/home')}>
+              <div className="flex shrink-0 items-center gap-3 cursor-pointer" onClick={() => navigate('/home')}>
                   <div className="flex items-center justify-center transform transition-transform hover:scale-105">
                      {/* Increased Logo Size */}
-                     <img src={logoImage} alt="Smart Institute" className="h-14 w-auto object-contain" />
+                     <img src={logoImage} alt="Smart Institute" className="-my-1 h-20 w-auto max-w-none object-contain" />
                   </div>
               </div>
 
               {/* Desktop Navigation */}
-              <nav className="hidden lg:flex items-center gap-1 h-full" ref={navRef}>
+              <nav className="hidden h-full min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex" ref={navRef}>
                   {filteredMenu.map((item, index) => (
-                      <div key={index} className="relative h-full flex items-center px-1">
+                      <div key={index} className="relative flex h-full items-center px-0.5">
                       {/* FIX: Safely check for subItems using optional chaining */}
                       {(item.subItems?.length > 0) || item.isCustom ? (
                           <>
                               <button 
                                   onClick={() => handleMenuClick(index)}
-                                  className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-bold transition-all duration-200 
+                                  className={`flex items-center gap-1 px-2.5 py-2.5 rounded-md text-sm font-bold transition-all duration-200 xl:px-3 xl:text-[15px]
                                   ${hoveredMenu === index ? 'text-primary bg-blue-50' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}`}
                               >
                                   {item.title}
@@ -262,7 +262,7 @@ const Navbar = () => {
                           <Link 
                               to={item.path} 
                               onClick={() => setHoveredMenu(null)}
-                              className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-bold transition-all duration-200 
+                              className={`flex items-center gap-1 px-2.5 py-2.5 rounded-md text-sm font-bold transition-all duration-200 xl:px-3 xl:text-[15px]
                               ${location.pathname.startsWith(item.path) ? 'text-primary bg-blue-50' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}`}
                           >
                               {item.title}
@@ -273,28 +273,30 @@ const Navbar = () => {
               </nav>
 
               {/* Right Actions - User Profile & Logout */}
-              <div className="flex items-center gap-4">
+              <div className="flex shrink-0 items-center gap-2 xl:gap-3">
                   {/* User Profile Trigger - Desktop */}
                   <div 
-                      className="hidden md:flex items-center gap-4 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 transition-colors border-r border-gray-200 pr-5 mr-2"
+                      className="hidden min-w-[190px] items-center justify-end gap-2 cursor-pointer group rounded-xl border-r border-gray-200 px-2 py-2 pr-3 hover:bg-gray-50 transition-colors md:flex xl:min-w-[220px] xl:gap-3 xl:px-3 xl:pr-5"
                       onClick={() => user?.role && user.role !== 'Student' && setIsProfileModalOpen(true)}
                       title={user?.role && user.role !== 'Student' ? "Click to manage profile" : "Profile"}
                   >
-                      <div className="flex flex-col items-end text-right">
-                          <span className="text-sm font-bold text-gray-900 leading-tight group-hover:text-primary transition-colors">
+                      <div className="flex min-w-0 flex-col items-end text-right leading-tight">
+                          <span className="max-w-[140px] truncate text-sm font-black text-gray-900 group-hover:text-primary transition-colors xl:max-w-[170px] xl:text-[15px]" title={user?.name || 'Guest'}>
                               {user?.name || 'Guest'}
                           </span>
-                          <span className="text-xs text-gray-500 font-medium">({user?.role})</span>
-                          <span className="text-[10px] font-bold text-primary uppercase tracking-widest mt-0.5">
+                          <span className="mt-1 inline-flex max-w-[140px] items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-primary xl:max-w-[170px] xl:px-2.5 xl:text-[11px]" title={user?.role || ''}>
+                              {user?.role || 'User'}
+                          </span>
+                          <span className="mt-1 max-w-[140px] truncate text-[10px] font-bold uppercase tracking-wide text-gray-500 xl:max-w-[170px] xl:text-[11px]" title={user?.branchName || 'Main'}>
                               {user?.branchName ? (user.branchName.endsWith(' Branch') ? user.branchName : `${user.branchName} Branch`) : 'Main'}
                           </span>
                       </div>
-                      {/* Profile image sized to match navbar (h-16) */}
-                      <div className="w-14 h-14 rounded-full bg-gray-100 overflow-hidden border-2 border-white shadow-sm ring-2 ring-gray-100 group-hover:ring-primary/20 transition-all flex items-center justify-center flex-shrink-0">
+                      {/* Profile image sized for the larger navbar */}
+                      <div className="h-14 w-14 flex-shrink-0 rounded-full bg-gray-100 overflow-hidden border-2 border-white shadow-sm ring-2 ring-gray-100 group-hover:ring-primary/20 transition-all flex items-center justify-center xl:h-16 xl:w-16">
                           {user?.photo ? (
                               <img src={user.photo} alt={user.name} className="w-full h-full object-cover" />
                           ) : (
-                              <UserIcon className="text-gray-400 w-8 h-8" />
+                              <UserIcon className="text-gray-400 w-9 h-9" />
                           )}
                       </div>
                   </div>
@@ -314,7 +316,7 @@ const Navbar = () => {
         {/* Mobile Menu Overlay */}
         <AnimatePresence>
           {isMobileMenuOpen && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="lg:hidden bg-white border-t border-gray-200 max-h-[85vh] overflow-y-auto shadow-xl absolute w-full left-0 top-16">
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="lg:hidden bg-white border-t border-gray-200 max-h-[85vh] overflow-y-auto shadow-xl absolute w-full left-0 top-20">
               <div className="py-2">
                   {filteredMenu.map((item, index) => (
                       <div key={index} className="">
