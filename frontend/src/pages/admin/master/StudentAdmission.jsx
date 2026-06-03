@@ -417,7 +417,7 @@ const StudentAdmission = () => {
       try {
         const [inquiriesRes, visitorsRes] = await Promise.all([
           axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry`, {
-            params: { search: name },
+            params: { search: name, scope: 'admission' },
             withCredentials: true
           }),
           axios.get(`${import.meta.env.VITE_API_URL}/visitors/all`, {

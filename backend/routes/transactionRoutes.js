@@ -4,7 +4,8 @@ const multer = require('multer');
 const { protect } = require('../middlewares/authMiddleware');
 const { checkPermission } = require('../middlewares/permissionMiddleware');
 const { 
-    getInquiries, createInquiry, importInquiries, updateInquiryStatus,
+    getInquiries, createInquiry, importInquiries, getInquiryImportHistory, getInquiryFollowupStats, updateInquiryStatus,
+    assignInquiries,
     createFeeReceipt, getStudentFees,
     getFeeReceipts, updateFeeReceipt, deleteFeeReceipt,
     getStudentLedger,
@@ -50,6 +51,9 @@ router.route('/inquiry')
     .post(protect, checkPermission('Inquiry', 'add'), upload.single('studentPhoto'), createInquiry); // Added Middleware
 
 router.post('/inquiry/import', protect, checkPermission('Inquiry', 'add'), excelUpload.single('file'), importInquiries);
+router.get('/inquiry/import-history', protect, allowInquiryView, getInquiryImportHistory);
+router.get('/inquiry/followup-stats', protect, allowInquiryView, getInquiryFollowupStats);
+router.put('/inquiry/assign', protect, checkPermission('Inquiry', 'edit'), assignInquiries);
 
 router.route('/inquiry/:id')
     .put(protect, checkPermission('Inquiry', 'edit'), upload.single('studentPhoto'), updateInquiryStatus); // Added Middleware

@@ -1,15 +1,14 @@
 import React, { useRef, useState } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
-import { FileSpreadsheet, Upload, X } from 'lucide-react';
+import { useSelector } from 'react-redux';
+import { CheckSquare, FileSpreadsheet, Square, Upload, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Swal from 'sweetalert2';
 import { showPermissionDenied } from '../../utils/permissionAlert';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = ['xlsx', 'xls', 'csv'];
-const PREVIEW_LIMIT = 10;
-
 const formatFileSize = (bytes) => {
     if (!bytes) return '0 MB';
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
@@ -17,6 +16,7 @@ const formatFileSize = (bytes) => {
 
 const InquiryImportButton = ({ source, onImported, canImport = true, permissionMessage }) => {
     const inputRef = useRef(null);
+    const { employees = [] } = useSelector((state) => state.employees || {});
     const [isUploading, setIsUploading] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
@@ -24,6 +24,10 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
     const [previewColumns, setPreviewColumns] = useState([]);
     const [totalRows, setTotalRows] = useState(0);
     const [parseError, setParseError] = useState('');
+    const [selectedRows, setSelectedRows] = useState(new Set());
+    const [rowAssignments, setRowAssignments] = useState({});
+    const [selectedAssignee, setSelectedAssignee] = useState('');
+    const [history, setHistory] = useState([]);
 
     const resetDialog = () => {
         setSelectedFile(null);
@@ -31,6 +35,9 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
         setPreviewColumns([]);
         setTotalRows(0);
         setParseError('');
+        setSelectedRows(new Set());
+        setRowAssignments({});
+        setSelectedAssignee('');
         if (inputRef.current) inputRef.current.value = '';
     };
 
@@ -46,7 +53,20 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
             return;
         }
         resetDialog();
+        fetchHistory();
         setIsOpen(true);
+    };
+
+    const fetchHistory = async () => {
+        try {
+            const { data } = await axios.get(
+                `${import.meta.env.VITE_API_URL}/transaction/inquiry/import-history`,
+                { params: { source }, withCredentials: true }
+            );
+            setHistory(Array.isArray(data) ? data : []);
+        } catch (error) {
+            setHistory([]);
+        }
     };
 
     const parsePreview = async (file) => {
@@ -58,7 +78,7 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
 
         setTotalRows(rows.length);
         setPreviewColumns(columns);
-        setPreviewRows(rows.slice(0, PREVIEW_LIMIT));
+        setPreviewRows(rows);
 
         if (!rows.length) {
             setParseError('Selected file has no inquiry rows.');
@@ -104,6 +124,7 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
         const formData = new FormData();
         formData.append('file', selectedFile);
         formData.append('source', source);
+        formData.append('assignmentsByRow', JSON.stringify(rowAssignments));
 
         try {
             setIsUploading(true);
@@ -123,6 +144,7 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
                 });
             }
             onImported?.();
+            fetchHistory();
             resetDialog();
             setIsOpen(false);
         } catch (error) {
@@ -131,6 +153,38 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
         } finally {
             setIsUploading(false);
         }
+    };
+
+    const toggleRow = (rowNo) => {
+        setSelectedRows((current) => {
+            const next = new Set(current);
+            if (next.has(rowNo)) next.delete(rowNo);
+            else next.add(rowNo);
+            return next;
+        });
+    };
+
+    const toggleAllRows = () => {
+        const rowNos = previewRows.map((_, index) => index + 2);
+        setSelectedRows((current) => current.size === rowNos.length ? new Set() : new Set(rowNos));
+    };
+
+    const assignSelectedRows = () => {
+        if (!selectedAssignee || selectedRows.size === 0) return;
+        setRowAssignments((current) => {
+            const next = { ...current };
+            selectedRows.forEach((rowNo) => {
+                next[rowNo] = selectedAssignee;
+            });
+            return next;
+        });
+        setSelectedRows(new Set());
+    };
+
+    const getAssignedName = (rowNo) => {
+        const id = rowAssignments[rowNo];
+        const employee = employees.find((item) => item._id === id);
+        return employee?.name || '-';
     };
 
     return (
@@ -207,17 +261,46 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
 
                             {previewRows.length > 0 && (
                                 <div className="border rounded-lg overflow-hidden">
-                                    <div className="px-4 py-2 bg-gray-50 border-b flex justify-between items-center">
-                                        <span className="text-sm font-bold text-gray-700">Preview</span>
+                                    <div className="px-4 py-2 bg-gray-50 border-b flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            <span className="text-sm font-bold text-gray-700">Preview & Assignment</span>
+                                            <div className="text-xs text-gray-500">Select rows, choose employee, then assign before import.</div>
+                                        </div>
                                         <span className="text-xs text-gray-500">
-                                            Showing first {Math.min(PREVIEW_LIMIT, totalRows)} of {totalRows} rows
+                                            Showing {totalRows} rows
                                         </span>
+                                    </div>
+                                    <div className="border-b bg-white p-3 flex flex-col gap-2 md:flex-row md:items-center">
+                                        <select
+                                            value={selectedAssignee}
+                                            onChange={(e) => setSelectedAssignee(e.target.value)}
+                                            className="border rounded px-3 py-2 text-sm min-w-[220px]"
+                                        >
+                                            <option value="">Select employee</option>
+                                            {employees.map((employee) => (
+                                                <option key={employee._id} value={employee._id}>{employee.name}</option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            type="button"
+                                            onClick={assignSelectedRows}
+                                            disabled={!selectedAssignee || selectedRows.size === 0}
+                                            className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold disabled:opacity-50"
+                                        >
+                                            Assign Selected ({selectedRows.size})
+                                        </button>
                                     </div>
                                     <div className="overflow-auto max-h-[360px]">
                                         <table className="w-full min-w-[900px] text-xs border-collapse">
                                             <thead className="bg-indigo-600 text-white sticky top-0">
                                                 <tr>
-                                                    <th className="p-2 border text-left w-12">#</th>
+                                                    <th className="p-2 border text-center w-10">
+                                                        <button type="button" onClick={toggleAllRows} title="Select all rows">
+                                                            {selectedRows.size === previewRows.length && previewRows.length > 0 ? <CheckSquare size={14} /> : <Square size={14} />}
+                                                        </button>
+                                                    </th>
+                                                    <th className="p-2 border text-left w-12">Sr</th>
+                                                    <th className="p-2 border text-left whitespace-nowrap">Assigned To</th>
                                                     {previewColumns.map((column) => (
                                                         <th key={column} className="p-2 border text-left whitespace-nowrap">
                                                             {column}
@@ -228,7 +311,13 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
                                             <tbody>
                                                 {previewRows.map((row, index) => (
                                                     <tr key={index} className="odd:bg-white even:bg-gray-50">
+                                                        <td className="p-2 border text-center">
+                                                            <button type="button" onClick={() => toggleRow(index + 2)} title="Select row">
+                                                                {selectedRows.has(index + 2) ? <CheckSquare size={14} className="text-indigo-600" /> : <Square size={14} className="text-gray-400" />}
+                                                            </button>
+                                                        </td>
                                                         <td className="p-2 border text-gray-500">{index + 1}</td>
+                                                        <td className="p-2 border text-gray-700 font-semibold whitespace-nowrap">{getAssignedName(index + 2)}</td>
                                                         {previewColumns.map((column) => (
                                                             <td key={column} className="p-2 border text-gray-700 whitespace-nowrap max-w-[220px] truncate" title={String(row[column] || '')}>
                                                                 {String(row[column] || '-')}
@@ -238,6 +327,23 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
                                                 ))}
                                             </tbody>
                                         </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {history.length > 0 && (
+                                <div className="border rounded-lg overflow-hidden">
+                                    <div className="px-4 py-2 bg-gray-50 border-b text-sm font-bold text-gray-700">Recent Import History</div>
+                                    <div className="divide-y max-h-48 overflow-auto">
+                                        {history.slice(0, 5).map((item) => (
+                                            <div key={item._id} className="p-3 text-xs text-gray-700">
+                                                <div className="font-bold">{item.fileName || 'Import'} | {new Date(item.createdAt).toLocaleString()}</div>
+                                                <div>{item.importedCount} imported, {item.skippedCount} skipped</div>
+                                                <div className="mt-1 text-gray-500">
+                                                    {(item.assignmentSummary || []).map((assign) => `${assign.assignedToName || assign.assignedTo?.name || 'Unassigned'}: ${assign.count}`).join(' | ')}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             )}

@@ -17,7 +17,7 @@ import StudentSearch from '../../../components/StudentSearch';
 
 const AllReceipts = () => {
     const dispatch = useDispatch();
-    const { receipts, receiptPagination, isLoading } = useSelector(state => state.transaction);
+    const { receipts, receiptPagination, receiptSummary, isLoading } = useSelector(state => state.transaction);
     const { employees } = useSelector(state => state.employees);
     const { branches } = useSelector(state => state.master);
     const { user } = useSelector(state => state.auth);
@@ -43,7 +43,8 @@ const AllReceipts = () => {
     // Edit Modal State
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingReceipt, setEditingReceipt] = useState(null);
-    const totalAmount = useMemo(() => (receipts || []).reduce((sum, receipt) => sum + Number(receipt?.amountPaid || 0), 0), [receipts]);
+    const pageTotalAmount = useMemo(() => (receipts || []).reduce((sum, receipt) => sum + Number(receipt?.amountPaid || 0), 0), [receipts]);
+    const filteredTotalAmount = Number(receiptSummary?.totalAmount || pageTotalAmount || 0);
     const totalColumns = user && user.role === 'Super Admin' ? 9 : 8;
 
     const buildReceiptParams = (sourceFilters) => {
@@ -177,14 +178,20 @@ const AllReceipts = () => {
                 </Link>
             </div>
 
-            <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-4">
                 <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Receipts</p>
                     <p className="mt-1 text-2xl font-bold text-gray-900">{receiptPagination?.count || 0}</p>
                 </div>
                 <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Total Amount</p>
-                    <p className="mt-1 text-2xl font-bold text-gray-900">₹ {totalAmount.toLocaleString('en-IN')}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Filtered Total Amount</p>
+                    <p className="mt-1 text-2xl font-bold text-gray-900">₹ {filteredTotalAmount.toLocaleString('en-IN')}</p>
+                    <p className="mt-1 text-[11px] font-semibold text-emerald-700">All pages in selected filter</p>
+                </div>
+                <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-600">Current Page Total</p>
+                    <p className="mt-1 text-2xl font-bold text-gray-900">₹ {pageTotalAmount.toLocaleString('en-IN')}</p>
+                    <p className="mt-1 text-[11px] font-semibold text-amber-700">{receipts?.length || 0} receipts on this page</p>
                 </div>
                 <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status</p>
@@ -402,13 +409,29 @@ const AllReceipts = () => {
                                         className="p-2 border text-right uppercase"
                                         colSpan={user && user.role === 'Super Admin' ? 6 : 5}
                                     >
-                                        Grand Total
+                                        Current Page Total
                                     </td>
                                     <td className="p-2 border text-right">
-                                        ₹ {totalAmount.toLocaleString('en-IN')}
+                                        ₹ {pageTotalAmount.toLocaleString('en-IN')}
                                     </td>
                                     <td className="p-2 border text-center" colSpan={2}>
                                         {receipts.length} Receipts
+                                    </td>
+                                </tr>
+                             )}
+                             {receipts && receipts.length > 0 && (
+                                <tr className="bg-emerald-50 font-black text-emerald-900">
+                                    <td
+                                        className="p-2 border text-right uppercase"
+                                        colSpan={user && user.role === 'Super Admin' ? 6 : 5}
+                                    >
+                                        Filtered Total (All Pages)
+                                    </td>
+                                    <td className="p-2 border text-right">
+                                        ₹ {filteredTotalAmount.toLocaleString('en-IN')}
+                                    </td>
+                                    <td className="p-2 border text-center" colSpan={2}>
+                                        {receiptSummary?.totalReceipts || receiptPagination?.count || 0} Receipts
                                     </td>
                                 </tr>
                              )}

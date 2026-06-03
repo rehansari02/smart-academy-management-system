@@ -94,6 +94,13 @@ const inquirySchema = new mongoose.Schema(
 
     // Allocation
     allocatedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    adminAssignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    adminAssignedAt: { type: Date },
+    adminTransferredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    adminTransferredAt: { type: Date },
+    previousAllocatedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    importBatchId: { type: mongoose.Schema.Types.ObjectId, ref: "InquiryImportHistory" },
 
     // Assets
     studentPhoto: { type: String }, // Stores filename/path from Multer
@@ -115,6 +122,9 @@ inquirySchema.index({ firstName: 1 });
 inquirySchema.index({ lastName: 1 });
 inquirySchema.index({ contactStudent: 1 });
 inquirySchema.index({ allocatedTo: 1 });
+inquirySchema.index({ createdBy: 1 });
 inquirySchema.index({ source: 1 });
+inquirySchema.index({ source: 1, allocatedTo: 1, inquiryDate: -1 });
+inquirySchema.index({ source: 1, branchId: 1, inquiryDate: -1 });
 
 module.exports = mongoose.model("Inquiry", inquirySchema);

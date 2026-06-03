@@ -135,6 +135,7 @@ const transactionSlice = createSlice({
     inquiryPagination: { page: 1, limit: 10, pageSize: 10, count: 0, pages: 1 },
     receipts: [],
     receiptPagination: { page: 1, limit: 10, pageSize: 10, count: 0, pages: 1 },
+    receiptSummary: { totalAmount: 0, totalReceipts: 0 },
     ledgerData: null, // Store ledger data
     isLoading: false,
     isSuccess: false,
@@ -204,6 +205,10 @@ const transactionSlice = createSlice({
             count: action.payload.length,
             pages: 1,
           };
+          state.receiptSummary = {
+            totalAmount: action.payload.reduce((sum, receipt) => sum + Number(receipt?.amountPaid || 0), 0),
+            totalReceipts: action.payload.length,
+          };
         } else {
           state.receipts = Array.isArray(action.payload?.data) ? action.payload.data : [];
           state.receiptPagination = action.payload?.pagination || {
@@ -212,6 +217,10 @@ const transactionSlice = createSlice({
             pageSize: 10,
             count: state.receipts.length,
             pages: 1,
+          };
+          state.receiptSummary = action.payload?.summary || {
+            totalAmount: state.receipts.reduce((sum, receipt) => sum + Number(receipt?.amountPaid || 0), 0),
+            totalReceipts: state.receipts.length,
           };
         }
       })

@@ -7,10 +7,129 @@ const Education = require("../models/Education");
 const Reference = require("../models/Reference");
 const Course = require("../models/Course");
 const Branch = require("../models/Branch");
+const User = require("../models/User");
+const Employee = require("../models/Employee");
+const InquiryImportHistory = require("../models/InquiryImportHistory");
 const asyncHandler = require("express-async-handler");
 const generateEnrollmentNumber = require("../utils/enrollmentGenerator");
 const sendSMS = require("../utils/smsSender"); // Moved to top for global use
 const XLSX = require("xlsx");
+const mongoose = require("mongoose");
+
+const escapeRegex = (value) => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const isDirectReference = (value) => {
+  const text = String(value || "").trim().toLowerCase();
+  return !text || ["direct", "self", "none", "na", "n/a", "-"].includes(text);
+};
+
+const resolveAssignableUserId = async (value) => {
+  const raw = typeof value === "object"
+    ? value?._id || value?.userAccount?._id || value?.userAccount
+    : value;
+  const text = String(raw || "").trim();
+  if (!text || text === "[object Object]") return null;
+
+  if (mongoose.Types.ObjectId.isValid(text)) {
+    const user = await User.findById(text).select("_id").lean();
+    if (user?._id) return user._id;
+
+    const employee = await Employee.findById(text)
+      .select("userAccount loginUsername email mobile name")
+      .lean();
+
+    if (employee?.userAccount) {
+      const linkedUser = await User.findById(employee.userAccount).select("_id").lean();
+      if (linkedUser?._id) return linkedUser._id;
+    }
+
+    const employeeLogin = [employee?.loginUsername, employee?.email, employee?.mobile, employee?.name]
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+
+    if (employeeLogin.length) {
+      const matchedUser = await User.findOne({
+        isActive: { $ne: false },
+        $or: employeeLogin.flatMap((item) => [
+          { username: { $regex: new RegExp(`^${escapeRegex(item)}$`, "i") } },
+          { email: { $regex: new RegExp(`^${escapeRegex(item)}$`, "i") } },
+          { name: { $regex: new RegExp(`^${escapeRegex(item)}$`, "i") } },
+        ]),
+      }).select("_id").lean();
+      if (matchedUser?._id) return matchedUser._id;
+    }
+  }
+
+  const matchedUser = await User.findOne({
+    isActive: { $ne: false },
+    $or: [
+      { username: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+      { email: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+      { name: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+    ],
+  }).select("_id").lean();
+
+  if (matchedUser?._id) return matchedUser._id;
+
+  const matchedEmployee = await Employee.findOne({
+    isDeleted: false,
+    $or: [
+      { name: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+      { loginUsername: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+      { email: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+      { mobile: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+    ],
+  }).select("userAccount loginUsername email mobile name").lean();
+
+  if (matchedEmployee?.userAccount) {
+    const linkedUser = await User.findById(matchedEmployee.userAccount).select("_id").lean();
+    if (linkedUser?._id) return linkedUser._id;
+  }
+
+  if (matchedEmployee) {
+    const employeeLogin = [matchedEmployee.loginUsername, matchedEmployee.email, matchedEmployee.mobile, matchedEmployee.name]
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+    const linkedByEmployee = await User.findOne({
+      isActive: { $ne: false },
+      $or: employeeLogin.flatMap((item) => [
+        { username: { $regex: new RegExp(`^${escapeRegex(item)}$`, "i") } },
+        { email: { $regex: new RegExp(`^${escapeRegex(item)}$`, "i") } },
+        { name: { $regex: new RegExp(`^${escapeRegex(item)}$`, "i") } },
+      ]),
+    }).select("_id").lean();
+    if (linkedByEmployee?._id) return linkedByEmployee._id;
+  }
+
+  return null;
+};
+
+const resolveInquiryOwner = async ({ referenceBy, requestedAllocatedTo, fallbackUserId }) => {
+  if (!isDirectReference(referenceBy)) {
+    const referenceText = String(referenceBy).trim();
+    const referenceOwner = await resolveAssignableUserId(referenceText);
+    if (referenceOwner) return referenceOwner;
+  }
+  if (requestedAllocatedTo) return requestedAllocatedTo;
+  return fallbackUserId;
+};
+
+const addInquiryOwnershipScope = (query, ownerId) => {
+  const ownership = {
+    $or: [
+      { allocatedTo: ownerId },
+      { allocatedTo: { $exists: false }, createdBy: ownerId },
+      { allocatedTo: null, createdBy: ownerId },
+    ],
+  };
+
+  if (query.$or) {
+    query.$and = [...(query.$and || []), { $or: query.$or }, ownership];
+    delete query.$or;
+  } else {
+    query.$and = [...(query.$and || []), ownership];
+  }
+};
 
 const getReceiptPurpose = (receipt) => {
   const remarks = (receipt?.remarks || "").toLowerCase();
@@ -162,6 +281,7 @@ const attachReceiptDisplayInfo = (receipts) => {
 const getInquiries = asyncHandler(async (req, res) => {
   const { startDate, endDate, status, studentName, referenceBy, source, dateFilterType } =
     req.query;
+  const isAdmissionLookup = req.query.scope === "admission" || req.query.forAdmission === "true";
   const shouldPaginate = req.query.page !== undefined || req.query.limit !== undefined || req.query.pageSize !== undefined;
   const page = Math.max(1, Number(req.query.page || 1));
   const limit = Math.min(100, Math.max(1, Number(req.query.limit || req.query.pageSize || 10)));
@@ -205,9 +325,25 @@ const getInquiries = asyncHandler(async (req, res) => {
     query.referenceBy = { $regex: referenceBy, $options: "i" };
   }
 
-  // --- BRANCH SCOPING ---
-  // --- BRANCH SCOPING ---
-  if (req.user && req.user.role !== 'Super Admin' && req.user.branchId) {
+  const employeeFilter = req.query.employeeId || req.query.allocatedTo;
+  if (employeeFilter) {
+    const employeeUserId = await resolveAssignableUserId(employeeFilter);
+    if (employeeUserId) {
+      query.allocatedTo = employeeUserId;
+    } else {
+      query._id = { $exists: false };
+    }
+  }
+
+  const shouldApplyOwnerScope = req.user
+    && req.user.role !== "Super Admin"
+    && !isAdmissionLookup;
+
+  if (shouldApplyOwnerScope) {
+    addInquiryOwnershipScope(query, req.user._id);
+  }
+
+  if (req.user && req.user.role !== 'Super Admin' && req.user.branchId && !shouldApplyOwnerScope) {
       query.branchId = req.user.branchId;
   }
   if (req.query.branchId) {
@@ -220,7 +356,8 @@ const getInquiries = asyncHandler(async (req, res) => {
 
   let inquiryQuery = Inquiry.find(query)
     .populate("interestedCourse", "name")
-    .populate("allocatedTo", "name")
+    .populate("allocatedTo", "name username role")
+    .populate("createdBy", "name username role")
     .populate("followUpBy", "name username")
     .populate("followUpHistory.followUpBy", "name username")
     .populate("branchId", "name shortCode")
@@ -268,9 +405,8 @@ const createInquiry = asyncHandler(async (req, res) => {
     data.branchId = req.user.branchId;
   }
 
-  // Automatically allocate to the logged-in user if not already specified
-  if (req.user && !data.allocatedTo) {
-    data.allocatedTo = req.user._id;
+  if (req.user?._id) {
+    data.createdBy = req.user._id;
   }
 
 
@@ -312,6 +448,14 @@ const createInquiry = asyncHandler(async (req, res) => {
         };
       }
     }
+  }
+
+  if (req.user?._id) {
+    data.allocatedTo = await resolveInquiryOwner({
+      referenceBy: data.referenceBy || data.referenceDetail?.name,
+      requestedAllocatedTo: req.user.role === "Super Admin" ? data.allocatedTo : null,
+      fallbackUserId: req.user._id,
+    });
   }
 
   // Handle first follow-up creation history & count
@@ -441,8 +585,20 @@ const importInquiries = asyncHandler(async (req, res) => {
     return map;
   }, {}));
 
-  const courses = await Course.find({ isDeleted: false }).select("_id name shortName").lean();
-  const branches = await Branch.find({}).select("_id name shortCode").lean();
+  let assignmentsByRow = {};
+  try {
+    assignmentsByRow = req.body.assignmentsByRow ? JSON.parse(req.body.assignmentsByRow) : {};
+  } catch (error) {
+    assignmentsByRow = {};
+  }
+  const defaultAllocatedTo = req.body.defaultAllocatedTo || "";
+
+  const [courses, branches, activeUsers, activeEmployees] = await Promise.all([
+    Course.find({ isDeleted: false }).select("_id name shortName").lean(),
+    Branch.find({}).select("_id name shortCode").lean(),
+    User.find({ isActive: { $ne: false } }).select("_id name username").lean(),
+    Employee.find({ isDeleted: false }).select("_id userAccount name loginUsername email mobile").lean(),
+  ]);
   const courseByName = new Map();
   courses.forEach((course) => {
     courseByName.set(normalizeExcelKey(course.name), course._id);
@@ -452,6 +608,23 @@ const importInquiries = asyncHandler(async (req, res) => {
   branches.forEach((branch) => {
     branchByName.set(normalizeBranchLookupKey(branch.name), branch._id);
     branchByName.set(normalizeBranchLookupKey(branch.shortCode), branch._id);
+  });
+  const userByReferenceName = new Map();
+  const userById = new Map();
+  activeUsers.forEach((user) => {
+    userById.set(String(user._id), user);
+    userByReferenceName.set(normalizeExcelKey(user.name), user._id);
+    userByReferenceName.set(normalizeExcelKey(user.username), user._id);
+  });
+  const employeeUserById = new Map();
+  activeEmployees.forEach((employee) => {
+    if (employee.userAccount) {
+      employeeUserById.set(String(employee._id), employee.userAccount);
+      [employee.name, employee.loginUsername, employee.email, employee.mobile].forEach((value) => {
+        const key = normalizeExcelKey(value);
+        if (key) userByReferenceName.set(key, employee.userAccount);
+      });
+    }
   });
 
   const errors = [];
@@ -496,6 +669,14 @@ const importInquiries = asyncHandler(async (req, res) => {
       excelValue(row, ["Follow-up Time", "Follow Up Time", "Time"])
     );
 
+    const referenceBy = String(excelValue(row, ["Reference", "Reference By"])).trim();
+    const assignedFromRow = assignmentsByRow[rowNo] || assignmentsByRow[index + 1];
+    const rawAssignedUser = assignedFromRow || defaultAllocatedTo;
+    const assignedUser = userById.has(String(rawAssignedUser))
+      ? rawAssignedUser
+      : employeeUserById.get(String(rawAssignedUser));
+    const referenceOwner = !isDirectReference(referenceBy) ? userByReferenceName.get(normalizeExcelKey(referenceBy)) : null;
+
     const doc = {
       source,
       firstName,
@@ -514,7 +695,7 @@ const importInquiries = asyncHandler(async (req, res) => {
       city: String(excelValue(row, ["City"])).trim() || "Surat",
       address: String(excelValue(row, ["Address"])).trim(),
       education: String(excelValue(row, ["Education"])).trim(),
-      referenceBy: String(excelValue(row, ["Reference", "Reference By"])).trim(),
+      referenceBy,
       inquiryDate: parseExcelDate(excelValue(row, ["Inquiry Date", "Date"])) || new Date(),
       status: ["Open", "Close", "Complete", "Recall", "InProgress", "Pending", "Converted"].includes(String(excelValue(row, ["Status"])).trim())
         ? String(excelValue(row, ["Status"])).trim()
@@ -522,7 +703,9 @@ const importInquiries = asyncHandler(async (req, res) => {
       followUpDate,
       nextVisitingDate: followUpDate,
       followUpDetails: String(excelValue(row, ["Details", "Follow-up Details", "Follow Up Details", "Remarks"])).trim(),
-      allocatedTo: req.user?._id,
+      createdBy: req.user?._id,
+      allocatedTo: assignedUser || referenceOwner || req.user?._id,
+      _importRowNo: rowNo,
     };
 
     if (courseText) {
@@ -555,13 +738,238 @@ const importInquiries = asyncHandler(async (req, res) => {
     throw new Error(errors.join("; ") || "No valid inquiry rows found");
   }
 
-  const created = await Inquiry.insertMany(docs, { ordered: false });
+  const insertDocs = docs.map(({ _importRowNo, ...doc }) => doc);
+  const created = await Inquiry.insertMany(insertDocs, { ordered: false });
+  const assignmentMap = new Map();
+  docs.forEach((doc) => {
+    const key = doc.allocatedTo ? String(doc.allocatedTo) : "unassigned";
+    const current = assignmentMap.get(key) || {
+      assignedTo: doc.allocatedTo || undefined,
+      assignedToName: doc.allocatedTo ? (userById.get(String(doc.allocatedTo))?.name || "Unknown") : "Unassigned",
+      count: 0,
+      rows: [],
+    };
+    current.count += 1;
+    current.rows.push(doc._importRowNo);
+    assignmentMap.set(key, current);
+  });
+  const history = await InquiryImportHistory.create({
+    fileName: req.file.originalname,
+    source,
+    importedBy: req.user?._id,
+    branchId: req.user?.branchId,
+    totalRows: rawRows.length,
+    importedCount: created.length,
+    skippedCount: errors.length,
+    assignmentSummary: [...assignmentMap.values()],
+    errors: errors.slice(0, 100),
+  });
+
+  await Inquiry.updateMany(
+    { _id: { $in: created.map((item) => item._id) } },
+    { $set: { importBatchId: history._id } }
+  );
 
   res.status(201).json({
     imported: created.length,
     skipped: errors.length,
+    history,
     errors: errors.slice(0, 25),
     message: `${created.length} inquiries imported successfully${errors.length ? `, ${errors.length} rows skipped` : ""}`
+  });
+});
+
+const getInquiryImportHistory = asyncHandler(async (req, res) => {
+  const query = {};
+  if (req.query.source) query.source = req.query.source;
+  if (req.user?.role !== "Super Admin") {
+    query.importedBy = req.user._id;
+  }
+
+  const histories = await InquiryImportHistory.find(query)
+    .populate("importedBy", "name username")
+    .populate("assignmentSummary.assignedTo", "name username")
+    .sort({ createdAt: -1 })
+    .limit(25)
+    .lean();
+
+  res.json(histories);
+});
+
+const getInquiryFollowupStats = asyncHandler(async (req, res) => {
+  const { source, branchId, employeeId } = req.query;
+  const start = req.query.startDate ? new Date(req.query.startDate) : new Date();
+  const end = req.query.endDate ? new Date(req.query.endDate) : new Date(start);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+
+  const inquiryQuery = { isDeleted: false };
+  if (source) inquiryQuery.source = source;
+  if (branchId) inquiryQuery.branchId = branchId;
+  if (req.user?.role !== "Super Admin" && req.user?.branchId) inquiryQuery.branchId = req.user.branchId;
+  if (req.user?.role !== "Super Admin") addInquiryOwnershipScope(inquiryQuery, req.user._id);
+
+  let selectedEmployeeUserId = null;
+  if (employeeId) {
+    selectedEmployeeUserId = await resolveAssignableUserId(employeeId);
+    if (!selectedEmployeeUserId) {
+      return res.json({
+        range: { startDate: start, endDate: end },
+        totalInquiries: 0,
+        totalFollowUps: 0,
+        employees: [],
+      });
+    }
+    inquiryQuery.allocatedTo = selectedEmployeeUserId;
+  }
+
+  const inquiriesTodayQuery = {
+    ...inquiryQuery,
+    inquiryDate: { $gte: start, $lte: end },
+  };
+
+  const inquiries = await Inquiry.find({
+    ...inquiryQuery,
+    $or: [
+      { "followUpHistory.createdAt": { $gte: start, $lte: end } },
+      { "followUpHistory.date": { $gte: start, $lte: end } },
+    ],
+  })
+    .populate("allocatedTo", "name username")
+    .populate("createdBy", "name username")
+    .populate("followUpHistory.followUpBy", "name username")
+    .select("firstName lastName contactStudent allocatedTo createdBy followUpHistory")
+    .lean();
+
+  const employeeMap = new Map();
+  inquiries.forEach((inquiry) => {
+    (inquiry.followUpHistory || []).forEach((history) => {
+      const actionDate = history.createdAt || history.date;
+      if (!actionDate) return;
+      const actionTime = new Date(actionDate).getTime();
+      if (actionTime < start.getTime() || actionTime > end.getTime()) return;
+
+      const user = history.followUpBy || inquiry.allocatedTo || inquiry.createdBy || {};
+      if (selectedEmployeeUserId && String(user._id || "") !== String(selectedEmployeeUserId)) return;
+      const key = user._id ? String(user._id) : "unassigned";
+      const current = employeeMap.get(key) || {
+        employeeId: user._id || null,
+        employeeName: user.name || user.username || "Unassigned",
+        followUpCount: 0,
+        latestFollowUpAt: null,
+      };
+      current.followUpCount += 1;
+      if (!current.latestFollowUpAt || new Date(actionDate) > new Date(current.latestFollowUpAt)) {
+        current.latestFollowUpAt = actionDate;
+      }
+      employeeMap.set(key, current);
+    });
+  });
+
+  const [totalInquiries] = await Promise.all([
+    Inquiry.countDocuments(inquiriesTodayQuery),
+  ]);
+
+  const employees = [...employeeMap.values()].sort((a, b) => b.followUpCount - a.followUpCount);
+
+  res.json({
+    range: { startDate: start, endDate: end },
+    totalInquiries,
+    totalFollowUps: employees.reduce((sum, item) => sum + item.followUpCount, 0),
+    employees,
+  });
+});
+
+const assignInquiries = asyncHandler(async (req, res) => {
+  if (req.user?.role !== "Super Admin") {
+    res.status(403);
+    throw new Error("Only Super Admin can assign inquiries");
+  }
+
+  const inquiryIds = Array.isArray(req.body.inquiryIds) ? req.body.inquiryIds.filter(Boolean) : [];
+  if (!inquiryIds.length) {
+    res.status(400);
+    throw new Error("Please select inquiries to assign");
+  }
+
+  const allocatedTo = await resolveAssignableUserId(req.body.allocatedTo);
+  if (!allocatedTo) {
+    res.status(400);
+    throw new Error("Selected employee has no linked user login");
+  }
+
+  const isTransfer = req.body.transfer === true || req.body.transferMode === true;
+  const currentAllocatedTo = isTransfer
+    ? await resolveAssignableUserId(req.body.currentEmployeeId || req.body.fromEmployeeId)
+    : null;
+
+  if (isTransfer && !currentAllocatedTo) {
+    res.status(400);
+    throw new Error("Please select employee filter before transfer");
+  }
+
+  if (isTransfer && String(currentAllocatedTo) === String(allocatedTo)) {
+    res.status(400);
+    throw new Error("Please select a different employee to transfer");
+  }
+
+  const selectedInquiries = await Inquiry.find({
+    _id: { $in: inquiryIds },
+    isDeleted: false,
+  }).select("_id allocatedTo createdBy adminAssignedAt").lean();
+
+  if (selectedInquiries.length !== inquiryIds.length) {
+    res.status(404);
+    throw new Error("Some selected inquiries were not found");
+  }
+
+  if (!isTransfer) {
+    const alreadyAssigned = selectedInquiries.filter((item) => (
+      item.adminAssignedAt ||
+      (item.allocatedTo && item.createdBy && String(item.allocatedTo) !== String(item.createdBy))
+    ));
+    if (alreadyAssigned.length) {
+      res.status(409);
+      throw new Error(`${alreadyAssigned.length} inquiry already assigned. Use employee filter and Transfer mode to move it.`);
+    }
+  } else {
+    const wrongOwner = selectedInquiries.filter((item) => String(item.allocatedTo || "") !== String(currentAllocatedTo));
+    if (wrongOwner.length) {
+      res.status(409);
+      throw new Error("Selected inquiry does not belong to the filtered employee");
+    }
+  }
+
+  const now = new Date();
+  const update = isTransfer
+    ? {
+        $set: {
+          allocatedTo,
+          previousAllocatedTo: currentAllocatedTo,
+          adminTransferredBy: req.user._id,
+          adminTransferredAt: now,
+          adminAssignedBy: req.user._id,
+          adminAssignedAt: now,
+        },
+      }
+    : {
+        $set: {
+          allocatedTo,
+          adminAssignedBy: req.user._id,
+          adminAssignedAt: now,
+        },
+      };
+
+  const result = await Inquiry.updateMany(
+    { _id: { $in: inquiryIds }, isDeleted: false },
+    update
+  );
+
+  res.json({
+    message: `${result.modifiedCount || 0} inquiries ${isTransfer ? "transferred" : "assigned"} successfully`,
+    matchedCount: result.matchedCount || 0,
+    modifiedCount: result.modifiedCount || 0,
+    allocatedTo,
   });
 });
 
@@ -582,6 +990,15 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
     req.body.allocatedTo = req.body.allocatedTo._id;
   } else if (req.body.allocatedTo === '[object Object]') {
     delete req.body.allocatedTo; // Remove if it's the stringified object version without ID
+  }
+
+  if (req.body.allocatedTo) {
+    const allocatedTo = await resolveAssignableUserId(req.body.allocatedTo);
+    if (!allocatedTo) {
+      res.status(400);
+      throw new Error("Selected employee has no linked user login");
+    }
+    req.body.allocatedTo = allocatedTo;
   }
 
   // Parse followUpHistory if sent as JSON string
@@ -686,6 +1103,14 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
       inquiry.studentPhoto = req.file.path.replace(/\\/g, "/");
     }
 
+    if (req.user?._id && req.body.referenceBy !== undefined && req.body.allocatedTo === undefined) {
+      inquiry.allocatedTo = await resolveInquiryOwner({
+        referenceBy: inquiry.referenceBy || inquiry.referenceDetail?.name,
+        requestedAllocatedTo: null,
+        fallbackUserId: inquiry.createdBy || req.user._id,
+      });
+    }
+
     if (hasFollowUpChanged) {
       const historyRemarks = req.body.newRemarks || req.body.followUpDetails || req.body.remarks || "Follow-up set";
       if (req.user?._id) {
@@ -703,8 +1128,9 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
 
     await inquiry.save();
     await inquiry.populate([
-      { path: "branchId", select: "name shortCode" },
-      { path: "allocatedTo", select: "name" },
+    { path: "branchId", select: "name shortCode" },
+    { path: "allocatedTo", select: "name username role" },
+    { path: "createdBy", select: "name username role" },
       { path: "followUpBy", select: "name username" },
       { path: "followUpHistory.followUpBy", select: "name username" },
       { path: "interestedCourse", select: "name" }
@@ -758,7 +1184,9 @@ const getFeeReceipts = asyncHandler(async (req, res) => {
   }
   // Allow Super Admin to filter by branch if provided in query
   if (req.query.branchId) {
-      query.branch = req.query.branchId;
+      query.branch = mongoose.Types.ObjectId.isValid(req.query.branchId)
+        ? new mongoose.Types.ObjectId(req.query.branchId)
+        : req.query.branchId;
   }
 
   if (receiptNo) query.receiptNo = { $regex: receiptNo, $options: "i" };
@@ -846,9 +1274,21 @@ const getFeeReceipts = asyncHandler(async (req, res) => {
     receiptQuery = receiptQuery.skip(skip).limit(limit);
   }
 
-  let [receipts, total] = await Promise.all([
+  let [receipts, total, summary] = await Promise.all([
     receiptQuery,
     shouldPaginate ? FeeReceipt.countDocuments(query) : Promise.resolve(0),
+    shouldPaginate
+      ? FeeReceipt.aggregate([
+          { $match: query },
+          {
+            $group: {
+              _id: null,
+              totalAmount: { $sum: "$amountPaid" },
+              totalReceipts: { $sum: 1 },
+            },
+          },
+        ])
+      : Promise.resolve([]),
   ]);
 
   // Add calculated fields for each receipt
@@ -877,6 +1317,10 @@ const getFeeReceipts = asyncHandler(async (req, res) => {
       pageSize: limit,
       count: total,
       pages: Math.max(1, Math.ceil(total / limit)),
+    },
+    summary: {
+      totalAmount: summary?.[0]?.totalAmount || 0,
+      totalReceipts: summary?.[0]?.totalReceipts || total,
     },
   });
 });
@@ -1553,6 +1997,9 @@ module.exports = {
   getInquiries,
   createInquiry,
   importInquiries,
+  getInquiryImportHistory,
+  getInquiryFollowupStats,
+  assignInquiries,
   updateInquiryStatus,
   createFeeReceipt,
   getStudentFees,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { useForm } from 'react-hook-form';
@@ -144,6 +145,13 @@ const InquiryDSR = () => {
     const { user } = useSelector((state) => state.auth);
     const { branches } = useSelector((state) => state.branch);
     const { add, edit, delete: canDelete } = useUserRights('Inquiry - DSR');
+    const getFilledBy = (inquiry) => inquiry.createdBy?.name || inquiry.createdBy?.username || inquiry.followUpBy?.name || inquiry.followUpBy?.username || inquiry.allocatedTo?.name || inquiry.allocatedTo?.username || '-';
+    const getHandleBy = (inquiry) => inquiry.allocatedTo?.name || inquiry.allocatedTo?.username || inquiry.referenceBy || 'Direct';
+    const getUserId = (value) => value?._id || value || '';
+    const isInquiryAssigned = (inquiry) => Boolean(
+        inquiry.adminAssignedAt ||
+        (getUserId(inquiry.allocatedTo) && getUserId(inquiry.createdBy) && String(getUserId(inquiry.allocatedTo)) !== String(getUserId(inquiry.createdBy)))
+    );
 
     // Only show reference names that actually exist in loaded DSR inquiries
     const activeReferences = [...new Set(
@@ -151,8 +159,12 @@ const InquiryDSR = () => {
     )].sort();
 
     // Filter defaults to DSR
-    const [filters, setFilters] = useState({ startDate: getTodayDate(), endDate: getTodayDate(), status: '', studentName: '', referenceBy: '', branchId: '', source: 'DSR', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 });
+    const [filters, setFilters] = useState({ startDate: getTodayDate(), endDate: getTodayDate(), status: '', studentName: '', referenceBy: '', branchId: '', employeeId: '', source: 'DSR', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 });
     const [modal, setModal] = useState({ type: null, data: null });
+    const [stats, setStats] = useState(null);
+    const [selectedInquiryIds, setSelectedInquiryIds] = useState(new Set());
+    const [bulkAssignee, setBulkAssignee] = useState('');
+    const [transferMode, setTransferMode] = useState(false);
 
     const handlePrintList = () => {
         window.print();
@@ -164,7 +176,26 @@ const InquiryDSR = () => {
         dispatch(fetchInquiries(nextFilters));
     };
 
-    useEffect(() => { dispatch(fetchInquiries(filters)); dispatch(fetchCourses()); dispatch(fetchEmployees()); dispatch(fetchReferences()); if (user?.role === 'Super Admin') dispatch(getBranches()); }, [dispatch]);
+    const fetchStats = async (nextFilters = filters) => {
+        if (user?.role !== 'Super Admin') return;
+        try {
+            const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry/followup-stats`, {
+                params: {
+                    source: 'DSR',
+                    startDate: nextFilters.startDate,
+                    endDate: nextFilters.endDate,
+                    branchId: nextFilters.branchId,
+                    employeeId: nextFilters.employeeId,
+                },
+                withCredentials: true,
+            });
+            setStats(data);
+        } catch (error) {
+            setStats(null);
+        }
+    };
+
+    useEffect(() => { dispatch(fetchInquiries(filters)); dispatch(fetchCourses()); dispatch(fetchEmployees()); dispatch(fetchReferences()); if (user?.role === 'Super Admin') { dispatch(getBranches()); fetchStats(filters); } }, [dispatch, user?.role]);
     useEffect(() => {
         if (isSuccess && message) {
             toast.success(message);
@@ -208,6 +239,58 @@ const InquiryDSR = () => {
             }
         }).catch(err => console.error("Swal Error:", err));
     };
+
+    const toggleInquirySelection = (id) => {
+        const inquiry = (inquiries || []).find((item) => item._id === id);
+        if (!inquiry || !canSelectInquiry(inquiry)) return;
+        setSelectedInquiryIds((current) => {
+            const next = new Set(current);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleAllInquiries = () => {
+        const ids = (inquiries || []).filter(canSelectInquiry).map((item) => item._id).filter(Boolean);
+        setSelectedInquiryIds((current) => {
+            const next = new Set(current);
+            const isCurrentPageSelected = ids.length > 0 && ids.every((id) => next.has(id));
+            ids.forEach((id) => {
+                if (isCurrentPageSelected) next.delete(id);
+                else next.add(id);
+            });
+            return next;
+        });
+    };
+
+    const handleBulkAssign = async () => {
+        if (!bulkAssignee || selectedInquiryIds.size === 0) return;
+        try {
+            const { data } = await axios.put(
+                `${import.meta.env.VITE_API_URL}/transaction/inquiry/assign`,
+                {
+                    inquiryIds: [...selectedInquiryIds],
+                    allocatedTo: bulkAssignee,
+                    transfer: transferMode,
+                    currentEmployeeId: filters.employeeId,
+                },
+                { withCredentials: true }
+            );
+            toast.success(data?.message || `${selectedInquiryIds.size} inquiry assigned successfully`);
+            setSelectedInquiryIds(new Set());
+            setBulkAssignee('');
+            dispatch(fetchInquiries(filters));
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Inquiry assignment failed');
+        }
+    };
+    const canSelectInquiry = (inquiry) => transferMode
+        ? Boolean(filters.employeeId && isInquiryAssigned(inquiry))
+        : !isInquiryAssigned(inquiry);
+    const currentPageIds = (inquiries || []).filter(canSelectInquiry).map((item) => item._id).filter(Boolean);
+    const currentPageSelectedCount = currentPageIds.filter((id) => selectedInquiryIds.has(id)).length;
+    const isCurrentPageSelected = currentPageIds.length > 0 && currentPageSelectedCount === currentPageIds.length;
 
     const columns = [
         { header: 'Sr', render: (_, i) => i + 1 },
@@ -338,6 +421,35 @@ const InquiryDSR = () => {
                 </div>
             </div>
 
+            {user?.role === 'Super Admin' && stats && (
+                <div className="bg-white border border-gray-200 rounded-lg shadow mb-6 p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="border rounded p-3">
+                            <div className="text-xs text-gray-500 font-bold uppercase">Range Inquiries</div>
+                            <div className="text-2xl font-black text-blue-700">{stats.totalInquiries || 0}</div>
+                        </div>
+                        <div className="border rounded p-3">
+                            <div className="text-xs text-gray-500 font-bold uppercase">Followups Done</div>
+                            <div className="text-2xl font-black text-purple-700">{stats.totalFollowUps || 0}</div>
+                        </div>
+                        <div className="border rounded p-3">
+                            <div className="text-xs text-gray-500 font-bold uppercase">Top Followup</div>
+                            <div className="text-sm font-bold text-gray-800">{stats.employees?.[0]?.employeeName || '-'}</div>
+                            <div className="text-xs text-gray-500">{stats.employees?.[0]?.latestFollowUpAt ? new Date(stats.employees[0].latestFollowUpAt).toLocaleString() : '-'}</div>
+                        </div>
+                    </div>
+                    {stats.employees?.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {stats.employees.map((item) => (
+                                <span key={item.employeeId || item.employeeName} className="text-xs border rounded-full px-3 py-1 bg-gray-50">
+                                    <b>{item.employeeName}</b>: {item.followUpCount} followups
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* --- Filter Section --- */}
             <div className="bg-white p-4 rounded-lg shadow mb-6 border border-gray-200">
                 <h2 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
@@ -376,7 +488,7 @@ const InquiryDSR = () => {
                     </div>
 
                     {/* Row 2: Student Search */}
-                    <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
+                    <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-4' : 'md:grid-cols-2'} gap-4`}>
                         <div className="relative z-20">
                             <StudentSearch
                                 label="Search Student"
@@ -413,6 +525,21 @@ const InquiryDSR = () => {
                                 </select>
                             </div>
                         )}
+                        {user?.role === 'Super Admin' && (
+                            <div>
+                                <label className="text-xs text-gray-500 font-semibold mb-1 block">Employee</label>
+                                <select value={filters.employeeId} onChange={e => {
+                                    setFilters({ ...filters, employeeId: e.target.value, page: 1 });
+                                    setSelectedInquiryIds(new Set());
+                                    if (!e.target.value) setTransferMode(false);
+                                }} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                                    <option value="">All Employees</option>
+                                    {employees?.map((employee) => (
+                                        <option key={employee._id} value={employee._id}>{employee.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                     </div>
 
                     {/* Row 3: Buttons */}
@@ -420,9 +547,12 @@ const InquiryDSR = () => {
                         <button
                             onClick={() => {
                                 const today = getTodayDate();
-                                const resetState = { startDate: today, endDate: today, status: '', studentName: '', referenceBy: '', branchId: '', source: 'DSR', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 };
+                                const resetState = { startDate: today, endDate: today, status: '', studentName: '', referenceBy: '', branchId: '', employeeId: '', source: 'DSR', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 };
                                 setFilters(resetState);
+                                setSelectedInquiryIds(new Set());
+                                setTransferMode(false);
                                 dispatch(fetchInquiries(resetState));
+                                fetchStats(resetState);
                             }}
                             className="bg-red-100 text-red-700 px-6 py-2.5 rounded hover:bg-red-200 font-medium transition text-sm flex items-center justify-center gap-2"
                         >
@@ -432,7 +562,9 @@ const InquiryDSR = () => {
                             onClick={() => {
                                 const nextFilters = { ...filters, page: 1 };
                                 setFilters(nextFilters);
+                                setSelectedInquiryIds(new Set());
                                 dispatch(fetchInquiries(nextFilters));
+                                fetchStats(nextFilters);
                             }}
                             className="bg-blue-600 text-white px-6 py-2.5 rounded hover:bg-blue-700 font-medium transition text-sm flex items-center justify-center gap-2"
                         >
@@ -442,6 +574,40 @@ const InquiryDSR = () => {
                 </div>
             </div>
 
+            {user?.role === 'Super Admin' && (
+                <div className="bg-white border border-gray-200 rounded-lg shadow mb-3 p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="text-sm font-bold text-gray-700">{currentPageSelectedCount} on this page | {selectedInquiryIds.size} total selected</div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <select value={bulkAssignee} onChange={(e) => setBulkAssignee(e.target.value)} className="border rounded px-3 py-2 text-sm min-w-[220px]">
+                            <option value="">Select employee</option>
+                            {employees?.map((employee) => (
+                                <option key={employee._id} value={employee._id}>{employee.name}</option>
+                            ))}
+                        </select>
+                        <button
+                            onClick={() => {
+                                if (!filters.employeeId) {
+                                    toast.error('Please select employee filter before transfer');
+                                    return;
+                                }
+                                setSelectedInquiryIds(new Set());
+                                setTransferMode((value) => !value);
+                            }}
+                            className={`px-4 py-2 rounded text-sm font-bold border ${transferMode ? 'bg-red-600 text-white border-red-600' : 'bg-white text-red-700 border-red-300'}`}
+                        >
+                            {transferMode ? 'Transfer On' : 'Transfer'}
+                        </button>
+                        <button
+                            onClick={handleBulkAssign}
+                            disabled={!bulkAssignee || selectedInquiryIds.size === 0 || (transferMode && !filters.employeeId)}
+                            className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {transferMode ? 'Transfer Selected' : 'Assign Selected'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white rounded-lg shadow overflow-x-auto border printable-table-container">
                 <div className="print-only-header mb-6 text-center">
                     <h1 className="text-2xl font-bold text-blue-800 uppercase tracking-wide">DSR Inquiry List</h1>
@@ -450,9 +616,16 @@ const InquiryDSR = () => {
                 <table className="w-full border-collapse min-w-[1100px]">
                     <thead>
                         <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
+                            {user?.role === 'Super Admin' && (
+                                <th className="p-2 border font-semibold w-10 text-center">
+                                    <input type="checkbox" checked={isCurrentPageSelected} onChange={toggleAllInquiries} />
+                                </th>
+                            )}
                             <th className="p-2 border font-semibold w-12">Sr. No.</th>
                             <th className="p-2 border font-semibold">Inquiry Date</th>
                             {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
+                            {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Filled By</th>}
+                            {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Handle By</th>}
                             <th className="p-2 border font-semibold">Student Name</th>
                             <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                             <th className="p-2 border font-semibold">Gender</th>
@@ -465,11 +638,24 @@ const InquiryDSR = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {inquiries && inquiries.length > 0 ? inquiries.map((inquiry, index) => (
-                            <tr key={inquiry._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
+                        {inquiries && inquiries.length > 0 ? inquiries.map((inquiry, index) => {
+                            const assignedByAdmin = isInquiryAssigned(inquiry);
+                            const selectable = canSelectInquiry(inquiry);
+                            return (
+                            <tr key={inquiry._id} className={`text-xs border-b transition-colors ${assignedByAdmin ? 'bg-red-50 hover:bg-red-100 border-red-200' : 'hover:bg-blue-50 border-gray-100'}`}>
+                                {user?.role === 'Super Admin' && (
+                                    <td className="p-2 border text-center">
+                                        <input type="checkbox" disabled={!selectable} checked={selectedInquiryIds.has(inquiry._id)} onChange={() => toggleInquirySelection(inquiry._id)} />
+                                    </td>
+                                )}
                                 <td className="p-2 border text-center">{((inquiryPagination?.page || 1) - 1) * (inquiryPagination?.pageSize || 10) + index + 1}</td>
                                 <td className="p-2 border text-gray-700">{formatDate(inquiry.inquiryDate)}</td>
                                 {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{inquiry.branchId?.name || '-'}</td>}
+                                {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{getFilledBy(inquiry)}</td>}
+                                {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">
+                                    <div>{getHandleBy(inquiry)}</div>
+                                    {assignedByAdmin && <span className="inline-block mt-1 rounded border border-red-300 bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase text-red-700">Assigned</span>}
+                                </td>}
                                 <td className="p-2 border font-bold text-gray-800">{inquiry.firstName} {inquiry.lastName}</td>
                                 <td className="p-0 border align-top">
                                     <div className="flex border-b border-gray-200 last:border-b-0">
@@ -523,8 +709,9 @@ const InquiryDSR = () => {
                                     </div>
                                 </td>
                             </tr>
-                        )) : (
-                            <tr><td colSpan={user?.role === 'Super Admin' ? 12 : 11} className="text-center py-8 text-gray-400">No inquiries found</td></tr>
+                            );
+                        }) : (
+                            <tr><td colSpan={user?.role === 'Super Admin' ? 15 : 11} className="text-center py-8 text-gray-400">No inquiries found</td></tr>
                         )}
                     </tbody>
                 </table>

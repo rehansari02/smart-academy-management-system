@@ -141,7 +141,7 @@ const StudentSearch = ({
             const { data } = await axios.get(API_URL, { params, withCredentials: true });
             
             if (mode === 'inquiry') {
-                setResults(Array.isArray(data) ? data : (data.inquiries || [])); // Handle potential diff response structure
+                setResults(Array.isArray(data) ? data : (data.data || data.inquiries || [])); // Handle paginated inquiry response
             } else {
                 setResults(await filterOutstandingStudents(data.students || [])); 
             }
@@ -169,7 +169,7 @@ const StudentSearch = ({
             const { data } = await axios.get(API_URL, { params, withCredentials: true });
             
             if (mode === 'inquiry') {
-                setResults(Array.isArray(data) ? data : (data.inquiries || []));
+                setResults(Array.isArray(data) ? data : (data.data || data.inquiries || []));
             } else {
                 setResults(await filterOutstandingStudents(data.students || [])); 
             }
