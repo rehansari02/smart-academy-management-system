@@ -34,11 +34,10 @@ const StudentAttendanceReport = () => {
     const [reportData, setReportData] = useState([]);
     const [daysInMonth, setDaysInMonth] = useState([]);
     const componentRef = useRef(null);
-    const isFirstFilterSyncRef = useRef(true);
 
-    const [showReport, setShowReport] = useState(true);
+    const [showReport, setShowReport] = useState(false);
 
-    // Initial Data Fetch
+    // Initial Data Fetch (only dropdown options, no report data)
     useEffect(() => {
         dispatch(fetchBatches());
         dispatch(fetchCourses());
@@ -46,11 +45,6 @@ const StudentAttendanceReport = () => {
         if (user?.role === 'Super Admin') {
             dispatch(fetchBranches());
         }
-        // Initial search to show all data
-        dispatch(fetchStudentAttendanceHistory({ 
-            ...filters,
-            pageSize: 3000
-        }));
     }, [dispatch, user]);
 
     const fetchAttendanceClosures = async (fromDate, toDate) => {
@@ -120,6 +114,10 @@ const StudentAttendanceReport = () => {
             toast.error('Please select a month');
             return;
         }
+        if (!filters.courseFilter) {
+            toast.error('Please select a course first');
+            return;
+        }
 
         const startDate = moment(filters.month, 'YYYY-MM').startOf('month').format('YYYY-MM-DD');
         const endDate = moment(filters.month, 'YYYY-MM').endOf('month').format('YYYY-MM-DD');
@@ -150,18 +148,6 @@ const StudentAttendanceReport = () => {
         setDaysInMonth(getDaysInMonth(filters.month));
         setShowReport(true);
     };
-
-    useEffect(() => {
-        if (isFirstFilterSyncRef.current) {
-            isFirstFilterSyncRef.current = false;
-            return;
-        }
-
-        if (!filters.month) return;
-
-        handleSearch();
-        // Intentionally refresh on high-level filters only; student typing still uses the button.
-    }, [filters.month, filters.courseFilter, filters.batch, filters.branchId, filters.reference]);
 
     // Calculate Report Data
     useEffect(() => {
@@ -414,8 +400,17 @@ const StudentAttendanceReport = () => {
              </div>
              )} */}
 
+            {/* No selection state */}
+            {!showReport && (
+                <div className="bg-white rounded-lg shadow border border-gray-200 p-12 text-center">
+                    <FileText className="mx-auto text-gray-300" size={64} />
+                    <h3 className="text-lg font-semibold text-gray-500 mt-4">Select a Course to View Attendance Report</h3>
+                    <p className="text-sm text-gray-400 mt-2">Choose a course from the filter above and click "Show Report"</p>
+                </div>
+            )}
+
             {/* Printable Area - Optimized for Portrait A4 (Small print font, Normal screen font) */}
-            {/* {showReport && ( */}
+            {showReport && (
                 <div className="overflow-auto bg-gray-50 p-4 print:p-0">
                     <div
                         ref={componentRef}
@@ -529,6 +524,7 @@ const StudentAttendanceReport = () => {
                         </div>
                     </div>
                 </div>
+            )}
         </div>
     );
 };

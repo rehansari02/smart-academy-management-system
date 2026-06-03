@@ -1714,8 +1714,8 @@ const StudentAdmission = () => {
                   <div className="font-bold text-slate-700 mb-3">
                     B. Batch & Fee Config
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="col-span-1 md:col-span-4 mb-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="sm:col-span-2 lg:col-span-4 mb-2">
                       <label className="label mb-2">Select Batch <span className="text-red-500">*</span></label>
                       <div className="border rounded-lg overflow-hidden max-h-60 overflow-y-auto bg-white shadow-sm">
                         <table className="hidden md:table w-full text-sm">
@@ -1847,7 +1847,7 @@ const StudentAdmission = () => {
                                       ? "bg-green-100 text-green-800"
                                       : "bg-gray-100 text-gray-500"
                                   }`}>
-                                    {activeCount} students
+                                    {activeCount}
                                   </span>
                                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                                     isSelected ? "border-blue-600 bg-blue-600" : "border-gray-300"
@@ -1873,7 +1873,7 @@ const StudentAdmission = () => {
                     </div>
 
                     {/* Start Date and Payment Plan - Now available in Edit Mode too */}
-                    <div>
+                    <div className="sm:col-span-1">
                       <label className="label">Start Date {isUpdateMode && <span className="text-xs text-gray-500">(Original: {currentStudent?.admissionDate?.split("T")[0]})</span>}</label>
                       <input
                         type="date"
@@ -1882,7 +1882,7 @@ const StudentAdmission = () => {
                         defaultValue={isUpdateMode ? (currentStudent?.batchStartDate?.split("T")[0] || currentStudent?.admissionDate?.split("T")[0]) : new Date().toISOString().split("T")[0]}
                       />
                     </div>
-                    <div>
+                    <div className="sm:col-span-1">
                       <label className="label">Payment Plan</label>
                       <select 
                         {...register("paymentType")} 
@@ -1900,57 +1900,55 @@ const StudentAdmission = () => {
                       </select>
                     </div>
 
-                    {/* Document Verification Section */}
-                    <div className="col-span-4 bg-purple-50 p-4 rounded border border-purple-200 mt-4">
-                      <label className="label text-purple-800 mb-3 block">Document Verification Status</label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            {...register("isPhotos")}
-                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                          />
-                          Photo Uploaded
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            {...register("isIDProof")}
-                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                          />
-                          ID Proof Verified
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            {...register("isMarksheetCertificate")}
-                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                          />
-                          Marksheet/Certificate
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            {...register("isAddressProof")}
-                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                          />
-                          Address Proof
-                        </label>
-                      </div>
-                    </div>
-
-
-                    {/* Add to List button - shown in both Create and Update Mode */}
-                    <div className="col-span-2 flex justify-end items-end">
+                    {/* Add to List button - moved here for better alignment */}
+                    <div className="sm:col-span-2 flex justify-end items-end">
                       <button
                         type="button"
                         onClick={handleAddCourseToList}
-                        className="bg-slate-800 text-white px-4 py-2 rounded text-sm font-bold flex items-center gap-2 hover:bg-black h-10 w-full justify-center"
+                        className="bg-slate-800 text-white px-4 py-2 rounded text-sm font-bold flex items-center gap-2 hover:bg-black h-10 w-full sm:w-auto px-8 justify-center shadow-md transition-all active:scale-95"
                       >
                         <Plus size={16} /> Add to List
                       </button>
                     </div>
 
+                    {/* Document Verification Section */}
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-purple-50 p-4 rounded border border-purple-200 mt-2">
+                      <label className="label text-purple-800 mb-3 block font-bold">Document Verification Status</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                          <input
+                            type="checkbox"
+                            {...register("isPhotos")}
+                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                          />
+                          Photo
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                          <input
+                            type="checkbox"
+                            {...register("isIDProof")}
+                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                          />
+                          ID Proof
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                          <input
+                            type="checkbox"
+                            {...register("isMarksheetCertificate")}
+                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                          />
+                          Marksheet
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                          <input
+                            type="checkbox"
+                            {...register("isAddressProof")}
+                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                          />
+                          Address
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

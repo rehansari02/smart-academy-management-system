@@ -306,7 +306,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   );
 
   return (
-    <div ref={ref} className="print-only">
+    <div ref={ref} className="print-only-container">
       <style>
         {`
           @media print {
@@ -314,19 +314,20 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
               margin: 0;
               size: A4 portrait;
             }
-            body {
-              margin: 0;
-              padding: 0;
-            }
-            .print-only {
-              display: block !important;
-            }
-            .no-print {
+            body > *:not(.print-only-container) {
               display: none !important;
+            }
+            .print-only-container {
+              display: block !important;
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 210mm;
+              background: white;
             }
           }
           @media screen {
-            .print-only {
+            .print-only-container {
               display: none;
             }
           }

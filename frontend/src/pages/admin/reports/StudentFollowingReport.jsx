@@ -8,10 +8,11 @@ import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
 import StudentSearch from '../../../components/StudentSearch';
+import InquiryPaginationFooter from '../../../components/transaction/InquiryPaginationFooter';
 
 const StudentFollowingReport = () => {
     const dispatch = useDispatch();
-    const { inquiries, isLoading } = useSelector((state) => state.transaction);
+    const { inquiries, inquiryPagination, isLoading } = useSelector((state) => state.transaction);
     const { branches } = useSelector((state) => state.master);
     const { employees } = useSelector((state) => state.employees);
     const { user } = useSelector((state) => state.auth);
@@ -23,10 +24,12 @@ const StudentFollowingReport = () => {
         branchId: '',
         studentName: '',
         referenceBy: '',
-        source: 'DSR' //Default to DSR as per request
+        source: 'DSR', //Default to DSR as per request
+        page: 1,
+        limit: 10
     });
 
-    const [appliedFilters, setAppliedFilters] = useState(filters);
+    const [appliedFilters, setAppliedFilters] = useState({ ...filters, page: 1, limit: 10 });
     const componentRef = useRef(null);
 
     // Fetch Initial Data
@@ -48,6 +51,10 @@ const StudentFollowingReport = () => {
             dispatch(resetTransaction());
         }
     }, [dispatch, appliedFilters]);
+
+    const handlePageChange = (page) => {
+        setAppliedFilters(prev => ({ ...prev, page }));
+    };
 
     const handleStudentSelect = (id, item) => {
         setFilters({ 
@@ -71,7 +78,9 @@ const StudentFollowingReport = () => {
             branchId: '',
             studentName: '',
             referenceBy: '',
-            source: 'DSR'
+            source: 'DSR',
+            page: 1,
+            limit: 10
         };
         setFilters(initial);
         setAppliedFilters(initial);
@@ -307,9 +316,16 @@ const StudentFollowingReport = () => {
                                     No records found matching criteria.
                                 </td>
                             </tr>
-                        )}
-                    </tbody>
-                </table>
+                        )}                        </tbody>
+                    </table>
+                    {/* Pagination */}
+                    <div className="print:hidden mt-2">
+                        <InquiryPaginationFooter
+                            pagination={inquiryPagination}
+                            count={inquiries?.length || 0}
+                            onPageChange={handlePageChange}
+                        />
+                    </div>
             </div>
         </div>
     );

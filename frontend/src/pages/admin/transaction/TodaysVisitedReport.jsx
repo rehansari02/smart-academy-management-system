@@ -15,6 +15,7 @@ import TimePicker12Hour from '../../../components/common/TimePicker12Hour';
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
+import Swal from 'sweetalert2';
 
 // --- SUB-COMPONENT: Follow Up Form ---
 const FollowUpForm = ({ inquiry, onClose, onSave }) => {
@@ -59,12 +60,27 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
 
         await onSave({ id: inquiry._id, data: updateData });
 
-        if (data.status === 'Complete') {
-            setTimeout(() => {
-                navigate('/master/student/new', {
-                    state: { inquiryData: inquiry }
-                });
-            }, 500);
+        // If status is newly changed to Complete, ask for admission redirect
+        if (data.status === 'Complete' && inquiry.status !== 'Complete') {
+            Swal.fire({
+                title: 'Inquiry Completed!',
+                text: "Do you want to go to the Student Admission page now?",
+                icon: 'success',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#aaa',
+                confirmButtonText: 'Yes, Admission',
+                cancelButtonText: 'No, stay here',
+                customClass: {
+                    container: 'z-[9999]'
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    navigate('/master/student/new', { state: { inquiryData: inquiry } });
+                } else {
+                    onClose();
+                }
+            });
         } else {
             onClose();
         }
@@ -611,7 +627,7 @@ const TodaysVisitedReport = () => {
                     <table className="w-full border-collapse min-w-[1100px]">
                         {filters.reportType === 'visited' ? (
                             <thead>
-                                <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
+                                <tr className="bg-orange-700 text-white text-left text-xs uppercase tracking-wider">
                                     <th className="p-2 border font-semibold w-12 text-center">Sr. No.</th>
                                     <th className="p-2 border font-semibold">Visiting Date</th>
                                     {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
@@ -622,7 +638,7 @@ const TodaysVisitedReport = () => {
                                     <th className="p-2 border font-semibold">In Time</th>
                                     <th className="p-2 border font-semibold">Out Time</th>
                                     <th className="p-2 border font-semibold w-36">Remarks/Details</th>
-                                    <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-32">Actions</th>
+                                    <th className="p-2 border font-semibold text-center sticky right-0 bg-orange-700 z-10 w-32">Actions</th>
                                 </tr>
                             </thead>
                         ) : (
@@ -635,10 +651,10 @@ const TodaysVisitedReport = () => {
                                     <th className="p-2 border font-semibold text-center w-36">Contact</th>
                                     <th className="p-2 border font-semibold">Reference</th>
                                     <th className="p-2 border font-semibold text-center">Status</th>
-                                    <th className="p-2 border font-bold text-blue-800 text-left uppercase tracking-wider">Followup Date</th>
-                                    <th className="p-2 border font-bold text-blue-800 text-left uppercase tracking-wider">Followup Time</th>
-                                    <th className="p-2 border font-bold text-blue-800 text-left uppercase tracking-wider">Followup Details</th>
-                                    <th className="p-2 border font-bold text-blue-800 text-left uppercase tracking-wider">Followup By</th>
+                                    <th className="p-2 border font-bold text-white text-left uppercase tracking-wider">Followup Date</th>
+                                    <th className="p-2 border font-bold text-white text-left uppercase tracking-wider">Followup Time</th>
+                                    <th className="p-2 border font-bold text-white text-left uppercase tracking-wider">Followup Details</th>
+                                    <th className="p-2 border font-bold text-white text-left uppercase tracking-wider">Followup By</th>
                                     <th className="p-2 border font-bold text-blue-800 text-center uppercase tracking-wider sticky right-0 bg-blue-50/90 print:hidden">Actions</th>
                                 </tr>
                             </thead>

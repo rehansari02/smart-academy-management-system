@@ -426,13 +426,13 @@ const ExamResultPrint = () => {
   let snameFontSize = "10px";
   let ssubFontSize = "7px";
   let tableFontSize = "9.5px";
-  let spacerHeight = "4mm";
-  let headingMarginTop = "3mm";
-  let headingMarginBottom = "3mm";
-  let detailsMarginBottom = "3.5mm";
+  let spacerHeight = "2mm";
+  let headingMarginTop = "2mm";
+  let headingMarginBottom = "2mm";
+  let detailsMarginBottom = "3mm";
   let botTableHeight = "10mm";
   let botTableFontSize = "9px";
-  let dateIssueMarginTop = "8mm";
+  let dateIssueMarginTop = "4mm";
 
   if (numSubjects > 6) {
     // More aggressive scaling to fit into the pre-printed space
@@ -452,7 +452,7 @@ const ExamResultPrint = () => {
 
     botTableHeight = `${Math.max(6, 10 - overflow * 0.8)}mm`;
     botTableFontSize = `${Math.max(7, 9 - overflow * 0.5)}px`;
-    dateIssueMarginTop = `${Math.max(6, 14 + overflow * 5)}mm`;
+    dateIssueMarginTop = `${Math.max(2, 4 - overflow * 0.5)}mm`;
   }
 
   const studentPrefix =

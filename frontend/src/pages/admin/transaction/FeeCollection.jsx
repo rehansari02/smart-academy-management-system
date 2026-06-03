@@ -323,13 +323,21 @@ const FeeCollection = () => {
 
     const triggerPrintReceipt = (receipt) => {
         setPrintingReceipt(receipt);
+        // Add a small delay to ensure the template has rendered with the new receipt data
         setTimeout(() => {
-            handlePrintReceipt();
-        }, 100);
+            const printBtn = document.getElementById('hidden-print-trigger');
+            if (printBtn) {
+                printBtn.click();
+            } else {
+                handlePrintReceipt();
+            }
+        }, 300);
     };
 
     return (
         <div className="container mx-auto p-4 md:p-6 bg-gray-50 min-h-screen">
+            {/* Hidden button to trigger print-to-react properly on mobile */}
+            <button id="hidden-print-trigger" onClick={handlePrintReceipt} className="hidden" />
             <h1 className="text-3xl font-bold text-gray-800 mb-6 flex items-center gap-2">
                 <FileText className="text-blue-600"/> Fees Receipt Management
             </h1>

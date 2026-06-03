@@ -80,15 +80,27 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
         // Save the inquiry update first
         await onSave({ id: inquiry._id, data: updateData });
 
-        // If status is Complete, navigate to Student Admission with inquiry data
-        if (data.status === 'Complete') {
-            setTimeout(() => {
-                navigate('/master/student/new', {
-                    state: {
-                        inquiryData: inquiry
-                    }
-                });
-            }, 500); // Small delay to ensure the save completes
+        // If status is newly changed to Complete, ask for admission redirect
+        if (data.status === 'Complete' && inquiry.status !== 'Complete') {
+            Swal.fire({
+                title: 'Inquiry Completed!',
+                text: "Do you want to go to the Student Admission page now?",
+                icon: 'success',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#aaa',
+                confirmButtonText: 'Yes, Admission',
+                cancelButtonText: 'No, stay here',
+                customClass: {
+                    container: 'z-[9999]'
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    navigate('/master/student/new', { state: { inquiryData: inquiry } });
+                } else {
+                    onClose();
+                }
+            });
         } else {
             onClose();
         }
@@ -224,7 +236,7 @@ const InquiryOnline = () => {
             dispatch(getBranches());
             fetchStats(filters);
         }
-    }, [dispatch, user?.role]);
+    }, [dispatch, user?.role, filters.employeeId, filters.startDate, filters.endDate, filters.branchId]);
     useEffect(() => {
         if (isSuccess && message && pendingModalSave) {
             toast.success(message); // "Inquiry Updated" or "Follow-up Updated"
@@ -271,14 +283,20 @@ const InquiryOnline = () => {
     };
 
     const toggleAllInquiries = () => {
-        const ids = (inquiries || []).filter(canSelectInquiry).map((item) => item._id).filter(Boolean);
+        // Only select items that are visible on the current page (respecting pageSize)
+        const visibleInquiries = (inquiries || []).slice(0, filters.pageSize);
+        const ids = visibleInquiries.filter(canSelectInquiry).map((item) => item._id).filter(Boolean);
+        
         setSelectedInquiryIds((current) => {
+            const isCurrentPageSelected = ids.length > 0 && ids.every((id) => current.has(id));
             const next = new Set(current);
-            const isCurrentPageSelected = ids.length > 0 && ids.every((id) => next.has(id));
-            ids.forEach((id) => {
-                if (isCurrentPageSelected) next.delete(id);
-                else next.add(id);
-            });
+            if (isCurrentPageSelected) {
+                // Deselect only current page items, keep others
+                ids.forEach((id) => next.delete(id));
+            } else {
+                // Add current page items to existing selections
+                ids.forEach((id) => next.add(id));
+            }
             return next;
         });
     };
@@ -304,7 +322,7 @@ const InquiryOnline = () => {
             toast.error(error.response?.data?.message || 'Inquiry assignment failed');
         }
     };
-    const currentPageIds = (inquiries || []).filter(canSelectInquiry).map((item) => item._id).filter(Boolean);
+    const currentPageIds = (inquiries || []).slice(0, filters.pageSize).filter(canSelectInquiry).map((item) => item._id).filter(Boolean);
     const currentPageSelectedCount = currentPageIds.filter((id) => selectedInquiryIds.has(id)).length;
     const isCurrentPageSelected = currentPageIds.length > 0 && currentPageSelectedCount === currentPageIds.length;
 
@@ -457,6 +475,26 @@ const InquiryOnline = () => {
                     </span>
                 </div>
                 <div className="flex gap-2">
+                    {stats?.summary && filters.employeeId && (
+                        <div className="flex items-center gap-4 mr-4 bg-white p-2 rounded-lg border border-gray-200 shadow-sm animate-fadeIn">
+                            <div className="text-center px-3 border-r border-gray-100">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase">Total</p>
+                                <p className="text-sm font-black text-gray-800">{stats.summary.total}</p>
+                            </div>
+                            <div className="text-center px-3 border-r border-gray-100">
+                                <p className="text-[10px] font-bold text-orange-400 uppercase">Pending</p>
+                                <p className="text-sm font-black text-orange-600">{stats.summary.pending}</p>
+                            </div>
+                            <div className="text-center px-3 border-r border-gray-100">
+                                <p className="text-[10px] font-bold text-green-400 uppercase">Admitted</p>
+                                <p className="text-sm font-black text-green-600">{stats.summary.admitted}</p>
+                            </div>
+                            <div className="text-center px-3">
+                                <p className="text-[10px] font-bold text-blue-400 uppercase">Follow-ups Today</p>
+                                <p className="text-sm font-black text-blue-600">{stats.summary.followUpsToday || 0}</p>
+                            </div>
+                        </div>
+                    )}
                     <InquiryImportButton
                         source="Online"
                         onImported={() => dispatch(fetchInquiries(filters))}
@@ -674,7 +712,7 @@ const InquiryOnline = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {inquiries && inquiries.length > 0 ? inquiries.map((inquiry, index) => {
+                        {inquiries && inquiries.length > 0 ? (inquiries.slice(0, filters.pageSize)).map((inquiry, index) => {
                             const assignedByAdmin = isInquiryAssigned(inquiry);
                             const selectable = canSelectInquiry(inquiry);
                             return (

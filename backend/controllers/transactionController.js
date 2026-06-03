@@ -351,8 +351,8 @@ const getInquiries = asyncHandler(async (req, res) => {
   }
 
   const sort = dateFilterType === "followUpDate"
-    ? { followUpDate: 1, createdAt: -1 }
-    : { createdAt: -1 };
+    ? { followUpDate: 1, createdAt: -1, _id: 1 }
+    : { createdAt: -1, _id: 1 };
 
   let inquiryQuery = Inquiry.find(query)
     .populate("interestedCourse", "name")
@@ -818,6 +818,14 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
         totalInquiries: 0,
         totalFollowUps: 0,
         employees: [],
+        summary: {
+            total: 0,
+            pending: 0,
+            admitted: 0,
+            converted: 0,
+            rejected: 0,
+            followUpsToday: 0
+        }
       });
     }
     inquiryQuery.allocatedTo = selectedEmployeeUserId;
@@ -842,6 +850,8 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
     .lean();
 
   const employeeMap = new Map();
+  let followUpsToday = 0;
+
   inquiries.forEach((inquiry) => {
     (inquiry.followUpHistory || []).forEach((history) => {
       const actionDate = history.createdAt || history.date;
@@ -851,6 +861,9 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
 
       const user = history.followUpBy || inquiry.allocatedTo || inquiry.createdBy || {};
       if (selectedEmployeeUserId && String(user._id || "") !== String(selectedEmployeeUserId)) return;
+      
+      followUpsToday++;
+      
       const key = user._id ? String(user._id) : "unassigned";
       const current = employeeMap.get(key) || {
         employeeId: user._id || null,
@@ -866,6 +879,27 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
     });
   });
 
+  // Calculate detailed summary if employeeId is provided
+  let summary = null;
+  if (selectedEmployeeUserId) {
+    const stats = await Inquiry.aggregate([
+      { $match: inquiryQuery },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          pending: { $sum: { $cond: [{ $eq: ["$status", "Pending"] }, 1, 0] } },
+          admitted: { $sum: { $cond: [{ $eq: ["$status", "Admitted"] }, 1, 0] } },
+          converted: { $sum: { $cond: [{ $eq: ["$status", "Converted"] }, 1, 0] } },
+          rejected: { $sum: { $cond: [{ $eq: ["$status", "Rejected"] }, 1, 0] } }
+        }
+      }
+    ]);
+    
+    summary = stats[0] || { total: 0, pending: 0, admitted: 0, converted: 0, rejected: 0 };
+    summary.followUpsToday = followUpsToday;
+  }
+
   const [totalInquiries] = await Promise.all([
     Inquiry.countDocuments(inquiriesTodayQuery),
   ]);
@@ -877,6 +911,7 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
     totalInquiries,
     totalFollowUps: employees.reduce((sum, item) => sum + item.followUpCount, 0),
     employees,
+    summary
   });
 });
 

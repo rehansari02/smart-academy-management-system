@@ -275,13 +275,18 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
     }
 
     // Get all unique references with aggregation and incentive calculation
+    const allRefsMatch = {
+        isDeleted: false,
+        ...(branchObjectId ? { branchId: branchObjectId } : {}),
+        reference: referenceFilter,
+        ...(dateMatch ? { admissionDate: dateMatch } : {})
+    };
+
     const allRefs = await Student.aggregate([
         {
             $match: {
-                isDeleted: false,
-                ...(branchObjectId ? { branchId: branchObjectId } : {}),
-                reference: referenceFilter,
-                ...(dateMatch ? { admissionDate: dateMatch } : {})
+                ...allRefsMatch,
+                ...(incentiveStatus && ['Paid', 'Pending'].includes(incentiveStatus) ? { incentiveStatus } : {})
             }
         },
         {

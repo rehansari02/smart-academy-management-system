@@ -43,8 +43,8 @@ const periodOptions = [
 ];
 const incentiveStatusOptions = [
   { value: '', label: 'All Status' },
-  { value: 'Pending', label: 'Pending' },
-  { value: 'Paid', label: 'Paid' }
+  // { value: 'Pending', label: 'Pending' },
+  // { value: 'Paid', label: 'Paid' }
 ];
 const STUDENTS_PAGE_LIMIT = 10;
 
@@ -110,7 +110,8 @@ const ReferenceIncentive = () => {
         ...(reference && { studentPeriod: detailFilters.period }),
         ...(reference && detailFilters.period === 'custom' && detailFilters.fromDate && { studentFromDate: detailFilters.fromDate }),
         ...(reference && detailFilters.period === 'custom' && detailFilters.toDate && { studentToDate: detailFilters.toDate }),
-        ...(reference && detailFilters.incentiveStatus && { incentiveStatus: detailFilters.incentiveStatus })
+        ...(reference && detailFilters.incentiveStatus && { incentiveStatus: detailFilters.incentiveStatus }),
+        ...(!reference && detailFilters.incentiveStatus && { incentiveStatus: detailFilters.incentiveStatus })
       };
       const { data } = await axios.get(API, { params, withCredentials: true });
       setRefData(data);
@@ -136,13 +137,13 @@ const ReferenceIncentive = () => {
   useEffect(() => {
     const timer = setTimeout(() => fetchData(activeReference), 300);
     return () => clearTimeout(timer);
-  }, [filters]);
+  }, [filters, studentFilters.incentiveStatus]);
 
   useEffect(() => {
     if (!activeReference) return undefined;
     const timer = setTimeout(() => fetchData(activeReference), 300);
     return () => clearTimeout(timer);
-  }, [studentFilters, studentPage]);
+  }, [studentFilters.period, studentFilters.fromDate, studentFilters.toDate, studentPage]);
 
   const handleReferenceClick = (refName) => {
     setActiveReference(refName);
