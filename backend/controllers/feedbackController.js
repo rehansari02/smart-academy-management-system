@@ -1,6 +1,8 @@
 const Feedback = require('../models/Feedback');
 const asyncHandler = require('express-async-handler');
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 // @route POST /api/feedback  — Public
 const submitFeedback = asyncHandler(async (req, res) => {
     const { name, email, phone, category, rating, message, suggestions } = req.body;
@@ -11,12 +13,34 @@ const submitFeedback = asyncHandler(async (req, res) => {
 
 // @route GET /api/feedback  — Admin
 const getAllFeedback = asyncHandler(async (req, res) => {
-    const { status, category } = req.query;
+    const { status, category, search } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
     const filter = {};
     if (status) filter.status = status;
     if (category) filter.category = category;
-    const feedbacks = await Feedback.find(filter).sort('-createdAt');
-    res.json(feedbacks);
+    if (search?.trim()) {
+        const searchRegex = new RegExp(escapeRegex(search.trim()), 'i');
+        filter.$or = [{ name: searchRegex }, { message: searchRegex }];
+    }
+
+    const [feedbacks, total] = await Promise.all([
+        Feedback.find(filter)
+            .sort({ createdAt: -1, _id: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit),
+        Feedback.countDocuments(filter)
+    ]);
+
+    res.json({
+        data: feedbacks,
+        pagination: {
+            page,
+            limit,
+            total,
+            pages: Math.max(1, Math.ceil(total / limit))
+        }
+    });
 });
 
 // @route PUT /api/feedback/:id  — Admin (update status / note)

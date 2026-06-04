@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { MessageSquare, Star, Trash2, Eye, X, CheckCircle, Clock, Inbox, Filter, Search, TrendingUp } from 'lucide-react';
 import Swal from 'sweetalert2';
@@ -133,6 +133,7 @@ const FeedbackModal = ({ fb, onClose, onUpdated }) => {
 const ManageFeedback = () => {
     const [feedbacks, setFeedbacks] = useState([]);
     const [stats, setStats] = useState({ total: 0, new: 0, resolved: 0, avgRating: '0' });
+    const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 });
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState(null);
     const [search, setSearch] = useState('');
@@ -140,20 +141,33 @@ const ManageFeedback = () => {
     const [filterCategory, setFilterCategory] = useState('All');
     const { delete: canDelete } = useUserRights('Feedback & Support');
 
-    const fetchAll = async () => {
+    const fetchAll = useCallback(async (page) => {
         try {
             setLoading(true);
             const [fbRes, statsRes] = await Promise.all([
-                axios.get(API, { withCredentials: true }),
+                axios.get(API, {
+                    params: {
+                        page,
+                        limit: 10,
+                        status: filterStatus === 'All' ? undefined : filterStatus,
+                        category: filterCategory === 'All' ? undefined : filterCategory,
+                        search: search.trim() || undefined
+                    },
+                    withCredentials: true
+                }),
                 axios.get(`${API}/stats`, { withCredentials: true })
             ]);
-            setFeedbacks(fbRes.data);
+            setFeedbacks(fbRes.data.data);
+            setPagination(fbRes.data.pagination);
             setStats(statsRes.data);
         } catch { toast.error('Failed to load feedback'); }
         finally { setLoading(false); }
-    };
+    }, [filterCategory, filterStatus, search]);
 
-    useEffect(() => { fetchAll(); }, []);
+    useEffect(() => {
+        const timer = setTimeout(() => fetchAll(1), 300);
+        return () => clearTimeout(timer);
+    }, [fetchAll]);
 
     // Mark as Read when opening
     const openFeedback = async (fb) => {
@@ -163,7 +177,9 @@ const ManageFeedback = () => {
                 await axios.put(`${API}/${fb._id}`, { status: 'Read' }, { withCredentials: true });
                 setFeedbacks(prev => prev.map(f => f._id === fb._id ? { ...f, status: 'Read' } : f));
                 setStats(prev => ({ ...prev, new: Math.max(0, prev.new - 1) }));
-            } catch {}
+            } catch {
+                // Opening the feedback should still work if marking it as read fails.
+            }
         }
     };
 
@@ -175,18 +191,15 @@ const ManageFeedback = () => {
         Swal.fire({ title: `Delete feedback from "${name}"?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'Delete' })
             .then(async r => {
                 if (r.isConfirmed) {
-                    try { await axios.delete(`${API}/${id}`, { withCredentials: true }); toast.success('Deleted'); fetchAll(); }
+                    try {
+                        await axios.delete(`${API}/${id}`, { withCredentials: true });
+                        toast.success('Deleted');
+                        fetchAll(feedbacks.length === 1 && pagination.page > 1 ? pagination.page - 1 : pagination.page);
+                    }
                     catch { toast.error('Failed'); }
                 }
             });
     };
-
-    const filtered = feedbacks.filter(f => {
-        const matchStatus   = filterStatus === 'All' || f.status === filterStatus;
-        const matchCategory = filterCategory === 'All' || f.category === filterCategory;
-        const matchSearch   = !search || f.name?.toLowerCase().includes(search.toLowerCase()) || f.message?.toLowerCase().includes(search.toLowerCase());
-        return matchStatus && matchCategory && matchSearch;
-    });
 
     const statCards = [
         { label: 'Total Feedback', value: stats.total,     icon: <Inbox size={22} />,       color: 'bg-blue-50 text-blue-700 border-blue-100' },
@@ -249,7 +262,7 @@ const ManageFeedback = () => {
                 {/* Table */}
                 {loading ? (
                     <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-900" /></div>
-                ) : filtered.length === 0 ? (
+                ) : feedbacks.length === 0 ? (
                     <div className="text-center py-16 border-2 border-dashed rounded-xl text-gray-400">
                         <MessageSquare size={48} className="mx-auto mb-3 text-gray-300" />
                         <p className="font-semibold">No feedback found</p>
@@ -269,7 +282,7 @@ const ManageFeedback = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                                {filtered.map(fb => (
+                                {feedbacks.map(fb => (
                                     <tr key={fb._id} className={`hover:bg-gray-50 transition-colors ${fb.status === 'New' ? 'bg-blue-50/40' : ''}`}>
                                         <td className="px-4 py-3">
                                             <p className="font-bold text-gray-800">{fb.name}</p>
@@ -309,9 +322,34 @@ const ManageFeedback = () => {
                         </table>
                     </div>
                 )}
+
+                {!loading && pagination.total > 0 && (
+                    <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm">
+                        <p className="text-gray-500">
+                            Showing {((pagination.page - 1) * pagination.limit) + 1}-{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} feedback
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => fetchAll(pagination.page - 1)}
+                                disabled={pagination.page <= 1 || loading}
+                                className="px-3 py-1.5 border rounded-lg bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                                Previous
+                            </button>
+                            <span className="font-medium text-gray-600">Page {pagination.page} of {pagination.pages}</span>
+                            <button
+                                onClick={() => fetchAll(pagination.page + 1)}
+                                disabled={pagination.page >= pagination.pages || loading}
+                                className="px-3 py-1.5 border rounded-lg bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {selected && <FeedbackModal fb={selected} onClose={() => setSelected(null)} onUpdated={fetchAll} />}
+            {selected && <FeedbackModal fb={selected} onClose={() => setSelected(null)} onUpdated={() => fetchAll(pagination.page)} />}
         </div>
     );
 };

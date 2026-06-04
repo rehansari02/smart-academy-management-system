@@ -513,7 +513,9 @@ const EmployeeMaster = () => {
                     <th className="p-2 border font-semibold">Mobile</th>
                     <th className="p-2 border font-semibold">Email</th>
                     <th className="p-2 border font-semibold">Role</th>
-                    <th className="p-2 border font-semibold">Login Name</th>
+                    {(user?.role === 'Super Admin' || user?.role === 'Branch Director') && (
+                        <th className="p-2 border font-semibold">Login Name</th>
+                    )}
                     <th className="p-2 border font-semibold">Branch</th>
                     <th className="p-2 border font-semibold text-center">Joining Date</th>
                     <th className="p-2 border font-semibold text-center">Status</th>
@@ -530,7 +532,9 @@ const EmployeeMaster = () => {
                         <td className="p-2 border text-gray-600">{emp.mobile}</td>
                         <td className="p-2 border text-gray-600">{emp.email}</td>
                         <td className="p-2 border text-gray-600">{emp.type}</td>
-                        <td className="p-2 border text-gray-600 font-mono text-xs">{emp.userAccount?.username || '-'}</td>
+                        {(user?.role === 'Super Admin' || user?.role === 'Branch Director') && (
+                            <td className="p-2 border text-gray-600 font-mono text-xs">{emp.userAccount?.username || '-'}</td>
+                        )}
                         <td className="p-2 border text-gray-600">
                              {emp.branchId ? (
                                  <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-[10px] font-semibold">
@@ -570,7 +574,7 @@ const EmployeeMaster = () => {
                         )}
                     </tr>
                 )) : (
-                    <tr><td colSpan="9" className="text-center py-8 text-gray-400">No employees found matching criteria</td></tr>
+                    <tr><td colSpan={10} className="text-center py-8 text-gray-400">No employees found matching criteria</td></tr>
                 )}
             </tbody>
         </table>
@@ -871,7 +875,7 @@ const EmployeeMaster = () => {
                         </div>
                     </div>
 
-                    {!(editMode && watchType === 'Branch Director') && (
+                    {(user?.role === 'Super Admin' || user?.role === 'Branch Director') && (
                         <div className="bg-yellow-50 p-4 rounded border border-yellow-200">
                             <div className="flex justify-between items-center border-b border-yellow-300 pb-2 mb-4">
                                 <h3 className="text-sm font-bold text-yellow-800 uppercase flex items-center gap-2"><Lock size={16}/> Login Details</h3>
@@ -882,11 +886,11 @@ const EmployeeMaster = () => {
                                     <label className="block text-xs font-bold text-gray-700">Login Username</label>
                                     <input 
                                         {...register('loginUsername')} 
-                                        readOnly={!editMode || user?.role !== 'Super Admin'} 
-                                        className={`w-full border p-2 rounded text-sm mt-1 ${editMode && user?.role === 'Super Admin' ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'}`}
+                                        readOnly={!editMode || (user?.role !== 'Super Admin' && user?.role !== 'Branch Director')} 
+                                        className={`w-full border p-2 rounded text-sm mt-1 ${editMode && (user?.role === 'Super Admin' || user?.role === 'Branch Director') ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'}`}
                                     />
-                                    {editMode && user?.role !== 'Super Admin' && (
-                                        <p className="text-[10px] text-gray-400 mt-0.5">Only Super Admin can change username</p>
+                                    {editMode && user?.role !== 'Super Admin' && user?.role !== 'Branch Director' && (
+                                        <p className="text-[10px] text-gray-400 mt-0.5">Only Super Admin & Branch Director can change username</p>
                                     )}
                                 </div>
                                 <div><label className="block text-xs font-bold text-gray-700">Password</label><input type="text" {...register('loginPassword')} placeholder={editMode ? "Leave empty to keep current" : ""} className="w-full border p-2 rounded text-sm mt-1 bg-white"/></div>

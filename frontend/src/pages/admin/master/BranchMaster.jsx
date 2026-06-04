@@ -118,7 +118,7 @@ const BranchMaster = () => {
             city: branch.city || '',
             state: branch.state || '',
             isActive: branch.isActive,
-            branchDirector: branch.branchDirector || '',
+            branchDirector: branch.branchDirector?._id || branch.branchDirector || '',
             directorUsername: branch.directorUsername || '',
             directorPassword: branch.directorPassword || ''
         });

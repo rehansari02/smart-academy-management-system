@@ -20,35 +20,7 @@ const createBranch = asyncHandler(async (req, res) => {
         throw new Error('Branch with this name or short code already exists');
     }
 
-    // Handle branch director credential update
-    if (branchDirector && directorUsername && directorPassword) {
-        // Verify employee exists
-        const employee = await Employee.findById(branchDirector);
-        if (!employee) {
-            res.status(400);
-            throw new Error('Selected employee not found');
-        }
-
-        // Hash the director password for User authentication
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(directorPassword, salt);
-
-        // Update employee's User account with new director credentials
-        if (employee.userAccount) {
-            await User.findByIdAndUpdate(employee.userAccount, {
-                username: directorUsername,
-                password: hashedPassword, // Store hashed password in User model
-                role: 'Branch Director'
-            });
-        } else {
-            res.status(400);
-            throw new Error('Selected employee does not have a linked user account');
-        }
-        // Update employee's role in Employee collection
-        employee.type = 'Branch Director';
-        await employee.save();
-    }
-
+    // Create the branch first to get the ID
     const branch = await Branch.create({
         name,
         shortCode,
@@ -63,6 +35,53 @@ const createBranch = asyncHandler(async (req, res) => {
         directorUsername: directorUsername || null,
         directorPassword: directorPassword || null // Store plain text password in Branch for display
     });
+
+    // Handle branch director credential creation/update
+    if (branch && branchDirector && directorUsername && directorPassword) {
+        // Verify employee exists
+        const employee = await Employee.findById(branchDirector);
+        if (!employee) {
+            // If employee not found, we still have the branch but we should probably log this
+            console.error(`Employee ${branchDirector} not found during branch creation`);
+        } else {
+            // Hash the director password for User authentication
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(directorPassword, salt);
+
+            // Update OR create employee's User account with new director credentials
+            if (employee.userAccount) {
+                await User.findByIdAndUpdate(employee.userAccount, {
+                    username: directorUsername,
+                    password: hashedPassword,
+                    role: 'Branch Director',
+                    branchId: branch._id,
+                    branchName: branch.name,
+                    isActive: true
+                });
+            } else {
+                // Create a new User account if the employee doesn't have one
+                const newUser = await User.create({
+                    name: employee.name,
+                    username: directorUsername,
+                    email: employee.email || `${directorUsername}@branch.local`,
+                    password: directorPassword, // pre('save') hook will hash this
+                    role: 'Branch Director',
+                    isActive: true,
+                    mobile: employee.mobile,
+                    branchId: branch._id,
+                    branchName: branch.name
+                });
+                employee.userAccount = newUser._id;
+            }
+
+            // Update employee record thoroughly
+            employee.type = 'Branch Director';
+            employee.branchId = branch._id;
+            employee.loginUsername = directorUsername;
+            employee.isLoginActive = true;
+            await employee.save();
+        }
+    }
 
     if (branch) {
         const popBranch = await Branch.findById(branch._id).populate('branchDirector', 'name email mobile');
@@ -141,28 +160,51 @@ const updateBranch = asyncHandler(async (req, res) => {
                 const salt = await bcrypt.genSalt(10);
                 const hashedPassword = await bcrypt.hash(directorPassword, salt);
 
-                // Update employee's User account with new director credentials
+                // Update OR create employee's User account with new director credentials
                 if (employee.userAccount) {
                     await User.findByIdAndUpdate(employee.userAccount, {
                         username: directorUsername,
-                        password: hashedPassword, // Store hashed password in User model
-                        role: 'Branch Director'
+                        password: hashedPassword,
+                        role: 'Branch Director',
+                        branchId: branch._id,
+                        branchName: branch.name,
+                        isActive: true
                     });
+                } else {
+                    // Create a new User account if the employee doesn't have one
+                    const newUser = await User.create({
+                        name: employee.name,
+                        username: directorUsername,
+                        email: employee.email || `${directorUsername}@branch.local`,
+                        password: directorPassword, // pre('save') hook will hash this
+                        role: 'Branch Director',
+                        isActive: true,
+                        mobile: employee.mobile,
+                        branchId: branch._id,
+                        branchName: branch.name
+                    });
+                    employee.userAccount = newUser._id;
                 }
 
-                // Update employee's role in Employee collection
+                // Update employee record thoroughly
                 employee.type = 'Branch Director';
+                employee.branchId = branch._id;
+                employee.loginUsername = directorUsername;
+                employee.isLoginActive = true;
                 await employee.save();
 
                 branch.branchDirector = branchDirector;
                 branch.directorUsername = directorUsername;
                 branch.directorPassword = directorPassword; // Store plain text password in Branch for display
-            } else {
-                // Clear director if no value provided
+            } else if (!branchDirector) {
+                // Clear director if branchDirector is null or empty
                 branch.branchDirector = null;
                 branch.directorUsername = null;
                 branch.directorPassword = null;
             }
+            // Note: If branchDirector is provided but username/password are missing, 
+            // we don't clear the director yet, as the user might be editing other fields.
+            // But usually the frontend should ensure these are provided if a director is selected.
         }
 
         const updatedBranch = await branch.save();

@@ -173,9 +173,6 @@ const createEmployee = asyncHandler(async (req, res) => {
         } catch (error) {
             console.error("[Debug] User Creation Error:", error);
             if (error.code === 11000) {
-                if (error.keyPattern && error.keyPattern.email) {
-                    res.status(400); throw new Error('A user account with this email already exists. Please use a different email.');
-                }
                 if (error.keyPattern && error.keyPattern.username) {
                     res.status(400); throw new Error('A user account with this username already exists. Please try a different username.');
                 }
@@ -239,9 +236,6 @@ const createEmployee = asyncHandler(async (req, res) => {
             await User.findByIdAndDelete(userId);
         }
         if (error.code === 11000) {
-            if (error.keyPattern && error.keyPattern.email) {
-                res.status(400); throw new Error('Employee with this email already exists');
-            }
             if (error.keyPattern && error.keyPattern.regNo) {
                 res.status(400); throw new Error('A registration conflict occurred. Please try again.');
             }

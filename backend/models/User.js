@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const userSchema = new mongoose.Schema({
     name: { type: String, required: true },
     username: { type: String, required: true, unique: true },
-    email: { type: String, unique: true, sparse: true }, // Optional - used for existing employees/students
+    email: { type: String }, // Optional - removed unique constraint to allow shared branch emails
     password: { type: String, required: true },
     role: { 
         type: String, 
