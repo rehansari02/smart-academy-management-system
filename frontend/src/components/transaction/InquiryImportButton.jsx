@@ -181,10 +181,21 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
         setSelectedRows(new Set());
     };
 
-    const getAssignedName = (rowNo) => {
-        const id = rowAssignments[rowNo];
-        const employee = employees.find((item) => item._id === id);
-        return employee?.name || '-';
+    const getEmployeeAssignmentId = (employee) => {
+        if (!employee) return '';
+        if (typeof employee.userAccount === 'object') {
+            return employee.userAccount?._id || employee._id;
+        }
+        return employee.userAccount || employee._id;
+    };
+
+    const assignRow = (rowNo, assignmentId) => {
+        setRowAssignments((current) => {
+            const next = { ...current };
+            if (assignmentId) next[rowNo] = assignmentId;
+            else delete next[rowNo];
+            return next;
+        });
     };
 
     return (
@@ -278,7 +289,7 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
                                         >
                                             <option value="">Select employee</option>
                                             {employees.map((employee) => (
-                                                <option key={employee._id} value={employee._id}>{employee.name}</option>
+                                                <option key={employee._id} value={getEmployeeAssignmentId(employee)}>{employee.name}</option>
                                             ))}
                                         </select>
                                         <button
@@ -317,7 +328,21 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
                                                             </button>
                                                         </td>
                                                         <td className="p-2 border text-gray-500">{index + 1}</td>
-                                                        <td className="p-2 border text-gray-700 font-semibold whitespace-nowrap">{getAssignedName(index + 2)}</td>
+                                                        <td className="p-2 border text-gray-700 font-semibold whitespace-nowrap">
+                                                            <select
+                                                                value={rowAssignments[index + 2] || ''}
+                                                                onChange={(event) => assignRow(index + 2, event.target.value)}
+                                                                className="border rounded px-2 py-1.5 text-xs min-w-[170px] bg-white"
+                                                                title={`Assign row ${index + 1}`}
+                                                            >
+                                                                <option value="">Not assigned</option>
+                                                                {employees.map((employee) => (
+                                                                    <option key={employee._id} value={getEmployeeAssignmentId(employee)}>
+                                                                        {employee.name}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </td>
                                                         {previewColumns.map((column) => (
                                                             <td key={column} className="p-2 border text-gray-700 whitespace-nowrap max-w-[220px] truncate" title={String(row[column] || '')}>
                                                                 {String(row[column] || '-')}

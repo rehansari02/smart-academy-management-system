@@ -160,6 +160,38 @@ const InquiryOnline = () => {
     const { user } = useSelector((state) => state.auth);
     const { branches } = useSelector((state) => state.branch);
     const { add, edit, delete: canDelete } = useUserRights('Inquiry - Online');
+    const getLastFollowUpByName = (inquiry) => {
+        const by = inquiry.followUpBy;
+        if (by?.name || by?.username) return by.name || by.username;
+        const last = inquiry.followUpHistory?.[inquiry.followUpHistory.length - 1];
+        const lastBy = last?.followUpBy;
+        if (lastBy?.name || lastBy?.username) return lastBy.name || lastBy.username;
+        return '-';
+    };
+
+    const getLastFollowUpMessage = (inquiry) => {
+        const last = inquiry.followUpHistory?.[inquiry.followUpHistory.length - 1];
+        return last?.remarks || '-';
+    };
+
+    const getLastFollowUpInfo = (inquiry) => {
+        const history = inquiry.followUpHistory;
+        if (!history || history.length === 0) return '-';
+        const last = history[history.length - 1];
+        if (!last) return '-';
+        const dateStr = last.date
+            ? `${formatDate(last.date)} ${new Date(last.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            : '';
+        const by = last.followUpBy?.name || last.followUpBy?.username || '-';
+        if (!dateStr) return by;
+        return (
+            <div className="text-xs">
+                <div className="font-semibold text-gray-800">{dateStr}</div>
+                <div className="text-gray-500">by {by}</div>
+            </div>
+        );
+    };
+
     const getFilledBy = (inquiry) => inquiry.createdBy?.name || inquiry.createdBy?.username || inquiry.followUpBy?.name || inquiry.followUpBy?.username || inquiry.allocatedTo?.name || inquiry.allocatedTo?.username || '-';
     const getHandleBy = (inquiry) => inquiry.allocatedTo?.name || inquiry.allocatedTo?.username || inquiry.referenceBy || 'Direct';
     const getUserId = (value) => value?._id || value || '';
@@ -382,7 +414,6 @@ const InquiryOnline = () => {
                 </div>
             ) 
         },
-        { header: 'Gender', accessor: 'gender' },
         { header: 'Status', render: r => <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${r.status === 'Open' ? 'bg-green-100 text-green-700' : r.status === 'Recall' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'}`}>{r.status}</span> },
         {
             header: 'Next Follow Up', render: r => (
@@ -702,12 +733,11 @@ const InquiryOnline = () => {
                             {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Handle By</th>}
                             <th className="p-2 border font-semibold">Student Name</th>
                             <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
-                            <th className="p-2 border font-semibold">Gender</th>
                             <th className="p-2 border font-semibold text-center">Status</th>
-                            <th className="p-2 border font-semibold">Followup Date</th>
-                            <th className="p-2 border font-semibold">Followup Time</th>
+                            <th className="p-2 border font-semibold">Followup</th>
                             <th className="p-2 border font-semibold w-36">Followup Details</th>
                             <th className="p-2 border font-semibold">Followup By</th>
+                            <th className="p-2 border font-semibold">Last Followup</th>
                             <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-32">Actions</th>
                         </tr>
                     </thead>
@@ -751,7 +781,6 @@ const InquiryOnline = () => {
                                         </div>
                                     </div>
                                 </td>
-                                <td className="p-2 border text-gray-600">{inquiry.gender || '-'}</td>
                                 <td className="p-2 border text-center">
                                     <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${inquiry.status === 'Open' ? 'bg-green-100 text-green-700 border-green-200' :
                                             inquiry.status === 'Recall' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
@@ -760,12 +789,12 @@ const InquiryOnline = () => {
                                         {inquiry.status}
                                     </span>
                                 </td>
-                                <td className="p-2 border text-gray-700">{inquiry.followUpDate ? formatDate(inquiry.followUpDate) : '-'}</td>
                                 <td className="p-2 border text-gray-700">
-                                    {inquiry.followUpDate ? new Date(inquiry.followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                    {inquiry.followUpDate ? `${formatDate(inquiry.followUpDate)} ${new Date(inquiry.followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}
                                 </td>
-                                <td className="p-2 border text-gray-600 truncate max-w-xs" title={inquiry.followUpDetails}>{inquiry.followUpDetails ? (inquiry.followUpDetails.length > 14 ? `${inquiry.followUpDetails.substring(0, 14)}...` : inquiry.followUpDetails) : '-'}</td>
-                                <td className="p-2 border text-gray-700">{inquiry.followUpBy?.name || inquiry.followUpBy?.username || '-'}</td>
+                                <td className="p-2 border text-gray-600 truncate max-w-xs" title={getLastFollowUpMessage(inquiry)}>{getLastFollowUpMessage(inquiry).length > 30 ? `${getLastFollowUpMessage(inquiry).substring(0, 30)}...` : getLastFollowUpMessage(inquiry)}</td>
+                                <td className="p-2 border text-gray-700">{getLastFollowUpByName(inquiry)}</td>
+                                <td className="p-2 border text-gray-700">{getLastFollowUpInfo(inquiry)}</td>
                                 <td className="p-2 border text-center sticky right-0 bg-white">
                                     <div className="flex justify-center gap-1">
                                         <button onClick={() => setShowFollowUpModal(inquiry)} className="bg-purple-50 text-purple-600 border border-purple-200 p-1 rounded hover:bg-purple-100 transition" title="Follow Up">
@@ -785,7 +814,7 @@ const InquiryOnline = () => {
                             </tr>
                             );
                         }) : (
-                            <tr><td colSpan={user?.role === 'Super Admin' ? 15 : 11} className="text-center py-8 text-gray-400">No inquiries found</td></tr>
+                            <tr><td colSpan={user?.role === 'Super Admin' ? 14 : 10} className="text-center py-8 text-gray-400">No inquiries found</td></tr>
                         )}
                     </tbody>
                 </table>

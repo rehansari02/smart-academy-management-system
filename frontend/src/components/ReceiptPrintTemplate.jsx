@@ -67,6 +67,11 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   };
 
   const branchInfo = getBranchInfo();
+  const formatBranchName = (name) => {
+    const branchName = String(name || '').trim();
+    if (!branchName) return 'Main Branch';
+    return /\bbranch$/i.test(branchName) ? branchName : `${branchName} Branch`;
+  };
 
   // Single Receipt markup
   const renderSingleReceipt = () => (
@@ -103,7 +108,8 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
             textDecoration: 'underline',
             textUnderlineOffset: '6px'
           }}>
-            {branchInfo.name || (receipt.student?.branchName ? (receipt.student.branchName.endsWith(' Branch') ? receipt.student.branchName : `${receipt.student.branchName} Branch`) : 'Main')}          </h2>
+            {formatBranchName(branchInfo.name || receipt.student?.branchName)}
+          </h2>
           <p style={{ margin: '2px 0', fontSize: '11px', color: '#444', fontWeight: '500' }}>
             {branchInfo.address || '309-A, 309-B, 3rd Floor, Sai Square Building'}<br />
             {branchInfo.city || 'Bhestan'}, {branchInfo.state || 'Gujarat'} - {branchInfo.pincode || '395023'} (INDIA)

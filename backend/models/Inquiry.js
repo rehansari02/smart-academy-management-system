@@ -18,7 +18,12 @@ const inquirySchema = new mongoose.Schema(
     // Contact Details
     contactHome: { type: String },
     contactStudent: { type: String },
-    contactParent: { type: String },
+    contactParent: {
+      type: String,
+      required: function () {
+        return ["Walk-in", "DSR"].includes(this.source);
+      },
+    },
 
     // Education & Address
     education: { type: String },

@@ -34,7 +34,7 @@ const resolveAssignableUserId = async (value) => {
     const user = await User.findById(text).select("_id").lean();
     if (user?._id) return user._id;
 
-    const employee = await Employee.findById(text)
+    const employee = await Employee.findOne({ _id: text, isDeleted: false, isActive: true })
       .select("userAccount loginUsername email mobile name")
       .lean();
 
@@ -73,6 +73,7 @@ const resolveAssignableUserId = async (value) => {
 
   const matchedEmployee = await Employee.findOne({
     isDeleted: false,
+    isActive: true,
     $or: [
       { name: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
       { loginUsername: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
@@ -597,7 +598,7 @@ const importInquiries = asyncHandler(async (req, res) => {
     Course.find({ isDeleted: false }).select("_id name shortName").lean(),
     Branch.find({}).select("_id name shortCode").lean(),
     User.find({ isActive: { $ne: false } }).select("_id name username").lean(),
-    Employee.find({ isDeleted: false }).select("_id userAccount name loginUsername email mobile").lean(),
+    Employee.find({ isDeleted: false, isActive: true }).select("_id userAccount name loginUsername email mobile").lean(),
   ]);
   const courseByName = new Map();
   courses.forEach((course) => {
@@ -626,6 +627,18 @@ const importInquiries = asyncHandler(async (req, res) => {
       });
     }
   });
+
+  const requestedAssignmentValues = [...new Set(
+    [...Object.values(assignmentsByRow), defaultAllocatedTo]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )];
+  const resolvedAssignmentEntries = await Promise.all(
+    requestedAssignmentValues.map(async (value) => [value, await resolveAssignableUserId(value)])
+  );
+  const resolvedAssignmentUserByValue = new Map(
+    resolvedAssignmentEntries.filter(([, userId]) => userId)
+  );
 
   const errors = [];
   const docs = [];
@@ -672,10 +685,14 @@ const importInquiries = asyncHandler(async (req, res) => {
     const referenceBy = String(excelValue(row, ["Reference", "Reference By"])).trim();
     const assignedFromRow = assignmentsByRow[rowNo] || assignmentsByRow[index + 1];
     const rawAssignedUser = assignedFromRow || defaultAllocatedTo;
-    const assignedUser = userById.has(String(rawAssignedUser))
-      ? rawAssignedUser
-      : employeeUserById.get(String(rawAssignedUser));
+    const assignedUser = resolvedAssignmentUserByValue.get(String(rawAssignedUser))
+      || (userById.has(String(rawAssignedUser)) ? rawAssignedUser : employeeUserById.get(String(rawAssignedUser)));
     const referenceOwner = !isDirectReference(referenceBy) ? userByReferenceName.get(normalizeExcelKey(referenceBy)) : null;
+
+    if (rawAssignedUser && !assignedUser) {
+      errors.push(`Row ${rowNo}: Selected employee has no active user login for assignment`);
+      return;
+    }
 
     const doc = {
       source,
@@ -1459,7 +1476,7 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
 
   // 5. Send Transaction SMS (Applies to ALL Receipts)
   try {
-      const var1 = `${student.firstName} ${student.middleName ? student.middleName + ' ' : ''}${student.lastName}`; // Student Name
+      const var1 = `${student.firstName} ${student.lastName}`; // Student Name (Unified format)
       const var2 = amountPaid; // Amount
       
       // Determine var3 (Purpose)
@@ -1472,21 +1489,39 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
           var3 = "Registration Fees";
       }
 
-      const includeRegNo = receiptPurpose.purpose !== "admission";
+      // var4 (Registration/Enrollment No)
       const var4 = student.regNo || student.enrollmentNo || "N/A";
-      const smsMessage = includeRegNo
-        ? `Dear, ${var1}. Your Course fees ${var2} has been deposited for ${var3}, Reg.No. ${var4}. Thank you, Smart Institute`
-        : `Dear, ${var1}. Your Course fees ${var2} has been deposited for ${var3}. Thank you, Smart Institute`;
 
-      const contacts = [...new Set([student.mobileStudent, student.mobileParent, student.contactHome].filter(Boolean))]; 
+      // ALWAYS include Reg.No. to match the approved DLT template exactly
+      const smsMessage = `Dear, ${var1}. Your Course fees ${var2} has been deposited for ${var3}, Reg.No. ${var4}. Thank you, Smart Institute`;
+
+      const contacts = [...new Set([
+          student.mobileStudent,
+          student.mobileParent,
+          student.contactHome
+      ].filter(Boolean))];
+
+      // SMS Diagnostic Logging
+      console.log('=== SMS DIAGNOSTIC ===');
+      console.log('Student ID:', student._id);
+      console.log('Student Mobile Numbers - Student:', student.mobileStudent, '| Parent:', student.mobileParent, '| Home:', student.contactHome);
+      console.log('Filtered Contacts:', contacts);
+      console.log('Receipt Purpose:', receiptPurpose.purpose);
+      console.log('Admission Completed Now:', admissionCompletedNow);
+      console.log('SMS Message:', smsMessage);
       
-      // Send SMS asynchronously
-      console.log(`Sending Fees SMS to: ${contacts.join(', ')} | Msg: ${smsMessage}`);
-      
-      // Send SMS synchronously (awaited)
-      await Promise.all(contacts.map(num => 
-          sendSMS(num, smsMessage, 'Fees').catch(err => console.error(`Failed to send Transaction SMS to ${num}`, err))
-      ));
+      if (contacts.length === 0) {
+          console.warn('!!! SMS NOT SENT: No valid mobile numbers found for this student !!!');
+          console.warn('Student fields - mobileStudent:', student.mobileStudent, 'mobileParent:', student.mobileParent, 'contactHome:', student.contactHome);
+      } else {
+          console.log(`Sending Fees SMS to: ${contacts.join(', ')} | Msg: ${smsMessage}`);
+
+          // Send SMS synchronously (awaited)
+          await Promise.all(contacts.map(num => 
+              sendSMS(num, smsMessage, 'Fees').catch(err => console.error(`Failed to send Transaction SMS to ${num}`, err))
+          ));
+      }
+      console.log('=== SMS DIAGNOSTIC END ===');
       
   } catch (error) {
       console.error("Error setting up Transaction SMS", error);

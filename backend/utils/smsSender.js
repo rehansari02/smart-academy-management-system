@@ -13,6 +13,7 @@ const sendSMS = async (mobileNumber, message, category = 'General') => {
         let setting = await SmsSetting.findOne();
         if (!setting) {
             // Create default setting if it doesn't exist
+            console.log("[SMS] No SmsSetting found. Creating default settings...");
             setting = await SmsSetting.create({ 
                 isGlobalEnabled: true,
                 isAdmissionEnabled: true,
@@ -22,6 +23,8 @@ const sendSMS = async (mobileNumber, message, category = 'General') => {
             });
         }
 
+        console.log(`[SMS] Settings - Global: ${setting.isGlobalEnabled} | ${category}: ${setting['is' + category + 'Enabled'] ?? true}`);
+
         if (!setting.isGlobalEnabled) {
             console.log("SMS Skipped: SMS sending is disabled globally.");
             await SmsLog.create({
@@ -30,7 +33,7 @@ const sendSMS = async (mobileNumber, message, category = 'General') => {
                 status: 'disabled',
                 category
             });
-            return { status: 'disabled', message: 'SMS sending is disabled globally' };
+            throw new Error('SMS sending is disabled globally');
         }
 
         // Check specific category
@@ -48,15 +51,21 @@ const sendSMS = async (mobileNumber, message, category = 'General') => {
                 status: 'disabled',
                 category
             });
-            return { status: 'disabled', message: `SMS sending is disabled for ${category}` };
+            throw new Error(`SMS sending is disabled for ${category}`);
         }
 
         const username = process.env.SMS_USERNAME;
         const password = process.env.SMS_PASSWORD;
         const senderId = process.env.SMS_SENDER_ID || 'SMINT';
 
+        if (!username || !password) {
+            console.error(`[SMS] CRITICAL: SMS_USERNAME or SMS_PASSWORD environment variables are not set!`);
+        }
+
         // Prepare the URL
         const apiUrl = 'https://pgapi.smartping.io/fe/api/v1/send';
+
+        console.log(`[SMS] Sending via API: ${apiUrl} | To: ${mobileNumber} | From: ${senderId} | Msg: ${message.substring(0, 50)}...`);
 
         // Make the Request
         const response = await axios.get(apiUrl, {
@@ -72,10 +81,17 @@ const sendSMS = async (mobileNumber, message, category = 'General') => {
 
         console.log(`SMS Sent to ${mobileNumber}:`, response.data);
 
+        const isAccepted = response.data?.statusCode === 200
+            && response.data?.state === 'SUBMIT_ACCEPTED';
+        if (!isAccepted) {
+            throw new Error(`SMS gateway rejected message: ${JSON.stringify(response.data)}`);
+        }
+
         // 2. Log success
         await SmsLog.create({
             mobileNumber,
             message,
+            category,
             status: 'success',
             response: response.data
         });
@@ -90,6 +106,7 @@ const sendSMS = async (mobileNumber, message, category = 'General') => {
             await SmsLog.create({
                 mobileNumber,
                 message,
+                category,
                 status: 'failed',
                 error: error.message
             });
@@ -97,7 +114,7 @@ const sendSMS = async (mobileNumber, message, category = 'General') => {
             console.error("Failed to create SMS Log:", logError.message);
         }
         
-        // We don't throw error here to avoid breaking the main registration flow
+        throw error;
     }
 };
 

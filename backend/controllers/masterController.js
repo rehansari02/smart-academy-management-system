@@ -100,7 +100,11 @@ const getBatches = asyncHandler(async (req, res) => {
         if (searchBy === 'Batch Name') {
             query.name = { $regex: searchValue, $options: 'i' };
         } else if (searchBy === 'Faculty Name') {
-            const employees = await Employee.find({ name: { $regex: searchValue, $options: 'i' } }).select('_id');
+            const employees = await Employee.find({
+                name: { $regex: searchValue, $options: 'i' },
+                isDeleted: false,
+                isActive: true
+            }).select('_id');
             const empIds = employees.map(e => e._id);
             query.faculty = { $in: empIds };
         }
@@ -226,7 +230,7 @@ const createEmployee = asyncHandler(async (req, res) => {
 });
 
 const getEmployees = asyncHandler(async (req, res) => {
-    const emps = await Employee.find({ isDeleted: false });
+    const emps = await Employee.find({ isDeleted: false, isActive: true });
     res.json(emps);
 });
 

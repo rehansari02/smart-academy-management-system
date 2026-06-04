@@ -714,15 +714,19 @@ function buildExamResults() {
     const total = marks.reduce((sum, m) => sum + m.total, 0);
     const obtained = marks.reduce((sum, m) => sum + m.theory + m.practical, 0);
     const sc = studentCourses.get(text(r.StudentID));
+    const somNumber = text(r.SRNo)
+      ? `SOM-${text(r.SRNo).replace(/^(SOM-)+/i, "")}`
+      : `SOM-LEGACY-${r.ExamResultID}`;
+    const csrNumber = somNumber.replace(/^SOM-/i, "CSR-");
     return {
       _id: oid("examResult", r.ExamResultID),
       student: ids.student.get(text(r.StudentID)),
       exam: ids.examSchedule.get(text(r.ExamScheduleID)),
       course: ids.course.get(text(sc?.CourseID)),
       batch: text(r.BatchID || sc?.BatchId, "Legacy Batch"),
-      somNumber: text(r.SRNo) ? `SOM-${r.SRNo}` : `SOM-LEGACY-${r.ExamResultID}`,
-      csrNumber: `CSR-LEGACY-${r.ExamResultID}`,
-      certificateNumber: `CERT-LEGACY-${r.ExamResultID}`,
+      somNumber,
+      csrNumber,
+      certificateNumber: csrNumber,
       subjectMarks: marks,
       marksObtained: obtained,
       totalMarks: total || 100,

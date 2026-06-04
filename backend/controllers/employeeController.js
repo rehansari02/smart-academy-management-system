@@ -20,9 +20,19 @@ const enrichEmployeesWithUserAccounts = async (employees) => {
 
 // @desc    Get Employees with Filters
 const getEmployees = asyncHandler(async (req, res) => {
-    const { joiningFrom, joiningTo, gender, searchBy, searchValue } = req.query;
+    const { joiningFrom, joiningTo, gender, employeeStatus, searchBy, searchValue } = req.query;
     
     let query = { isDeleted: false };
+
+    // Employee Master explicitly opts in to inactive records. All operational
+    // selectors should only receive active employees.
+    if (employeeStatus === 'Active') {
+        query.isActive = true;
+    } else if (employeeStatus === 'Inactive') {
+        query.isActive = false;
+    } else if (req.query.includeInactive !== 'true') {
+        query.isActive = true;
+    }
     
     // 1. Date Range Filter (Joining Date)
     if (joiningFrom && joiningTo) {

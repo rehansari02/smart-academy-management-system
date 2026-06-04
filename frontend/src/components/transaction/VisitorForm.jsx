@@ -56,6 +56,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
         mobileNumber: '',
         contactParent: '',
         contactHome: '',
+        address: '',
         reference: '',
         referenceContact: '',
         referenceAddress: '',
@@ -101,6 +102,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                 mobileNumber: initialData.mobileNumber || '',
                 contactParent: initialData.contactParent || '',
                 contactHome: initialData.contactHome || '',
+                address: initialData.address || '',
                 reference: initialData.reference || '',
                 referenceContact: initialData.referenceContact || '',
                 referenceAddress: initialData.referenceAddress || '',
@@ -151,6 +153,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
             mobileNumber: '',
             contactParent: '',
             contactHome: '',
+            address: '',
             reference: '',
             referenceContact: '',
             referenceAddress: '',
@@ -274,6 +277,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
             mobileNumber: inquiry.contactStudent || inquiry.mobile || '',
             contactParent: inquiry.contactParent || '',
             contactHome: inquiry.contactHome || '',
+            address: inquiry.address || '',
             reference: referenceName,
             referenceContact: inquiry.referenceDetail?.mobile || matchedReference?.mobile || '',
             referenceAddress: inquiry.referenceDetail?.address || matchedReference?.address || '',
@@ -345,6 +349,17 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                         </div>
                         <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Home Contact</label>
+                                <input
+                                    type="tel"
+                                    name="contactHome"
+                                    value={formData.contactHome}
+                                    onChange={handleInputChange}
+                                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500"
+                                    placeholder="Home contact"
+                                />
+                            </div>
+                            <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Student Contact *</label>
                                 <input 
                                     type="tel"
@@ -357,27 +372,28 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Parent Contact</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Parent Contact *</label>
                                 <input 
                                     type="tel"
                                     name="contactParent"
                                     value={formData.contactParent}
                                     onChange={handleInputChange}
+                                    required
                                     className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500"
                                     placeholder="Parent mobile"
                                 />
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Home Contact</label>
-                                <input 
-                                    type="tel"
-                                    name="contactHome"
-                                    value={formData.contactHome}
-                                    onChange={handleInputChange}
-                                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500"
-                                    placeholder="Home contact"
-                                />
-                            </div>
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                            <textarea
+                                name="address"
+                                value={formData.address}
+                                onChange={(e) => setFormData(prev => ({ ...prev, address: formatInputText(e.target.value) }))}
+                                rows="2"
+                                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500"
+                                placeholder="Full address"
+                            ></textarea>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Reference</label>

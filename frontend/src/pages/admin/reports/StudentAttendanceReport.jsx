@@ -34,6 +34,7 @@ const StudentAttendanceReport = () => {
     const [reportData, setReportData] = useState([]);
     const [daysInMonth, setDaysInMonth] = useState([]);
     const componentRef = useRef(null);
+    const hasAutoLoaded = useRef(false);
 
     const [showReport, setShowReport] = useState(false);
 
@@ -95,7 +96,7 @@ const StudentAttendanceReport = () => {
     };
 
     const handleReset = () => {
-        setFilters({
+        const initialFilters = {
             month: moment().format('YYYY-MM'),
             batch: '',
             studentName: '',
@@ -103,51 +104,58 @@ const StudentAttendanceReport = () => {
             branchId: user?.branchId || '',
             reference: '',
             isRegistered: 'true'
-        });
-        setShowReport(false);
-        setReportData([]);
-        setAttendanceClosures([]);
+        };
+        setFilters(initialFilters);
+        loadReport(initialFilters);
     };
 
-    const handleSearch = () => {
-        if (!filters.month) {
+    const loadReport = (reportFilters) => {
+        if (!reportFilters.month) {
             toast.error('Please select a month');
             return;
         }
-        if (!filters.courseFilter) {
-            toast.error('Please select a course first');
-            return;
-        }
 
-        const startDate = moment(filters.month, 'YYYY-MM').startOf('month').format('YYYY-MM-DD');
-        const endDate = moment(filters.month, 'YYYY-MM').endOf('month').format('YYYY-MM-DD');
+        const startDate = moment(reportFilters.month, 'YYYY-MM').startOf('month').format('YYYY-MM-DD');
+        const endDate = moment(reportFilters.month, 'YYYY-MM').endOf('month').format('YYYY-MM-DD');
 
         // Fetch Attendance History
         dispatch(fetchStudentAttendanceHistory({
             fromDate: startDate,
             toDate: endDate,
-            batch: filters.batch || undefined,
-            branchId: filters.branchId || undefined
+            batch: reportFilters.batch || undefined,
+            branchId: reportFilters.branchId || undefined
         }));
 
         // Fetch Students
         const studentParams = {
             isActive: true,
+            isRegistered: 'true',
             pageSize: 2000,
-            branchId: filters.branchId || undefined,
-            courseFilter: filters.courseFilter || undefined,
-            reference: filters.reference || undefined
+            branchId: reportFilters.branchId || undefined,
+            courseFilter: reportFilters.courseFilter || undefined,
+            reference: reportFilters.reference || undefined
         };
 
-        if (filters.batch) studentParams.batch = filters.batch;
-        if (filters.studentName) studentParams.studentName = filters.studentName;
+        if (reportFilters.batch) studentParams.batch = reportFilters.batch;
+        if (reportFilters.studentName) studentParams.studentName = reportFilters.studentName;
 
         dispatch(fetchStudents(studentParams));
         fetchAttendanceClosures(startDate, endDate);
 
-        setDaysInMonth(getDaysInMonth(filters.month));
+        setDaysInMonth(getDaysInMonth(reportFilters.month));
         setShowReport(true);
     };
+
+    const handleSearch = () => {
+        loadReport(filters);
+    };
+
+    useEffect(() => {
+        if (!hasAutoLoaded.current && user) {
+            hasAutoLoaded.current = true;
+            loadReport(filters);
+        }
+    }, [user]);
 
     // Calculate Report Data
     useEffect(() => {
@@ -404,8 +412,8 @@ const StudentAttendanceReport = () => {
             {!showReport && (
                 <div className="bg-white rounded-lg shadow border border-gray-200 p-12 text-center">
                     <FileText className="mx-auto text-gray-300" size={64} />
-                    <h3 className="text-lg font-semibold text-gray-500 mt-4">Select a Course to View Attendance Report</h3>
-                    <p className="text-sm text-gray-400 mt-2">Choose a course from the filter above and click "Show Report"</p>
+                    <h3 className="text-lg font-semibold text-gray-500 mt-4">Loading Attendance Report</h3>
+                    <p className="text-sm text-gray-400 mt-2">Please wait while attendance data is loaded.</p>
                 </div>
             )}
 

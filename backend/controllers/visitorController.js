@@ -66,7 +66,7 @@ const appendVisitorFilters = (query, { search, searchField, studentName, referen
 // Create a new visitor
 exports.createVisitor = async (req, res) => {
     try {
-        let { visitingDate, studentName, mobileNumber, contactParent, contactHome, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId } = req.body;
+        let { visitingDate, studentName, mobileNumber, contactParent, contactHome, address, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId } = req.body;
 
         // Auto-assign branch for non-Super Admin
         if (req.user.role !== 'Super Admin') {
@@ -89,6 +89,7 @@ exports.createVisitor = async (req, res) => {
             mobileNumber,
             contactParent,
             contactHome,
+            address,
             reference,
             referenceContact,
             referenceAddress,
@@ -196,7 +197,7 @@ exports.getVisitorById = async (req, res) => {
 // Update visitor
 exports.updateVisitor = async (req, res) => {
     try {
-        let { visitingDate, studentName, mobileNumber, contactParent, contactHome, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId } = req.body;
+        let { visitingDate, studentName, mobileNumber, contactParent, contactHome, address, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId } = req.body;
         
         // Fix empty string attendedBy — convert to undefined to avoid BSON cast error
         if (attendedBy === '' || attendedBy === null) {
@@ -221,6 +222,7 @@ exports.updateVisitor = async (req, res) => {
                 mobileNumber,
                 contactParent,
                 contactHome,
+                address,
                 reference,
                 referenceContact,
                 referenceAddress,
@@ -233,7 +235,7 @@ exports.updateVisitor = async (req, res) => {
                 branchId,
                 inquiryId
             },
-            { new: true }
+            { new: true, runValidators: true }
         );
 
         if (!updatedVisitor) {

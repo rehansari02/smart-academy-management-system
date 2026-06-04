@@ -24,6 +24,15 @@ const ExamResultPrint = () => {
 
   const API_URL = `${import.meta.env.VITE_API_URL}/master/exam-result/`;
 
+  const formatSomNumber = (value) => {
+    const somNumber = String(value || "").trim();
+    if (!somNumber) return "SOM-G0035";
+    return `SOM-${somNumber.replace(/^(SOM-)+/i, "")}`;
+  };
+
+  const formatCertificateNumber = (somNumber) =>
+    formatSomNumber(somNumber).replace(/^SOM-/i, "CSR-");
+
   useEffect(() => {
     const fetchResult = async () => {
       try {
@@ -1044,7 +1053,7 @@ const ExamResultPrint = () => {
                           color: "#1565C0",
                         }}
                       >
-                        {result.somNumber || "SOM-G0035"}
+                        {formatSomNumber(result.somNumber)}
                       </td>
                       <td
                         style={{
@@ -1403,9 +1412,7 @@ const ExamResultPrint = () => {
             >
               <p>
                 Certificate No :{" "}
-                {result.certificateNumber ||
-                  result._id?.slice(-4).toUpperCase() ||
-                  "0001"}
+                {formatCertificateNumber(result.somNumber)}
               </p>
               <p>
                 Date of issue :{" "}

@@ -44,6 +44,7 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
     if (mode === 'DSR') fixedSource = 'DSR';
     if (mode === 'Online') fixedSource = 'Online';
     if (mode === 'Edit') fixedSource = initialData?.source || 'Walk-in';
+    const isParentContactRequired = ['Walk-in', 'DSR'].includes(fixedSource);
 
     const savedReferenceName = (
         initialData?.referenceBy ||
@@ -351,12 +352,14 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                                     <input {...register('contactHome')} className="w-full border p-2 rounded text-sm" placeholder="Home No" />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-700">S - Student Contact <span className="text-red-500">*</span></label>
-                                    <input {...register('contactStudent', { required: true })} className="w-full border p-2 rounded text-sm" placeholder="Student Mobile No" />
+                                    <label className="block text-xs font-bold text-gray-700">S - Student Contact</label>
+                                    <input {...register('contactStudent')} className="w-full border p-2 rounded text-sm" placeholder="Student Mobile No" />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-700">P - Parent Contact</label>
-                                    <input {...register('contactParent')} className="w-full border p-2 rounded text-sm" placeholder="Parent No" />
+                                    <label className="block text-xs font-bold text-gray-700">
+                                        P - Parent Contact {isParentContactRequired && <span className="text-red-500">*</span>}
+                                    </label>
+                                    <input {...register('contactParent', { required: isParentContactRequired })} className="w-full border p-2 rounded text-sm" placeholder="Parent No" />
                                 </div>
 
                                 <div>

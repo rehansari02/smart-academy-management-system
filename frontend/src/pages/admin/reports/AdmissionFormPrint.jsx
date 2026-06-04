@@ -275,7 +275,7 @@ const AdmissionFormPrint = () => {
 
                     <div className="flex items-end gap-2 mt-2">
                         <span className="font-bold">Tel No. :(Home)</span>
-                        <Editable value="" className="w-32" />
+                        <Editable value={student.contactHome || ""} className="w-32" />
                         <span className="font-bold ml-2">Mo.: (Stud)</span>
                         <Editable value={student.mobileStudent || ""} className="flex-grow" />
                         <span className="font-bold ml-2">Mo.: (Gurd.)</span>

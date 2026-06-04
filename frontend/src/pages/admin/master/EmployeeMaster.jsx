@@ -50,10 +50,12 @@ const EmployeeMaster = () => {
   const initialFilters = {
     joiningFrom: '', 
     joiningTo: new Date().toISOString().split('T')[0],
-    gender: '', 
+    gender: '',
+    employeeStatus: '',
     searchBy: 'name', 
     searchValue: '',
-    pageSize: 10
+    pageSize: 10,
+    includeInactive: true
   };
   const [filters, setFilters] = useState(initialFilters);
 
@@ -83,7 +85,9 @@ const EmployeeMaster = () => {
               const params = {
                   searchBy: filters.searchBy,
                   searchValue: filters.searchValue,
-                  pageSize: 50
+                  employeeStatus: filters.employeeStatus,
+                  pageSize: 50,
+                  includeInactive: true
               };
               const { data } = await axios.get(API_URL, { params, withCredentials: true });
               const list = Array.isArray(data) ? data : (data.employees || []);
@@ -103,7 +107,7 @@ const EmployeeMaster = () => {
       }, 300);
 
       return () => clearTimeout(timer);
-  }, [filters.searchValue, filters.searchBy, isSuggestionsOpen]);
+  }, [filters.searchValue, filters.searchBy, filters.employeeStatus, isSuggestionsOpen]);
 
   const handleSuggestionSelect = (emp) => {
       let val = emp.name;
@@ -303,8 +307,8 @@ const EmployeeMaster = () => {
         </h2>
         
         <div className="flex flex-col gap-4">
-             {/* Row 1: Dates & Gender */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+             {/* Row 1: Dates, Gender & Status */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {/* Joining Date From */}
                 <div>
                     <label className="text-xs text-gray-500 font-semibold mb-1 block">Joining From</label>
@@ -338,6 +342,20 @@ const EmployeeMaster = () => {
                         <option value="">All</option>
                         <option value="Male">Male</option>
                         <option value="Female">Female</option>
+                    </select>
+                </div>
+
+                {/* Active Status Filter */}
+                <div>
+                    <label className="text-xs text-gray-500 font-semibold mb-1 block">Employee Status</label>
+                    <select
+                        value={filters.employeeStatus}
+                        onChange={e => setFilters({...filters, employeeStatus: e.target.value})}
+                        className="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-primary"
+                    >
+                        <option value="">All</option>
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
                     </select>
                 </div>
             </div>

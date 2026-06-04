@@ -196,20 +196,24 @@ const VisitorViewModal = ({ visitor, onClose }) => {
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div className="bg-gradient-to-br from-gray-50 to-gray-100 p-3 rounded-xl border border-gray-150 relative overflow-hidden group">
+                                <div className="absolute right-2 top-2 text-gray-300 opacity-20">H</div>
+                                <span className="block text-gray-500 text-[10px] uppercase font-bold tracking-wider">Home Contact</span>
+                                <span className="font-bold text-gray-800 text-sm block mt-1">{visitor.contactHome || '—'}</span>
+                            </div>
+                            <div className="bg-gradient-to-br from-gray-50 to-gray-100 p-3 rounded-xl border border-gray-150 relative overflow-hidden">
                                 <div className="absolute right-2 top-2 text-gray-300 opacity-20">S</div>
                                 <span className="block text-gray-500 text-[10px] uppercase font-bold tracking-wider">Student Mobile</span>
                                 <span className="font-bold text-blue-600 text-sm block mt-1">{visitor.mobileNumber || '—'}</span>
                             </div>
                             <div className="bg-gradient-to-br from-gray-50 to-gray-100 p-3 rounded-xl border border-gray-150 relative overflow-hidden">
-                                <div className="absolute right-2 top-2 text-gray-300 opacity-20">G</div>
+                                <div className="absolute right-2 top-2 text-gray-300 opacity-20">P</div>
                                 <span className="block text-gray-500 text-[10px] uppercase font-bold tracking-wider">Guardian / Parent</span>
                                 <span className="font-bold text-gray-800 text-sm block mt-1">{visitor.contactParent || '—'}</span>
                             </div>
-                            <div className="bg-gradient-to-br from-gray-50 to-gray-100 p-3 rounded-xl border border-gray-150 relative overflow-hidden">
-                                <div className="absolute right-2 top-2 text-gray-300 opacity-20">H</div>
-                                <span className="block text-gray-500 text-[10px] uppercase font-bold tracking-wider">Home Contact</span>
-                                <span className="font-bold text-gray-800 text-sm block mt-1">{visitor.contactHome || '—'}</span>
-                            </div>
+                        </div>
+                        <div className="mt-3 bg-gray-50 p-3 rounded-xl border border-gray-150">
+                            <span className="block text-gray-500 text-[10px] uppercase font-bold tracking-wider">Address</span>
+                            <span className="font-medium text-gray-800 text-sm block mt-1">{visitor.address || '—'}</span>
                         </div>
                     </div>
 

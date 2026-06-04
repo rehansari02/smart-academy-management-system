@@ -5,6 +5,14 @@ const Counter = require('../models/Counter');
 const ExamSchedule = require('../models/ExamSchedule');
 const StudentAttendance = require('../models/StudentAttendance');
 
+const normalizeSomNumber = (value) => {
+    const somNumber = String(value || '').trim();
+    if (!somNumber) return '';
+    return `SOM-${somNumber.replace(/^(SOM-)+/i, '')}`;
+};
+
+const csrFromSomNumber = (somNumber) => normalizeSomNumber(somNumber).replace(/^SOM-/i, 'CSR-');
+
 const getAttendanceCutoffDate = (exam) => {
     const examDates = (exam?.timeTable || [])
         .map(item => item.date ? new Date(item.date) : null)
@@ -120,7 +128,7 @@ const createExamResult = asyncHandler(async (req, res) => {
     }
 
     // Auto-generate SOM and CSR if not provided
-    let finalSom = somNumber;
+    let finalSom = normalizeSomNumber(somNumber);
     let finalCsr = csrNumber;
 
     if (!finalSom) {
@@ -132,23 +140,13 @@ const createExamResult = asyncHandler(async (req, res) => {
         finalSom = `SOM-G${counter.seq.toString().padStart(5, '0')}`;
     }
 
-    if (!finalCsr || finalCsr.startsWith('SOM-')) {
-        if (finalSom.startsWith('SOM-')) {
-            finalCsr = finalSom.replace('SOM-', 'CSR-');
-        } else {
-            finalCsr = `CSR-${finalSom}`;
-        }
+    if (!finalCsr || finalCsr.startsWith('SOM-') || /^CSR-LEGACY-/i.test(finalCsr)) {
+        finalCsr = csrFromSomNumber(finalSom);
     }
 
     let finalCert = certificateNumber;
-    if (!finalCert) {
-        if (finalSom.startsWith('SOM-G')) {
-            finalCert = finalSom.replace('SOM-G', '');
-        } else {
-            const counter = await Counter.findOne({ _id: 'examResultSeq' });
-            const seqNum = counter ? counter.seq : 1;
-            finalCert = seqNum.toString().padStart(4, '0');
-        }
+    if (!finalCert || /^(CERT|CSR)-LEGACY-/i.test(finalCert)) {
+        finalCert = csrFromSomNumber(finalSom);
     }
 
     // Calculate totals from subjects
@@ -190,27 +188,17 @@ const createExamResult = asyncHandler(async (req, res) => {
 const updateExamResult = asyncHandler(async (req, res) => {
     const result = await ExamResult.findById(req.params.id);
     if (result) {
-        let finalSom = req.body.somNumber || result.somNumber;
+        let finalSom = normalizeSomNumber(req.body.somNumber || result.somNumber);
         let finalCsr = req.body.csrNumber || result.csrNumber;
         let finalCert = req.body.certificateNumber || result.certificateNumber;
 
         // Auto-correct to CSR- prefix if empty or starting with SOM-
-        if (!finalCsr || finalCsr.startsWith('SOM-')) {
-            if (finalSom.startsWith('SOM-')) {
-                finalCsr = finalSom.replace('SOM-', 'CSR-');
-            } else {
-                finalCsr = `CSR-${finalSom}`;
-            }
+        if (!finalCsr || finalCsr.startsWith('SOM-') || /^CSR-LEGACY-/i.test(finalCsr)) {
+            finalCsr = csrFromSomNumber(finalSom);
         }
 
-        if (!finalCert) {
-            if (finalSom.startsWith('SOM-G')) {
-                finalCert = finalSom.replace('SOM-G', '');
-            } else {
-                const counter = await Counter.findOne({ _id: 'examResultSeq' });
-                const seqNum = counter ? counter.seq : 1;
-                finalCert = seqNum.toString().padStart(4, '0');
-            }
+        if (!finalCert || /^(CERT|CSR)-LEGACY-/i.test(finalCert)) {
+            finalCert = csrFromSomNumber(finalSom);
         }
 
         result.somNumber = finalSom;

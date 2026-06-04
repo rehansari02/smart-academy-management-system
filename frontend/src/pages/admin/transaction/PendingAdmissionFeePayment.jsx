@@ -13,6 +13,25 @@ import { toast } from "react-toastify";
 import { Save, ArrowLeft } from "lucide-react";
 import axios from "axios";
 
+const POPULAR_INDIAN_BANKS = [
+    "State Bank of India",
+    "HDFC Bank",
+    "ICICI Bank",
+    "Axis Bank",
+    "Punjab National Bank",
+    "Bank of Baroda",
+    "Canara Bank",
+    "Union Bank of India",
+    "Kotak Mahindra Bank",
+    "IndusInd Bank",
+    "IDFC First Bank",
+    "Yes Bank",
+    "Other",
+];
+
+const ONLINE_PAYMENT_TYPES = ["UPI", "Net Banking", "Bank Transfer", "Other"];
+const UPI_PROVIDERS = ["Google Pay", "PhonePe", "Paytm", "BHIM", "Amazon Pay", "Other"];
+
 const PendingAdmissionFeePayment = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -35,6 +54,17 @@ const PendingAdmissionFeePayment = () => {
     remarks: "",
     receiptNo: "Loading...",
     date: new Date().toISOString().split("T")[0],
+    receiptBankOption: '',
+    onlinePaymentType: 'UPI',
+    onlineProviderOption: '',
+    bankName: '',
+    chequeNumber: '',
+    chequeDate: new Date().toISOString().split("T")[0],
+    transactionId: '',
+    transactionDate: new Date().toISOString().split("T")[0],
+    paymentProviderName: '',
+    paymentDetails: '',
+    upiId: ''
   });
 
   useEffect(() => {
@@ -90,13 +120,46 @@ const PendingAdmissionFeePayment = () => {
     }
 
     // Validation: Amount Check against Total Course Fee
-    // Changed from admissionFees to courseFees/totalFees as per request
     if (student?.course) {
        const maxFee = student.totalFees || student.course.courseFees || 0;
        if (Number(formData.amountPaid) > maxFee) {
           toast.error(`Amount cannot exceed the Total Course Fee (₹${maxFee})`);
           return;
        }
+    }
+
+    // Cheque validation
+    if (formData.paymentMode === 'Cheque') {
+        if (!formData.bankName?.trim() || !formData.chequeNumber?.trim() || !formData.chequeDate) {
+            toast.error('Please enter cheque bank, cheque number, and cheque date');
+            return;
+        }
+    }
+
+    // Online/UPI validation
+    if (formData.paymentMode === 'Online/UPI') {
+        if (!formData.transactionId?.trim() || !formData.transactionDate) {
+            toast.error('Please enter transaction number and transaction date');
+            return;
+        }
+        if (formData.onlinePaymentType === 'UPI') {
+            if (!formData.paymentProviderName?.trim()) {
+                toast.error('Please select UPI app/provider');
+                return;
+            }
+            if (!formData.upiId?.trim()) {
+                toast.error('Please enter UPI ID / number');
+                return;
+            }
+        } else if (formData.onlinePaymentType === 'Other') {
+            if (!formData.paymentProviderName?.trim()) {
+                toast.error('Please enter online payment name/provider');
+                return;
+            }
+        } else if (!formData.bankName?.trim()) {
+            toast.error('Please select or enter bank name');
+            return;
+        }
     }
 
     // FIXED: Prevent double click
@@ -107,8 +170,18 @@ const PendingAdmissionFeePayment = () => {
       courseId: student.course._id,
       amountPaid: formData.amountPaid,
       paymentMode: formData.paymentMode,
-      // FIXED: If remarks is empty, send 'Admission Fee'
       remarks: formData.remarks || 'Admission Fee',
+      // Cheque fields
+      bankName: formData.bankName,
+      chequeNumber: formData.chequeNumber,
+      chequeDate: formData.chequeDate,
+      // Online/UPI fields
+      transactionId: formData.transactionId,
+      transactionDate: formData.transactionDate,
+      onlinePaymentType: formData.onlinePaymentType,
+      paymentProviderName: formData.paymentProviderName,
+      paymentDetails: formData.onlinePaymentType === 'UPI' ? formData.upiId : formData.paymentDetails,
+      date: formData.date,
     };
 
     dispatch(collectFees(feeData));
@@ -292,14 +365,238 @@ const PendingAdmissionFeePayment = () => {
                   className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
                   value={formData.paymentMode}
                   onChange={(e) =>
-                    setFormData({ ...formData, paymentMode: e.target.value })
+                    setFormData({
+                      ...formData,
+                      paymentMode: e.target.value,
+                      receiptBankOption: '',
+                      onlineProviderOption: '',
+                      bankName: '',
+                      chequeNumber: '',
+                      transactionId: '',
+                      paymentProviderName: '',
+                      paymentDetails: '',
+                      upiId: ''
+                    })
                   }
                 >
                   <option value="Cash">Cash</option>
                   <option value="Cheque">Cheque</option>
-                  <option value="Online">Online</option>
+                  <option value="Online/UPI">Online/UPI</option>
                 </select>
               </div>
+
+              {/* Dynamic Payment Fields - Cheque */}
+              {formData.paymentMode === 'Cheque' && (
+                <>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name *</label>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {POPULAR_INDIAN_BANKS.map((bank) => (
+                        <label key={bank} className="flex items-center gap-2 border rounded p-2 text-sm cursor-pointer hover:bg-blue-50">
+                          <input
+                            type="radio"
+                            name="admissionReceiptBank"
+                            value={bank}
+                            checked={formData.receiptBankOption === bank}
+                            onChange={() => setFormData({
+                              ...formData,
+                              receiptBankOption: bank,
+                              bankName: bank === 'Other' ? '' : bank
+                            })}
+                          />
+                          {bank}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  {formData.receiptBankOption === 'Other' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Other Bank Name *</label>
+                      <input
+                        type="text"
+                        value={formData.bankName}
+                        onChange={(e) => setFormData({...formData, bankName: e.target.value})}
+                        className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
+                        placeholder="Enter bank name"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Cheque Number *</label>
+                    <input
+                      type="text"
+                      value={formData.chequeNumber}
+                      onChange={(e) => setFormData({...formData, chequeNumber: e.target.value})}
+                      className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
+                      placeholder="Cheque No"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Cheque Date *</label>
+                    <input
+                      type="date"
+                      value={formData.chequeDate}
+                      onChange={(e) => setFormData({...formData, chequeDate: e.target.value})}
+                      className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Dynamic Payment Fields - Online/UPI */}
+              {formData.paymentMode === 'Online/UPI' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Payment Type *</label>
+                    <select
+                      value={formData.onlinePaymentType}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        onlinePaymentType: e.target.value,
+                        receiptBankOption: '',
+                        onlineProviderOption: '',
+                        bankName: '',
+                        paymentProviderName: '',
+                        paymentDetails: '',
+                        upiId: ''
+                      })}
+                      className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
+                    >
+                      {ONLINE_PAYMENT_TYPES.map((type) => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {formData.onlinePaymentType === 'UPI' ? (
+                    <>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">UPI App / Provider *</label>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                          {UPI_PROVIDERS.map((provider) => (
+                            <label key={provider} className="flex items-center gap-2 border rounded p-2 text-sm cursor-pointer hover:bg-blue-50">
+                              <input
+                                type="radio"
+                                name="admissionUpiProvider"
+                                value={provider}
+                                checked={formData.onlineProviderOption === provider}
+                                onChange={() => setFormData({
+                                  ...formData,
+                                  onlineProviderOption: provider,
+                                  paymentProviderName: provider === 'Other' ? '' : provider
+                                })}
+                              />
+                              {provider}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      {formData.onlineProviderOption === 'Other' && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Provider Name *</label>
+                          <input
+                            type="text"
+                            value={formData.paymentProviderName}
+                            onChange={(e) => setFormData({...formData, paymentProviderName: e.target.value})}
+                            className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
+                            placeholder="Enter provider name"
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-1">UPI ID / Number *</label>
+                        <input
+                          type="text"
+                          value={formData.upiId}
+                          onChange={(e) => setFormData({...formData, upiId: e.target.value})}
+                          className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
+                          placeholder="UPI ID / mobile number"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {formData.onlinePaymentType === 'Other' ? (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Payment Name / Provider *</label>
+                          <input
+                            type="text"
+                            value={formData.paymentProviderName}
+                            onChange={(e) => setFormData({...formData, paymentProviderName: e.target.value})}
+                            className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
+                            placeholder="Enter provider name"
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name *</label>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                              {POPULAR_INDIAN_BANKS.map((bank) => (
+                                <label key={bank} className="flex items-center gap-2 border rounded p-2 text-sm cursor-pointer hover:bg-blue-50">
+                                  <input
+                                    type="radio"
+                                    name="admissionOnlineBank"
+                                    value={bank}
+                                    checked={formData.receiptBankOption === bank}
+                                    onChange={() => setFormData({
+                                      ...formData,
+                                      receiptBankOption: bank,
+                                      bankName: bank === 'Other' ? '' : bank
+                                    })}
+                                  />
+                                  {bank}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          {formData.receiptBankOption === 'Other' && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Other Bank Name *</label>
+                              <input
+                                type="text"
+                                value={formData.bankName}
+                                onChange={(e) => setFormData({...formData, bankName: e.target.value})}
+                                className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
+                                placeholder="Enter bank name"
+                              />
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-1">Payment Details</label>
+                        <input
+                          type="text"
+                          value={formData.paymentDetails}
+                          onChange={(e) => setFormData({...formData, paymentDetails: e.target.value})}
+                          className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
+                          placeholder="Account last 4 digits, note, or extra details"
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Transaction Number *</label>
+                    <input
+                      type="text"
+                      value={formData.transactionId}
+                      onChange={(e) => setFormData({...formData, transactionId: e.target.value})}
+                      className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
+                      placeholder="UTR / Ref No / Transaction ID"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Transaction Date *</label>
+                    <input
+                      type="date"
+                      value={formData.transactionDate}
+                      onChange={(e) => setFormData({...formData, transactionDate: e.target.value})}
+                      className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
+                    />
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className="block text-sm text-gray-600 mb-1">

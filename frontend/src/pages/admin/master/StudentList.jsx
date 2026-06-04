@@ -32,7 +32,7 @@ const StudentList = () => {
     branchId: '',
     pageSize: 10,
     page: 1,
-    isRegistered: '',
+    isRegistered: 'true',
     sortBy: '-admissionDate -createdAt'
   });
 
@@ -118,7 +118,7 @@ const StudentList = () => {
         branchId: '',
         pageSize: 10, 
         page: 1, 
-        isRegistered: '',
+        isRegistered: 'true',
         sortBy: '-admissionDate -createdAt'
     };
     setFilters(initial);
@@ -205,8 +205,8 @@ const StudentList = () => {
                 </div>
             </div>
 
-            {/* Row 2: Student Search & Batch & Registration Status */}
-            <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4`}>
+            {/* Row 2: Student Search, Reference, Batch & Branch */}
+            <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
                 <div className="relative z-20"> 
                     <StudentSearch 
                         label="Search Student"
@@ -244,19 +244,7 @@ const StudentList = () => {
                         className="w-full border p-2.5 rounded text-sm focus:ring-2 focus:ring-primary outline-none" 
                         placeholder="Enter Batch Name..."
                     />
-                </div>                    <div>
-                        <label className="text-xs text-gray-500 font-semibold mb-1 block">Registration</label>
-                        <select 
-                            name="isRegistered"
-                            value={filters.isRegistered}
-                            onChange={handleFilterChange}
-                            className="w-full border p-2.5 rounded text-sm focus:ring-2 focus:ring-primary outline-none"
-                        >
-                            <option value="">All Students</option>
-                            <option value="true">Registered</option>
-                            <option value="false">Unregistered</option>
-                        </select>
-                    </div>
+                </div>
                 {user?.role === 'Super Admin' && (
                     <div>
                         <label className="text-xs text-gray-500 font-semibold mb-1 block">Branch</label>

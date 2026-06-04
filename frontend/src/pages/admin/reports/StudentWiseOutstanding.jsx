@@ -177,9 +177,13 @@ const StudentWiseOutstanding = () => {
 
     const sortedStudents = students && students.length > 0
         ? [...students].sort((a, b) => {
-            const timeA = a.admissionDate ? new Date(a.admissionDate).getTime() : 0;
-            const timeB = b.admissionDate ? new Date(b.admissionDate).getTime() : 0;
-            return timeB - timeA;
+            const dayA = a.admissionDate ? moment(a.admissionDate).date() : 32;
+            const dayB = b.admissionDate ? moment(b.admissionDate).date() : 32;
+            if (dayA !== dayB) return dayA - dayB;
+
+            const nameA = `${a.firstName || ''} ${a.middleName || ''} ${a.lastName || ''}`.trim();
+            const nameB = `${b.firstName || ''} ${b.middleName || ''} ${b.lastName || ''}`.trim();
+            return nameA.localeCompare(nameB);
         })
         : [];
 
