@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Search, Edit, Trash2, ArrowRightCircle, Printer, Eye, GraduationCap, CalendarClock, X, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatDate } from '../../../utils/dateUtils';
+import { formatDate, getTodayDateISO } from '../../../utils/dateUtils';
 import visitorService from '../../../services/visitorService';
 import { toast } from 'react-toastify';
 import { useSelector } from 'react-redux';
@@ -134,8 +134,27 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
 
 const TodaysVisitedReport = () => {
     const navigate = useNavigate();
-    const { add, edit, delete: canDelete } = useUserRights('Activity Visitor Report');
+    const { add, edit, delete: canDelete } = useUserRights('Visitors - Activity Visitor Report');
     
+    const getFilledBy = (visitor) => visitor.createdBy?.name || visitor.createdBy?.username || visitor.attendedBy?.name || visitor.attendedBy?.username || visitor.allocatedTo?.name || visitor.allocatedTo?.username || '-';
+    const getHandleBy = (visitor) => visitor.allocatedTo?.name || visitor.allocatedTo?.username || visitor.reference || 'Direct';
+
+    const getLastFollowUpInfo = (visitor) => {
+        const last = visitor.latestFollowup;
+        if (!last) return '-';
+        const dateStr = last.createdAt
+            ? `${formatDate(last.createdAt)} ${new Date(last.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            : '';
+        const by = last.followUpBy?.name || last.followUpBy?.username || '-';
+        if (!dateStr) return by;
+        return (
+            <div className="text-xs">
+                <div className="font-semibold text-gray-800">{dateStr}</div>
+                <div className="text-gray-500">by {by}</div>
+            </div>
+        );
+    };
+
     const handlePrintList = () => {
         window.print();
     };
@@ -144,6 +163,8 @@ const TodaysVisitedReport = () => {
     const [visitors, setVisitors] = useState([]);
     const [loading, setLoading] = useState(false);
     const [branches, setBranches] = useState([]);
+    const [employees, setEmployees] = useState([]);
+    const [stats, setStats] = useState(null);
     const { user } = useSelector((state) => state.auth);
 
     // View Modal State
@@ -157,10 +178,11 @@ const TodaysVisitedReport = () => {
     const [showFollowUpModal, setShowFollowUpModal] = useState(null);
     
     const [filters, setFilters] = useState({
-        fromDate: new Date().toISOString().split('T')[0],
-        toDate: new Date().toISOString().split('T')[0],
+        fromDate: getTodayDateISO(),
+        toDate: getTodayDateISO(),
         studentName: '',
         referenceBy: '',
+        employeeId: '',
         limit: 50,
         branchId: '',
         listType: 'all',
@@ -186,11 +208,12 @@ const TodaysVisitedReport = () => {
         if (user && user.role === 'Super Admin') {
             fetchBranches();
         }
+        fetchEmployees();
     }, [user]);
 
     useEffect(() => {
         fetchVisitors();
-    }, [filters.reportType, filters.fromDate, filters.toDate, filters.branchId, filters.listType]);
+    }, [filters.reportType, filters.fromDate, filters.toDate, filters.branchId, filters.listType, filters.employeeId]);
 
     const fetchBranches = async () => {
         try {
@@ -201,13 +224,47 @@ const TodaysVisitedReport = () => {
         }
     };
 
+    const fetchEmployees = async () => {
+        try {
+            const res = await axios.get(`${import.meta.env.VITE_API_URL}/employees`, { withCredentials: true });
+            setEmployees(res.data?.employees || res.data || []);
+        } catch (error) {
+            console.error("Error fetching employees:", error);
+        }
+    };
+
+    const fetchStats = async (nextFilters = filters) => {
+        try {
+            const res = await axios.get(`${import.meta.env.VITE_API_URL}/visitors/followup-stats`, {
+                params: {
+                    fromDate: nextFilters.fromDate,
+                    toDate: nextFilters.toDate,
+                    branchId: nextFilters.branchId,
+                    employeeId: nextFilters.employeeId,
+                },
+                withCredentials: true,
+            });
+            setStats(res.data);
+        } catch (error) {
+            setStats(null);
+        }
+    };
+
     // Fetch data based on report type
     const fetchVisitors = async (overrideFilters = filters) => {
         const activeFilters = overrideFilters;
         setLoading(true);
+        if (activeFilters.reportType === 'visited') {
+            fetchStats(activeFilters); // Only fetch stats for Visitors report
+        } else {
+            setStats(null); // Clear stats for Follow-ups report to avoid confusion
+        }
         try {
             if (activeFilters.reportType === 'visited') {
-                const data = await visitorService.getAllVisitors(activeFilters);
+                const data = await visitorService.getAllVisitors({
+                    ...activeFilters,
+                    onlyWithFollowups: 'true' // Requirement: Don't show until followup exists
+                });
                 setVisitors(data);
                 setFollowups([]);
             } else {
@@ -226,6 +283,7 @@ const TodaysVisitedReport = () => {
                     studentName: activeFilters.studentName,
                     referenceBy: activeFilters.referenceBy,
                     dateFilterType: 'followUpDate',
+                    employeeId: activeFilters.employeeId,
                     ...(sourceByListType[listType] ? { source: sourceByListType[listType] } : {})
                 };
 
@@ -275,8 +333,8 @@ const TodaysVisitedReport = () => {
 
     const handleReset = () => {
         const resetState = {
-            fromDate: new Date().toISOString().split('T')[0],
-            toDate: new Date().toISOString().split('T')[0],
+            fromDate: getTodayDateISO(),
+            toDate: getTodayDateISO(),
             studentName: '',
             referenceBy: '',
             limit: 50,
@@ -496,6 +554,74 @@ const TodaysVisitedReport = () => {
                     </div>
                 </div>
 
+                {/* Top Summary Row (Small Cards) */}
+                {filters.reportType === 'visited' && stats && (
+                    <div className="flex flex-wrap items-center gap-4 mb-6 bg-white p-3 rounded-lg border border-gray-100 shadow-sm animate-fadeIn">
+                        <div className="flex items-center gap-2 px-3 border-r border-gray-100">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Total</p>
+                            <p className="text-sm font-black text-gray-700">{stats.summary?.total || 0}</p>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 border-r border-gray-100">
+                            <p className="text-[10px] font-bold text-orange-400 uppercase">Open</p>
+                            <p className="text-sm font-black text-orange-600">{stats.summary?.open || 0}</p>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 border-r border-gray-100">
+                            <p className="text-[10px] font-bold text-green-400 uppercase">Completed</p>
+                            <p className="text-sm font-black text-green-600">{stats.summary?.completed || 0}</p>
+                        </div>
+                        <div className="flex items-center gap-2 px-3">
+                            <p className="text-[10px] font-bold text-blue-400 uppercase">Follow-ups Today</p>
+                            <p className="text-sm font-black text-blue-600">{stats.summary?.followUpsToday || 0}</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Stats Section (Super Admin only, similar to Inquiry) */}
+                {filters.reportType === 'visited' && user?.role === 'Super Admin' && stats && (
+                    <div className="bg-white border border-gray-200 rounded-lg shadow mb-6 p-4 animate-fadeIn">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <div className="border rounded p-3">
+                                <div className="text-xs text-gray-500 font-bold uppercase">Range Inquiries</div>
+                                <div className="text-2xl font-black text-blue-700">
+                                    {stats.openCount || 0}<span className="text-lg font-bold text-gray-400">/{stats.totalInquiries || 0}</span>
+                                </div>
+                                {stats.pendingFromBefore > 0 && (
+                                    <div className="mt-1 text-[10px]">
+                                        <span className="text-orange-500 font-bold">Prev Pending: {stats.pendingFromBefore}</span>
+                                        <span className="text-gray-400 mx-1">|</span>
+                                        <span className="text-green-600">New: {stats.totalInquiries || 0}</span>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="border rounded p-3">
+                                <div className="text-xs text-gray-500 font-bold uppercase">Followups Done</div>
+                                <div className="text-2xl font-black text-purple-700">{stats.totalFollowUps || 0}</div>
+                                <div className="mt-1 text-[10px] text-gray-400">
+                                    {stats.openCount || 0} remaining
+                                </div>
+                            </div>
+                            <div className="border rounded p-3">
+                                <div className="text-xs text-gray-500 font-bold uppercase">Top Followup</div>
+                                <div className="text-sm font-bold text-gray-800">{stats.employees?.[0]?.employeeName || '-'}</div>
+                                <div className="text-xs text-gray-500">{stats.employees?.[0]?.latestFollowUpAt ? new Date(stats.employees[0].latestFollowUpAt).toLocaleString() : '-'}</div>
+                            </div>
+                            <div className="border rounded p-3">
+                                <div className="text-xs text-gray-500 font-bold uppercase">Completed</div>
+                                <div className="text-2xl font-black text-green-700">{stats.summary?.completed || 0}</div>
+                            </div>
+                        </div>
+                        {stats.employees?.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {stats.employees.map((item) => (
+                                    <span key={item.employeeId} className="inline-flex items-center gap-1 text-[10px] border rounded-full px-3 py-1 bg-gray-50 font-bold">
+                                        <span className="text-blue-700">{item.employeeName}</span>: {item.followUpCount} followups
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* Filter Section */}
                 <div className="bg-white p-4 rounded-lg shadow mb-6 border border-gray-200">
                     <h2 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
@@ -503,7 +629,7 @@ const TodaysVisitedReport = () => {
                     </h2>
 
                     <div className="flex flex-col gap-4">
-                        <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-3 lg:grid-cols-6' : 'md:grid-cols-2 lg:grid-cols-5'} gap-4`}>
+                        <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-4 lg:grid-cols-7' : 'md:grid-cols-3 lg:grid-cols-6'} gap-4`}>
                             <div>
                                 <label className="text-xs text-gray-500 font-semibold mb-1 block">From Date</label>
                                 <input
@@ -557,6 +683,20 @@ const TodaysVisitedReport = () => {
                                     </select>
                                 </div>
                             )}
+                            <div>
+                                <label className="text-xs text-gray-500 font-semibold mb-1 block">Employee (Handled By)</label>
+                                <select
+                                    name="employeeId"
+                                    value={filters.employeeId}
+                                    onChange={handleFilterChange}
+                                    className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                >
+                                    <option value="">All Employees</option>
+                                    {employees.map(emp => (
+                                        <option key={emp._id} value={emp._id}>{emp.name}</option>
+                                    ))}
+                                </select>
+                            </div>
                             <div>
                                 <SearchableDropdown
                                     options={activeStudentNames}
@@ -629,15 +769,17 @@ const TodaysVisitedReport = () => {
                             <thead>
                                 <tr className="bg-orange-700 text-white text-left text-xs uppercase tracking-wider">
                                     <th className="p-2 border font-semibold w-12 text-center">Sr. No.</th>
-                                    <th className="p-2 border font-semibold">Visiting Date</th>
+                                    <th className="p-2 border font-semibold">Inquiry Date</th>
                                     {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
+                                    <th className="p-2 border font-semibold">Filled By</th>
+                                    <th className="p-2 border font-semibold">Handle By</th>
                                     <th className="p-2 border font-semibold">Student Name</th>
-                                    <th className="p-2 border font-semibold text-center w-36">Contact</th>
-                                    <th className="p-2 border font-semibold">Reference</th>
+                                    <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                                     <th className="p-2 border font-semibold text-center">Status</th>
-                                    <th className="p-2 border font-semibold">In Time</th>
-                                    <th className="p-2 border font-semibold">Out Time</th>
-                                    <th className="p-2 border font-semibold w-36">Remarks/Details</th>
+                                    <th className="p-2 border font-semibold">Followup</th>
+                                    <th className="p-2 border font-semibold w-36">Followup Details</th>
+                                    <th className="p-2 border font-semibold">Followup By</th>
+                                    <th className="p-2 border font-semibold">Last Followup</th>
                                     <th className="p-2 border font-semibold text-center sticky right-0 bg-orange-700 z-10 w-32">Actions</th>
                                 </tr>
                             </thead>
@@ -645,11 +787,12 @@ const TodaysVisitedReport = () => {
                             <thead>
                                 <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
                                     <th className="p-2 border font-semibold w-12 text-center">Sr. No.</th>
-                                    <th className="p-2 border font-semibold">Visit Date</th>
+                                    <th className="p-2 border font-semibold">Inquiry Date</th>
                                     {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
+                                    <th className="p-2 border font-semibold">Filled By</th>
+                                    <th className="p-2 border font-semibold">Handle By</th>
                                     <th className="p-2 border font-semibold">Student Name</th>
-                                    <th className="p-2 border font-semibold text-center w-36">Contact</th>
-                                    <th className="p-2 border font-semibold">Reference</th>
+                                    <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                                     <th className="p-2 border font-semibold text-center">Status</th>
                                     <th className="p-2 border font-bold text-white text-left uppercase tracking-wider">Followup Date</th>
                                     <th className="p-2 border font-bold text-white text-left uppercase tracking-wider">Followup Time</th>
@@ -658,7 +801,8 @@ const TodaysVisitedReport = () => {
                                     <th className="p-2 border font-bold text-blue-800 text-center uppercase tracking-wider sticky right-0 bg-blue-50/90 print:hidden">Actions</th>
                                 </tr>
                             </thead>
-                        )}
+                        )
+                    }
                         <tbody>
                             {loading ? (
                                 <tr>
@@ -682,28 +826,29 @@ const TodaysVisitedReport = () => {
                                             <td className="p-2 border text-center text-gray-400 font-medium">{index + 1}</td>
                                             <td className="p-2 border font-semibold text-gray-700">{formatDate(visitor.visitingDate)}</td>
                                             {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{visitor.branchId?.name || '-'}</td>}
+                                            <td className="p-2 border text-gray-600 font-medium">{getFilledBy(visitor)}</td>
+                                            <td className="p-2 border text-gray-600 font-medium">{getHandleBy(visitor)}</td>
                                             <td className="p-2 border font-bold text-gray-800">{visitor.studentName}</td>
                                             <td className="p-0 border align-top w-36">
-                                                <div className="flex border-b border-gray-200 last:border-b-0">
-                                                    <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">G</div>
-                                                    <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
-                                                        {visitor.contactParent || '-'}
-                                                    </div>
-                                                </div>
                                                 <div className="flex border-b border-gray-200 last:border-b-0">
                                                     <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">H</div>
                                                     <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
                                                         {visitor.contactHome || '-'}
                                                     </div>
                                                 </div>
-                                                <div className="flex">
+                                                <div className="flex border-b border-gray-200 last:border-b-0">
                                                     <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">S</div>
                                                     <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start text-blue-600">
                                                         {visitor.mobileNumber || '-'}
                                                     </div>
                                                 </div>
+                                                <div className="flex">
+                                                    <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">P</div>
+                                                    <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
+                                                        {visitor.contactParent || '-'}
+                                                    </div>
+                                                </div>
                                             </td>
-                                            <td className="p-2 border text-gray-600">{visitor.reference || '-'}</td>
                                             <td className="p-2 border text-center">
                                                 <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${
                                                     visitor.status === 'Open' ? 'bg-green-100 text-green-700 border-green-200' :
@@ -715,18 +860,24 @@ const TodaysVisitedReport = () => {
                                                     {visitor.status || 'Open'}
                                                 </span>
                                             </td>
-                                            <td className="p-2 border text-center">
-                                                <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded font-bold border border-green-200">
-                                                    {visitor.inTime || '-'}
-                                                </span>
+                                            <td className="p-2 border text-gray-700 font-medium">
+                                                {visitor.latestFollowup?.scheduledDate ? (
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold">{formatDate(visitor.latestFollowup.scheduledDate)}</span>
+                                                        <span className="text-[10px] text-blue-600">
+                                                            {new Date(visitor.latestFollowup.scheduledDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                ) : '-'}
+                                            </td>
+                                            <td className="p-2 border text-gray-600 truncate max-w-xs" title={visitor.latestFollowup?.remark || visitor.remarks}>
+                                                {visitor.latestFollowup?.remark ? (visitor.latestFollowup.remark.length > 20 ? `${visitor.latestFollowup.remark.substring(0, 20)}...` : visitor.latestFollowup.remark) : (visitor.remarks ? (visitor.remarks.length > 20 ? `${visitor.remarks.substring(0, 20)}...` : visitor.remarks) : '-')}
+                                            </td>
+                                            <td className="p-2 border text-gray-700 font-medium">
+                                                {visitor.latestFollowup?.followUpBy?.name || '-'}
                                             </td>
                                             <td className="p-2 border text-center">
-                                                <span className="bg-red-50 text-red-600 px-2 py-0.5 rounded font-bold border border-red-200">
-                                                    {visitor.outTime || '-'}
-                                                </span>
-                                            </td>
-                                            <td className="p-2 border text-gray-600 truncate max-w-xs" title={visitor.remarks}>
-                                                {visitor.remarks ? (visitor.remarks.length > 14 ? `${visitor.remarks.substring(0, 14)}...` : visitor.remarks) : '-'}
+                                                {getLastFollowUpInfo(visitor)}
                                             </td>
                                             <td className="p-2 border text-center sticky right-0 bg-white print:hidden">
                                                 <div className="flex justify-center gap-1">

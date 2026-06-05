@@ -17,7 +17,7 @@ const createVisitor = async (visitorData) => {
 };
 
 const getAllVisitors = async (filters = {}) => {
-    const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, inquirySource } = filters;
+    const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, inquirySource, employeeId, allocatedTo, onlyWithFollowups } = filters;
     const params = new URLSearchParams();
     if (fromDate) params.append('fromDate', fromDate);
     if (toDate) params.append('toDate', toDate);
@@ -28,6 +28,9 @@ const getAllVisitors = async (filters = {}) => {
     if (limit) params.append('limit', limit);
     if (inquirySource) params.append('inquirySource', inquirySource);
     if (filters.branchId) params.append('branchId', filters.branchId);
+    if (employeeId) params.append('employeeId', employeeId);
+    if (allocatedTo) params.append('allocatedTo', allocatedTo);
+    if (onlyWithFollowups) params.append('onlyWithFollowups', onlyWithFollowups);
 
     const response = await axios.get(`${API_URL}/all?${params.toString()}`);
     return response.data;
@@ -59,6 +62,7 @@ const getVisitorFollowUps = async (filters = {}) => {
     if (filters.limit) params.append('limit', filters.limit);
     if (filters.branchId) params.append('branchId', filters.branchId);
     if (filters.visitorId) params.append('visitorId', filters.visitorId);
+    if (filters.employeeId) params.append('employeeId', filters.employeeId);
 
     const response = await axios.get(`${API_URL}/followups?${params.toString()}`);
     return response.data;

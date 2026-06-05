@@ -105,12 +105,30 @@ const resolveAssignableUserId = async (value) => {
   return null;
 };
 
-const resolveInquiryOwner = async ({ referenceBy, requestedAllocatedTo, fallbackUserId }) => {
-  if (!isDirectReference(referenceBy)) {
-    const referenceText = String(referenceBy).trim();
-    const referenceOwner = await resolveAssignableUserId(referenceText);
-    if (referenceOwner) return referenceOwner;
-  }
+const resolveInquiryOwner = async ({ referenceBy, requestedAllocatedTo, fallbackUserId, isExternalRef }) => {
+  // 1. Explicitly marked as external ref from frontend
+  if (isExternalRef) return fallbackUserId;
+
+  // 2. Direct/Self reference stays with creator
+  if (isDirectReference(referenceBy)) return fallbackUserId;
+
+  const referenceText = String(referenceBy || "").trim();
+  if (!referenceText) return fallbackUserId;
+
+  // 3. Check if this name exists in the Reference master (External References)
+  // If it's a known external reference, it stays with the creator.
+  const isSavedExternalRef = await Reference.findOne({ 
+    name: { $regex: new RegExp(`^${escapeRegex(referenceText)}$`, "i") }, 
+    isDeleted: false 
+  }).lean();
+  
+  if (isSavedExternalRef) return fallbackUserId;
+
+  // 4. Try to resolve to a Staff/User account
+  const referenceOwner = await resolveAssignableUserId(referenceText);
+  if (referenceOwner) return referenceOwner;
+
+  // 5. Fallback to requested allocation or creator
   if (requestedAllocatedTo) return requestedAllocatedTo;
   return fallbackUserId;
 };
@@ -293,6 +311,7 @@ const getInquiries = asyncHandler(async (req, res) => {
   // Date Filters
   const dateField = dateFilterType || "inquiryDate";
   const shouldDefaultToday = source && ["Online", "Walk-in", "DSR"].includes(source) && !startDate && !endDate;
+  // If no dates provided, use today's range in local time to avoid timezone shifts
   const effectiveStartDate = startDate || (shouldDefaultToday ? new Date() : null);
   const effectiveEndDate = endDate || (shouldDefaultToday ? new Date() : null);
 
@@ -301,11 +320,26 @@ const getInquiries = asyncHandler(async (req, res) => {
     start.setHours(0, 0, 0, 0);
     const end = new Date(effectiveEndDate);
     end.setHours(23, 59, 59, 999);
+    
+    // Check if the user is filtering for "Today" and adjust to catch UTC entries from local today
+    const now = new Date();
+    if (start.toDateString() === now.toDateString()) {
+      // If filtering for today, expand range slightly to catch entries made in UTC that might fall in yesterday/today
+      start.setDate(start.getDate() - 1); 
+      start.setHours(18, 0, 0, 0); // Catch evening entries from UTC
+    }
+
     query[dateField] = { $gte: start, $lte: end };
   }
 
   // Status Filter
-  if (status) query.status = status;
+  if (status) {
+    query.status = status;
+  } else if (!isAdmissionLookup && source && ["Online", "Walk-in", "DSR"].includes(source)) {
+    // Default: hide Close/Complete inquiries for main inquiry pages
+    // User must explicitly select Close/Complete from filter to see them
+    query.status = { $nin: ["Close", "Complete"] };
+  }
 
   // Source Filter
   if (source) query.source = source;
@@ -336,12 +370,37 @@ const getInquiries = asyncHandler(async (req, res) => {
     }
   }
 
+  // Determine if we should restrict to only "Owned" inquiries
+  // Super Admin, Branch Director, and Branch Admin see everything (scoped to branch if applicable)
   const shouldApplyOwnerScope = req.user
-    && req.user.role !== "Super Admin"
+    && !["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role)
     && !isAdmissionLookup;
 
   if (shouldApplyOwnerScope) {
     addInquiryOwnershipScope(query, req.user._id);
+  }
+
+  // --- External Reference Privacy ---
+  // If not Super Admin/Director/Admin, inquiries marked as External Reference are only visible to the owner/creator
+  if (req.user && !["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role)) {
+    const privacyQuery = {
+      $or: [
+        { isExternalRef: { $ne: true } }, // Show if not external ref
+        { createdBy: req.user._id },      // OR if I created it
+        { allocatedTo: req.user._id }      // OR if it's allocated to me
+      ]
+    };
+
+    if (query.$and) {
+      query.$and.push(privacyQuery);
+    } else if (query.$or) {
+      // Move existing $or to $and to combine with privacy
+      const existingOr = query.$or;
+      delete query.$or;
+      query.$and = [{ $or: existingOr }, privacyQuery];
+    } else {
+      query.$and = [privacyQuery];
+    }
   }
 
   if (req.user && req.user.role !== 'Super Admin' && req.user.branchId && !shouldApplyOwnerScope) {
@@ -401,6 +460,22 @@ const createInquiry = asyncHandler(async (req, res) => {
     delete data.branchId;
   }
 
+  if (data.isExternalRef === "true" || data.isExternalRef === true) {
+    data.isExternalRef = true;
+  } else {
+    // Also check if the reference name exists in the master Reference collection
+    const refName = String(data.referenceBy || "").trim();
+    if (refName) {
+        const isSavedRef = await Reference.findOne({ 
+            name: { $regex: new RegExp(`^${escapeRegex(refName)}$`, "i") }, 
+            isDeleted: false 
+        }).lean();
+        data.isExternalRef = !!isSavedRef;
+    } else {
+        data.isExternalRef = false;
+    }
+  }
+
   // Assign Branch automatically for non-Super Admin
   if (req.user && req.user.role !== 'Super Admin' && req.user.branchId) {
     data.branchId = req.user.branchId;
@@ -456,6 +531,7 @@ const createInquiry = asyncHandler(async (req, res) => {
       referenceBy: data.referenceBy || data.referenceDetail?.name,
       requestedAllocatedTo: req.user.role === "Super Admin" ? data.allocatedTo : null,
       fallbackUserId: req.user._id,
+      isExternalRef: data.isExternalRef
     });
   }
 
@@ -833,26 +909,31 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
       return res.json({
         range: { startDate: start, endDate: end },
         totalInquiries: 0,
+        openCount: 0,
         totalFollowUps: 0,
+        pendingFromBefore: 0,
         employees: [],
         summary: {
-            total: 0,
-            pending: 0,
-            admitted: 0,
-            converted: 0,
-            rejected: 0,
-            followUpsToday: 0
+          total: 0,
+          open: 0,
+          completed: 0,
+          followUpsToday: 0
         }
       });
     }
     inquiryQuery.allocatedTo = selectedEmployeeUserId;
   }
 
+  const openStatuses = ["Open", "InProgress", "Recall"];
+  const completedStatuses = ["Close", "Complete"];
+
+  // Inquiries created within date range
   const inquiriesTodayQuery = {
     ...inquiryQuery,
     inquiryDate: { $gte: start, $lte: end },
   };
 
+  // Inquiries that had followup activity in date range
   const inquiries = await Inquiry.find({
     ...inquiryQuery,
     $or: [
@@ -863,7 +944,7 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
     .populate("allocatedTo", "name username")
     .populate("createdBy", "name username")
     .populate("followUpHistory.followUpBy", "name username")
-    .select("firstName lastName contactStudent allocatedTo createdBy followUpHistory")
+    .select("firstName lastName contactStudent allocatedTo createdBy followUpHistory status")
     .lean();
 
   const employeeMap = new Map();
@@ -905,16 +986,30 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
         $group: {
           _id: null,
           total: { $sum: 1 },
-          pending: { $sum: { $cond: [{ $eq: ["$status", "Pending"] }, 1, 0] } },
-          admitted: { $sum: { $cond: [{ $eq: ["$status", "Admitted"] }, 1, 0] } },
-          converted: { $sum: { $cond: [{ $eq: ["$status", "Converted"] }, 1, 0] } },
-          rejected: { $sum: { $cond: [{ $eq: ["$status", "Rejected"] }, 1, 0] } }
+          open: { $sum: { $cond: [{ $in: ["$status", openStatuses] }, 1, 0] } },
+          completed: { $sum: { $cond: [{ $in: ["$status", completedStatuses] }, 1, 0] } }
         }
       }
     ]);
     
-    summary = stats[0] || { total: 0, pending: 0, admitted: 0, converted: 0, rejected: 0 };
+    summary = stats[0] || { total: 0, open: 0, completed: 0 };
     summary.followUpsToday = followUpsToday;
+  }
+
+  // Count open inquiries within date range
+  const openInDateRange = await Inquiry.countDocuments({
+    ...inquiriesTodayQuery,
+    status: { $in: openStatuses }
+  });
+
+  // Count pending inquiries from BEFORE date range that are still open
+  let pendingFromBefore = 0;
+  if (selectedEmployeeUserId) {
+    pendingFromBefore = await Inquiry.countDocuments({
+      ...inquiryQuery,
+      inquiryDate: { $lt: start },
+      status: { $in: openStatuses }
+    });
   }
 
   const [totalInquiries] = await Promise.all([
@@ -926,7 +1021,9 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
   res.json({
     range: { startDate: start, endDate: end },
     totalInquiries,
+    openCount: openInDateRange,
     totalFollowUps: employees.reduce((sum, item) => sum + item.followUpCount, 0),
+    pendingFromBefore,
     employees,
     summary
   });
@@ -1112,6 +1209,7 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
       "relationType",
       "customEducation",
       "referenceDetail",
+      "isExternalRef",
     ];
 
     // Reference Lock Logic
@@ -1129,11 +1227,11 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
       }
     }
 
-    fields.forEach((field) => {
+    for (const field of fields) {
       if (req.body[field] !== undefined) {
         // Sanitize stringified objects like "[object Object]"
         if (req.body[field] === '[object Object]') {
-          return; // Skip this field
+          continue; // Skip this field
         }
 
         if (
@@ -1145,11 +1243,22 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
           } catch (e) {
             /* ignore parse error */
           }
+        } else if (field === "isExternalRef") {
+          inquiry[field] = req.body[field] === "true" || req.body[field] === true;
+        } else if (field === "referenceBy" && req.body.referenceBy) {
+          inquiry[field] = req.body[field];
+          // Re-check external ref status if reference name changes
+          const refName = String(req.body[field]).trim();
+          const isSavedRef = await Reference.findOne({ 
+              name: { $regex: new RegExp(`^${escapeRegex(refName)}$`, "i") }, 
+              isDeleted: false 
+          }).lean();
+          inquiry.isExternalRef = !!isSavedRef || inquiry.isExternalRef;
         } else {
           inquiry[field] = req.body[field];
         }
       }
-    });
+    }
 
     if (req.file) {
       inquiry.studentPhoto = req.file.path.replace(/\\/g, "/");
@@ -1160,6 +1269,7 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
         referenceBy: inquiry.referenceBy || inquiry.referenceDetail?.name,
         requestedAllocatedTo: null,
         fallbackUserId: inquiry.createdBy || req.user._id,
+        isExternalRef: inquiry.isExternalRef
       });
     }
 

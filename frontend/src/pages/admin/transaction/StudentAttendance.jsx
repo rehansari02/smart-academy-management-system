@@ -22,7 +22,7 @@ const StudentAttendance = () => {
     const dispatch = useDispatch();
     const { attendanceList, currentAttendanceStudents, attendanceStatus, isSuccess, message, isLoading } = useSelector(state => state.attendance);
     const { batches } = useSelector(state => state.master); // Get batches for dropdown
-    const { add, edit, delete: canDelete } = useUserRights('Student Attendance');
+    const { add, edit, delete: canDelete } = useUserRights('Attendance - Student Attendance');
 
     // View Mode: 'list' or 'form' or 'view-details'
     const [viewMode, setViewMode] = useState('list'); 

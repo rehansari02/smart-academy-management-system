@@ -350,9 +350,8 @@ const AllReceipts = () => {
                                         <td className="p-2 border font-medium text-gray-900">
                                             {receipt.student?.firstName} {receipt.student?.lastName}
                                         </td>
-                                        <td className="p-2 border">
-                                            {receipt.course?.name} 
-                                            {receipt.course?.shortName && <span className="text-gray-500 ml-1">[{receipt.course.shortName}]</span>}
+                                        <td className="p-2 border font-medium">
+                                            {receipt.course?.name}
                                         </td>
                                         {user && user.role === 'Super Admin' && (
                                             <td className="p-2 border">

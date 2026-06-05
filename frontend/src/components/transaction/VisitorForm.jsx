@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, Copy, ClipboardPaste, RotateCcw, X, Eye, ArrowRight, Save } from 'lucide-react';
+import { Users, Plus, Copy, ClipboardPaste, RotateCcw, X, Eye, ArrowRight, Save, Lock } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchReferences, createReference } from '../../features/master/masterSlice';
 import { toast } from 'react-toastify';
@@ -7,6 +7,7 @@ import axios from 'axios';
 import visitorService from '../../services/visitorService';
 import { formatInputText } from '../../utils/textFormatter';
 import InquiryViewModal from './InquiryViewModal';
+import { getTodayDateISO } from '../../utils/dateUtils';
 
 // Time conversion utilities
 const convertTo12Hour = (time24) => {
@@ -51,7 +52,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
     
     // State
     const [formData, setFormData] = useState({
-        visitingDate: new Date().toISOString().split('T')[0],
+        visitingDate: getTodayDateISO(),
         studentName: '',
         mobileNumber: '',
         contactParent: '',
@@ -69,7 +70,9 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
         nextVisitingDate: '',
         followUpDetails: '',
         branchId: user?.branchId || '',
-        inquiryId: ''
+        inquiryId: '',
+        isExternalRef: false,
+        manualReferenceName: ''
     });
 
     // Dropdown Data State
@@ -93,9 +96,17 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
         }
     }, [user, dispatch]);
 
+    // Determine if reference should be locked (non-Super Admin editing existing visitor)
+    const savedReferenceName = (initialData?.reference || '').trim();
+    const isRefLocked = Boolean(savedReferenceName) && user?.role !== 'Super Admin';
+    const referenceLockTitle = isRefLocked
+        ? 'Reference is locked after first save. Only Super Admin can change it.'
+        : '';
+
     // Handle initial data for edit mode
     useEffect(() => {
         if (initialData) {
+            setIsReferenceLocked(isRefLocked);
             setFormData({
                 visitingDate: initialData.visitingDate ? initialData.visitingDate.split('T')[0] : '',
                 studentName: initialData.studentName || '',
@@ -117,6 +128,8 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                 branchId: initialData.branchId?._id || initialData.branchId || user?.branchId || '',
                 inquiryId: initialData.inquiryId?._id || initialData.inquiryId || ''
             });
+        } else {
+            setIsReferenceLocked(false);
         }
     }, [initialData, user]);
 
@@ -208,7 +221,10 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
             const submissionData = {
                 ...formData,
                 inTime: convertTo12Hour(formData.inTime),
-                outTime: convertTo12Hour(formData.outTime)
+                outTime: convertTo12Hour(formData.outTime),
+                // Handle external reference
+                reference: formData.reference === 'ManualExternal' ? formData.manualReferenceName : formData.reference,
+                isExternalRef: formData.reference === 'ManualExternal'
             };
 
             // Remove empty attendedBy to prevent BSON cast error
@@ -239,18 +255,28 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
         }
     };
 
-    // Search State
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [isReferenceLocked, setIsReferenceLocked] = useState(false);
     const [viewInquiry, setViewInquiry] = useState(null); // For Modal
 
     // Debounced Search Effect
     useEffect(() => {
         const timer = setTimeout(async () => {
-            if (formData.studentName && formData.studentName.length > 2) {
+            const name = (formData.studentName || '').trim();
+            const mobile = (formData.mobileNumber || '').trim();
+            
+            // Search if name is >= 3 chars OR mobile is >= 5 chars
+            const searchTerm = (name.length >= 3) ? name : (mobile.length >= 5 ? mobile : '');
+
+            if (searchTerm) {
                 setIsSearching(true);
                 try {
-                    const res = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry?studentName=${formData.studentName}`, { withCredentials: true });
+                    // Use scope=admission to allow global matching across all inquiries
+                    const res = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry`, { 
+                        params: { search: searchTerm, scope: 'admission' },
+                        withCredentials: true 
+                    });
                     setSearchResults(res.data);
                 } catch (error) {
                     console.error("Search failed", error);
@@ -263,13 +289,23 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [formData.studentName]);
+    }, [formData.studentName, formData.mobileNumber]);
 
     const handleFillDetails = (inquiry) => {
         const fullName = [inquiry.firstName, inquiry.middleName, inquiry.lastName].filter(Boolean).join(' ');
         const matchedCourse = courses.find(c => c._id === inquiry.interestedCourse?._id || c._id === inquiry.interestedCourse);
-        const referenceName = inquiry.referenceDetail?.name || inquiry.referenceBy || 'Direct';
-        const matchedReference = references.find(r => r.name === referenceName);
+        
+        // Handle External Reference logic
+        let referenceValue = inquiry.referenceBy || 'Direct';
+        let manualName = '';
+        let isExternal = inquiry.isExternalRef || false;
+
+        if (isExternal) {
+            manualName = inquiry.referenceBy;
+            referenceValue = 'ManualExternal';
+        }
+
+        const matchedReference = references.find(r => r.name === referenceValue);
 
         setFormData(prev => ({
             ...prev,
@@ -278,7 +314,9 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
             contactParent: inquiry.contactParent || '',
             contactHome: inquiry.contactHome || '',
             address: inquiry.address || '',
-            reference: referenceName,
+            reference: referenceValue,
+            manualReferenceName: manualName,
+            isExternalRef: isExternal,
             referenceContact: inquiry.referenceDetail?.mobile || matchedReference?.mobile || '',
             referenceAddress: inquiry.referenceDetail?.address || matchedReference?.address || '',
             course: matchedCourse ? matchedCourse._id : '',
@@ -287,7 +325,9 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
             inquiryId: inquiry._id
         }));
         
-        toast.info("Details filled from Inquiry record");
+        setIsReferenceLocked(true);
+        setSearchResults([]);
+        toast.info("Details filled from Inquiry record. Reference source locked.");
     };
 
     return (
@@ -396,50 +436,87 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                             ></textarea>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Reference</label>
-                            <div className="flex gap-2">
-                                <select 
-                                    name="reference"
-                                    value={formData.reference}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        const extRef = references.find(r => r.name === val);
-                                        if(extRef) {
-                                            setFormData(prev => ({ 
-                                                ...prev, 
-                                                reference: val,
-                                                referenceContact: extRef.mobile || '',
-                                                referenceAddress: extRef.address || ''
-                                            }));
-                                        } else {
-                                            handleInputChange(e);
-                                        }
-                                    }}
-                                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500"
-                                >
-                                    <option value="">Select Reference</option>
-                                    <option value="Direct">Direct / Walk-in</option>
-                                    <optgroup label="Staff">
-                                        {employees.map(emp => (
-                                            <option key={emp._id} value={emp.name || `${emp.firstName} ${emp.lastName}`}>
-                                                {emp.name || `${emp.firstName} ${emp.lastName}`} (Staff)
-                                            </option>
-                                        ))}
-                                    </optgroup>
-                                    <optgroup label="External References">
-                                        {references.map((r, i) => (
-                                            <option key={r._id || i} value={r.name}>{r.name}</option>
-                                        ))}
-                                    </optgroup>
-                                </select>
-                                <button 
-                                    type="button" 
-                                    onClick={() => setShowRefModal(true)}
-                                    className="p-2 bg-indigo-50 text-indigo-600 rounded border hover:bg-indigo-100 flex-shrink-0"
-                                    title="Add New Reference"
-                                >
-                                    <Plus size={20} />
-                                </button>
+                            <div className="relative" title={referenceLockTitle}>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Reference</label>
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex gap-2">
+                                        <select 
+                                            name="reference"
+                                            value={formData.reference}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                const extRef = references.find(r => r.name === val);
+                                                if(extRef) {
+                                                    setFormData(prev => ({ 
+                                                        ...prev, 
+                                                        reference: val,
+                                                        referenceContact: extRef.mobile || '',
+                                                        referenceAddress: extRef.address || '',
+                                                        isExternalRef: false
+                                                    }));
+                                                } else {
+                                                    handleInputChange(e);
+                                                }
+                                            }}
+                                            disabled={isReferenceLocked}
+                                            className={`w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 ${isReferenceLocked ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}`}
+                                            title={referenceLockTitle}
+                                        >
+                                            <option value="">Select Reference</option>
+                                            <option value="Direct">Direct / Walk-in</option>
+                                            <option value="ManualExternal" className="text-blue-600 font-bold">Manual External Reference (Hidden)</option>
+                                            <optgroup label="Staff">
+                                                {employees.map(emp => (
+                                                    <option key={emp._id} value={emp.name || `${emp.firstName} ${emp.lastName}`}>
+                                                        {emp.name || `${emp.firstName} ${emp.lastName}`} (Staff)
+                                                    </option>
+                                                ))}
+                                            </optgroup>
+                                            <optgroup label="External References">
+                                                {references.map((r, i) => (
+                                                    <option key={r._id || i} value={r.name}>{r.name}</option>
+                                                ))}
+                                            </optgroup>
+                                        </select>
+                                        {!isReferenceLocked && (
+                                            <button 
+                                                type="button" 
+                                                onClick={() => setShowRefModal(true)}
+                                                className="p-2 bg-indigo-50 text-indigo-600 rounded border hover:bg-indigo-100 flex-shrink-0"
+                                                title="Add New Reference"
+                                            >
+                                                <Plus size={20} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    {formData.reference === 'ManualExternal' && !isReferenceLocked && (
+                                        <div className="animate-fadeIn">
+                                            <div className="flex items-center gap-1 mb-1">
+                                                <Lock size={12} className="text-blue-600" />
+                                                <label className="text-xs font-bold text-blue-600">Manual Reference Name (Hidden from others)</label>
+                                            </div>
+                                            <input 
+                                                type="text"
+                                                name="manualReferenceName"
+                                                value={formData.manualReferenceName}
+                                                onChange={handleInputChange}
+                                                required={formData.reference === 'ManualExternal'}
+                                                className="w-full border-2 border-blue-200 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 bg-blue-50"
+                                                placeholder="Enter Reference Name..."
+                                            />
+                                        </div>
+                                    )}
+                                    {isReferenceLocked && formData.manualReferenceName && (
+                                        <div className="mt-1 p-2 bg-gray-50 rounded text-sm text-gray-600 border">
+                                            <span className="font-medium">Reference:</span> {formData.manualReferenceName}
+                                        </div>
+                                    )}
+                                    {isReferenceLocked && (
+                                        <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                                            <Lock size={12} /> Only Super Admin can change this reference.
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                         <div>

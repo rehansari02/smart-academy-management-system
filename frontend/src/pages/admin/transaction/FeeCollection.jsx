@@ -870,8 +870,19 @@ const FeeCollection = () => {
                 )}
             </div>
 
-            {/* === HIDDEN PRINT TEMPLATES === */}
-            <div className="hidden">
+            {/* === HIDDEN PRINT TEMPLATES - Use off-screen instead of display:none for mobile print support */}
+            <div style={{
+                position: 'fixed',
+                left: '-9999px',
+                top: 0,
+                width: '210mm',
+                height: '297mm',
+                overflow: 'hidden',
+                backgroundColor: 'white',
+                zIndex: -1,
+                opacity: 0,
+                pointerEvents: 'none'
+            }}>
                 <ReceiptPrintTemplate ref={receiptRef} receipt={printingReceipt} />
             </div>
 

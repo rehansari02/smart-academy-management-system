@@ -2,6 +2,141 @@ const Visitor = require('../models/Visitor');
 const User = require('../models/User'); // For ensuring attendedBy exists if needed
 const Inquiry = require('../models/Inquiry');
 const VisitorFollowUp = require('../models/VisitorFollowUp');
+const Reference = require('../models/Reference');
+const Employee = require('../models/Employee');
+const mongoose = require('mongoose');
+
+const escapeRegex = (value) => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const isDirectReference = (value) => {
+    const text = String(value || "").trim().toLowerCase();
+    return !text || ["direct", "self", "none", "na", "n/a", "-"].includes(text);
+};
+
+const resolveAssignableUserId = async (value) => {
+    const raw = typeof value === "object"
+        ? value?._id || value?.userAccount?._id || value?.userAccount
+        : value;
+    const text = String(raw || "").trim();
+    if (!text || text === "[object Object]") return null;
+
+    if (mongoose.Types.ObjectId.isValid(text)) {
+        const user = await User.findById(text).select("_id").lean();
+        if (user?._id) return user._id;
+
+        const employee = await Employee.findOne({ _id: text, isDeleted: false, isActive: true })
+            .select("userAccount loginUsername email mobile name")
+            .lean();
+
+        if (employee?.userAccount) {
+            const linkedUser = await User.findById(employee.userAccount).select("_id").lean();
+            if (linkedUser?._id) return linkedUser._id;
+        }
+
+        const employeeLogin = [employee?.loginUsername, employee?.email, employee?.mobile, employee?.name]
+            .map((item) => String(item || "").trim())
+            .filter(Boolean);
+
+        if (employeeLogin.length) {
+            const matchedUser = await User.findOne({
+                isActive: { $ne: false },
+                $or: employeeLogin.flatMap((item) => [
+                    { username: { $regex: new RegExp(`^${escapeRegex(item)}$`, "i") } },
+                    { email: { $regex: new RegExp(`^${escapeRegex(item)}$`, "i") } },
+                    { name: { $regex: new RegExp(`^${escapeRegex(item)}$`, "i") } },
+                ]),
+            }).select("_id").lean();
+            if (matchedUser?._id) return matchedUser._id;
+        }
+    }
+
+    const matchedUser = await User.findOne({
+        isActive: { $ne: false },
+        $or: [
+            { username: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+            { email: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+            { name: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+        ],
+    }).select("_id").lean();
+
+    if (matchedUser?._id) return matchedUser._id;
+
+    const matchedEmployee = await Employee.findOne({
+        isDeleted: false,
+        isActive: true,
+        $or: [
+            { name: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+            { loginUsername: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+            { email: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+            { mobile: { $regex: new RegExp(`^${escapeRegex(text)}$`, "i") } },
+        ],
+    }).select("userAccount loginUsername email mobile name").lean();
+
+    if (matchedEmployee?.userAccount) {
+        const linkedUser = await User.findById(matchedEmployee.userAccount).select("_id").lean();
+        if (linkedUser?._id) return linkedUser._id;
+    }
+
+    if (matchedEmployee) {
+        const employeeLogin = [matchedEmployee.loginUsername, matchedEmployee.email, matchedEmployee.mobile, matchedEmployee.name]
+            .map((item) => String(item || "").trim())
+            .filter(Boolean);
+        const linkedByEmployee = await User.findOne({
+            isActive: { $ne: false },
+            $or: employeeLogin.flatMap((item) => [
+                { username: { $regex: new RegExp(`^${escapeRegex(item)}$`, "i") } },
+                { email: { $regex: new RegExp(`^${escapeRegex(item)}$`, "i") } },
+                { name: { $regex: new RegExp(`^${escapeRegex(item)}$`, "i") } },
+            ]),
+        }).select("_id").lean();
+        if (linkedByEmployee?._id) return linkedByEmployee._id;
+    }
+
+    return null;
+};
+
+const resolveVisitorOwner = async ({ reference, fallbackUserId, isExternalRef }) => {
+    // 1. Explicitly marked as external ref from frontend
+    if (isExternalRef) return fallbackUserId;
+
+    // 2. Direct/Self reference stays with creator
+    if (isDirectReference(reference)) return fallbackUserId;
+
+    const referenceText = String(reference || "").trim();
+    if (!referenceText) return fallbackUserId;
+
+    // 3. Check if this name exists in the Reference master (External References)
+    const isSavedExternalRef = await Reference.findOne({
+        name: { $regex: new RegExp(`^${escapeRegex(referenceText)}$`, "i") },
+        isDeleted: false
+    }).lean();
+
+    if (isSavedExternalRef) return fallbackUserId;
+
+    // 4. Try to resolve to a Staff/User account
+    const referenceOwner = await resolveAssignableUserId(referenceText);
+    if (referenceOwner) return referenceOwner;
+
+    return fallbackUserId;
+};
+
+const addVisitorOwnershipScope = (query, ownerId) => {
+    const ownership = {
+        $or: [
+            { allocatedTo: ownerId },
+            { createdBy: ownerId },
+            { allocatedTo: { $exists: false }, createdBy: ownerId },
+            { allocatedTo: null, createdBy: ownerId },
+        ],
+    };
+
+    if (query.$or) {
+        query.$and = [...(query.$and || []), { $or: query.$or }, ownership];
+        delete query.$or;
+    } else {
+        query.$and = [...(query.$and || []), ownership];
+    }
+};
 
 const buildDateRange = (fromDate, toDate) => {
     if (!fromDate && !toDate) return null;
@@ -10,6 +145,17 @@ const buildDateRange = (fromDate, toDate) => {
     if (fromDate) {
         const start = new Date(fromDate);
         start.setHours(0, 0, 0, 0);
+        
+        // Adjust for India Timezone (UTC+5:30)
+        // If start of day is 2026-06-05T00:00:00.000Z, 
+        // it misses records created between 12:00 AM and 5:30 AM local time
+        // which are stored as 2026-06-04T18:30:00.000Z to 2026-06-04T23:59:59.000Z
+        const now = new Date();
+        if (start.toDateString() === now.toDateString()) {
+            start.setDate(start.getDate() - 1);
+            start.setHours(18, 0, 0, 0); // Catch entries from 11:30 PM previous day UTC (6:00 PM previous day UTC)
+        }
+        
         range.$gte = start;
     }
     if (toDate) {
@@ -66,11 +212,24 @@ const appendVisitorFilters = (query, { search, searchField, studentName, referen
 // Create a new visitor
 exports.createVisitor = async (req, res) => {
     try {
-        let { visitingDate, studentName, mobileNumber, contactParent, contactHome, address, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId } = req.body;
+        let { visitingDate, studentName, mobileNumber, contactParent, contactHome, address, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId, isExternalRef } = req.body;
 
         // Auto-assign branch for non-Super Admin
         if (req.user.role !== 'Super Admin') {
             branchId = req.user.branchId;
+        }
+
+        // Normalize visitingDate to start of day in UTC to avoid time-of-day filtering issues
+        // If visitingDate is "2026-06-05", new Date("2026-06-05") creates 2026-06-05T00:00:00.000Z
+        if (visitingDate) {
+            const vDate = new Date(visitingDate);
+            vDate.setHours(0, 0, 0, 0);
+            visitingDate = vDate;
+        } else {
+            // Default to current day start if not provided
+            const vDate = new Date();
+            vDate.setHours(0, 0, 0, 0);
+            visitingDate = vDate;
         }
 
         // Fix empty string attendedBy — convert to undefined to avoid BSON cast error
@@ -82,6 +241,14 @@ exports.createVisitor = async (req, res) => {
             const inquiry = await Inquiry.findById(inquiryId).select('status');
             status = inquiry?.status || 'Open';
         }
+
+        // Resolve Ownership
+        const creatorId = req.user._id;
+        const allocatedTo = await resolveVisitorOwner({
+            reference,
+            fallbackUserId: creatorId,
+            isExternalRef: isExternalRef === 'true' || isExternalRef === true
+        });
         
         const newVisitor = new Visitor({
             visitingDate,
@@ -100,7 +267,10 @@ exports.createVisitor = async (req, res) => {
             attendedBy,
             remarks,
             branchId,
-            inquiryId
+            inquiryId,
+            createdBy: creatorId,
+            allocatedTo,
+            isExternalRef: isExternalRef === 'true' || isExternalRef === true
         });
 
         await newVisitor.save();
@@ -119,8 +289,9 @@ exports.createVisitor = async (req, res) => {
 // Get all visitors with filters
 exports.getAllVisitors = async (req, res) => {
     try {
-        const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, branchId, inquirySource } = req.query;
+        const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, branchId, inquirySource, employeeId, allocatedTo, onlyWithFollowups, scope, status } = req.query;
         let query = { isDeleted: false };
+        const isAdmissionLookup = scope === 'admission' || req.query.forAdmission === 'true';
 
         // Branch Filter Logic
         if (req.user.role !== 'Super Admin') {
@@ -140,15 +311,76 @@ exports.getAllVisitors = async (req, res) => {
 
         appendVisitorFilters(query, { search, searchField, studentName, referenceBy });
 
+        // Status Filter: By default hide Close/Complete visitors
+        // User must explicitly pass status=Close or status=Complete to see them
+        if (status) {
+            query.status = status;
+        } else if (!isAdmissionLookup) {
+            query.status = { $nin: ["Close", "Complete"] };
+        }
+
         if (inquirySource) {
             const inquiries = await Inquiry.find({ source: inquirySource }).select('_id');
             query.inquiryId = { $in: inquiries.map(inquiry => inquiry._id) };
         }
 
-let queryExec = Visitor.find(query)
+        // Employee/Allocation Filter
+        const targetEmployee = employeeId || allocatedTo;
+        if (targetEmployee) {
+            const employeeUserId = await resolveAssignableUserId(targetEmployee);
+            if (employeeUserId) {
+                query.allocatedTo = employeeUserId;
+            } else {
+                query._id = { $exists: false }; // No matches
+            }
+        }
+
+        // Determine if we should restrict to only "Owned" visitors
+        // Super Admin, Branch Director, and Branch Admin see everything (scoped to branch if applicable)
+        // Also bypass for admission lookups to allow matching across all employees
+        const isRestrictedRole = !["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role);
+        
+        if (isRestrictedRole && !isAdmissionLookup) {
+            addVisitorOwnershipScope(query, req.user._id);
+        }
+
+        // --- External Reference Privacy ---
+        // If not Super Admin/Director/Admin, inquiries marked as External Reference are only visible to the owner/creator
+        // Bypass for admission lookup to allow matching, but ensure sensitive data is handled in frontend
+        if (req.user && isRestrictedRole && !isAdmissionLookup) {
+            const privacyQuery = {
+                $or: [
+                    { isExternalRef: { $ne: true } }, // Show if not external ref
+                    { createdBy: req.user._id },      // OR if I created it
+                    { allocatedTo: req.user._id }      // OR if it's allocated to me
+                ]
+            };
+
+            if (query.$and) {
+                query.$and.push(privacyQuery);
+            } else if (query.$or) {
+                const existingOr = query.$or;
+                delete query.$or;
+                query.$and = [{ $or: existingOr }, privacyQuery];
+            } else {
+                query.$and = [privacyQuery];
+            }
+        }
+
+        // Requirement: "jab tak uska visitor followups nhi ata jab tak ... isme visitors me show nhi hona chaiye"
+        // This is handled by checking if there's at least one followup record or if 'onlyWithFollowups' is passed
+        if (onlyWithFollowups === 'true') {
+            const followups = await VisitorFollowUp.find({ isDeleted: false }).select('visitorId').lean();
+            const visitorIdsWithFollowups = [...new Set(followups.map(f => f.visitorId.toString()))];
+            query._id = { ...query._id, $in: visitorIdsWithFollowups };
+        }
+
+        let queryExec = Visitor.find(query)
             .populate('course', 'name') 
-            .populate('attendedBy', 'name') // Employee model has name
+            .populate('attendedBy', 'name') 
             .populate('branchId', 'name')
+            .populate('allocatedTo', 'name username role')
+            .populate('createdBy', 'name username role')
             .populate({
                 path: 'inquiryId',
                 populate: [
@@ -163,7 +395,25 @@ let queryExec = Visitor.find(query)
         }
 
         const visitors = await queryExec;
-        res.status(200).json(visitors);
+
+        // Fetch latest follow-up for each visitor to show "Handled By" details
+        const visitorIds = visitors.map(v => v._id);
+        const latestFollowups = await VisitorFollowUp.find({
+            visitorId: { $in: visitorIds },
+            isDeleted: false
+        })
+        .sort({ scheduledDate: -1, createdAt: -1 })
+        .populate('followUpBy', 'name username')
+        .lean();
+
+        const visitorsWithLatestFollowup = visitors.map(v => {
+            const visitorObj = v.toObject();
+            // Find the most recent followup for this visitor
+            visitorObj.latestFollowup = latestFollowups.find(f => f.visitorId.toString() === v._id.toString());
+            return visitorObj;
+        });
+
+        res.status(200).json(visitorsWithLatestFollowup);
     } catch (error) {
         console.error("Error fetching visitors:", error);
         res.status(500).json({ message: 'Error fetching visitors', error: error.message });
@@ -197,56 +447,61 @@ exports.getVisitorById = async (req, res) => {
 // Update visitor
 exports.updateVisitor = async (req, res) => {
     try {
-        let { visitingDate, studentName, mobileNumber, contactParent, contactHome, address, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId } = req.body;
+        let { visitingDate, studentName, mobileNumber, contactParent, contactHome, address, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId, isExternalRef } = req.body;
         
         // Fix empty string attendedBy — convert to undefined to avoid BSON cast error
         if (attendedBy === '' || attendedBy === null) {
             attendedBy = undefined;
         }
 
-        // Note: Usually we don't update branchId but if Super Admin wants to, they can.
-        // If not Super Admin, we might want to prevent changing branchId, but keeping it simple for now or enforcing it stays same.
-        // For strictness:
-        if (req.user.role !== 'Super Admin') {
-            // Remove branchId from update if passed, or ensure it matches user's branch
-             // For now, let's assume it's not passed or we just ignore/don't override to something else if not super admin.
-             // Actually, the easiest is to just not update it if it's not super admin? 
-             // Or ensure the doc belongs to their branch first (which we should do for security).
-        }
-        
-        const updatedVisitor = await Visitor.findByIdAndUpdate(
-            req.params.id,
-            {
-                visitingDate,
-                studentName,
-                mobileNumber,
-                contactParent,
-                contactHome,
-                address,
-                reference,
-                referenceContact,
-                referenceAddress,
-                course,
-                inTime,
-                outTime,
-                status: status || 'Open',
-                attendedBy,
-                remarks,
-                branchId,
-                inquiryId
-            },
-            { new: true, runValidators: true }
-        );
-
-        if (!updatedVisitor) {
+        const visitor = await Visitor.findById(req.params.id);
+        if (!visitor) {
             return res.status(404).json({ message: 'Visitor not found' });
         }
 
-        if (inquiryId) {
-            await Inquiry.findByIdAndUpdate(inquiryId, { isDeleted: true, visitorId: updatedVisitor._id });
+        // Update basic fields
+        if (visitingDate) {
+            const vDate = new Date(visitingDate);
+            vDate.setHours(0, 0, 0, 0);
+            visitor.visitingDate = vDate;
+        }
+        visitor.studentName = studentName || visitor.studentName;
+        visitor.mobileNumber = mobileNumber || visitor.mobileNumber;
+        visitor.contactParent = contactParent || visitor.contactParent;
+        visitor.contactHome = contactHome || visitor.contactHome;
+        visitor.address = address || visitor.address;
+        visitor.reference = reference || visitor.reference;
+        visitor.referenceContact = referenceContact || visitor.referenceContact;
+        visitor.referenceAddress = referenceAddress || visitor.referenceAddress;
+        visitor.course = course || visitor.course;
+        visitor.inTime = inTime || visitor.inTime;
+        visitor.outTime = outTime || visitor.outTime;
+        visitor.status = status || visitor.status;
+        visitor.attendedBy = attendedBy || visitor.attendedBy;
+        visitor.remarks = remarks || visitor.remarks;
+        visitor.branchId = branchId || visitor.branchId;
+        visitor.inquiryId = inquiryId || visitor.inquiryId;
+
+        if (isExternalRef !== undefined) {
+            visitor.isExternalRef = isExternalRef === 'true' || isExternalRef === true;
         }
 
-        res.status(200).json({ message: 'Visitor updated successfully', visitor: updatedVisitor });
+        // Re-resolve ownership if reference changed
+        if (reference) {
+            visitor.allocatedTo = await resolveVisitorOwner({
+                reference,
+                fallbackUserId: visitor.createdBy || req.user._id,
+                isExternalRef: visitor.isExternalRef
+            });
+        }
+
+        await visitor.save();
+
+        if (inquiryId) {
+            await Inquiry.findByIdAndUpdate(inquiryId, { isDeleted: true, visitorId: visitor._id });
+        }
+
+        res.status(200).json({ message: 'Visitor updated successfully', visitor });
     } catch (error) {
         console.error("Error updating visitor:", error);
         res.status(500).json({ message: 'Error updating visitor', error: error.message });
@@ -314,11 +569,20 @@ exports.createVisitorFollowUp = async (req, res) => {
 // Get visitor follow-ups with filters
 exports.getVisitorFollowUps = async (req, res) => {
     try {
-        const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, branchId, visitorId } = req.query;
+        const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, branchId, visitorId, employeeId } = req.query;
         const query = { isDeleted: false };
 
         if (visitorId) {
             query.visitorId = visitorId;
+        }
+
+        if (employeeId) {
+            const employeeUserId = await resolveAssignableUserId(employeeId);
+            if (employeeUserId) {
+                query.followUpBy = employeeUserId;
+            } else {
+                query._id = { $exists: false }; // No matches
+            }
         }
 
         const dateRange = buildDateRange(fromDate, toDate);
@@ -400,6 +664,116 @@ exports.deleteVisitorFollowUp = async (req, res) => {
     } catch (error) {
         console.error("Error deleting visitor follow-up:", error);
         res.status(500).json({ message: 'Error deleting visitor follow-up', error: error.message });
+    }
+};
+
+// Get Visitor follow-up statistics
+exports.getVisitorFollowUpStats = async (req, res) => {
+    try {
+        const { fromDate, toDate, branchId, employeeId } = req.query;
+
+        // Date Range for "New" visitors and followups performed
+        const start = fromDate ? new Date(fromDate) : new Date();
+        start.setHours(0, 0, 0, 0);
+        const end = toDate ? new Date(toDate) : new Date();
+        end.setHours(23, 59, 59, 999);
+
+        const query = { isDeleted: false };
+        if (req.user.role !== 'Super Admin') {
+            query.branchId = req.user.branchId;
+        } else if (branchId) {
+            query.branchId = branchId;
+        }
+
+        // Stats for visitors created within range
+        const rangeVisitorsQuery = {
+            ...query,
+            visitingDate: { $gte: start, $lte: end }
+        };
+
+        // Stats for followups scheduled within range
+        const followUpStatsQuery = {
+            ...query,
+            scheduledDate: { $gte: start, $lte: end }
+        };
+
+        if (employeeId) {
+            const employeeUserId = await resolveAssignableUserId(employeeId);
+            if (employeeUserId) {
+                followUpStatsQuery.followUpBy = employeeUserId;
+            }
+        }
+
+        const openStatuses = ["Open", "InProgress", "Recall", "Pending"];
+        const completedStatuses = ["Complete", "Converted"];
+
+        // Pending from before the selected range
+        const pendingFromBeforeQuery = {
+            ...query,
+            visitingDate: { $lt: start },
+            status: { $in: openStatuses }
+        };
+
+        const [
+            totalInquiries, 
+            openCount, 
+            completedCount, 
+            totalFollowUps, 
+            pendingFromBefore,
+            followUpsToday
+        ] = await Promise.all([
+            Visitor.countDocuments(rangeVisitorsQuery),
+            Visitor.countDocuments({ ...query, status: { $in: openStatuses } }), // Current open across all time for this branch
+            Visitor.countDocuments({ ...rangeVisitorsQuery, status: { $in: completedStatuses } }),
+            VisitorFollowUp.countDocuments(followUpStatsQuery),
+            Visitor.countDocuments(pendingFromBeforeQuery),
+            VisitorFollowUp.countDocuments({ ...query, createdAt: { $gte: start, $lte: end } })
+        ]);
+
+        // Employee performance
+        const followUps = await VisitorFollowUp.find(followUpStatsQuery)
+            .populate('followUpBy', 'name username')
+            .lean();
+
+        const employeeMap = new Map();
+        for (const f of followUps) {
+            const by = f.followUpBy;
+            if (!by) continue;
+            const key = by._id.toString();
+            if (!employeeMap.has(key)) {
+                employeeMap.set(key, {
+                    employeeId: key,
+                    employeeName: by.name || by.username,
+                    followUpCount: 0,
+                    latestFollowUpAt: f.createdAt
+                });
+            }
+            const entry = employeeMap.get(key);
+            entry.followUpCount++;
+            if (new Date(f.createdAt) > new Date(entry.latestFollowUpAt)) {
+                entry.latestFollowUpAt = f.createdAt;
+            }
+        }
+
+        const employeeStats = [...employeeMap.values()].sort((a, b) => b.followUpCount - a.followUpCount);
+
+        res.status(200).json({
+            totalInquiries,
+            openCount,
+            completedCount,
+            totalFollowUps,
+            pendingFromBefore,
+            employees: employeeStats,
+            summary: {
+                total: totalInquiries,
+                open: openCount,
+                completed: completedCount,
+                followUpsToday: followUpsToday
+            }
+        });
+    } catch (error) {
+        console.error("Error fetching visitor stats:", error);
+        res.status(500).json({ message: 'Error fetching visitor stats', error: error.message });
     }
 };
 

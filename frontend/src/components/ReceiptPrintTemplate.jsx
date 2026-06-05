@@ -320,16 +320,24 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
               margin: 0;
               size: A4 portrait;
             }
-            body > *:not(.print-only-container) {
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            body > div:not(.print-only-container) {
               display: none !important;
             }
             .print-only-container {
               display: block !important;
-              position: absolute;
-              left: 0;
-              top: 0;
-              width: 210mm;
-              background: white;
+              position: fixed !important;
+              top: 0 !important;
+              left: 0 !important;
+              width: 210mm !important;
+              height: 297mm !important;
+              background: white !important;
+              z-index: 99999 !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
             }
           }
           @media screen {

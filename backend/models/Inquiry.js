@@ -54,6 +54,7 @@ const inquirySchema = new mongoose.Schema(
 
     // Specific Reference Detail
     referenceBy: { type: String },
+    isExternalRef: { type: Boolean, default: false }, // NEW: If true, only creator/superadmin can see
     referenceDetail: {
       // NEW: For adding new reference contact
       name: String,

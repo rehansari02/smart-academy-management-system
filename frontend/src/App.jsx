@@ -120,6 +120,9 @@ const PendingAdmissionFeePayment = lazy(() =>
 const StudentCancellation = lazy(() =>
   import("./pages/admin/transaction/StudentCancellation")
 );
+const CancelledStudents = lazy(() =>
+  import("./pages/admin/transaction/CancelledStudents")
+);
 const PendingStudentRegistration = lazy(() =>
   import("./pages/admin/transaction/PendingStudentRegistration")
 );
@@ -225,9 +228,9 @@ function App() {
               <Route
                 path="/dashboard"
                 element={
-                  <SuperAdminRoute>
+                  <PrivateRoute>
                     <AdminDashboard />
-                  </SuperAdminRoute>
+                  </PrivateRoute>
                 }
               />
 
@@ -523,6 +526,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <StudentCancellation />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/transaction/cancelled-students"
+                element={
+                  <PrivateRoute>
+                    <CancelledStudents />
                   </PrivateRoute>
                 }
               />

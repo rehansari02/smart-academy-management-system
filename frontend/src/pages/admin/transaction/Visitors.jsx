@@ -1,12 +1,29 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Users } from 'lucide-react';
 import VisitorForm from '../../../components/transaction/VisitorForm';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const Visitors = () => {
     const location = useLocation();
     const navigate = useNavigate();
+    const { add, edit } = useUserRights('Visitors - Visitors');
     const visitorData = location.state?.visitorData;
+
+    useEffect(() => {
+        if (visitorData) {
+            if (!edit) {
+                showPermissionDenied("You don't have authority to edit visitors.");
+                navigate('/transaction/visitors/todays-list');
+            }
+        } else {
+            if (!add) {
+                showPermissionDenied("You don't have authority to add visitors.");
+                navigate('/transaction/visitors/todays-list');
+            }
+        }
+    }, [add, edit, visitorData, navigate]);
 
     const handleSuccess = () => {
         navigate('/transaction/visitors/todays-list', { replace: true, state: {} });

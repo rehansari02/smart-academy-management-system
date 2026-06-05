@@ -10,7 +10,7 @@ import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const StudentCancellation = () => {
   const dispatch = useDispatch();
-  const { students, isLoading } = useSelector((state) => state.students);
+  const { students, pagination, isLoading } = useSelector((state) => state.students);
   const { branches } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
   const { edit } = useUserRights('Student Cancellation');
@@ -28,18 +28,20 @@ const StudentCancellation = () => {
 
   const [searchedStudents, setSearchedStudents] = useState([]);
   const [initialLoad, setInitialLoad] = useState(false);
+  const [cancelledPage, setCancelledPage] = useState(1);
 
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
 
-  // Fetch Branches and Cancelled Students
+  // Fetch Branches and Paginated Cancelled Students
   useEffect(() => {
     if (user?.role === 'Super Admin') {
       dispatch(fetchBranches());
     }
-    // Fetch all cancelled students for the list
-    dispatch(fetchStudents({ branchId: filters.branchId, includeCancelled: true, isCancelled: 'true', pageSize: 1000 }));
-  }, [dispatch, user, filters.branchId]);
+    // Fetch cancelled students with pagination (limit 10)
+    dispatch(fetchStudents({ branchId: filters.branchId, includeCancelled: true, isCancelled: 'true', page: cancelledPage, pageSize: 10 }));
+  }, [dispatch, user, filters.branchId, cancelledPage]);
 
   // Handle Search Result from StudentSearch
   const handleStudentSelect = (id, student) => {
@@ -52,6 +54,9 @@ const StudentCancellation = () => {
 
   const handleFilterChange = (e) => {
     setFilters({ ...filters, [e.target.name]: e.target.value, pageNumber: 1 });
+    if (e.target.name === 'branchId') {
+      setCancelledPage(1);
+    }
   };
 
   const handleSearch = () => {
@@ -84,13 +89,12 @@ const StudentCancellation = () => {
 
   const confirmCancellation = () => {
     if (selectedStudent) {
-      dispatch(cancelStudent(selectedStudent._id)).then((result) => {
+      dispatch(cancelStudent({ id: selectedStudent._id, reason: cancellationReason })).then((result) => {
         if (result.meta.requestStatus === 'fulfilled') {
           toast.success('Student admission cancelled successfully');
           setSearchedStudents([]); // Clear current selection
-          // Optional: You might want to refresh the cancelled list, 
-          // but since we are not fetching all students, we just clear the active selection.
-          dispatch(fetchStudents({ branchId: filters.branchId, includeCancelled: true, isCancelled: 'true', pageSize: 1000 })); 
+          setCancellationReason('');
+          dispatch(fetchStudents({ branchId: filters.branchId, includeCancelled: true, isCancelled: 'true', page: cancelledPage, pageSize: 10 })); 
         } else {
           toast.error('Failed to cancel student admission');
         }
@@ -172,7 +176,12 @@ const StudentCancellation = () => {
                     <td className="p-3 border">{student.mobileParent || '-'}</td>
                     <td className="p-3 border">
                       {student.isCancelled ? (
-                        <span className="px-2 py-1 bg-red-100 text-red-600 rounded-full text-xs font-bold uppercase">Cancelled</span>
+                        <div>
+                          <span className="px-2 py-1 bg-red-100 text-red-600 rounded-full text-xs font-bold uppercase">Cancelled</span>
+                          {student.cancellationReason && (
+                            <p className="text-[10px] text-gray-500 mt-1 italic max-w-[200px] truncate" title={student.cancellationReason}>{student.cancellationReason}</p>
+                          )}
+                        </div>
                       ) : (
                         <span className="px-2 py-1 bg-green-100 text-green-600 rounded-full text-xs font-bold uppercase">Active</span>
                       )}
@@ -207,27 +216,35 @@ const StudentCancellation = () => {
       {/* Cancelled Students Section */}
       <div className="bg-white rounded-lg shadow-md p-6">
         <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
-          <CheckCircle className="text-green-500" size={24} /> All Cancelled Students
+          <CheckCircle className="text-green-500" size={24} /> Cancelled Students <span className="text-sm font-normal text-gray-500">(Page {pagination.page} of {pagination.pages} | {pagination.count} total)</span>
         </h3>
         {cancelledStudents.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse border border-gray-300 text-sm">
               <thead>
                 <tr className="bg-gray-100">
+                  <th className="p-3 border text-left">#</th>
                   <th className="p-3 border text-left">Reg. No.</th>
                   <th className="p-3 border text-left">Name</th>
                   <th className="p-3 border text-left">Course</th>
                   <th className="p-3 border text-left">Cancellation Date</th>
+                  <th className="p-3 border text-left">Reason</th>
                   <th className="p-3 border text-center">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {cancelledStudents.map((student) => (
+                {cancelledStudents.map((student, index) => (
                   <tr key={student._id} className="hover:bg-gray-50 bg-red-50">
+                    <td className="p-3 border text-gray-500 text-xs">{(cancelledPage - 1) * 10 + index + 1}</td>
                     <td className="p-3 border">{student.regNo || '-'}</td>
                     <td className="p-3 border font-medium">{student.firstName} {student.middleName} {student.lastName}</td>
                     <td className="p-3 border">{student.course?.shortName || student.course?.name || '-'}</td>
-                    <td className="p-3 border">{student.cancelledDate ? new Date(student.cancelledDate).toLocaleDateString() : 'N/A'}</td>
+                    <td className="p-3 border whitespace-nowrap">{student.cancelledDate ? new Date(student.cancelledDate).toLocaleDateString() : 'N/A'}</td>
+                    <td className="p-3 border">
+                      <span className="text-xs text-gray-600" title={student.cancellationReason}>
+                        {student.cancellationReason || '-'}
+                      </span>
+                    </td>
                     <td className="p-3 border text-center">
                        <button
                           onClick={() => handleReactivateClick(student)}
@@ -240,6 +257,36 @@ const StudentCancellation = () => {
                 ))}
               </tbody>
             </table>
+            
+            {/* Pagination Controls */}
+            <div className="bg-gray-50 px-4 py-3 border-t flex flex-col md:flex-row justify-between items-center gap-4 mt-2 rounded-lg">
+              <span className="text-xs text-gray-500 font-medium">
+                Showing {cancelledStudents.length} of {pagination.count} records
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  disabled={cancelledPage <= 1}
+                  onClick={() => setCancelledPage(1)}
+                  className="px-2 py-1 border rounded bg-white hover:bg-gray-100 disabled:opacity-40 text-[10px] font-bold uppercase transition"
+                >First</button>
+                <button
+                  disabled={cancelledPage <= 1}
+                  onClick={() => setCancelledPage(p => p - 1)}
+                  className="px-3 py-1 border rounded bg-white hover:bg-gray-100 disabled:opacity-40 text-xs font-bold transition"
+                >Prev</button>
+                <span className="text-sm font-bold text-gray-700 px-3">{cancelledPage} / {pagination.pages || 1}</span>
+                <button
+                  disabled={cancelledPage >= (pagination.pages || 1)}
+                  onClick={() => setCancelledPage(p => p + 1)}
+                  className="px-3 py-1 border rounded bg-white hover:bg-gray-100 disabled:opacity-40 text-xs font-bold transition"
+                >Next</button>
+                <button
+                  disabled={cancelledPage >= (pagination.pages || 1)}
+                  onClick={() => setCancelledPage(pagination.pages || 1)}
+                  className="px-2 py-1 border rounded bg-white hover:bg-gray-100 disabled:opacity-40 text-[10px] font-bold uppercase transition"
+                >Last</button>
+              </div>
+            </div>
           </div>
         ) : (
           <p className="text-gray-500 text-center py-8">No cancelled students found.</p>
@@ -254,20 +301,35 @@ const StudentCancellation = () => {
               <AlertTriangle className="text-red-500" size={24} />
               <h3 className="text-lg font-semibold text-gray-800">Confirm Cancellation</h3>
             </div>
-            <p className="text-gray-600 mb-6">
+            <p className="text-gray-600 mb-4">
               Are you sure you want to cancel the admission for <strong>{selectedStudent.firstName} {selectedStudent.lastName}</strong>?
-              This action cannot be undone and the student will be marked as cancelled.
+              This action cannot be undone.
             </p>
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Cancellation Reason <span className="text-red-500">*</span></label>
+              <textarea
+                value={cancellationReason}
+                onChange={(e) => setCancellationReason(e.target.value)}
+                className="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-red-500 outline-none resize-none"
+                rows="3"
+                placeholder="Enter the reason for cancellation..."
+                required
+              />
+            </div>
             <div className="flex gap-3 justify-end">
               <button
-                onClick={() => setShowConfirmModal(false)}
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  setCancellationReason('');
+                }}
                 className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmCancellation}
-                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                disabled={!cancellationReason.trim()}
+                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Confirm Cancellation
               </button>

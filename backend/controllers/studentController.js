@@ -233,6 +233,7 @@ const createStudent = asyncHandler(async (req, res) => {
                 receiptNo,
                 student: student._id,
                 course: student.course,
+                branch: finalBranchId, // CRITICAL: needed for branch-scoped filtering in AllReceipts
                 amountPaid: feeDetails.amount,
                 paymentMode: feeDetails.paymentMode,
                 remarks: receiptRemarks,
@@ -750,12 +751,48 @@ const resetStudentLogin = asyncHandler(async (req, res) => {
 
     res.json({ message: 'Login details updated successfully', username: user.username });
 });
+const getCancelledStudents = asyncHandler(async (req, res) => {
+    const { page = 1, limit = 10, branchId } = req.query;
+    
+    let query = { isDeleted: false, isCancelled: true };
+    
+    // Branch-based filtering
+    if (req.user.role !== 'Super Admin' && req.user.branchId) {
+        query.branchId = req.user.branchId;
+    } else if (branchId) {
+        query.branchId = branchId;
+    }
+    
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 10;
+    const skip = (pageNum - 1) * limitNum;
+    
+    const count = await Student.countDocuments(query);
+    
+    const students = await Student.find(query)
+        .populate('course', 'name shortName')
+        .populate('branchId', 'name')
+        .sort({ cancelledDate: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .select('firstName middleName lastName regNo enrollmentNo course branchId cancelledDate cancellationReason mobileParent mobileStudent')
+        .lean();
+    
+    res.json({
+        students,
+        page: pageNum,
+        pages: Math.ceil(count / limitNum),
+        count
+    });
+});
+
 const cancelStudent = asyncHandler(async (req, res) => {
     const student = await Student.findById(req.params.id);
     if (student) {
         student.isCancelled = true;
         student.cancelledDate = new Date();
         student.isActive = false;
+        student.cancellationReason = req.body.reason || req.body.cancellationReason || '';
         await student.save();
         res.json({ message: 'Student Admission Cancelled Successfully', _id: student._id });
     } else {
@@ -769,6 +806,7 @@ const reactivateStudent = asyncHandler(async (req, res) => {
         student.isCancelled = false;
         student.cancelledDate = null;
         student.isActive = true;
+        student.cancellationReason = '';
         await student.save();
         res.json({ message: 'Student Admission Reactivated Successfully', _id: student._id });
     } else {
@@ -1028,6 +1066,7 @@ module.exports = {
     getNextRegNo, 
     cancelStudent,
     reactivateStudent,
+    getCancelledStudents,
     getExamPendingStudents,
     getUniqueReferences,
     verifyAdmissionStatus,

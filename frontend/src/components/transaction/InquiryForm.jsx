@@ -7,6 +7,7 @@ import { toast } from 'react-toastify';
 import { formatInputText } from '../../utils/textFormatter'; // Imported util
 import ProfileImageUploader from '../common/ProfileImageUploader';
 import TimePicker12Hour from '../common/TimePicker12Hour';
+import { getTodayDateISO } from '../../utils/dateUtils';
 
 const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
     const dispatch = useDispatch();
@@ -61,7 +62,7 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
         defaultValues: {
             city: '',
             state: '',
-            inquiryDate: new Date().toISOString().split('T')[0],
+            inquiryDate: getTodayDateISO(),
             source: fixedSource,
             relationType: 'Father'
         }
@@ -85,7 +86,7 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
             // We usually want fresh dates for new inquiry
             reset({
                 ...data,
-                inquiryDate: new Date().toISOString().split('T')[0], // Reset date to today
+                inquiryDate: getTodayDateISO(), // Reset date to today
                 _id: undefined // Don't copy ID
             });
             toast.success('Form data pasted!');
@@ -104,7 +105,7 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                     contactParent: '',
                     interestedCourse: initialData.course?._id || initialData.course,
                     referenceBy: initialData.reference,
-                    inquiryDate: initialData.visitingDate ? new Date(initialData.visitingDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                    inquiryDate: initialData.visitingDate ? initialData.visitingDate.split('T')[0] : getTodayDateISO(),
                     source: 'Walk-in',
                     visitorId: initialData._id,
                     city: 'Surat',
@@ -139,6 +140,9 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
 
                 reset({
                     ...formattedData,
+                    // Handle Manual External Reference mapping
+                    referenceBy: initialData.isExternalRef ? 'ManualExternal' : (initialData.referenceBy || ''),
+                    manualReferenceName: initialData.isExternalRef ? initialData.referenceBy : '',
                     // Ensure branchId is an ID string
                     branchId: initialData.branchId ? (typeof initialData.branchId === 'object' ? initialData.branchId._id : initialData.branchId) : ''
                 });
@@ -146,18 +150,18 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
         } else {
             // Reset for New Entry
             reset({
-                city: 'Surat',
-                state: 'Gujarat',
-                inquiryDate: new Date().toISOString().split('T')[0],
-                source: fixedSource,
-                relationType: 'Father',
-                contactHome: '',
-                contactParent: '',
-                contactStudent: '',
-                followUpDate: '',
-                followUpTime: '12:00'
-            });
-        }
+                    city: 'Surat',
+                    state: 'Gujarat',
+                    inquiryDate: getTodayDateISO(),
+                    source: fixedSource,
+                    relationType: 'Father',
+                    contactHome: '',
+                    contactParent: '',
+                    contactStudent: '',
+                    followUpDate: '',
+                    followUpTime: '12:00'
+                });
+            }
     }, [initialData, reset, mode, user, states, cities, branches]);
 
     // Filter cities when state changes (for edit mode or manual state changes)
@@ -196,6 +200,11 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
         Object.keys(data).forEach(key => {
             if (key === 'studentPhoto' && data[key] instanceof File) {
                 formData.append('studentPhoto', data[key]);
+            } else if (key === 'manualReferenceName') {
+                // Skip this, we'll handle it below
+            } else if (key === 'referenceBy' && data[key] === 'ManualExternal') {
+                formData.append('referenceBy', data.manualReferenceName || '');
+                formData.append('isExternalRef', 'true');
             } else if (key === 'referenceDetail' && typeof data[key] === 'object' && data[key] !== null) {
                 formData.append('referenceDetail', JSON.stringify(data[key]));
             } else if (key === 'followUpHistory' || key === 'allocatedTo' || key === 'branchId' || key === 'interestedCourse' || key === 'visitorId') {
@@ -462,19 +471,34 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                                         >
                                             <option value="">-- Select Reference --</option>
                                             <option value="Direct">Direct / Walk-in</option>
+                                            <option value="ManualExternal">-- Other External Reference --</option>
                                             <optgroup label="Staff">
                                                 {employees.map(e => <option key={e._id} value={e.name}>{e.name}</option>)}
                                             </optgroup>
-                                            <optgroup label="External References">
+                                            <optgroup label="External References (Saved)">
                                                 {references.map((r, i) => <option key={r._id || i} value={r.name}>{r.name}</option>)}
                                             </optgroup>
                                         </select>
-                                        {!isReferenceLocked && (
-                                            <button type="button" onClick={() => setShowRefModal(true)} className="p-2 bg-blue-50 text-blue-600 rounded border hover:bg-blue-100" title="Add New Reference">
+                                        {!isReferenceLocked && watch('referenceBy') !== 'ManualExternal' && (
+                                            <button type="button" onClick={() => setShowRefModal(true)} className="p-2 bg-blue-50 text-blue-600 rounded border hover:bg-blue-100" title="Add New Reference to List">
                                                 <Plus size={16} />
                                             </button>
                                         )}
                                     </div>
+                                    
+                                    {/* Manual External Reference Input */}
+                                    {watch('referenceBy') === 'ManualExternal' && (
+                                        <div className="mt-2 animate-fadeIn">
+                                            <input
+                                                {...register('manualReferenceName', { required: watch('referenceBy') === 'ManualExternal' })}
+                                                className="w-full border p-2 rounded text-sm bg-blue-50 border-blue-200"
+                                                placeholder="Enter External Reference Name"
+                                                onChange={(e) => setValue('manualReferenceName', formatInputText(e.target.value))}
+                                            />
+                                            <p className="text-[10px] text-blue-600 mt-1">* This will NOT be added to the master list and will be private to you.</p>
+                                        </div>
+                                    )}
+
                                     {isReferenceLocked && (
                                         <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700">
                                             <Lock size={12} /> Only Super Admin can change this reference.

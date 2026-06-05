@@ -9,6 +9,7 @@ const studentSchema = new mongoose.Schema(
     isRegistered: { type: Boolean, default: false },
     isCancelled: { type: Boolean, default: false },
     cancelledDate: { type: Date },
+    cancellationReason: { type: String },
     isDeleted: { type: Boolean, default: false },
     
     // --- Document Verification Fields ---
@@ -114,6 +115,8 @@ studentSchema.index({ isDeleted: 1, branchId: 1, reference: 1, admissionDate: -1
 studentSchema.index({ email: 1 });
 studentSchema.index({ mobileParent: 1 });
 studentSchema.index({ createdAt: -1 }); // Optimized for "Latest Students" queries
+studentSchema.index({ isDeleted: 1, isCancelled: 1, cancelledDate: -1 }); // Cancelled students listing
+studentSchema.index({ isDeleted: 1, isCancelled: 1, branchId: 1, cancelledDate: -1 }); // Branch-scoped cancelled listing
 
 // Middleware for Enrollment No (REMOVED: Now handled imperatively on payment)
 // studentSchema.pre("save", async function () { ... });

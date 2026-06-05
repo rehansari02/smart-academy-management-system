@@ -47,6 +47,7 @@ import {
 } from "lucide-react";
 import ProfileImageUploader from "../../../components/common/ProfileImageUploader";
 import InquiryViewModal from "../../../components/transaction/InquiryViewModal";
+import { getTodayDateISO } from "../../../utils/dateUtils";
 
 import { FormSkeleton } from "../../../components/common/SkeletonLoader"; // Corrected Import Location
 
@@ -125,18 +126,18 @@ const StudentAdmission = () => {
     formState: { errors },
   } = useForm({
     defaultValues: {
-      admissionDate: new Date().toISOString().split("T")[0],
+      admissionDate: getTodayDateISO(),
       state: "",
       city: "",
       relationType: "Father", 
       reference: "Direct",
       receiptPaymentMode: "Cash",
-      receiptDate: new Date().toISOString().split("T")[0],
+      receiptDate: getTodayDateISO(),
       receiptBankOption: "",
       onlinePaymentType: "UPI",
       onlineProviderOption: "",
-      chequeDate: new Date().toISOString().split("T")[0], // Default today for UI
-      transactionDate: new Date().toISOString().split("T")[0], // Default today for UI
+      chequeDate: getTodayDateISO(), // Default today for UI
+      transactionDate: getTodayDateISO(), // Default today for UI
     },
   });
 
@@ -402,6 +403,9 @@ const StudentAdmission = () => {
     }
   }, [isSuccess, message, isLoading, dispatch, navigate, payAdmissionFee, isUpdateMode]);
 
+  const watchMobileStudent = watch("mobileStudent");
+  const watchMobileParent = watch("mobileParent");
+
   useEffect(() => {
     const fetchMatches = async () => {
       if (isUpdateMode || inquiryIdFromAdmission) {
@@ -410,18 +414,25 @@ const StudentAdmission = () => {
       }
 
       const name = `${watchFirstName || ''} ${watchLastName || ''}`.trim();
-      if (name.length < 3) {
+      const mobileS = (watchMobileStudent || '').trim();
+      const mobileP = (watchMobileParent || '').trim();
+      
+      // Search if name is >= 3 chars OR any mobile is >= 5 chars
+      const searchTerm = (name.length >= 3) ? name : (mobileS.length >= 5 ? mobileS : (mobileP.length >= 5 ? mobileP : ''));
+      
+      if (!searchTerm) {
         setMatches([]);
         return;
       }
+
       try {
         const [inquiriesRes, visitorsRes] = await Promise.all([
           axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry`, {
-            params: { search: name, scope: 'admission' },
+            params: { search: searchTerm, scope: 'admission' },
             withCredentials: true
           }),
           axios.get(`${import.meta.env.VITE_API_URL}/visitors/all`, {
-            params: { search: name },
+            params: { search: searchTerm, scope: 'admission' },
             withCredentials: true
           })
         ]);
@@ -518,7 +529,7 @@ const StudentAdmission = () => {
     };
     const timer = setTimeout(fetchMatches, 500);
     return () => clearTimeout(timer);
-  }, [watchFirstName, watchLastName, isUpdateMode, inquiryIdFromAdmission]);
+  }, [watchFirstName, watchLastName, watchMobileStudent, watchMobileParent, isUpdateMode, inquiryIdFromAdmission]);
 
   useEffect(() => {
     if (watchFirstName && watchLastName) {
@@ -2622,9 +2633,11 @@ const StudentAdmission = () => {
                 {matches.map((match) => (
                   <div key={match._id} className="bg-white p-3 rounded-lg border border-orange-100 shadow-sm hover:border-orange-300 transition-colors group">
                     <div className="flex justify-between items-start mb-2">
-                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${match.type === 'Visitor' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                        {match.type === 'Visitor' ? 'Visitor' : (match.status || 'Inquiry')}
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded w-fit ${match.type === 'Visitor' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                          {match.type === 'Visitor' ? 'Visitor' : `${match.source || 'Inquiry'} - ${match.status || 'Open'}`}
+                        </span>
+                      </div>
                       <span className="text-[10px] text-gray-400">
                         {match.inquiryDate ? new Date(match.inquiryDate).toLocaleDateString() : (match.visitingDate ? new Date(match.visitingDate).toLocaleDateString() : '')}
                       </span>
@@ -2666,7 +2679,7 @@ const StudentAdmission = () => {
                 ))}
               </div>
               <div className="bg-orange-100 p-2 text-[10px] text-orange-700 text-center italic border-t border-orange-200">
-                Showing inquiries matching this name
+                Matches found in Inquiries or Visitors list
               </div>
             </div>
           </div>

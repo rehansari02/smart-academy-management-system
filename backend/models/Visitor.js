@@ -26,6 +26,11 @@ const visitorSchema = new mongoose.Schema({
     // Employee/User who attended the visitor
     attendedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
     
+    // Allocation & Ownership (Matching Inquiry Logic)
+    allocatedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    isExternalRef: { type: Boolean, default: false },
+
     remarks: { type: String },
     
     // Link to converted Inquiry

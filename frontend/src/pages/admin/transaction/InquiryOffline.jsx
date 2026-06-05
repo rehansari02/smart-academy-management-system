@@ -499,12 +499,12 @@ const InquiryOffline = () => {
                                 <p className="text-sm font-black text-gray-800">{stats.summary.total}</p>
                             </div>
                             <div className="text-center px-3 border-r border-gray-100">
-                                <p className="text-[10px] font-bold text-orange-400 uppercase">Pending</p>
-                                <p className="text-sm font-black text-orange-600">{stats.summary.pending}</p>
+                                <p className="text-[10px] font-bold text-orange-400 uppercase">Open</p>
+                                <p className="text-sm font-black text-orange-600">{stats.summary.open || 0}</p>
                             </div>
                             <div className="text-center px-3 border-r border-gray-100">
-                                <p className="text-[10px] font-bold text-green-400 uppercase">Admitted</p>
-                                <p className="text-sm font-black text-green-600">{stats.summary.admitted}</p>
+                                <p className="text-[10px] font-bold text-green-400 uppercase">Completed</p>
+                                <p className="text-sm font-black text-green-600">{stats.summary.completed || 0}</p>
                             </div>
                             <div className="text-center px-3">
                                 <p className="text-[10px] font-bold text-blue-400 uppercase">Follow-ups Today</p>
@@ -535,26 +535,100 @@ const InquiryOffline = () => {
 
             {user?.role === 'Super Admin' && stats && (
                 <div className="bg-white border border-gray-200 rounded-lg shadow mb-6 p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <div className="border rounded p-3">
                             <div className="text-xs text-gray-500 font-bold uppercase">Range Inquiries</div>
-                            <div className="text-2xl font-black text-blue-700">{stats.totalInquiries || 0}</div>
+                            <div className="text-2xl font-black text-blue-700">
+                                {stats.openCount || 0}<span className="text-lg font-bold text-gray-400">/{stats.totalInquiries || 0}</span>
+                            </div>
+                            {stats.pendingFromBefore > 0 && (
+                                <div className="mt-1 text-[10px]">
+                                    <span className="text-orange-500 font-bold">Prev Pending: {stats.pendingFromBefore}</span>
+                                    <span className="text-gray-400 mx-1">|</span>
+                                    <span className="text-green-600">New: {stats.totalInquiries || 0}</span>
+                                </div>
+                            )}
                         </div>
                         <div className="border rounded p-3">
                             <div className="text-xs text-gray-500 font-bold uppercase">Followups Done</div>
                             <div className="text-2xl font-black text-purple-700">{stats.totalFollowUps || 0}</div>
+                            <div className="mt-1 text-[10px] text-gray-400">
+                                {stats.openCount || 0} remaining
+                            </div>
                         </div>
                         <div className="border rounded p-3">
                             <div className="text-xs text-gray-500 font-bold uppercase">Top Followup</div>
                             <div className="text-sm font-bold text-gray-800">{stats.employees?.[0]?.employeeName || '-'}</div>
                             <div className="text-xs text-gray-500">{stats.employees?.[0]?.latestFollowUpAt ? new Date(stats.employees[0].latestFollowUpAt).toLocaleString() : '-'}</div>
                         </div>
+                        <div className="border rounded p-3">
+                            <div className="text-xs text-gray-500 font-bold uppercase">Completed</div>
+                            <div className="text-2xl font-black text-green-700">{stats.summary?.completed || 0}</div>
+                        </div>
                     </div>
                     {stats.employees?.length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-2">
                             {stats.employees.map((item) => (
-                                <span key={item.employeeId || item.employeeName} className="text-xs border rounded-full px-3 py-1 bg-gray-50">
+                                <span key={item.employeeId || item.employeeName} className="inline-flex items-center gap-1 text-xs border rounded-full px-3 py-1 bg-gray-50">
                                     <b>{item.employeeName}</b>: {item.followUpCount} followups
+                                    <button
+                                        onClick={() => {
+                                            const printWindow = window.open('', '_blank');
+                                            if (!printWindow) {
+                                                toast.error('Please allow pop-ups for this site');
+                                                return;
+                                            }
+                                            printWindow.document.write(`
+                                                <html>
+                                                <head>
+                                                    <title>Followup Report - ${item.employeeName}</title>
+                                                    <style>
+                                                        body { font-family: Arial, sans-serif; padding: 20px; }
+                                                        h1 { color: #1e40af; font-size: 18px; margin-bottom: 5px; }
+                                                        h2 { color: #374151; font-size: 14px; margin-bottom: 15px; font-weight: normal; }
+                                                        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                                                        th { background: #1e40af; color: white; padding: 8px 6px; text-align: left; }
+                                                        td { padding: 6px; border-bottom: 1px solid #e5e7eb; }
+                                                        tr:nth-child(even) { background: #f9fafb; }
+                                                        .header { text-align: center; margin-bottom: 20px; }
+                                                        .header p { margin: 2px 0; font-size: 11px; color: #6b7280; }
+                                                        @media print { @page { margin: 15mm; } }
+                                                    </style>
+                                                </head>
+                                                <body>
+                                                    <div class="header">
+                                                        <h1>Follow-up Report</h1>
+                                                        <h2>Employee: ${item.employeeName}</h2>
+                                                        <p>Total Followups: ${item.followUpCount} | Latest: ${item.latestFollowUpAt ? new Date(item.latestFollowUpAt).toLocaleString() : '-'}</p>
+                                                        <p>Report Date: ${new Date().toLocaleDateString('en-GB')}</p>
+                                                    </div>
+                                                    <table>
+                                                        <thead>
+                                                            <tr>
+                                                                <th>#</th>
+                                                                <th>Inquiry</th>
+                                                                <th>Contact</th>
+                                                                <th>Status</th>
+                                                                <th>Followup By</th>
+                                                                <th>Date/Time</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:20px;">Detailed data available on screen</td></tr>
+                                                        </tbody>
+                                                    </table>
+                                                    <p style="text-align:center;color:#9ca3af;font-size:10px;margin-top:20px;">Generated by Smart Institute Management System</p>
+                                                    <script>window.print();window.close();<\/script>
+                                                </body>
+                                                </html>
+                                            `);
+                                            printWindow.document.close();
+                                        }}
+                                        className="ml-1 text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-full p-0.5"
+                                        title="Print Followups"
+                                    >
+                                        <Printer size={10} />
+                                    </button>
                                 </span>
                             ))}
                         </div>

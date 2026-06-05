@@ -10,10 +10,11 @@ import VisitorFollowUpModal from '../../../components/transaction/VisitorFollowU
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
+import { getTodayDateISO } from '../../../utils/dateUtils';
 
 const TodaysVisitorsList = () => {
     const navigate = useNavigate();
-    const { add, edit, delete: canDelete } = useUserRights('Todays Visitors List');
+    const { add, edit, delete: canDelete } = useUserRights('Visitors - Todays Visitors List');
     
     const handlePrintList = () => {
         window.print();
@@ -22,8 +23,8 @@ const TodaysVisitorsList = () => {
     const [visitors, setVisitors] = useState([]);
     const [loading, setLoading] = useState(false);
     
-    // Fixed filter for Today
-    const today = new Date().toISOString().split('T')[0];
+    // Fixed filter for Today - Using local time utility
+    const today = getTodayDateISO();
     const [studentName, setStudentName] = useState('');
     const [referenceBy, setReferenceBy] = useState('');
     const [filterBranch, setFilterBranch] = useState('');

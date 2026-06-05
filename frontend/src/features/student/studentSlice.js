@@ -176,9 +176,12 @@ export const deleteStudent = createAsyncThunk(
 
 export const cancelStudent = createAsyncThunk(
   "students/cancel",
-  async (id, thunkAPI) => {
+  async (payload, thunkAPI) => {
     try {
-      const response = await axios.put(`${API_URL}${id}/cancel`);
+      // Support both cancelStudent(id) and cancelStudent({ id, reason })
+      const id = typeof payload === 'string' ? payload : payload?.id;
+      const reason = payload?.reason || '';
+      const response = await axios.put(`${API_URL}${id}/cancel`, { reason });
       return response.data;
     } catch (error) {
       return thunkAPI.rejectWithValue(
@@ -207,6 +210,26 @@ export const updateStudentDocuments = createAsyncThunk(
   async ({ id, data }, thunkAPI) => {
     try {
       const response = await axios.put(`${API_URL}${id}/documents`, data);
+      return response.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error.response?.data?.message || error.message
+      );
+    }
+  }
+);
+
+export const fetchCancelledStudents = createAsyncThunk(
+  "students/fetchCancelled",
+  async (params, thunkAPI) => {
+    try {
+      const queryParams = { ...params };
+      Object.keys(queryParams).forEach(key => {
+        if (queryParams[key] === '' || queryParams[key] === undefined || queryParams[key] === null) {
+          delete queryParams[key];
+        }
+      });
+      const response = await axios.get(`${API_URL}cancelled`, { params: queryParams });
       return response.data;
     } catch (error) {
       return thunkAPI.rejectWithValue(
@@ -252,6 +275,8 @@ const studentSlice = createSlice({
     examPendingStudents: [],
     examPendingAvailableCourses: [],
     examPendingPagination: { page: 1, pages: 1, count: 0 },
+    cancelledStudents: [],
+    cancelledPagination: { page: 1, pages: 1, count: 0 },
     currentStudent: null,
     pagination: { page: 1, pages: 1, count: 0 },
     isLoading: false,
@@ -413,6 +438,22 @@ const studentSlice = createSlice({
         state.isLoading = false;
         state.isSuccess = false;
         state.message = action.payload;
+      })
+      .addCase(fetchCancelledStudents.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(fetchCancelledStudents.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.cancelledStudents = action.payload.students || [];
+        state.cancelledPagination = {
+          page: action.payload.page || 1,
+          pages: action.payload.pages || 1,
+          count: action.payload.count || 0,
+        };
+      })
+      .addCase(fetchCancelledStudents.rejected, (state) => {
+        state.isLoading = false;
+        state.cancelledStudents = [];
       })
       .addCase(fetchExamPendingStudents.pending, (state) => {
         state.isLoading = true;

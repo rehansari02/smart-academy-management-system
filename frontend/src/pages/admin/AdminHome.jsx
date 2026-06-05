@@ -23,6 +23,13 @@ const AdminHome = () => {
     const { user } = useSelector((state) => state.auth);
     const { branches } = useSelector((state) => state.branch);
 
+    // Check User Rights
+    const { view: hasDashboardAccess } = useUserRights('Admin Home');
+    const { view: canViewInquiryList } = useUserRights('Admin Home - Inquiry List');
+    const { view: canViewOnlineAdmissions } = useUserRights('Admin Home - Online Admissions');
+    const { view: canViewExamList } = useUserRights('Admin Home - Exam Pending List');
+    const { view: canViewDashboard } = useUserRights('Dashboard');
+
     const [activeTab, setActiveTab] = useState('inquiry');
     const [confirmModal, setConfirmModal] = useState({ show: false, student: null, bulk: false });
     const [reasonModal, setReasonModal] = useState({ show: false, reason: '', studentName: '' });
@@ -45,12 +52,20 @@ const AdminHome = () => {
 
     // Initial Fetch - Fetch ALL inquiries and filter them client-side
     useEffect(() => {
-        // Fetch all inquiries without source filter to have complete data
-        dispatch(fetchInquiries({}));
-        // dispatch(fetchExamRequests()); // OLD
-        dispatch(fetchExamPendingStudents({ page: 1, pageSize: 10 }));
-        dispatch(getBranches());
-    }, [dispatch]);
+        // Fetch inquiries if has any inquiry right or is admin
+        if (canViewInquiryList || canViewOnlineAdmissions || (user && user.role === 'Super Admin')) {
+            dispatch(fetchInquiries({}));
+        }
+        
+        // Fetch exam pending students if has right or is admin
+        if (canViewExamList || (user && user.role === 'Super Admin')) {
+            dispatch(fetchExamPendingStudents({ page: 1, pageSize: 10 }));
+        }
+
+        if (user && user.role === 'Super Admin') {
+            dispatch(getBranches());
+        }
+    }, [dispatch, canViewInquiryList, canViewOnlineAdmissions, canViewExamList, user]);
 
     // Filter inquiries based on active tab
     const quickContactInquiries = inquiries?.filter(inq => inq.source === 'QuickContact') || [];
@@ -195,12 +210,6 @@ const AdminHome = () => {
     };
 
 
-    // Check User Rights
-    const { view: hasDashboardAccess } = useUserRights('Admin Home');
-    const { view: canViewInquiryList } = useUserRights('Admin Home - Inquiry List');
-    const { view: canViewOnlineAdmissions } = useUserRights('Admin Home - Online Admissions');
-    const { view: canViewExamList } = useUserRights('Admin Home - Exam Pending List');
-
     // Conditionally Render Fallback
     // If user is logged in, NOT a Super Admin, and does NOT have 'Admin Home' view rights
     if (user && user.type !== 'Super Admin' && user.role !== 'Super Admin' && !hasDashboardAccess) {
@@ -223,14 +232,14 @@ const AdminHome = () => {
                     >
                         <TrendingUp size={18} /> Reference Incentive
                     </button>
-                    <button
-                        onClick={() => navigate('/dashboard')}
-                        className={`inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition ${
-                            'bg-white text-primary border border-blue-100 hover:bg-blue-50'
-                        }`}
-                    >
-                        <BarChart3 size={18} /> Dashboard
-                    </button>
+                    {(canViewDashboard || (user && user.role === 'Super Admin')) && (
+                        <button
+                            onClick={() => navigate('/dashboard')}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition bg-white text-primary border border-blue-100 hover:bg-blue-50"
+                        >
+                            <BarChart3 size={18} /> Dashboard
+                        </button>
+                    )}
                 </div>
             </div>
 

@@ -5,6 +5,7 @@ export const MENU_CONFIG = [
     type: 'dropdown',
     subItems: [
       { title: 'Admin Home', path: '/home' },
+      { title: 'Dashboard', path: '/dashboard' },
       { title: 'Banner Home', path: '/master/manage-banners' },
       { title: 'Home Sub-Sections', path: '/master/home-sections' },
       { title: 'Gallery Manage', path: '/master/gallery' }
@@ -59,6 +60,7 @@ export const MENU_CONFIG = [
       { title: 'Pending Admission Fees', path: '/transaction/pending-admission-fees' },
       { title: 'Pending Student Registration', path: '/transaction/pending-registration' },
       { title: 'Student Cancellation', path: '/transaction/student-cancellation' },
+      { title: 'Cancelled Students', path: '/transaction/cancelled-students' },
       { title: 'Fees Receipt', path: '/transaction/fees-receipt' },
       { title: 'Expenses', path: '/transaction/expenses' },
       {

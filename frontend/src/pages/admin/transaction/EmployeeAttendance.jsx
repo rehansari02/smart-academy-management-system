@@ -20,7 +20,7 @@ import { showPermissionDenied } from '../../../utils/permissionAlert';
 const EmployeeAttendance = () => {
     const dispatch = useDispatch();
     const { attendanceList, currentAttendanceEmployees, attendanceStatus, isSuccess, message, isLoading } = useSelector(state => state.attendance);
-    const { add, edit, delete: canDelete } = useUserRights('Employee Attendance');
+    const { add, edit, delete: canDelete } = useUserRights('Attendance - Employee Attendance');
 
     const [viewMode, setViewMode] = useState('list'); 
     

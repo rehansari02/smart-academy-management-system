@@ -21,14 +21,32 @@ const checkPermission = (page, action) => asyncHandler(async (req, res, next) =>
         return next();
     }
 
-    // Special Case: "Inquiry" covers "Inquiry - Online", "Inquiry - Offline", "Inquiry - DSR"
-    // If user has rights to ANY of these, they should be able to CREATE (POST) or EDIT (PUT)
-    // because the API is shared.
+    // --- Special Dependency Cases ---
+    
+    // 1. "Inquiry" covers sub-pages like "Inquiry - Online", etc.
     if (page === 'Inquiry') {
         const hasAnyInquiryRight = userRights.permissions.some(p => 
             p.page.startsWith('Inquiry - ') && p[action] === true
         );
         if (hasAnyInquiryRight) {
+            return next();
+        }
+    }
+
+    // 2. "Employee" & "Student" view rights are often needed as dependencies for dropdowns/searches
+    // if a user has access to Transaction pages or certain Master pages.
+    if (action === 'view' && (page === 'Employee' || page === 'Student')) {
+        const dependencyPages = [
+            'Inquiry', 'Fees Receipt', 'Expenses', 'Batch', 
+            'Attendance', 'Exam Request', 'Exam Schedule', 'Exam Result',
+            'Admission', 'Registration', 'Visitor'
+        ];
+        
+        const hasDependencyRight = userRights.permissions.some(p => 
+            dependencyPages.some(dep => p.page.includes(dep)) && p.view === true
+        );
+        
+        if (hasDependencyRight) {
             return next();
         }
     }
