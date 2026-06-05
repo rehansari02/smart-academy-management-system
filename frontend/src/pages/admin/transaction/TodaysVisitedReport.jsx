@@ -476,6 +476,95 @@ const TodaysVisitedReport = () => {
         }
     };
 
+    const openStatuses = ["Open", "InProgress", "Recall", "Pending"];
+    const completedStatuses = ["Complete", "Completed", "Converted"];
+    const isOpenStatus = (status) => openStatuses.includes(status || 'Open');
+    const isCompletedStatus = (status) => completedStatuses.includes(status || '');
+    const isToday = (date) => date ? new Date(date).toDateString() === new Date().toDateString() : false;
+
+    const activeReportStats = (() => {
+        if (filters.reportType === 'visited') {
+            const employeeMap = new Map();
+            visitors.forEach((visitor) => {
+                const followUp = visitor.latestFollowup;
+                const by = followUp?.followUpBy;
+                if (!by) return;
+                const key = by._id || by.name || by.username;
+                const existing = employeeMap.get(key) || {
+                    employeeId: key,
+                    employeeName: by.name || by.username || '-',
+                    followUpCount: 0,
+                    latestFollowUpAt: followUp.createdAt || followUp.scheduledDate
+                };
+                existing.followUpCount += 1;
+                if (followUp.createdAt && (!existing.latestFollowUpAt || new Date(followUp.createdAt) > new Date(existing.latestFollowUpAt))) {
+                    existing.latestFollowUpAt = followUp.createdAt;
+                }
+                employeeMap.set(key, existing);
+            });
+
+            const open = visitors.filter((visitor) => isOpenStatus(visitor.status)).length;
+            const completed = visitors.filter((visitor) => isCompletedStatus(visitor.status)).length;
+            return {
+                total: visitors.length,
+                open,
+                completed,
+                followUpsToday: visitors.filter((visitor) => isToday(visitor.latestFollowup?.scheduledDate)).length,
+                totalFollowUps: visitors.filter((visitor) => visitor.latestFollowup).length,
+                remaining: open,
+                rangeLabel: 'Range Visitors',
+                topLabel: 'Top Followup',
+                employees: [...employeeMap.values()].sort((a, b) => b.followUpCount - a.followUpCount),
+                pendingFromBefore: stats?.pendingFromBefore || 0,
+                newCount: visitors.length
+            };
+        }
+
+        const employeeMap = new Map();
+        followups.forEach((item) => {
+            const isVisitorFollowUp = item.recordType === 'visitor';
+            const visitor = isVisitorFollowUp ? (item.visitorId || {}) : {};
+            const followUpBy = isVisitorFollowUp ? item.followUpBy : item.followUpBy;
+            const key = followUpBy?._id || followUpBy?.name || followUpBy?.username;
+            if (key) {
+                const latestDate = item.createdAt || item.scheduledDate || item.followUpDate;
+                const existing = employeeMap.get(key) || {
+                    employeeId: key,
+                    employeeName: followUpBy.name || followUpBy.username || '-',
+                    followUpCount: 0,
+                    latestFollowUpAt: latestDate
+                };
+                existing.followUpCount += 1;
+                if (latestDate && (!existing.latestFollowUpAt || new Date(latestDate) > new Date(existing.latestFollowUpAt))) {
+                    existing.latestFollowUpAt = latestDate;
+                }
+                employeeMap.set(key, existing);
+            }
+        });
+
+        const open = followups.filter((item) => {
+            const visitor = item.recordType === 'visitor' ? (item.visitorId || {}) : {};
+            return isOpenStatus(item.recordType === 'visitor' ? (item.status || visitor.status) : item.status);
+        }).length;
+        const completed = followups.filter((item) => {
+            const visitor = item.recordType === 'visitor' ? (item.visitorId || {}) : {};
+            return isCompletedStatus(item.recordType === 'visitor' ? (item.status || visitor.status) : item.status);
+        }).length;
+        return {
+            total: followups.length,
+            open,
+            completed,
+            followUpsToday: followups.filter((item) => isToday(item.scheduledDate || item.followUpDate)).length,
+            totalFollowUps: followups.length,
+            remaining: open,
+            rangeLabel: 'Range Followups',
+            topLabel: 'Top Followup',
+            employees: [...employeeMap.values()].sort((a, b) => b.followUpCount - a.followUpCount),
+            pendingFromBefore: 0,
+            newCount: followups.length
+        };
+    })();
+
     return (
         <div className="w-full p-2 animate-fadeIn">
             <style>{`
@@ -555,64 +644,62 @@ const TodaysVisitedReport = () => {
                 </div>
 
                 {/* Top Summary Row (Small Cards) */}
-                {filters.reportType === 'visited' && stats && (
-                    <div className="flex flex-wrap items-center gap-4 mb-6 bg-white p-3 rounded-lg border border-gray-100 shadow-sm animate-fadeIn">
-                        <div className="flex items-center gap-2 px-3 border-r border-gray-100">
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">Total</p>
-                            <p className="text-sm font-black text-gray-700">{stats.summary?.total || 0}</p>
-                        </div>
-                        <div className="flex items-center gap-2 px-3 border-r border-gray-100">
-                            <p className="text-[10px] font-bold text-orange-400 uppercase">Open</p>
-                            <p className="text-sm font-black text-orange-600">{stats.summary?.open || 0}</p>
-                        </div>
-                        <div className="flex items-center gap-2 px-3 border-r border-gray-100">
-                            <p className="text-[10px] font-bold text-green-400 uppercase">Completed</p>
-                            <p className="text-sm font-black text-green-600">{stats.summary?.completed || 0}</p>
-                        </div>
-                        <div className="flex items-center gap-2 px-3">
-                            <p className="text-[10px] font-bold text-blue-400 uppercase">Follow-ups Today</p>
-                            <p className="text-sm font-black text-blue-600">{stats.summary?.followUpsToday || 0}</p>
-                        </div>
+                <div className="flex flex-wrap items-center gap-4 mb-6 bg-white p-3 rounded-lg border border-gray-100 shadow-sm animate-fadeIn">
+                    <div className="flex items-center gap-2 px-3 border-r border-gray-100">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Total</p>
+                        <p className="text-sm font-black text-gray-700">{activeReportStats.total}</p>
                     </div>
-                )}
+                    <div className="flex items-center gap-2 px-3 border-r border-gray-100">
+                        <p className="text-[10px] font-bold text-orange-400 uppercase">Open</p>
+                        <p className="text-sm font-black text-orange-600">{activeReportStats.open}</p>
+                    </div>
+                    <div className="flex items-center gap-2 px-3 border-r border-gray-100">
+                        <p className="text-[10px] font-bold text-green-400 uppercase">Completed</p>
+                        <p className="text-sm font-black text-green-600">{activeReportStats.completed}</p>
+                    </div>
+                    <div className="flex items-center gap-2 px-3">
+                        <p className="text-[10px] font-bold text-blue-400 uppercase">Follow-ups Today</p>
+                        <p className="text-sm font-black text-blue-600">{activeReportStats.followUpsToday}</p>
+                    </div>
+                </div>
 
                 {/* Stats Section (Super Admin only, similar to Inquiry) */}
-                {filters.reportType === 'visited' && user?.role === 'Super Admin' && stats && (
+                {user?.role === 'Super Admin' && (
                     <div className="bg-white border border-gray-200 rounded-lg shadow mb-6 p-4 animate-fadeIn">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                             <div className="border rounded p-3">
-                                <div className="text-xs text-gray-500 font-bold uppercase">Range Inquiries</div>
+                                <div className="text-xs text-gray-500 font-bold uppercase">{activeReportStats.rangeLabel}</div>
                                 <div className="text-2xl font-black text-blue-700">
-                                    {stats.openCount || 0}<span className="text-lg font-bold text-gray-400">/{stats.totalInquiries || 0}</span>
+                                    {activeReportStats.open}<span className="text-lg font-bold text-gray-400">/{activeReportStats.total}</span>
                                 </div>
-                                {stats.pendingFromBefore > 0 && (
+                                {activeReportStats.pendingFromBefore > 0 && (
                                     <div className="mt-1 text-[10px]">
-                                        <span className="text-orange-500 font-bold">Prev Pending: {stats.pendingFromBefore}</span>
+                                        <span className="text-orange-500 font-bold">Prev Pending: {activeReportStats.pendingFromBefore}</span>
                                         <span className="text-gray-400 mx-1">|</span>
-                                        <span className="text-green-600">New: {stats.totalInquiries || 0}</span>
+                                        <span className="text-green-600">New: {activeReportStats.newCount}</span>
                                     </div>
                                 )}
                             </div>
                             <div className="border rounded p-3">
                                 <div className="text-xs text-gray-500 font-bold uppercase">Followups Done</div>
-                                <div className="text-2xl font-black text-purple-700">{stats.totalFollowUps || 0}</div>
+                                <div className="text-2xl font-black text-purple-700">{activeReportStats.totalFollowUps}</div>
                                 <div className="mt-1 text-[10px] text-gray-400">
-                                    {stats.openCount || 0} remaining
+                                    {activeReportStats.remaining} remaining
                                 </div>
                             </div>
                             <div className="border rounded p-3">
-                                <div className="text-xs text-gray-500 font-bold uppercase">Top Followup</div>
-                                <div className="text-sm font-bold text-gray-800">{stats.employees?.[0]?.employeeName || '-'}</div>
-                                <div className="text-xs text-gray-500">{stats.employees?.[0]?.latestFollowUpAt ? new Date(stats.employees[0].latestFollowUpAt).toLocaleString() : '-'}</div>
+                                <div className="text-xs text-gray-500 font-bold uppercase">{activeReportStats.topLabel}</div>
+                                <div className="text-sm font-bold text-gray-800">{activeReportStats.employees?.[0]?.employeeName || '-'}</div>
+                                <div className="text-xs text-gray-500">{activeReportStats.employees?.[0]?.latestFollowUpAt ? new Date(activeReportStats.employees[0].latestFollowUpAt).toLocaleString() : '-'}</div>
                             </div>
                             <div className="border rounded p-3">
                                 <div className="text-xs text-gray-500 font-bold uppercase">Completed</div>
-                                <div className="text-2xl font-black text-green-700">{stats.summary?.completed || 0}</div>
+                                <div className="text-2xl font-black text-green-700">{activeReportStats.completed}</div>
                             </div>
                         </div>
-                        {stats.employees?.length > 0 && (
+                        {activeReportStats.employees?.length > 0 && (
                             <div className="mt-3 flex flex-wrap gap-2">
-                                {stats.employees.map((item) => (
+                                {activeReportStats.employees.map((item) => (
                                     <span key={item.employeeId} className="inline-flex items-center gap-1 text-[10px] border rounded-full px-3 py-1 bg-gray-50 font-bold">
                                         <span className="text-blue-700">{item.employeeName}</span>: {item.followUpCount} followups
                                     </span>
@@ -764,11 +851,12 @@ const TodaysVisitedReport = () => {
                             <option value="200">200 Records</option>
                         </select>
                     </div>
-                    <table className="w-full border-collapse min-w-[1100px]">
+                    <table className="w-full border-collapse min-w-[1200px]">
                         {filters.reportType === 'visited' ? (
                             <thead>
                                 <tr className="bg-orange-700 text-white text-left text-xs uppercase tracking-wider">
                                     <th className="p-2 border font-semibold w-12 text-center">Sr. No.</th>
+                                    <th className="p-2 border font-semibold">Visitor Date</th>
                                     <th className="p-2 border font-semibold">Inquiry Date</th>
                                     {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
                                     <th className="p-2 border font-semibold">Filled By</th>
@@ -794,11 +882,11 @@ const TodaysVisitedReport = () => {
                                     <th className="p-2 border font-semibold">Student Name</th>
                                     <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                                     <th className="p-2 border font-semibold text-center">Status</th>
-                                    <th className="p-2 border font-bold text-white text-left uppercase tracking-wider">Followup Date</th>
-                                    <th className="p-2 border font-bold text-white text-left uppercase tracking-wider">Followup Time</th>
-                                    <th className="p-2 border font-bold text-white text-left uppercase tracking-wider">Followup Details</th>
-                                    <th className="p-2 border font-bold text-white text-left uppercase tracking-wider">Followup By</th>
-                                    <th className="p-2 border font-bold text-blue-800 text-center uppercase tracking-wider sticky right-0 bg-blue-50/90 print:hidden">Actions</th>
+                                    <th className="p-2 border font-semibold">Followup</th>
+                                    <th className="p-2 border font-semibold w-36">Followup Details</th>
+                                    <th className="p-2 border font-semibold">Followup By</th>
+                                    <th className="p-2 border font-semibold">Last Followup</th>
+                                    <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-32 print:hidden">Actions</th>
                                 </tr>
                             </thead>
                         )
@@ -806,7 +894,7 @@ const TodaysVisitedReport = () => {
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={filters.reportType === 'visited' ? (user?.role === 'Super Admin' ? 11 : 10) : (user?.role === 'Super Admin' ? 10 : 9)} className="text-center p-12">
+                                    <td colSpan={filters.reportType === 'visited' ? (user?.role === 'Super Admin' ? 14 : 13) : (user?.role === 'Super Admin' ? 13 : 12)} className="text-center p-12">
                                         <div className="flex flex-col items-center gap-3">
                                             <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
                                             <p className="text-gray-400 font-medium">Fetching records...</p>
@@ -816,7 +904,7 @@ const TodaysVisitedReport = () => {
                             ) : filters.reportType === 'visited' ? (
                                 visitors.length === 0 ? (
                                     <tr>
-                                        <td colSpan={user?.role === 'Super Admin' ? 11 : 10} className="text-center py-8 text-gray-400 italic">
+                                        <td colSpan={user?.role === 'Super Admin' ? 14 : 13} className="text-center py-8 text-gray-400 italic">
                                             No visitor records found for this period.
                                         </td>
                                     </tr>
@@ -825,6 +913,7 @@ const TodaysVisitedReport = () => {
                                         <tr key={visitor._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
                                             <td className="p-2 border text-center text-gray-400 font-medium">{index + 1}</td>
                                             <td className="p-2 border font-semibold text-gray-700">{formatDate(visitor.visitingDate)}</td>
+                                            <td className="p-2 border font-semibold text-gray-700">{visitor.inquiryId?.inquiryDate ? formatDate(visitor.inquiryId.inquiryDate) : '-'}</td>
                                             {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{visitor.branchId?.name || '-'}</td>}
                                             <td className="p-2 border text-gray-600 font-medium">{getFilledBy(visitor)}</td>
                                             <td className="p-2 border text-gray-600 font-medium">{getHandleBy(visitor)}</td>
@@ -904,7 +993,7 @@ const TodaysVisitedReport = () => {
                             ) : (
                                 followups.length === 0 ? (
                                     <tr>
-                                        <td colSpan={user?.role === 'Super Admin' ? 11 : 10} className="text-center py-8 text-gray-400 italic">
+                                        <td colSpan={user?.role === 'Super Admin' ? 13 : 12} className="text-center py-8 text-gray-400 italic">
                                             No visitor or inquiry follow-ups scheduled for this period.
                                         </td>
                                     </tr>
@@ -922,34 +1011,47 @@ const TodaysVisitedReport = () => {
                                         const followUpBy = isVisitorFollowUp ? hist.followUpBy : inquiry.followUpBy;
                                         const status = isVisitorFollowUp ? (hist.status || visitor.status) : inquiry.status;
                                         const branchName = isVisitorFollowUp ? hist.branchId?.name : inquiry.branchId?.name;
-                                        const reference = isVisitorFollowUp ? visitor.reference : inquiry.referenceBy;
+                                        const lastHistoryItem = Array.isArray(inquiry.followUpHistory) && inquiry.followUpHistory.length
+                                            ? inquiry.followUpHistory[inquiry.followUpHistory.length - 1]
+                                            : null;
+                                        const lastFollowUpAt = isVisitorFollowUp ? hist.createdAt : (lastHistoryItem?.createdAt || inquiry.updatedAt || inquiry.followUpDate);
+                                        const lastFollowUpBy = isVisitorFollowUp
+                                            ? hist.followUpBy
+                                            : (lastHistoryItem?.followUpBy || inquiry.followUpBy);
+                                        const filledBy = isVisitorFollowUp
+                                            ? getFilledBy(visitor)
+                                            : (inquiry.createdBy?.name || inquiry.createdBy?.username || inquiry.followUpBy?.name || inquiry.followUpBy?.username || '-');
+                                        const handleBy = isVisitorFollowUp
+                                            ? getHandleBy(visitor)
+                                            : (inquiry.allocatedTo?.name || inquiry.allocatedTo?.username || inquiry.followUpBy?.name || inquiry.followUpBy?.username || inquiry.referenceBy || inquiry.source || '-');
                                         return (
                                         <tr key={hist._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
                                             <td className="p-2 border text-center text-gray-400 font-medium">{index + 1}</td>
                                             <td className="p-2 border font-semibold text-gray-700">{originalDate ? formatDate(originalDate) : '-'}</td>
                                             {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{branchName || '-'}</td>}
+                                            <td className="p-2 border text-gray-600 font-medium">{filledBy}</td>
+                                            <td className="p-2 border text-gray-600 font-medium">{handleBy}</td>
                                             <td className="p-2 border font-bold text-gray-800">{personName}</td>
                                             <td className="p-0 border align-top w-36">
-                                                <div className="flex border-b border-gray-200 last:border-b-0">
-                                                    <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">G</div>
-                                                    <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
-                                                        {(isVisitorFollowUp ? visitor.contactParent : inquiry.contactParent) || '-'}
-                                                    </div>
-                                                </div>
                                                 <div className="flex border-b border-gray-200 last:border-b-0">
                                                     <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">H</div>
                                                     <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
                                                         {(isVisitorFollowUp ? visitor.contactHome : inquiry.contactHome) || '-'}
                                                     </div>
                                                 </div>
-                                                <div className="flex">
+                                                <div className="flex border-b border-gray-200 last:border-b-0">
                                                     <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">S</div>
                                                     <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start text-blue-600">
                                                         {(isVisitorFollowUp ? visitor.mobileNumber : inquiry.contactStudent) || '-'}
                                                     </div>
                                                 </div>
+                                                <div className="flex">
+                                                    <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">P</div>
+                                                    <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
+                                                        {(isVisitorFollowUp ? visitor.contactParent : inquiry.contactParent) || '-'}
+                                                    </div>
+                                                </div>
                                             </td>
-                                            <td className="p-2 border text-gray-600">{reference || '-'}</td>
                                             <td className="p-2 border text-center">
                                                 <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${
                                                     status === 'Open' ? 'bg-green-100 text-green-700 border-green-200' :
@@ -961,14 +1063,32 @@ const TodaysVisitedReport = () => {
                                                     {status || 'Open'}
                                                 </span>
                                             </td>
-                                            <td className="p-2 border text-gray-700">{followUpDate ? formatDate(followUpDate) : '-'}</td>
-                                            <td className="p-2 border text-gray-700">
-                                                {followUpDate ? new Date(followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                            <td className="p-2 border text-gray-700 font-medium">
+                                                {followUpDate ? (
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold">{formatDate(followUpDate)}</span>
+                                                        <span className="text-[10px] text-blue-600">
+                                                            {new Date(followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                ) : '-'}
                                             </td>
                                             <td className="p-2 border text-gray-600 truncate max-w-xs" title={details}>
                                                 {details ? (details.length > 14 ? `${details.substring(0, 14)}...` : details) : '-'}
                                             </td>
                                             <td className="p-2 border text-gray-700">{followUpBy?.name || followUpBy?.username || '-'}</td>
+                                            <td className="p-2 border text-center">
+                                                {lastFollowUpAt ? (
+                                                    <div className="text-xs">
+                                                        <div className="font-semibold text-gray-800">
+                                                            {formatDate(lastFollowUpAt)} {new Date(lastFollowUpAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </div>
+                                                        <div className="text-gray-500">
+                                                            by {lastFollowUpBy?.name || lastFollowUpBy?.username || '-'}
+                                                        </div>
+                                                    </div>
+                                                ) : '-'}
+                                            </td>
                                             <td className="p-2 border text-center sticky right-0 bg-white print:hidden">
                                                 <div className="flex justify-center gap-1">
                                                     <button onClick={() => {

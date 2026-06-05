@@ -96,17 +96,21 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
         }
     }, [user, dispatch]);
 
-    // Determine if reference should be locked (non-Super Admin editing existing visitor)
-    const savedReferenceName = (initialData?.reference || '').trim();
-    const isRefLocked = Boolean(savedReferenceName) && user?.role !== 'Super Admin';
-    const referenceLockTitle = isRefLocked
-        ? 'Reference is locked after first save. Only Super Admin can change it.'
+    const [searchResults, setSearchResults] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [isReferenceLocked, setIsReferenceLocked] = useState(false);
+    const [viewInquiry, setViewInquiry] = useState(null); // For Modal
+
+    // Determine if reference should be locked (non-Super Admin editing existing visitor or inquiry-filled visitor)
+    const effectiveReferenceLocked = isReferenceLocked && user?.role !== 'Super Admin';
+    const referenceLockTitle = effectiveReferenceLocked
+        ? 'Reference is locked. Only Super Admin can change it.'
         : '';
 
     // Handle initial data for edit mode
     useEffect(() => {
         if (initialData) {
-            setIsReferenceLocked(isRefLocked);
+            setIsReferenceLocked(user?.role !== 'Super Admin' && Boolean(initialData.reference));
             setFormData({
                 visitingDate: initialData.visitingDate ? initialData.visitingDate.split('T')[0] : '',
                 studentName: initialData.studentName || '',
@@ -160,6 +164,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
     };
 
     const handleReset = () => {
+        setIsReferenceLocked(false);
         setFormData({
             visitingDate: new Date().toISOString().split('T')[0],
             studentName: '',
@@ -199,9 +204,17 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
             const pastedData = JSON.parse(clipboardText);
             
             if (pastedData && typeof pastedData === 'object') {
+                const protectedPastedData = { ...pastedData };
+                if (effectiveReferenceLocked) {
+                    delete protectedPastedData.reference;
+                    delete protectedPastedData.referenceContact;
+                    delete protectedPastedData.referenceAddress;
+                    delete protectedPastedData.manualReferenceName;
+                    delete protectedPastedData.isExternalRef;
+                }
                 setFormData(prev => ({
                     ...prev,
-                    ...pastedData
+                    ...protectedPastedData
                 }));
                 toast.success('Data pasted successfully!');
             } else {
@@ -254,11 +267,6 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
             setIsSubmitting(false);
         }
     };
-
-    const [searchResults, setSearchResults] = useState([]);
-    const [isSearching, setIsSearching] = useState(false);
-    const [isReferenceLocked, setIsReferenceLocked] = useState(false);
-    const [viewInquiry, setViewInquiry] = useState(null); // For Modal
 
     // Debounced Search Effect
     useEffect(() => {
@@ -325,9 +333,12 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
             inquiryId: inquiry._id
         }));
         
-        setIsReferenceLocked(true);
+        setIsReferenceLocked(user?.role !== 'Super Admin');
         setSearchResults([]);
-        toast.info("Details filled from Inquiry record. Reference source locked.");
+        toast.info(user?.role === 'Super Admin'
+            ? "Details filled from Inquiry record. Reference can be changed by Super Admin."
+            : "Details filled from Inquiry record. Reference source locked."
+        );
     };
 
     return (
@@ -458,8 +469,8 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                                                     handleInputChange(e);
                                                 }
                                             }}
-                                            disabled={isReferenceLocked}
-                                            className={`w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 ${isReferenceLocked ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}`}
+                                            disabled={effectiveReferenceLocked}
+                                            className={`w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 ${effectiveReferenceLocked ? 'bg-gray-100 cursor-not-allowed opacity-75' : ''}`}
                                             title={referenceLockTitle}
                                         >
                                             <option value="">Select Reference</option>
@@ -478,7 +489,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                                                 ))}
                                             </optgroup>
                                         </select>
-                                        {!isReferenceLocked && (
+                                        {!effectiveReferenceLocked && (
                                             <button 
                                                 type="button" 
                                                 onClick={() => setShowRefModal(true)}
@@ -489,7 +500,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                                             </button>
                                         )}
                                     </div>
-                                    {formData.reference === 'ManualExternal' && !isReferenceLocked && (
+                                    {formData.reference === 'ManualExternal' && !effectiveReferenceLocked && (
                                         <div className="animate-fadeIn">
                                             <div className="flex items-center gap-1 mb-1">
                                                 <Lock size={12} className="text-blue-600" />
@@ -506,12 +517,12 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                                             />
                                         </div>
                                     )}
-                                    {isReferenceLocked && formData.manualReferenceName && (
+                                    {effectiveReferenceLocked && formData.manualReferenceName && (
                                         <div className="mt-1 p-2 bg-gray-50 rounded text-sm text-gray-600 border">
                                             <span className="font-medium">Reference:</span> {formData.manualReferenceName}
                                         </div>
                                     )}
-                                    {isReferenceLocked && (
+                                    {effectiveReferenceLocked && (
                                         <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700">
                                             <Lock size={12} /> Only Super Admin can change this reference.
                                         </div>

@@ -9,6 +9,7 @@ import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
 import StudentSearch from '../../../components/StudentSearch';
+import { getDefaultReportDateRange } from '../../../utils/reportDateRange';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -21,8 +22,7 @@ const StudentWiseOutstanding = () => {
 
     // Filter State
     const [filters, setFilters] = useState({
-        startDate: '',
-        endDate: new Date().toISOString().split('T')[0],
+        ...getDefaultReportDateRange(),
         courseFilter: '',
         batch: '',
         branchId: '',
@@ -93,8 +93,7 @@ const StudentWiseOutstanding = () => {
 
     const handleReset = () => {
         const initial = {
-            startDate: '',
-            endDate: new Date().toISOString().split('T')[0],
+            ...getDefaultReportDateRange(),
             courseFilter: '',
             batch: '',
             branchId: '',

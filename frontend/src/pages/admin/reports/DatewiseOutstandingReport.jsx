@@ -8,6 +8,7 @@ import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
 import StudentSearch from '../../../components/StudentSearch';
+import { getDefaultReportDateRange } from '../../../utils/reportDateRange';
 
 const DatewiseOutstandingReport = () => {
     const dispatch = useDispatch();
@@ -18,8 +19,7 @@ const DatewiseOutstandingReport = () => {
 
     // Filter State
     const [filters, setFilters] = useState({
-        startDate: '',
-        endDate: new Date().toISOString().split('T')[0],
+        ...getDefaultReportDateRange(),
         branchId: '',
         studentName: '',
         reference: '',
@@ -69,8 +69,7 @@ const DatewiseOutstandingReport = () => {
 
     const handleReset = () => {
         const initial = {
-            startDate: '',
-            endDate: new Date().toISOString().split('T')[0],
+            ...getDefaultReportDateRange(),
             branchId: '',
             studentName: '',
             reference: '',
@@ -252,7 +251,7 @@ const DatewiseOutstandingReport = () => {
                         <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
                             <th className="p-2 border font-semibold text-center">Adm. Fees</th>
                             <th className="p-2 border font-semibold text-center">Rec. Fees</th>
-                            <th className="p-2 border font-semibold text-center">Reg. Fees</th>
+                            <th className="p-2 border font-semibold text-center">Total Fees</th>
                         </tr>
                     </thead>
                     <tbody>

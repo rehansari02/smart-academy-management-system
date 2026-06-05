@@ -159,9 +159,74 @@ const getReceiptPurpose = (receipt) => {
 
 const getReceiptAmount = (receipt) => Number(receipt?.amountPaid || 0);
 
-const getPaidAmountByPurpose = (receipts, purpose) => receipts
-  .filter((receipt) => getReceiptPurpose(receipt) === purpose)
-  .reduce((sum, receipt) => sum + getReceiptAmount(receipt), 0);
+const getFeeCaps = (student, receipts = []) => {
+  const firstReceipt = receipts[0] || {};
+  const course = student?.course || firstReceipt.course || {};
+
+  return {
+    admissionFee: Number(course.admissionFees || 0),
+    registrationFee: Number(course.registrationFees || 0)
+  };
+};
+
+const allocateReceiptPayments = (student, receipts = []) => {
+  const { admissionFee, registrationFee } = getFeeCaps(student, receipts);
+  let admissionRemaining = admissionFee;
+  let registrationRemaining = registrationFee;
+  let admissionPaid = 0;
+  let registrationPaid = 0;
+  let installmentPaid = 0;
+  const receiptAllocations = new Map();
+
+  const sortedReceipts = [...receipts].sort((a, b) => {
+    const aTime = new Date(a.date || a.createdAt || 0).getTime();
+    const bTime = new Date(b.date || b.createdAt || 0).getTime();
+    if (aTime !== bTime) return aTime - bTime;
+    return Number(a.receiptNo || 0) - Number(b.receiptNo || 0);
+  });
+
+  sortedReceipts.forEach((receipt) => {
+    let amount = getReceiptAmount(receipt);
+    const allocation = { admission: 0, registration: 0, installment: 0 };
+    const purpose = getReceiptPurpose(receipt);
+
+    if (purpose === "admission" && admissionRemaining > 0) {
+      const used = Math.min(amount, admissionRemaining);
+      allocation.admission += used;
+      admissionPaid += used;
+      admissionRemaining -= used;
+      amount -= used;
+    }
+
+    if (purpose === "registration" && registrationRemaining > 0) {
+      const used = Math.min(amount, registrationRemaining);
+      allocation.registration += used;
+      registrationPaid += used;
+      registrationRemaining -= used;
+      amount -= used;
+    }
+
+    if (amount > 0) {
+      allocation.installment += amount;
+      installmentPaid += amount;
+    }
+
+    if (receipt?._id) {
+      receiptAllocations.set(receipt._id.toString(), allocation);
+    }
+  });
+
+  admissionPaid = Math.max(
+    admissionPaid,
+    Math.min(Number(student?.admissionFeeAmount || 0), admissionFee)
+  );
+  registrationPaid = Math.max(
+    registrationPaid,
+    Math.min(Number(student?.registrationFeeAmount || 0), registrationFee)
+  );
+
+  return { admissionPaid, registrationPaid, installmentPaid, receiptAllocations };
+};
 
 const getNextInstallmentNumber = (receipts) => {
   const installmentReceipts = receipts.filter((receipt) => getReceiptPurpose(receipt) === "installment");
@@ -175,26 +240,24 @@ const getNextInstallmentNumber = (receipts) => {
 
 const resolveReceiptPurposeForPayment = (student, receipts, requestedRemarks = "") => {
   const normalizedRemarks = (requestedRemarks || "").toLowerCase();
-  const courseAdmissionFee = Number(student.course?.admissionFees || 0);
-  const hasRegistrationReceipt = receipts.some((receipt) => getReceiptPurpose(receipt) === "registration");
+  const { admissionFee, registrationFee } = getFeeCaps(student, receipts);
+  const { admissionPaid, registrationPaid } = allocateReceiptPayments(student, receipts);
+  const admissionOutstanding = Math.max(0, admissionFee - admissionPaid);
+  const registrationOutstanding = Math.max(0, registrationFee - registrationPaid);
 
-  if (normalizedRemarks.includes("admission")) {
+  if (normalizedRemarks.includes("admission") && admissionOutstanding > 0) {
     return { purpose: "admission", remarks: requestedRemarks || "Admission Fee", installmentNumber: 0 };
   }
 
-  if (normalizedRemarks.includes("registration") && !hasRegistrationReceipt) {
+  if (normalizedRemarks.includes("registration") && registrationOutstanding > 0) {
     return { purpose: "registration", remarks: requestedRemarks || "Registration Fee", installmentNumber: 0 };
   }
 
-  const paidAdmission = Math.max(
-    getPaidAmountByPurpose(receipts, "admission"),
-    Number(student.admissionFeeAmount || 0)
-  );
-  if (courseAdmissionFee > paidAdmission) {
+  if (admissionOutstanding > 0) {
     return { purpose: "admission", remarks: "Admission Fee", installmentNumber: 0 };
   }
 
-  if (!hasRegistrationReceipt) {
+  if (registrationOutstanding > 0) {
     return { purpose: "registration", remarks: "Registration Fee", installmentNumber: 0 };
   }
 
@@ -217,62 +280,26 @@ const attachReceiptDisplayInfo = (receipts) => {
     return Number(a.receiptNo || 0) - Number(b.receiptNo || 0);
   });
 
-  const receiptRole = new Map();
   const receiptId = (receipt) => receipt._id.toString();
-  const receiptAmount = (receipt) => Number(receipt.amountPaid || 0);
-  const receiptRemarks = (receipt) => (receipt.remarks || "").toLowerCase();
   const firstReceipt = sortedReceipts[0] || {};
   const student = firstReceipt.student || {};
-  const recordedAdmissionPaid = Number(student.admissionFeeAmount || 0);
-
-  sortedReceipts.forEach((receipt) => {
-    if (receiptRemarks(receipt).includes("admission")) {
-      receiptRole.set(receiptId(receipt), "admission");
-    }
-  });
-
-  let totalAdmissionPaid = sortedReceipts
-    .filter((receipt) => receiptRole.get(receiptId(receipt)) === "admission")
-    .reduce((sum, receipt) => sum + receiptAmount(receipt), 0);
-
-  if (recordedAdmissionPaid > totalAdmissionPaid) {
-    for (const receipt of sortedReceipts) {
-      const id = receiptId(receipt);
-      if (receiptRole.has(id)) continue;
-
-      const remainingAdmission = recordedAdmissionPaid - totalAdmissionPaid;
-      if (remainingAdmission <= 0) break;
-      if (receiptAmount(receipt) <= remainingAdmission) {
-        receiptRole.set(id, "admission");
-        totalAdmissionPaid += receiptAmount(receipt);
-      }
-    }
-  }
-
-  for (const receipt of sortedReceipts) {
-    if (!receiptRole.has(receiptId(receipt)) && receiptRemarks(receipt).includes("registration")) {
-      receiptRole.set(receiptId(receipt), "registration");
-      break;
-    }
-  }
-
-  const hasRegistrationRole = () => [...receiptRole.values()].includes("registration");
-
-  if (!hasRegistrationRole()) {
-    for (const receipt of sortedReceipts) {
-      const id = receiptId(receipt);
-      if (receiptRole.has(id)) continue;
-
-      receiptRole.set(id, "registration");
-      break;
-    }
-  }
+  const { receiptAllocations } = allocateReceiptPayments(student, sortedReceipts);
 
   let installmentNumber = 0;
   const purposeOrder = { admission: 0, registration: 1, installment: 2 };
   return receipts
     .map((receipt) => {
-      const role = receiptRole.get(receiptId(receipt)) || "installment";
+      const allocation = receiptAllocations.get(receiptId(receipt)) || {};
+      let role = "installment";
+      if (Number(allocation.admission || 0) > 0) {
+        role = "admission";
+      } else if (Number(allocation.registration || 0) > 0) {
+        role = "registration";
+      } else if (Number(allocation.installment || 0) > 0) {
+        role = "installment";
+      } else {
+        role = getReceiptPurpose(receipt);
+      }
       const displayInstallmentNumber = role === "installment" ? ++installmentNumber : 0;
 
       return {
@@ -1815,19 +1842,12 @@ const calculateStudentPaymentSummary = (student, receipts) => {
   const courseFee = Number(student.totalFees || 0);
   const remainingCourseFee = Math.max(0, courseFee - registrationFee);
   const totalFees = admissionFee + courseFee;
+  const allocatedPayments = allocateReceiptPayments(student, receipts);
 
-  const admissionPaidFromReceipts = receipts
-    .filter(r => (r.remarks || '').toLowerCase().includes('admission'))
-    .reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
-  const admissionPaidFromStudent = Number(student.admissionFeeAmount || 0);
-  const admissionPaid = Math.max(admissionPaidFromReceipts, admissionPaidFromStudent);
+  const admissionPaid = allocatedPayments.admissionPaid;
   const admissionOutstanding = Math.max(0, admissionFee - admissionPaid);
 
-  const regPaidFromReceipts = receipts
-    .filter(r => (r.remarks || '').toLowerCase().includes('registration'))
-    .reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
-  const regPaidFromStudent = Number(student.registrationFeeAmount || 0);
-  const registrationPaid = Math.max(regPaidFromReceipts, regPaidFromStudent);
+  const registrationPaid = allocatedPayments.registrationPaid;
   const registrationOutstanding = Math.max(0, registrationFee - registrationPaid);
 
   const feesMethod = student.paymentPlan || "One Time";
@@ -1854,11 +1874,7 @@ const calculateStudentPaymentSummary = (student, receipts) => {
       const installmentsDue = Math.min(monthsElapsed, months);
       const totalScheduledInstallmentDue = installmentsDue * monthlyInstallment;
 
-      const installmentReceipts = receipts.filter(r => {
-        const remarks = (r.remarks || '').toLowerCase();
-        return !remarks.includes('admission') && !remarks.includes('registration');
-      });
-      const totalInstallmentPaid = installmentReceipts.reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
+      const totalInstallmentPaid = allocatedPayments.installmentPaid;
       const priorScheduled = Math.max(0, installmentsDue - 1) * monthlyInstallment;
 
       previousOutstanding = Math.max(0, priorScheduled - totalInstallmentPaid);
@@ -1869,11 +1885,7 @@ const calculateStudentPaymentSummary = (student, receipts) => {
       upcomingEMI = Math.min(upcomingEMI, remainingCourseFee);
     }
   } else {
-    const nonAdmissionNonRegReceipts = receipts.filter(r => {
-      const remarks = (r.remarks || '').toLowerCase();
-      return !remarks.includes('admission') && !remarks.includes('registration');
-    });
-    const courseAmountPaid = nonAdmissionNonRegReceipts.reduce((sum, r) => sum + Number(r.amountPaid || 0), 0);
+    const courseAmountPaid = allocatedPayments.installmentPaid;
     currentInstallmentDue = Math.max(0, remainingCourseFee - courseAmountPaid);
     previousOutstanding = 0;
   }

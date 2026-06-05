@@ -9,6 +9,7 @@ import moment from 'moment';
 import logo from '../../../assets/logo2.png';
 import StudentSearch from '../../../components/StudentSearch';
 import InquiryPaginationFooter from '../../../components/transaction/InquiryPaginationFooter';
+import { getDefaultReportDateRange } from '../../../utils/reportDateRange';
 
 const StudentFollowingReport = () => {
     const dispatch = useDispatch();
@@ -19,8 +20,7 @@ const StudentFollowingReport = () => {
 
     // Filter State
     const [filters, setFilters] = useState({
-        startDate: '',
-        endDate: new Date().toISOString().split('T')[0],
+        ...getDefaultReportDateRange(),
         branchId: '',
         studentName: '',
         referenceBy: '',
@@ -73,8 +73,7 @@ const StudentFollowingReport = () => {
 
     const handleReset = () => {
         const initial = {
-            startDate: '',
-            endDate: new Date().toISOString().split('T')[0],
+            ...getDefaultReportDateRange(),
             branchId: '',
             studentName: '',
             referenceBy: '',

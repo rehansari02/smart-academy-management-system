@@ -323,21 +323,27 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
             html, body {
               margin: 0 !important;
               padding: 0 !important;
+              background: #fff !important;
             }
-            body > div:not(.print-only-container) {
-              display: none !important;
+            /* Hide EVERYTHING by default during print */
+            body * {
+              visibility: hidden !important;
+            }
+            /* Show ONLY the print container and its children */
+            .print-only-container, .print-only-container * {
+              visibility: visible !important;
             }
             .print-only-container {
-              display: block !important;
-              position: fixed !important;
-              top: 0 !important;
+              position: absolute !important;
               left: 0 !important;
+              top: 0 !important;
               width: 210mm !important;
               height: 297mm !important;
+              display: block !important;
               background: white !important;
-              z-index: 99999 !important;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              z-index: 9999999 !important;
             }
           }
           @media screen {

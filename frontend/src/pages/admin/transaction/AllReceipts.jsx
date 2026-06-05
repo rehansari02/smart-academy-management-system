@@ -153,14 +153,33 @@ const AllReceipts = () => {
     const triggerPrintReceipt = (receipt) => {
         setPrintingReceipt(receipt);
         setTimeout(() => {
-            handlePrintReceipt();
-        }, 100);
+            const printBtn = document.getElementById('hidden-print-trigger');
+            if (printBtn) {
+                printBtn.click();
+            } else {
+                handlePrintReceipt();
+            }
+        }, 300);
     };
 
     return (
         <div className="container mx-auto p-4">
-             {/* Hidden Print Specific Component */}
-             <div style={{ display: 'none' }}>
+             {/* Hidden button to trigger print-to-react properly on mobile */}
+             <button id="hidden-print-trigger" onClick={handlePrintReceipt} className="hidden" />
+             
+             {/* Hidden Print Specific Component - Use off-screen instead of display:none for mobile print support */}
+             <div style={{
+                position: 'fixed',
+                left: '-9999px',
+                top: 0,
+                width: '210mm',
+                height: '297mm',
+                overflow: 'hidden',
+                backgroundColor: 'white',
+                zIndex: -1,
+                opacity: 0,
+                pointerEvents: 'none'
+            }}>
                 {printingReceipt && (
                     <ReceiptPrintTemplate 
                         ref={receiptRef} 

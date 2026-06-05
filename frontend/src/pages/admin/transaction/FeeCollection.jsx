@@ -109,6 +109,7 @@ const FeeCollection = () => {
     const receiptBankOption = watch('receiptBankOption');
     const onlinePaymentType = watch('onlinePaymentType');
     const onlineProviderOption = watch('onlineProviderOption');
+    const maxPayableAmount = Number(paymentSummary?.dueAmount ?? paymentSummary?.outstandingAmount ?? 0);
 
     // Fetch next receipt number on mount
     useEffect(() => {
@@ -424,8 +425,12 @@ const FeeCollection = () => {
                                 {...register('amountPaid', { 
                                     required: true,
                                     validate: (value) => {
-                                        if (paymentSummary && Number(value) > paymentSummary.outstandingAmount) {
-                                            return `Exceeds Current Outstanding (Max: ₹${paymentSummary.outstandingAmount?.toLocaleString('en-IN')})`;
+                                        const amount = Number(value);
+                                        if (Number.isNaN(amount) || amount <= 0) {
+                                            return 'Enter a valid amount';
+                                        }
+                                        if (paymentSummary && amount > maxPayableAmount) {
+                                            return `Exceeds Total Due (Max: Rs. ${maxPayableAmount?.toLocaleString('en-IN')})`;
                                         }
                                         return true;
                                     }
@@ -457,9 +462,13 @@ const FeeCollection = () => {
                                             <span className="font-bold">-₹{paymentSummary.installmentPrepaid?.toLocaleString('en-IN')}</span>
                                         </div>
                                     )}
-                                    <div className="flex justify-between border-t border-blue-200 pt-1 font-bold text-red-600">
-                                        <span>Total Due:</span>
+                                    <div className="flex justify-between border-t border-blue-200 pt-1 font-semibold text-orange-700">
+                                        <span>Current Due:</span>
                                         <span>₹{paymentSummary.outstandingAmount?.toLocaleString('en-IN')}</span>
+                                    </div>
+                                    <div className="flex justify-between font-bold text-red-600">
+                                        <span>Total Due (All):</span>
+                                        <span>Rs. {paymentSummary.dueAmount?.toLocaleString('en-IN')}</span>
                                     </div>
                                 </div>
                             )}                        </div>
@@ -898,3 +907,5 @@ const FeeCollection = () => {
 };
 
 export default FeeCollection;
+
+

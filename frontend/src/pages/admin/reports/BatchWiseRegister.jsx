@@ -8,6 +8,7 @@ import { fetchEmployees } from '../../../features/employee/employeeSlice';
 import { Printer, Search, Loader2, RefreshCw, Users, CalendarDays, Clock3, Building2 } from 'lucide-react';
 import StudentSearch from '../../../components/StudentSearch';
 import logo from '../../../assets/logo2.png';
+import { getDefaultReportDateRange } from '../../../utils/reportDateRange';
 
 const BatchWiseRegister = () => {
     const dispatch = useDispatch();
@@ -20,8 +21,7 @@ const BatchWiseRegister = () => {
     const userBranchId = typeof user?.branchId === 'object' ? user?.branchId?._id : user?.branchId;
 
     const [filters, setFilters] = useState({
-        startDate: '',
-        endDate: moment().format('YYYY-MM-DD'),
+        ...getDefaultReportDateRange(),
         courseFilter: '',
         branchId: userBranchId || '',
         studentName: '',
@@ -90,8 +90,7 @@ const BatchWiseRegister = () => {
         }
         // Initial search to show all data
         dispatch(fetchStudents(getReportParams({
-            startDate: '',
-            endDate: moment().format('YYYY-MM-DD'),
+            ...getDefaultReportDateRange(),
             courseFilter: '',
             branchId: user?.role === 'Super Admin' ? '' : userBranchId || '',
             studentName: '',
@@ -111,8 +110,7 @@ const BatchWiseRegister = () => {
 
     const handleReset = () => {
         const resetFilters = {
-            startDate: '',
-            endDate: moment().format('YYYY-MM-DD'),
+            ...getDefaultReportDateRange(),
             courseFilter: '',
             branchId: userBranchId || '',
             studentName: '',
@@ -120,6 +118,7 @@ const BatchWiseRegister = () => {
             reference: '',
             isRegistered: 'all'
         };
+        setFilters(resetFilters);
         dispatch(fetchStudents(getReportParams(resetFilters)));
         setShowReport(true);
     };

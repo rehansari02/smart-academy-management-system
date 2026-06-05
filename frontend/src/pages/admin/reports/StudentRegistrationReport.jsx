@@ -9,6 +9,7 @@ import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
 import { toast } from 'react-toastify';
+import { getDefaultReportDateRange } from '../../../utils/reportDateRange';
 
 const StudentRegistrationReport = () => {
     const dispatch = useDispatch();
@@ -18,8 +19,7 @@ const StudentRegistrationReport = () => {
     const { user } = useSelector((state) => state.auth);
 
     const [filters, setFilters] = React.useState({
-        startDate: '',
-        endDate: moment().format('YYYY-MM-DD'),
+        ...getDefaultReportDateRange(),
         courseFilter: '',
         branchId: user?.branchId || '',
         studentName: '',
@@ -62,8 +62,7 @@ const StudentRegistrationReport = () => {
 
     const handleReset = () => {
         setFilters({
-            startDate: '',
-            endDate: moment().format('YYYY-MM-DD'),
+            ...getDefaultReportDateRange(),
             courseFilter: '',
             branchId: user?.branchId || '',
             studentName: '',
