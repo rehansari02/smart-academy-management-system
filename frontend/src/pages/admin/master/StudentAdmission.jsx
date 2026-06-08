@@ -405,6 +405,11 @@ const StudentAdmission = () => {
 
   const watchMobileStudent = watch("mobileStudent");
   const watchMobileParent = watch("mobileParent");
+  const isBatchFullForCourse = (batch, courseId) => {
+    const activeCount = Number(batch?.courseCounts?.[courseId] || 0);
+    const batchSize = Number(batch?.batchSize || 0);
+    return batchSize > 0 && activeCount >= batchSize;
+  };
 
   useEffect(() => {
     const fetchMatches = async () => {
@@ -1755,19 +1760,27 @@ const StudentAdmission = () => {
                               .map((b) => {
                                 const activeCount =
                                   b.courseCounts?.[watchCourseSelection] || 0;
+                                const batchSize = Number(b.batchSize || 0);
+                                const isFull = isBatchFullForCourse(b, watchCourseSelection);
                                 const isSelected =
                                   watchSelectedBatch === b.name;
 
                                 return (
                                   <tr
                                     key={b._id}
-                                    onClick={() =>
-                                      setValue("selectedBatch", b.name)
-                                    }
-                                    className={`border-b cursor-pointer transition ${
+                                    onClick={() => {
+                                      if (isFull) {
+                                        toast.error("This batch is already full for the selected course.");
+                                        return;
+                                      }
+                                      setValue("selectedBatch", b.name);
+                                    }}
+                                    className={`border-b transition ${
                                       isSelected
                                         ? "bg-blue-100 border-blue-200"
-                                        : "hover:bg-gray-50"
+                                        : isFull
+                                          ? "bg-red-50 cursor-not-allowed opacity-70"
+                                          : "hover:bg-gray-50 cursor-pointer"
                                     }`}
                                   >
                                     <td className="p-3 text-center">
@@ -1775,10 +1788,15 @@ const StudentAdmission = () => {
                                         type="radio"
                                         name="batchSelectGroup" 
                                         checked={isSelected}
-                                        onChange={() =>
-                                          setValue("selectedBatch", b.name)
-                                        }
-                                        className="cursor-pointer w-4 h-4 text-blue-600"
+                                        onChange={() => {
+                                          if (isFull) {
+                                            toast.error("This batch is already full for the selected course.");
+                                            return;
+                                          }
+                                          setValue("selectedBatch", b.name);
+                                        }}
+                                        disabled={isFull}
+                                        className="cursor-pointer w-4 h-4 text-blue-600 disabled:cursor-not-allowed"
                                       />
                                     </td>
                                     <td className="p-3 font-medium text-gray-800">
@@ -1790,12 +1808,14 @@ const StudentAdmission = () => {
                                     <td className="p-3 text-center">
                                       <span
                                         className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                          activeCount > 0
-                                            ? "bg-green-100 text-green-800"
-                                            : "bg-gray-100 text-gray-500"
+                                          isFull
+                                            ? "bg-red-100 text-red-800"
+                                            : activeCount > 0
+                                              ? "bg-green-100 text-green-800"
+                                              : "bg-gray-100 text-gray-500"
                                         }`}
                                       >
-                                        {activeCount}
+                                        {activeCount}/{batchSize || '∞'}
                                       </span>
                                     </td>
                                   </tr>
@@ -1832,18 +1852,26 @@ const StudentAdmission = () => {
                           .map((b) => {
                             const activeCount =
                               b.courseCounts?.[watchCourseSelection] || 0;
+                            const batchSize = Number(b.batchSize || 0);
+                            const isFull = isBatchFullForCourse(b, watchCourseSelection);
                             const isSelected =
                               watchSelectedBatch === b.name;
                             return (
                               <div
                                 key={b._id}
-                                onClick={() =>
-                                  setValue("selectedBatch", b.name)
-                                }
-                                className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition ${
+                                onClick={() => {
+                                  if (isFull) {
+                                    toast.error("This batch is already full for the selected course.");
+                                    return;
+                                  }
+                                  setValue("selectedBatch", b.name);
+                                }}
+                                className={`flex items-center justify-between p-3 rounded-lg border transition ${
                                   isSelected
                                     ? "border-blue-500 bg-blue-50 shadow-sm"
-                                    : "border-gray-200 bg-white hover:border-blue-300"
+                                    : isFull
+                                      ? "border-red-200 bg-red-50 opacity-70 cursor-not-allowed"
+                                      : "border-gray-200 bg-white hover:border-blue-300 cursor-pointer"
                                 }`}
                               >
                                 <div className="flex-1 min-w-0">
@@ -1854,11 +1882,13 @@ const StudentAdmission = () => {
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                                   <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                                    activeCount > 0
-                                      ? "bg-green-100 text-green-800"
-                                      : "bg-gray-100 text-gray-500"
+                                    isFull
+                                      ? "bg-red-100 text-red-800"
+                                      : activeCount > 0
+                                        ? "bg-green-100 text-green-800"
+                                        : "bg-gray-100 text-gray-500"
                                   }`}>
-                                    {activeCount}
+                                    {activeCount}/{batchSize || '∞'}
                                   </span>
                                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                                     isSelected ? "border-blue-600 bg-blue-600" : "border-gray-300"

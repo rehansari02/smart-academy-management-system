@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchCourses, fetchExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, resetMasterStatus, fetchExams, createExam, updateExam, deleteExam } from '../../../features/master/masterSlice';
+import { fetchCourses, fetchExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, resetMasterStatus, fetchExams, createExam, updateExam, deleteExam, fetchBranches } from '../../../features/master/masterSlice';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { Plus, Search, RefreshCw, Edit, Trash2, Eye, X, Save, AlertCircle, Pencil, Check } from 'lucide-react';
@@ -50,13 +50,13 @@ const buildTimeStr = (hour, minute, period) => {
 const ExamSchedule = () => {
     const dispatch = useDispatch();
     const location = useLocation();
-  const { courses, examSchedules, exams, isSuccess, message, isLoading } = useSelector((state) => state.master);
+  const { courses, examSchedules, exams, branches, isSuccess, message, isLoading } = useSelector((state) => state.master);
   const { add, edit, delete: canDelete } = useUserRights('Exam Schedule');
   
   // Local State
   const [showForm, setShowForm] = useState(false);
   const [editMode, setEditMode] = useState(null);
-  const [filters, setFilters] = useState({ courseId: '', examName: '' });
+  const [filters, setFilters] = useState({ courseId: '', examName: '', branchId: '' });
   const [detailView, setDetailView] = useState(null); // ID of schedule to show details
   const [detailData, setDetailData] = useState([]);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
@@ -82,6 +82,10 @@ const ExamSchedule = () => {
   // States for Course search dropdown in filters
   const [isFilterCourseDropdownOpen, setIsFilterCourseDropdownOpen] = useState(false);
   const [filterCourseSearch, setFilterCourseSearch] = useState('');
+
+  // States for Branch search dropdown in filters
+  const [isFilterBranchDropdownOpen, setIsFilterBranchDropdownOpen] = useState(false);
+  const [filterBranchSearch, setFilterBranchSearch] = useState('');
   
   // Attendee Selection
   const [pendingRequests, setPendingRequests] = useState([]);
@@ -101,6 +105,55 @@ const ExamSchedule = () => {
   const selectedExamName = watch('examName');
   const selectedCourseObj = courses.find(c => c._id === selectedCourse);
   const selectedCourseName = selectedCourseObj ? selectedCourseObj.name : '';
+  const availableExamOptions = React.useMemo(() => {
+    const map = new Map();
+
+    (exams || []).forEach((exam) => {
+      const name = exam?.name?.trim();
+      if (!name) return;
+      map.set(name.toLowerCase(), { name, source: 'exam', exam });
+    });
+
+    (examSchedules || []).forEach((schedule) => {
+      const name = schedule?.examName?.trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, { name, source: 'schedule' });
+      }
+    });
+
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [exams, examSchedules]);
+  const availableCourseOptions = React.useMemo(() => {
+    const allCourses = [...(courses || [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const examNameKey = selectedExamName?.trim().toLowerCase();
+
+    if (!examNameKey) {
+      return allCourses;
+    }
+
+    const relatedCourseIds = new Set(
+      (examSchedules || [])
+        .filter((schedule) => (schedule?.examName || '').trim().toLowerCase() === examNameKey)
+        .map((schedule) => schedule?.course?._id || schedule?.course)
+        .filter(Boolean)
+        .map(String)
+    );
+
+    const relatedCourses = allCourses.filter((course) => relatedCourseIds.has(String(course._id)));
+    return relatedCourses.length > 0 ? relatedCourses : allCourses;
+  }, [courses, examSchedules, selectedExamName]);
+
+  useEffect(() => {
+    if (!selectedCourse) return;
+    const isValidCourse = availableCourseOptions.some((course) => String(course._id) === String(selectedCourse));
+    if (!isValidCourse) {
+      setValue('course', '');
+      setSelectedAttendees([]);
+      setTimeTableData([]);
+    }
+  }, [availableCourseOptions, selectedCourse, setValue]);
 
   const buildTimeTableFromCourse = (course, existingTimeTable = []) => {
     const existingBySubject = new Map(
@@ -210,6 +263,7 @@ const ExamSchedule = () => {
     dispatch(fetchCourses());
     dispatch(fetchExamSchedules());
     dispatch(fetchExams());
+    dispatch(fetchBranches());
   }, [dispatch]);
 
   useEffect(() => {
@@ -315,9 +369,10 @@ const ExamSchedule = () => {
 
   const onSearch = () => dispatch(fetchExamSchedules(filters));
   const onReset = () => {
-    setFilters({ courseId: '', examName: '' });
+    setFilters({ courseId: '', examName: '', branchId: '' });
     setFilterExamSearch('');
     setFilterCourseSearch('');
+    setFilterBranchSearch('');
     dispatch(fetchExamSchedules());
   };
 
@@ -413,60 +468,6 @@ const ExamSchedule = () => {
             <h3 className="text-lg font-bold mb-4">{editMode ? 'Edit Exam Schedule' : 'New Exam Schedule'}</h3>
             <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="relative">
-                    <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
-                        Course {isCoursesLoading && <span className="text-gray-400 text-xs italic">(Loading...)</span>}
-                    </label>
-                    <input type="hidden" {...register('course', {required: true})} />
-                    
-                    <div className="relative">
-                        <button 
-                            type="button"
-                            onClick={() => setIsCourseDropdownOpen(!isCourseDropdownOpen)}
-                            className="border p-2 rounded w-full text-left bg-white flex justify-between items-center text-sm min-h-[38px]"
-                        >
-                            <span className={selectedCourse ? 'text-gray-900 font-medium' : 'text-gray-400'}>
-                                {selectedCourseName || '-- Select Course --'}
-                            </span>
-                            <span className="text-gray-500">▼</span>
-                        </button>
-                        
-                        {isCourseDropdownOpen && (
-                            <div className="absolute left-0 right-0 mt-1 bg-white border rounded shadow-lg z-50 max-h-[300px] overflow-y-auto p-2">
-                                <div className="p-1 mb-2">
-                                    <input 
-                                        type="text" 
-                                        placeholder="Search Course..."
-                                        value={courseSearch}
-                                        onChange={(e) => setCourseSearch(e.target.value)}
-                                        className="border p-1.5 rounded text-xs w-full focus:ring-1 focus:ring-primary outline-none"
-                                    />
-                                </div>
-                                <div className="divide-y divide-gray-100 max-h-[200px] overflow-y-auto">
-                                    {coursesWithRequests && coursesWithRequests.filter(c => c.name.toLowerCase().includes(courseSearch.toLowerCase())).length > 0 ? (
-                                        coursesWithRequests.filter(c => c.name.toLowerCase().includes(courseSearch.toLowerCase())).map(c => (
-                                            <div 
-                                                key={c._id} 
-                                                onClick={() => {
-                                                    setValue('course', c._id);
-                                                    setIsCourseDropdownOpen(false);
-                                                    setCourseSearch('');
-                                                }}
-                                                className="p-2 text-xs font-semibold hover:bg-blue-50 text-gray-700 cursor-pointer rounded transition-all"
-                                            >
-                                                {c.name}
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="p-3 text-xs text-gray-400 text-center">
-                                            No matching courses found.
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-                <div className="relative">
                     <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Exam Name</label>
                     <input type="hidden" {...register('examName', {required: true})} />
                     
@@ -474,7 +475,7 @@ const ExamSchedule = () => {
                         <button 
                             type="button"
                             onClick={() => setIsExamDropdownOpen(!isExamDropdownOpen)}
-                            className="border p-2 rounded w-full text-left bg-white flex justify-between items-center text-sm min-h-[38px]"
+                            className="border border-gray-300 p-2.5 rounded-lg w-full text-left bg-white flex justify-between items-center text-sm min-h-[42px] shadow-sm hover:border-blue-400 hover:shadow-md transition-all duration-200 focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
                         >
                             <span className={selectedExamName ? 'text-gray-900 font-medium' : 'text-gray-400'}>
                                 {selectedExamName || '-- Select Exam --'}
@@ -483,28 +484,28 @@ const ExamSchedule = () => {
                         </button>
                         
                         {isExamDropdownOpen && (
-                            <div className="absolute left-0 right-0 mt-1 bg-white border rounded shadow-lg z-50 max-h-[350px] overflow-y-auto p-2">
+                            <div className="absolute left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-[350px] overflow-y-auto p-2 animate-fadeInDropdown">
                                 <div className="flex gap-2 mb-2 p-1">
                                     <input 
                                         type="text" 
                                         placeholder="Search Exam..."
                                         value={examSearch}
                                         onChange={(e) => setExamSearch(e.target.value)}
-                                        className="border p-1.5 rounded text-xs w-full focus:ring-1 focus:ring-primary outline-none"
+                                        className="border border-gray-200 p-2 rounded-lg text-xs w-full focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none bg-gray-50 hover:bg-white transition-colors"
                                     />
                                     <button 
                                         type="button" 
                                         onClick={() => setShowNewExamModal(true)} 
-                                        className="bg-primary text-white text-xs px-2.5 py-1.5 rounded hover:bg-blue-700 whitespace-nowrap flex items-center gap-1 font-bold"
+                                        className="bg-primary text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 whitespace-nowrap flex items-center gap-1 font-bold shadow-sm hover:shadow transition-all"
                                     >
                                         <Plus size={14}/> Add New
                                     </button>
                                 </div>
                                 <div className="divide-y divide-gray-100 max-h-[200px] overflow-y-auto">
-                                    {exams && exams.filter(exam => exam.name.toLowerCase().includes(examSearch.toLowerCase())).length > 0 ? (
-                                        exams.filter(exam => exam.name.toLowerCase().includes(examSearch.toLowerCase())).map(exam => (
+                                    {availableExamOptions.filter(exam => exam.name.toLowerCase().includes(examSearch.toLowerCase())).length > 0 ? (
+                                        availableExamOptions.filter(exam => exam.name.toLowerCase().includes(examSearch.toLowerCase())).map(exam => (
                                             <div 
-                                                key={exam._id} 
+                                                key={`${exam.source}-${exam.exam?._id || exam.name}`} 
                                                 className="group flex items-center gap-1 p-1.5 text-xs font-semibold hover:bg-blue-50 text-gray-700 cursor-pointer rounded transition-all"
                                             >
                                                 <div 
@@ -517,29 +518,85 @@ const ExamSchedule = () => {
                                                 >
                                                     {exam.name}
                                                 </div>
-                                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); handleEditExamClick(exam); }}
-                                                        className="p-1 rounded hover:bg-blue-200 text-blue-600"
-                                                        title="Edit exam name"
-                                                    >
-                                                        <Pencil size={12} />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); handleDeleteExamName(exam._id, exam.name); }}
-                                                        className="p-1 rounded hover:bg-red-200 text-red-500"
-                                                        title="Delete exam name"
-                                                    >
-                                                        <Trash2 size={12} />
-                                                    </button>
-                                                </div>
+                                                {exam.source === 'exam' && (
+                                                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); handleEditExamClick(exam.exam); }}
+                                                            className="p-1 rounded hover:bg-blue-200 text-blue-600"
+                                                            title="Edit exam name"
+                                                        >
+                                                            <Pencil size={12} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteExamName(exam.exam._id, exam.name); }}
+                                                            className="p-1 rounded hover:bg-red-200 text-red-500"
+                                                            title="Delete exam name"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="p-4 text-xs text-gray-400 text-center italic">
+                                            No matching exam names. Click "Add New" to create one.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div className="relative">
+                    <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                        Course {isCoursesLoading && <span className="text-gray-400 text-xs italic">(Loading...)</span>}
+                    </label>
+                    <input type="hidden" {...register('course', {required: true})} />
+                    
+                    <div className="relative">
+                        <button 
+                            type="button"
+                            onClick={() => setIsCourseDropdownOpen(!isCourseDropdownOpen)}
+                            className="border border-gray-300 p-2.5 rounded-lg w-full text-left bg-white flex justify-between items-center text-sm min-h-[42px] shadow-sm hover:border-blue-400 hover:shadow-md transition-all duration-200 focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
+                        >
+                            <span className={selectedCourse ? 'text-gray-900 font-medium' : 'text-gray-400'}>
+                                {selectedCourseName || '-- Select Course --'}
+                            </span>
+                            <span className="text-gray-500">▼</span>
+                        </button>
+                        
+                        {isCourseDropdownOpen && (
+                            <div className="absolute left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-[320px] overflow-y-auto p-2 animate-fadeInDropdown">
+                                <div className="p-1 mb-2">
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search Course..."
+                                        value={courseSearch}
+                                        onChange={(e) => setCourseSearch(e.target.value)}
+                                        className="border border-gray-200 p-2 rounded-lg text-xs w-full focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none bg-gray-50 hover:bg-white transition-colors"
+                                    />
+                                </div>
+                                <div className="divide-y divide-gray-100 max-h-[200px] overflow-y-auto">
+                                    {availableCourseOptions && availableCourseOptions.filter(c => c.name.toLowerCase().includes(courseSearch.toLowerCase())).length > 0 ? (
+                                        availableCourseOptions.filter(c => c.name.toLowerCase().includes(courseSearch.toLowerCase())).map(c => (
+                                            <div 
+                                                key={c._id} 
+                                                onClick={() => {
+                                                    setValue('course', c._id);
+                                                    setIsCourseDropdownOpen(false);
+                                                    setCourseSearch('');
+                                                }}
+                                                className="p-2.5 text-xs font-semibold hover:bg-blue-50 hover:text-blue-700 text-gray-700 cursor-pointer rounded-lg transition-all duration-150"
+                                            >
+                                                {c.name}
                                             </div>
                                         ))
                                     ) : (
                                         <div className="p-3 text-xs text-gray-400 text-center">
-                                            No matching exam names. Click "Add New" to create one.
+                                            No matching courses found.
                                         </div>
                                     )}
                                 </div>
@@ -780,85 +837,12 @@ const ExamSchedule = () => {
       {!showForm && !detailView && (
         <div className="bg-white p-4 rounded shadow mb-6 flex flex-wrap gap-4 items-end">
             <div className="flex-1 min-w-[200px] relative">
-                <label className="block text-xs font-bold text-gray-600 mb-1">Filter by Course</label>
-                <div className="relative">
-                    <button 
-                        type="button"
-                        onClick={() => setIsFilterCourseDropdownOpen(!isFilterCourseDropdownOpen)}
-                        className="border p-2 rounded w-full text-left bg-white flex justify-between items-center text-sm min-h-[38px]"
-                    >
-                        <span className={filters.courseId ? 'text-gray-900 font-medium' : 'text-gray-400'}>
-                            {coursesWithRequests.find(c => c._id === filters.courseId)?.name || '-- All Active Courses --'}
-                        </span>
-                        <span className="text-gray-500">▼</span>
-                    </button>
-                    
-                    {isFilterCourseDropdownOpen && (
-                        <div className="absolute left-0 right-0 mt-1 bg-white border rounded shadow-lg z-50 max-h-[300px] overflow-y-auto p-2">
-                            <div className="flex gap-2 mb-2 p-1">
-                                <input 
-                                    type="text" 
-                                    placeholder="Search Course..."
-                                    value={filterCourseSearch}
-                                    onChange={(e) => setFilterCourseSearch(e.target.value)}
-                                    className="border p-1.5 rounded text-xs w-full focus:ring-1 focus:ring-primary outline-none"
-                                />
-                                {filters.courseId && (
-                                    <button 
-                                        type="button"
-                                        onClick={() => {
-                                            setFilters({...filters, courseId: ''});
-                                            setIsFilterCourseDropdownOpen(false);
-                                            setFilterCourseSearch('');
-                                        }}
-                                        className="bg-red-500 text-white text-xs px-2.5 py-1.5 rounded hover:bg-red-600 font-bold"
-                                    >
-                                        Clear
-                                    </button>
-                                )}
-                            </div>
-                            <div className="divide-y divide-gray-100 max-h-[200px] overflow-y-auto">
-                                <div 
-                                    onClick={() => {
-                                        setFilters({...filters, courseId: ''});
-                                        setIsFilterCourseDropdownOpen(false);
-                                        setFilterCourseSearch('');
-                                    }}
-                                    className="p-2 text-xs font-semibold hover:bg-blue-50 text-gray-500 cursor-pointer rounded transition-all italic"
-                                >
-                                    -- All Active Courses --
-                                </div>
-                                {coursesWithRequests && coursesWithRequests.filter(c => c.name.toLowerCase().includes(filterCourseSearch.toLowerCase())).length > 0 ? (
-                                    coursesWithRequests.filter(c => c.name.toLowerCase().includes(filterCourseSearch.toLowerCase())).map(c => (
-                                        <div 
-                                            key={c._id} 
-                                            onClick={() => {
-                                                setFilters({...filters, courseId: c._id});
-                                                setIsFilterCourseDropdownOpen(false);
-                                                setFilterCourseSearch('');
-                                            }}
-                                            className="p-2 text-xs font-semibold hover:bg-blue-50 text-gray-700 cursor-pointer rounded transition-all"
-                                        >
-                                            {c.name}
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="p-3 text-xs text-gray-400 text-center">
-                                        No matching active courses found.
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-            <div className="flex-1 min-w-[200px] relative">
                 <label className="block text-xs font-bold text-gray-600 mb-1">Filter by Exam Name</label>
                 <div className="relative">
                     <button 
                         type="button"
                         onClick={() => setIsFilterExamDropdownOpen(!isFilterExamDropdownOpen)}
-                        className="border p-2 rounded w-full text-left bg-white flex justify-between items-center text-sm min-h-[38px]"
+                        className="border border-gray-300 p-2.5 rounded-lg w-full text-left bg-white flex justify-between items-center text-sm min-h-[42px] shadow-sm hover:border-blue-400 hover:shadow-md transition-all duration-200 focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
                     >
                         <span className={filters.examName ? 'text-gray-900 font-medium' : 'text-gray-400'}>
                             {filters.examName || '-- All Exams --'}
@@ -867,14 +851,14 @@ const ExamSchedule = () => {
                     </button>
                     
                     {isFilterExamDropdownOpen && (
-                        <div className="absolute left-0 right-0 mt-1 bg-white border rounded shadow-lg z-50 max-h-[300px] overflow-y-auto p-2">
+                        <div className="absolute left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-[320px] overflow-y-auto p-2 animate-fadeInDropdown">
                             <div className="flex gap-2 mb-2 p-1">
                                 <input 
                                     type="text" 
                                     placeholder="Search Exam..."
                                     value={filterExamSearch}
                                     onChange={(e) => setFilterExamSearch(e.target.value)}
-                                    className="border p-1.5 rounded text-xs w-full focus:ring-1 focus:ring-primary outline-none"
+                                    className="border border-gray-200 p-2 rounded-lg text-xs w-full focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none bg-gray-50 hover:bg-white transition-colors"
                                 />
                                 {filters.examName && (
                                     <button 
@@ -884,7 +868,7 @@ const ExamSchedule = () => {
                                             setIsFilterExamDropdownOpen(false);
                                             setFilterExamSearch('');
                                         }}
-                                        className="bg-red-500 text-white text-xs px-2.5 py-1.5 rounded hover:bg-red-600 font-bold"
+                                        className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-red-600 font-bold shadow-sm hover:shadow transition-all"
                                     >
                                         Clear
                                     </button>
@@ -897,20 +881,20 @@ const ExamSchedule = () => {
                                         setIsFilterExamDropdownOpen(false);
                                         setFilterExamSearch('');
                                     }}
-                                    className="p-2 text-xs font-semibold hover:bg-blue-50 text-gray-500 cursor-pointer rounded transition-all italic"
+                                    className="p-2.5 text-xs font-semibold hover:bg-blue-50 hover:text-blue-600 text-gray-400 cursor-pointer rounded-lg transition-all duration-150 italic border-b border-gray-100 mb-1"
                                 >
                                     -- All Exams --
                                 </div>
-                                {exams && exams.filter(exam => exam.name.toLowerCase().includes(filterExamSearch.toLowerCase())).length > 0 ? (
-                                    exams.filter(exam => exam.name.toLowerCase().includes(filterExamSearch.toLowerCase())).map(exam => (
+                                {availableExamOptions.filter(exam => exam.name.toLowerCase().includes(filterExamSearch.toLowerCase())).length > 0 ? (
+                                    availableExamOptions.filter(exam => exam.name.toLowerCase().includes(filterExamSearch.toLowerCase())).map(exam => (
                                         <div 
-                                            key={exam._id} 
+                                            key={`${exam.source}-${exam.exam?._id || exam.name}`}
                                             onClick={() => {
                                                 setFilters({...filters, examName: exam.name});
                                                 setIsFilterExamDropdownOpen(false);
                                                 setFilterExamSearch('');
                                             }}
-                                            className="p-2 text-xs font-semibold hover:bg-blue-50 text-gray-700 cursor-pointer rounded transition-all"
+                                            className="p-2.5 text-xs font-semibold hover:bg-blue-50 hover:text-blue-700 text-gray-700 cursor-pointer rounded-lg transition-all duration-150"
                                         >
                                             {exam.name}
                                         </div>
@@ -918,6 +902,152 @@ const ExamSchedule = () => {
                                 ) : (
                                     <div className="p-3 text-xs text-gray-400 text-center">
                                         No matching exam names found.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+            <div className="flex-1 min-w-[200px] relative">
+                <label className="block text-xs font-bold text-gray-600 mb-1">Filter by Course</label>
+                <div className="relative">
+                    <button 
+                        type="button"
+                        onClick={() => setIsFilterCourseDropdownOpen(!isFilterCourseDropdownOpen)}
+                        className="border border-gray-300 p-2.5 rounded-lg w-full text-left bg-white flex justify-between items-center text-sm min-h-[42px] shadow-sm hover:border-blue-400 hover:shadow-md transition-all duration-200 focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
+                    >
+                        <span className={filters.courseId ? 'text-gray-900 font-medium' : 'text-gray-400'}>
+                            {courses.find(c => c._id === filters.courseId)?.name || '-- All Courses --'}
+                        </span>
+                        <span className="text-gray-500">▼</span>
+                    </button>
+                    
+                    {isFilterCourseDropdownOpen && (
+                        <div className="absolute left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-[320px] overflow-y-auto p-2 animate-fadeInDropdown">
+                            <div className="flex gap-2 mb-2 p-1">
+                                <input 
+                                    type="text" 
+                                    placeholder="Search Course..."
+                                    value={filterCourseSearch}
+                                    onChange={(e) => setFilterCourseSearch(e.target.value)}
+                                    className="border border-gray-200 p-2 rounded-lg text-xs w-full focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none bg-gray-50 hover:bg-white transition-colors"
+                                />
+                                {filters.courseId && (
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            setFilters({...filters, courseId: ''});
+                                            setIsFilterCourseDropdownOpen(false);
+                                            setFilterCourseSearch('');
+                                        }}
+                                        className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-red-600 font-bold shadow-sm hover:shadow transition-all"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+                            <div className="divide-y divide-gray-100 max-h-[200px] overflow-y-auto">
+                                <div 
+                                    onClick={() => {
+                                        setFilters({...filters, courseId: ''});
+                                        setIsFilterCourseDropdownOpen(false);
+                                        setFilterCourseSearch('');
+                                    }}
+                                    className="p-2.5 text-xs font-semibold hover:bg-blue-50 hover:text-blue-600 text-gray-400 cursor-pointer rounded-lg transition-all duration-150 italic border-b border-gray-100 mb-1"
+                                >
+                                    -- All Courses --
+                                </div>
+                                {courses && courses.filter(c => c.name.toLowerCase().includes(filterCourseSearch.toLowerCase())).length > 0 ? (
+                                    courses.filter(c => c.name.toLowerCase().includes(filterCourseSearch.toLowerCase())).map(c => (
+                                        <div 
+                                            key={c._id} 
+                                            onClick={() => {
+                                                setFilters({...filters, courseId: c._id});
+                                                setIsFilterCourseDropdownOpen(false);
+                                                setFilterCourseSearch('');
+                                            }}
+                                            className="p-2.5 text-xs font-semibold hover:bg-blue-50 hover:text-blue-700 text-gray-700 cursor-pointer rounded-lg transition-all duration-150"
+                                        >
+                                            {c.name}
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="p-3 text-xs text-gray-400 text-center">
+                                        No matching courses found.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+            <div className="flex-1 min-w-[200px] relative">
+                <label className="block text-xs font-bold text-gray-600 mb-1">Filter by Branch</label>
+                <div className="relative">
+                    <button 
+                        type="button"
+                        onClick={() => setIsFilterBranchDropdownOpen(!isFilterBranchDropdownOpen)}
+                        className="border border-gray-300 p-2.5 rounded-lg w-full text-left bg-white flex justify-between items-center text-sm min-h-[42px] shadow-sm hover:border-blue-400 hover:shadow-md transition-all duration-200 focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
+                    >
+                        <span className={filters.branchId ? 'text-gray-900 font-medium' : 'text-gray-400'}>
+                            {branches.find(b => b._id === filters.branchId)?.name || '-- All Branches --'}
+                        </span>
+                        <span className="text-gray-500">▼</span>
+                    </button>
+                    
+                    {isFilterBranchDropdownOpen && (
+                        <div className="absolute left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-[320px] overflow-y-auto p-2 animate-fadeInDropdown">
+                            <div className="flex gap-2 mb-2 p-1">
+                                <input 
+                                    type="text" 
+                                    placeholder="Search Branch..."
+                                    value={filterBranchSearch}
+                                    onChange={(e) => setFilterBranchSearch(e.target.value)}
+                                    className="border border-gray-200 p-2 rounded-lg text-xs w-full focus:ring-2 focus:ring-blue-200 focus:border-blue-500 outline-none bg-gray-50 hover:bg-white transition-colors"
+                                />
+                                {filters.branchId && (
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            setFilters({...filters, branchId: ''});
+                                            setIsFilterBranchDropdownOpen(false);
+                                            setFilterBranchSearch('');
+                                        }}
+                                        className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-red-600 font-bold shadow-sm hover:shadow transition-all"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+                            <div className="divide-y divide-gray-100 max-h-[200px] overflow-y-auto">
+                                <div 
+                                    onClick={() => {
+                                        setFilters({...filters, branchId: ''});
+                                        setIsFilterBranchDropdownOpen(false);
+                                        setFilterBranchSearch('');
+                                    }}
+                                    className="p-2.5 text-xs font-semibold hover:bg-blue-50 hover:text-blue-600 text-gray-400 cursor-pointer rounded-lg transition-all duration-150 italic border-b border-gray-100 mb-1"
+                                >
+                                    -- All Branches --
+                                </div>
+                                {branches && branches.filter(b => b.name?.toLowerCase().includes(filterBranchSearch.toLowerCase())).length > 0 ? (
+                                    branches.filter(b => b.name?.toLowerCase().includes(filterBranchSearch.toLowerCase())).map(b => (
+                                        <div 
+                                            key={b._id} 
+                                            onClick={() => {
+                                                setFilters({...filters, branchId: b._id});
+                                                setIsFilterBranchDropdownOpen(false);
+                                                setFilterBranchSearch('');
+                                            }}
+                                            className="p-2.5 text-xs font-semibold hover:bg-blue-50 hover:text-blue-700 text-gray-700 cursor-pointer rounded-lg transition-all duration-150"
+                                        >
+                                            {b.name}
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="p-3 text-xs text-gray-400 text-center">
+                                        No matching branches found.
                                     </div>
                                 )}
                             </div>

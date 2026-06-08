@@ -56,6 +56,7 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
             followUpDetails: finalDetails,
             followUpDate: fDate,
             newRemarks: data.newRemarks,
+            recordFollowUpActivity: true,
         };
 
         await onSave({ id: inquiry._id, data: updateData });
@@ -134,16 +135,26 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
 
 const TodaysVisitedReport = () => {
     const navigate = useNavigate();
-    const { add, edit, delete: canDelete } = useUserRights('Visitors - Activity Visitor Report');
+    const visitorReportRights = useUserRights('Visitors - Activity Visitor Report');
+    const onlineInquiryRights = useUserRights('Inquiry - Online');
+    const offlineInquiryRights = useUserRights('Inquiry - Offline');
+    const dsrInquiryRights = useUserRights('Inquiry - DSR');
+    const { add, edit, delete: canDelete } = visitorReportRights;
     
     const getFilledBy = (visitor) => visitor.createdBy?.name || visitor.createdBy?.username || visitor.attendedBy?.name || visitor.attendedBy?.username || visitor.allocatedTo?.name || visitor.allocatedTo?.username || '-';
-    const getHandleBy = (visitor) => visitor.allocatedTo?.name || visitor.allocatedTo?.username || visitor.reference || 'Direct';
+    const getReferenceBy = (record) => record?.referenceBy || record?.reference || record?.inquiryId?.referenceBy || record?.source || 'Direct';
+    const getInquiryRights = (source) => {
+        if (source === 'DSR') return dsrInquiryRights;
+        if (source === 'Walk-in') return offlineInquiryRights;
+        return onlineInquiryRights;
+    };
 
     const getLastFollowUpInfo = (visitor) => {
         const last = visitor.latestFollowup;
         if (!last) return '-';
-        const dateStr = last.createdAt
-            ? `${formatDate(last.createdAt)} ${new Date(last.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+        const followupDate = last.callingDate || last.createdAt || last.scheduledDate;
+        const dateStr = followupDate
+            ? `${formatDate(followupDate)} ${new Date(followupDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
             : '';
         const by = last.followUpBy?.name || last.followUpBy?.username || '-';
         if (!dateStr) return by;
@@ -155,8 +166,154 @@ const TodaysVisitedReport = () => {
         );
     };
 
+    const printHtml = (title, bodyHtml) => {
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.style.visibility = 'hidden';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow?.document;
+        if (!doc) return;
+
+        doc.open();
+        doc.write(`
+            <!doctype html>
+            <html>
+                <head>
+                    <meta charset="utf-8" />
+                    <title>${title}</title>
+                    <style>
+                        @page { size: landscape; margin: 10mm; }
+                        body { font-family: Arial, sans-serif; margin: 0; color: #111827; }
+                        .header { margin-bottom: 12px; }
+                        .header h1 { margin: 0; font-size: 18px; }
+                        .header p { margin: 4px 0 0; font-size: 11px; color: #6b7280; }
+                        table { width: 100%; border-collapse: collapse; font-size: 10px; }
+                        th, td { border: 1px solid #d1d5db; padding: 6px; vertical-align: top; }
+                        th { background: #2563eb; color: #fff; text-align: left; }
+                        .text-center { text-align: center; }
+                        .muted { color: #6b7280; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>${title}</h1>
+                        <p>Generated on ${new Date().toLocaleString()}</p>
+                    </div>
+                    ${bodyHtml}
+                </body>
+            </html>
+        `);
+        doc.close();
+
+        setTimeout(() => {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+            setTimeout(() => document.body.removeChild(iframe), 1000);
+        }, 250);
+    };
+
     const handlePrintList = () => {
-        window.print();
+        if (filters.reportType === 'visited') {
+            const headers = `
+                <tr>
+                    <th>Sr No</th>
+                    <th>Inquiry Date</th>
+                    <th>Visitor Date</th>
+                    ${user?.role === 'Super Admin' ? '<th>Branch</th>' : ''}
+                    <th>Filled By</th>
+                    <th>Reference By</th>
+                    <th>Student Name</th>
+                    <th>Contact (H/S/P)</th>
+                    <th>Status</th>
+                    <th>In Time</th>
+                    <th>Out Time</th>
+                    <th>Remarks</th>
+                    <th>Create Date</th>
+                </tr>
+            `;
+            const rows = visitors.map((visitor, index) => `
+                <tr>
+                    <td class="text-center">${index + 1}</td>
+                    <td>${formatDate(visitor.inquiryId?.inquiryDate || visitor.visitingDate)}</td>
+                    <td>${visitor.latestFollowup?.scheduledDate ? formatDate(visitor.latestFollowup.scheduledDate) : formatDate(visitor.visitingDate)}</td>
+                    ${user?.role === 'Super Admin' ? `<td>${visitor.branchId?.name || '-'}</td>` : ''}
+                    <td>${getFilledBy(visitor)}</td>
+                    <td>${getReferenceBy(visitor)}</td>
+                    <td>${getFullName(visitor.inquiryId && typeof visitor.inquiryId === 'object' ? visitor.inquiryId : visitor)}</td>
+                    <td>${visitor.contactHome || '-'} / ${visitor.mobileNumber || '-'} / ${visitor.contactParent || '-'}</td>
+                    <td>${visitor.status || 'Open'}</td>
+                    <td>${visitor.inTime || '-'}</td>
+                    <td>${visitor.outTime || '-'}</td>
+                    <td>${visitor.remarks || '-'}</td>
+                    <td>${visitor.createdAt ? `${formatDate(visitor.createdAt)} ${new Date(visitor.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}</td>
+                </tr>
+            `).join('');
+            printHtml('Visitors List', `<table><thead>${headers}</thead><tbody>${rows || `<tr><td colspan="${user?.role === 'Super Admin' ? 13 : 12}" class="text-center muted">No visitors found for this period.</td></tr>`}</tbody></table>`);
+            return;
+        }
+
+        const headers = `
+            <tr>
+                <th>Sr No</th>
+                <th>Inquiry Date</th>
+                ${user?.role === 'Super Admin' ? '<th>Branch</th>' : ''}
+                <th>Filled By</th>
+                <th>Reference By</th>
+                <th>Student Name</th>
+                <th>Contact (H/S/P)</th>
+                <th>Status</th>
+                <th>Followup</th>
+                <th>Followup Details</th>
+                <th>Followup By</th>
+                <th>Calling Date</th>
+            </tr>
+        `;
+        const rows = followups.map((item, index) => {
+            const isVisitorFollowUp = item.recordType === 'visitor';
+            const visitor = isVisitorFollowUp ? (item.visitorId || {}) : {};
+            const inquiry = isVisitorFollowUp ? {} : item;
+            const visitorInquiry = visitor.inquiryId && typeof visitor.inquiryId === 'object' ? visitor.inquiryId : null;
+            const personName = getFullName(isVisitorFollowUp ? (visitorInquiry || visitor) : inquiry);
+            const originalDate = isVisitorFollowUp ? (item.scheduledDate || visitor.visitingDate) : inquiry.inquiryDate;
+            const status = isVisitorFollowUp ? (item.status || visitor.status) : inquiry.status;
+            const branchName = isVisitorFollowUp ? item.branchId?.name : inquiry.branchId?.name;
+            const followupActivities = Array.isArray(inquiry.followUpHistory)
+                ? inquiry.followUpHistory.filter(history => history.activityType === 'followup')
+                : [];
+            const lastHistoryItem = inquiry.latestFollowupActivity || (followupActivities.length ? followupActivities[followupActivities.length - 1] : null);
+            const followUpDate = isVisitorFollowUp ? item.scheduledDate : (item.followUpDate || lastHistoryItem?.date || inquiry.followUpDate);
+            const details = isVisitorFollowUp ? item.remark : (lastHistoryItem?.remarks || inquiry.followUpDetails);
+            const followUpBy = isVisitorFollowUp ? item.followUpBy : (item.followUpBy || lastHistoryItem?.followUpBy || inquiry.followUpBy);
+            const callingDate = isVisitorFollowUp
+                ? (item.callingDate || item.createdAt || item.updatedAt || null)
+                : (item.callingDate || lastHistoryItem?.callingDate || lastHistoryItem?.createdAt || lastHistoryItem?.date || inquiry.updatedAt);
+            return `
+                <tr>
+                    <td class="text-center">${index + 1}</td>
+                    <td>${originalDate ? formatDate(originalDate) : '-'}</td>
+                    ${user?.role === 'Super Admin' ? `<td>${branchName || '-'}</td>` : ''}
+                    <td>${isVisitorFollowUp ? getFilledBy(visitor) : (inquiry.createdBy?.name || inquiry.createdBy?.username || inquiry.followUpBy?.name || inquiry.followUpBy?.username || '-')}</td>
+                    <td>${isVisitorFollowUp ? getReferenceBy(visitor) : getReferenceBy(inquiry)}</td>
+                    <td>${personName}</td>
+                    <td>${(isVisitorFollowUp ? visitor.contactHome : inquiry.contactHome) || '-'} / ${(isVisitorFollowUp ? visitor.mobileNumber : inquiry.contactStudent) || '-'} / ${(isVisitorFollowUp ? visitor.contactParent : inquiry.contactParent) || '-'}</td>
+                    <td>${status || 'Open'}</td>
+                    <td>${followUpDate ? `${formatDate(followUpDate)} ${new Date(followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}</td>
+                    <td>${details || '-'}</td>
+                    <td>${followUpBy?.name || followUpBy?.username || '-'}</td>
+                    <td>${callingDate ? `${formatDate(callingDate)} ${new Date(callingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}</td>
+                </tr>
+            `;
+        }).join('');
+        printHtml('Followups List', `<table><thead>${headers}</thead><tbody>${rows || `<tr><td colspan="${user?.role === 'Super Admin' ? 12 : 11}" class="text-center muted">No followups found for this period.</td></tr>`}</tbody></table>`);
+    };
+    const handlePrintFollowupsList = () => {
+        handlePrintList();
     };
     
     // State
@@ -171,6 +328,7 @@ const TodaysVisitedReport = () => {
     const [showViewModal, setShowViewModal] = useState(false);
     const [viewingVisitor, setViewingVisitor] = useState(null);
     const [followUpVisitor, setFollowUpVisitor] = useState(null);
+    const [showPendingBreakup, setShowPendingBreakup] = useState(false);
     
     // Inquiry Modals State for Follow-ups
     const [editInquiryData, setEditInquiryData] = useState(null);
@@ -190,11 +348,24 @@ const TodaysVisitedReport = () => {
     });
 
     const [followups, setFollowups] = useState([]);
+    const [selectedVisitorIds, setSelectedVisitorIds] = useState(new Set());
+    const [visitorBulkAssignee, setVisitorBulkAssignee] = useState('');
+    const [visitorTransferMode, setVisitorTransferMode] = useState(false);
+    const [selectedFollowupKeys, setSelectedFollowupKeys] = useState(new Set());
+    const [followupBulkAssignee, setFollowupBulkAssignee] = useState('');
+    const [followupTransferMode, setFollowupTransferMode] = useState(false);
+    const canTransferRecords = ['Super Admin', 'Branch Director'].includes(user?.role);
+    const pendingBreakup = stats?.pendingByDate || [];
+    const getFullName = (record = {}) => {
+        const fullName = `${record.firstName || ''} ${record.middleName || ''} ${record.lastName || ''}`.trim().replace(/\s+/g, ' ');
+        return fullName || record.studentName || '-';
+    };
+
     const getRecordName = (item) => {
         const record = item?.recordType === 'visitor' ? item.visitorId : item;
         if (!record) return '';
-        if (record.studentName) return record.studentName;
-        return `${record.firstName || ''} ${record.middleName || ''} ${record.lastName || ''}`.trim().replace(/\s+/g, ' ');
+        const linkedInquiry = record.inquiryId && typeof record.inquiryId === 'object' ? record.inquiryId : null;
+        return getFullName(linkedInquiry || record);
     };
     const getRecordReference = (item) => {
         const record = item?.recordType === 'visitor' ? item.visitorId : item;
@@ -213,7 +384,18 @@ const TodaysVisitedReport = () => {
 
     useEffect(() => {
         fetchVisitors();
-    }, [filters.reportType, filters.fromDate, filters.toDate, filters.branchId, filters.listType, filters.employeeId]);
+    }, [
+        filters.reportType,
+        filters.fromDate,
+        filters.toDate,
+        filters.branchId,
+        filters.listType,
+        filters.employeeId,
+        visitorReportRights.view,
+        onlineInquiryRights.view,
+        offlineInquiryRights.view,
+        dsrInquiryRights.view,
+    ]);
 
     const fetchBranches = async () => {
         try {
@@ -241,6 +423,7 @@ const TodaysVisitedReport = () => {
                     toDate: nextFilters.toDate,
                     branchId: nextFilters.branchId,
                     employeeId: nextFilters.employeeId,
+                    dateFilterType: 'followUpDate',
                 },
                 withCredentials: true,
             });
@@ -263,10 +446,15 @@ const TodaysVisitedReport = () => {
             if (activeFilters.reportType === 'visited') {
                 const data = await visitorService.getAllVisitors({
                     ...activeFilters,
+                    dateFilterType: 'followUpDate',
                     onlyWithFollowups: 'true' // Requirement: Don't show until followup exists
                 });
                 setVisitors(data);
                 setFollowups([]);
+                setSelectedVisitorIds(new Set());
+                setVisitorBulkAssignee('');
+                setSelectedFollowupKeys(new Set());
+                setFollowupBulkAssignee('');
             } else {
                 const listType = activeFilters.listType || 'all';
                 const sourceByListType = {
@@ -274,8 +462,10 @@ const TodaysVisitedReport = () => {
                     offline: 'Walk-in',
                     dsr: 'DSR'
                 };
-                const shouldFetchVisitorFollowups = listType === 'all' || listType === 'visitor';
-                const shouldFetchInquiryFollowups = listType === 'all' || ['online', 'offline', 'dsr'].includes(listType);
+                const canViewInquirySource = (source) => getInquiryRights(source).view;
+                const shouldFetchVisitorFollowups = (listType === 'all' || listType === 'visitor') && visitorReportRights.view;
+                const shouldFetchInquiryFollowups = (listType === 'all' || ['online', 'offline', 'dsr'].includes(listType)) &&
+                    (sourceByListType[listType] ? canViewInquirySource(sourceByListType[listType]) : [onlineInquiryRights, offlineInquiryRights, dsrInquiryRights].some(rights => rights.view));
                 const inquiryParams = {
                     startDate: activeFilters.fromDate,
                     endDate: activeFilters.toDate,
@@ -283,7 +473,9 @@ const TodaysVisitedReport = () => {
                     studentName: activeFilters.studentName,
                     referenceBy: activeFilters.referenceBy,
                     dateFilterType: 'followUpDate',
+                    onlyFollowupActivity: 'true',
                     employeeId: activeFilters.employeeId,
+                    includeClosed: 'true',
                     ...(sourceByListType[listType] ? { source: sourceByListType[listType] } : {})
                 };
 
@@ -299,19 +491,34 @@ const TodaysVisitedReport = () => {
 
                 const visitorRows = visitorFollowups.map(item => ({
                     ...item,
+                    callingDate: item.callingDate || item.createdAt || item.updatedAt || null,
                     recordType: 'visitor',
-                    sortDate: item.scheduledDate
+                    sortDate: item.scheduledDate || item.createdAt || item.updatedAt || null
                 }));
                 const inquiryRows = (Array.isArray(inquiryRes.data) ? inquiryRes.data : [])
-                    .filter(item => item.followUpDate)
-                    .map(item => ({
-                        ...item,
-                        recordType: 'inquiry',
-                        sortDate: item.followUpDate
-                    }));
+                    .filter(item => canViewInquirySource(item.source))
+                    .map(item => {
+                        const followupActivities = (item.followUpHistory || []).filter(history => history.activityType === 'followup');
+                        const latestFollowupActivity = followupActivities[followupActivities.length - 1];
+                        return latestFollowupActivity ? {
+                            ...item,
+                            latestFollowupActivity,
+                            followUpDate: latestFollowupActivity.date || item.followUpDate || latestFollowupActivity.createdAt,
+                            followUpDetails: latestFollowupActivity.remarks || latestFollowupActivity.remark || item.followUpDetails,
+                            followUpBy: latestFollowupActivity.followUpBy || item.followUpBy,
+                            callingDate: latestFollowupActivity.createdAt || latestFollowupActivity.date || item.updatedAt,
+                            recordType: 'inquiry',
+                            sortDate: latestFollowupActivity.date || item.followUpDate || latestFollowupActivity.createdAt || item.updatedAt
+                        } : null;
+                    })
+                    .filter(Boolean);
 
                 setFollowups([...visitorRows, ...inquiryRows].sort((a, b) => new Date(a.sortDate) - new Date(b.sortDate)));
                 setVisitors([]);
+                setSelectedVisitorIds(new Set());
+                setVisitorBulkAssignee('');
+                setSelectedFollowupKeys(new Set());
+                setFollowupBulkAssignee('');
             }
         } catch (error) {
             console.error("Error fetching data:", error);
@@ -345,6 +552,12 @@ const TodaysVisitedReport = () => {
         setFilters(resetState);
         setVisitors([]);
         setFollowups([]);
+        setSelectedVisitorIds(new Set());
+        setSelectedFollowupKeys(new Set());
+        setVisitorBulkAssignee('');
+        setFollowupBulkAssignee('');
+        setVisitorTransferMode(false);
+        setFollowupTransferMode(false);
         fetchVisitors(resetState);
         toast.info('Filters reset');
     };
@@ -429,8 +642,8 @@ const TodaysVisitedReport = () => {
         }
     };
 
-    const handleDeleteInquiry = async (id) => {
-        if (!canDelete) {
+    const handleDeleteInquiry = async (id, allowed = canDelete) => {
+        if (!allowed) {
             showPermissionDenied("You don't have authority to delete inquiries.");
             return;
         }
@@ -447,7 +660,8 @@ const TodaysVisitedReport = () => {
     };
 
     const handleSaveInquiry = async ({ id, data }) => {
-        if (!edit) {
+        const source = data?.source || editInquiryData?.source;
+        if (!getInquiryRights(source).edit) {
             showPermissionDenied("You don't have authority to edit inquiries.");
             return;
         }
@@ -462,7 +676,8 @@ const TodaysVisitedReport = () => {
     };
 
     const handleSaveFollowUp = async ({ id, data }) => {
-        if (!edit) {
+        const source = showFollowUpModal?.source || data?.source;
+        if (!getInquiryRights(source).edit) {
             showPermissionDenied("You don't have authority to update inquiry follow-ups.");
             return;
         }
@@ -481,6 +696,133 @@ const TodaysVisitedReport = () => {
     const isOpenStatus = (status) => openStatuses.includes(status || 'Open');
     const isCompletedStatus = (status) => completedStatuses.includes(status || '');
     const isToday = (date) => date ? new Date(date).toDateString() === new Date().toDateString() : false;
+    const isVisitorHandled = (visitor) => Boolean(
+        visitor?.latestFollowup ||
+        (visitor?.status && visitor.status !== 'Open')
+    );
+    const canSelectVisitor = (visitor) => {
+        if (!visitorTransferMode) return true;
+        if (!filters.employeeId) return false;
+        return isVisitorHandled(visitor);
+    };
+    const currentVisitorIds = (visitors || []).filter(canSelectVisitor).map((item) => item._id).filter(Boolean);
+    const currentVisitorSelectedCount = currentVisitorIds.filter((id) => selectedVisitorIds.has(id)).length;
+    const getFollowupKey = (item) => {
+        if (!item) return '';
+        if (item.recordType === 'visitor') {
+            const visitorId = item.visitorId && typeof item.visitorId === 'object' ? item.visitorId._id : item.visitorId;
+            return visitorId ? `visitor:${visitorId}` : '';
+        }
+        return item._id ? `inquiry:${item._id}` : '';
+    };
+    const getFollowupRowRights = (item) => {
+        if (!item) return { edit: false };
+        return item.recordType === 'visitor' ? visitorReportRights : getInquiryRights(item.source);
+    };
+    const currentFollowupKeys = (followups || [])
+        .filter((item) => getFollowupRowRights(item).edit)
+        .map(getFollowupKey)
+        .filter(Boolean);
+    const currentFollowupSelectedCount = currentFollowupKeys.filter((key) => selectedFollowupKeys.has(key)).length;
+
+    const toggleVisitorSelection = (visitor) => {
+        if (!visitor || !visitor._id || !canSelectVisitor(visitor)) return;
+        setSelectedVisitorIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(visitor._id)) next.delete(visitor._id);
+            else next.add(visitor._id);
+            return next;
+        });
+    };
+
+    const toggleFollowupSelection = (item) => {
+        const key = getFollowupKey(item);
+        if (!key || !getFollowupRowRights(item).edit) return;
+        setSelectedFollowupKeys((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    };
+
+    const toggleSelectAllVisitors = () => {
+        setSelectedVisitorIds((prev) => {
+            const next = new Set(prev);
+            const allSelected = currentVisitorIds.length > 0 && currentVisitorIds.every((id) => next.has(id));
+            if (allSelected) {
+                currentVisitorIds.forEach((id) => next.delete(id));
+            } else {
+                currentVisitorIds.forEach((id) => next.add(id));
+            }
+            return next;
+        });
+    };
+
+    const toggleSelectAllFollowups = () => {
+        setSelectedFollowupKeys((prev) => {
+            const next = new Set(prev);
+            const allSelected = currentFollowupKeys.length > 0 && currentFollowupKeys.every((key) => next.has(key));
+            if (allSelected) {
+                currentFollowupKeys.forEach((key) => next.delete(key));
+            } else {
+                currentFollowupKeys.forEach((key) => next.add(key));
+            }
+            return next;
+        });
+    };
+
+    const handleBulkVisitorAssignment = async () => {
+        if (!visitorBulkAssignee || selectedVisitorIds.size === 0) return;
+        if (visitorTransferMode && !filters.employeeId) {
+            toast.error('Please select employee filter before transfer');
+            return;
+        }
+
+        try {
+            await Promise.all(
+                [...selectedVisitorIds].map((id) => visitorService.updateVisitor(id, { allocatedTo: visitorBulkAssignee }))
+            );
+            toast.success(`${selectedVisitorIds.size} visitor ${visitorTransferMode ? 'transferred' : 'assigned'} successfully`);
+            setSelectedVisitorIds(new Set());
+            setVisitorBulkAssignee('');
+            fetchVisitors();
+        } catch (error) {
+            console.error('Error updating visitor assignments:', error);
+            toast.error('Failed to update visitor assignment');
+        }
+    };
+
+    const handleBulkFollowupAssignment = async () => {
+        if (!followupBulkAssignee || selectedFollowupKeys.size === 0) return;
+        if (followupTransferMode && !filters.employeeId) {
+            toast.error('Please select employee filter before transfer');
+            return;
+        }
+
+        const selectedItems = (followups || []).filter((item) => selectedFollowupKeys.has(getFollowupKey(item)));
+        try {
+            await Promise.all(selectedItems.map((item) => {
+                if (item.recordType === 'visitor') {
+                    const visitorId = item.visitorId && typeof item.visitorId === 'object' ? item.visitorId._id : item.visitorId;
+                    if (!visitorId) return Promise.resolve();
+                    return visitorService.updateVisitor(visitorId, { allocatedTo: followupBulkAssignee });
+                }
+                return axios.put(
+                    `${import.meta.env.VITE_API_URL}/transaction/inquiry/${item._id}`,
+                    { allocatedTo: followupBulkAssignee },
+                    { withCredentials: true }
+                );
+            }));
+            toast.success(`${selectedItems.length} record ${followupTransferMode ? 'transferred' : 'assigned'} successfully`);
+            setSelectedFollowupKeys(new Set());
+            setFollowupBulkAssignee('');
+            fetchVisitors();
+        } catch (error) {
+            console.error('Error updating follow-up assignments:', error);
+            toast.error('Failed to update follow-up assignment');
+        }
+    };
 
     const activeReportStats = (() => {
         if (filters.reportType === 'visited') {
@@ -663,6 +1005,44 @@ const TodaysVisitedReport = () => {
                     </div>
                 </div>
 
+                {showPendingBreakup && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[85vh] overflow-hidden">
+                            <div className="flex items-center justify-between border-b px-4 py-3">
+                                <div>
+                                    <h3 className="font-bold text-gray-800">Pending Visitor Dates</h3>
+                                    <p className="text-xs text-gray-500">Total pending: {stats?.pendingFromBefore || 0}</p>
+                                </div>
+                                <button onClick={() => setShowPendingBreakup(false)} className="p-1 rounded hover:bg-gray-100">
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div className="p-4 overflow-y-auto max-h-[65vh]">
+                                {pendingBreakup.length ? (
+                                    <table className="w-full text-sm border">
+                                        <thead className="bg-gray-100 text-gray-700">
+                                            <tr>
+                                                <th className="p-2 border text-left">Follow-up Date</th>
+                                                <th className="p-2 border text-right">Pending</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {pendingBreakup.map((item) => (
+                                                <tr key={item.date} className="hover:bg-blue-50">
+                                                    <td className="p-2 border font-medium">{formatDate(item.date)}</td>
+                                                    <td className="p-2 border text-right font-bold text-orange-600">{item.count}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <div className="text-center text-gray-400 py-8">No previous pending visitors.</div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Stats Section (Super Admin only, similar to Inquiry) */}
                 {user?.role === 'Super Admin' && (
                     <div className="bg-white border border-gray-200 rounded-lg shadow mb-6 p-4 animate-fadeIn">
@@ -679,6 +1059,15 @@ const TodaysVisitedReport = () => {
                                         <span className="text-green-600">New: {activeReportStats.newCount}</span>
                                     </div>
                                 )}
+                                {filters.reportType === 'visited' && filters.employeeId && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPendingBreakup(true)}
+                                        className="mt-2 rounded bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700 hover:bg-orange-200"
+                                    >
+                                        View Pending
+                                    </button>
+                                )}
                             </div>
                             <div className="border rounded p-3">
                                 <div className="text-xs text-gray-500 font-bold uppercase">Followups Done</div>
@@ -686,6 +1075,16 @@ const TodaysVisitedReport = () => {
                                 <div className="mt-1 text-[10px] text-gray-400">
                                     {activeReportStats.remaining} remaining
                                 </div>
+                                {filters.reportType === 'followup' && (
+                                    <button
+                                        type="button"
+                                        onClick={handlePrintFollowupsList}
+                                        disabled={!filters.employeeId}
+                                        className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        <Printer size={12} /> Print Followups List
+                                    </button>
+                                )}
                             </div>
                             <div className="border rounded p-3">
                                 <div className="text-xs text-gray-500 font-bold uppercase">{activeReportStats.topLabel}</div>
@@ -706,6 +1105,82 @@ const TodaysVisitedReport = () => {
                                 ))}
                             </div>
                         )}
+                    </div>
+                )}
+
+                {filters.reportType === 'visited' && edit && canTransferRecords && (
+                    <div className="bg-white border border-gray-200 rounded-lg shadow mb-6 p-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="text-sm font-bold text-gray-700">
+                            {currentVisitorSelectedCount} on this page | {selectedVisitorIds.size} total selected
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                            <select
+                                value={visitorBulkAssignee}
+                                onChange={(e) => setVisitorBulkAssignee(e.target.value)}
+                                className="border rounded px-3 py-2 text-sm min-w-[220px]"
+                            >
+                                <option value="">Select employee</option>
+                                {employees.map((emp) => (
+                                    <option key={emp._id} value={emp._id}>{emp.name}</option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSelectedVisitorIds(new Set());
+                                    setVisitorTransferMode((prev) => !prev);
+                                }}
+                                className={`px-4 py-2 rounded text-sm font-bold border ${visitorTransferMode ? 'bg-red-600 text-white border-red-600' : 'bg-white text-red-700 border-red-300'}`}
+                            >
+                                {visitorTransferMode ? 'Transfer On' : 'Transfer'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleBulkVisitorAssignment}
+                                disabled={!visitorBulkAssignee || selectedVisitorIds.size === 0 || (visitorTransferMode && !filters.employeeId)}
+                                className="px-4 py-2 rounded text-sm font-bold bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {visitorTransferMode ? 'Transfer Selected' : 'Assign Selected'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {filters.reportType === 'followup' && edit && canTransferRecords && (
+                    <div className="bg-white border border-gray-200 rounded-lg shadow mb-6 p-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="text-sm font-bold text-gray-700">
+                            {currentFollowupSelectedCount} on this page | {selectedFollowupKeys.size} total selected
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                            <select
+                                value={followupBulkAssignee}
+                                onChange={(e) => setFollowupBulkAssignee(e.target.value)}
+                                className="border rounded px-3 py-2 text-sm min-w-[220px]"
+                            >
+                                <option value="">Select employee</option>
+                                {employees.map((emp) => (
+                                    <option key={emp._id} value={emp._id}>{emp.name}</option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSelectedFollowupKeys(new Set());
+                                    setFollowupTransferMode((prev) => !prev);
+                                }}
+                                className={`px-4 py-2 rounded text-sm font-bold border ${followupTransferMode ? 'bg-red-600 text-white border-red-600' : 'bg-white text-red-700 border-red-300'}`}
+                            >
+                                {followupTransferMode ? 'Transfer On' : 'Transfer'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleBulkFollowupAssignment}
+                                disabled={!followupBulkAssignee || selectedFollowupKeys.size === 0 || (followupTransferMode && !filters.employeeId)}
+                                className="px-4 py-2 rounded text-sm font-bold bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {followupTransferMode ? 'Transfer Selected' : 'Assign Selected'}
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -851,41 +1326,61 @@ const TodaysVisitedReport = () => {
                             <option value="200">200 Records</option>
                         </select>
                     </div>
-                    <table className="w-full border-collapse min-w-[1200px]">
+                    <table className="w-full border-collapse min-w-[1100px]">
                         {filters.reportType === 'visited' ? (
                             <thead>
                                 <tr className="bg-orange-700 text-white text-left text-xs uppercase tracking-wider">
+                                    {canTransferRecords && (
+                                        <th className="p-2 border font-semibold w-10 text-center print:hidden">
+                                            <input
+                                                type="checkbox"
+                                                checked={currentVisitorIds.length > 0 && currentVisitorSelectedCount === currentVisitorIds.length}
+                                                onChange={toggleSelectAllVisitors}
+                                                className="h-4 w-4"
+                                            />
+                                        </th>
+                                    )}
                                     <th className="p-2 border font-semibold w-12 text-center">Sr. No.</th>
-                                    <th className="p-2 border font-semibold">Visitor Date</th>
                                     <th className="p-2 border font-semibold">Inquiry Date</th>
+                                    <th className="p-2 border font-semibold">Visitor Date</th>
                                     {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
                                     <th className="p-2 border font-semibold">Filled By</th>
-                                    <th className="p-2 border font-semibold">Handle By</th>
+                                    <th className="p-2 border font-semibold">Reference By</th>
                                     <th className="p-2 border font-semibold">Student Name</th>
                                     <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                                     <th className="p-2 border font-semibold text-center">Status</th>
                                     <th className="p-2 border font-semibold">Followup</th>
                                     <th className="p-2 border font-semibold w-36">Followup Details</th>
                                     <th className="p-2 border font-semibold">Followup By</th>
-                                    <th className="p-2 border font-semibold">Last Followup</th>
+                                    <th className="p-2 border font-semibold">Calling Date</th>
                                     <th className="p-2 border font-semibold text-center sticky right-0 bg-orange-700 z-10 w-32">Actions</th>
                                 </tr>
                             </thead>
                         ) : (
                             <thead>
                                 <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
+                                    {canTransferRecords && (
+                                        <th className="p-2 border font-semibold w-10 text-center print:hidden">
+                                            <input
+                                                type="checkbox"
+                                                checked={currentFollowupKeys.length > 0 && currentFollowupSelectedCount === currentFollowupKeys.length}
+                                                onChange={toggleSelectAllFollowups}
+                                                className="h-4 w-4"
+                                            />
+                                        </th>
+                                    )}
                                     <th className="p-2 border font-semibold w-12 text-center">Sr. No.</th>
                                     <th className="p-2 border font-semibold">Inquiry Date</th>
                                     {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
                                     <th className="p-2 border font-semibold">Filled By</th>
-                                    <th className="p-2 border font-semibold">Handle By</th>
+                                    <th className="p-2 border font-semibold">Reference By</th>
                                     <th className="p-2 border font-semibold">Student Name</th>
                                     <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                                     <th className="p-2 border font-semibold text-center">Status</th>
                                     <th className="p-2 border font-semibold">Followup</th>
                                     <th className="p-2 border font-semibold w-36">Followup Details</th>
                                     <th className="p-2 border font-semibold">Followup By</th>
-                                    <th className="p-2 border font-semibold">Last Followup</th>
+                                    <th className="p-2 border font-semibold">Calling Date</th>
                                     <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-32 print:hidden">Actions</th>
                                 </tr>
                             </thead>
@@ -894,7 +1389,7 @@ const TodaysVisitedReport = () => {
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={filters.reportType === 'visited' ? (user?.role === 'Super Admin' ? 14 : 13) : (user?.role === 'Super Admin' ? 13 : 12)} className="text-center p-12">
+                                    <td colSpan={filters.reportType === 'visited' ? (user?.role === 'Super Admin' ? (canTransferRecords ? 15 : 14) : (canTransferRecords ? 14 : 13)) : (user?.role === 'Super Admin' ? (canTransferRecords ? 14 : 13) : (canTransferRecords ? 13 : 12))} className="text-center p-12">
                                         <div className="flex flex-col items-center gap-3">
                                             <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
                                             <p className="text-gray-400 font-medium">Fetching records...</p>
@@ -904,20 +1399,33 @@ const TodaysVisitedReport = () => {
                             ) : filters.reportType === 'visited' ? (
                                 visitors.length === 0 ? (
                                     <tr>
-                                        <td colSpan={user?.role === 'Super Admin' ? 14 : 13} className="text-center py-8 text-gray-400 italic">
+                                        <td colSpan={user?.role === 'Super Admin' ? (canTransferRecords ? 15 : 14) : (canTransferRecords ? 14 : 13)} className="text-center py-8 text-gray-400 italic">
                                             No visitor records found for this period.
                                         </td>
                                     </tr>
                                 ) : (
                                     visitors.map((visitor, index) => (
-                                        <tr key={visitor._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
+                                        <tr key={visitor._id} className={`${isVisitorHandled(visitor) ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-blue-50'} text-xs border-b border-gray-100 transition-colors`}>
+                                            {canTransferRecords && (
+                                                <td className="p-2 border text-center text-gray-400 font-medium print:hidden">
+                                                    <input
+                                                        type="checkbox"
+                                                        disabled={!canSelectVisitor(visitor)}
+                                                        checked={selectedVisitorIds.has(visitor._id)}
+                                                        onChange={() => toggleVisitorSelection(visitor)}
+                                                        className="h-4 w-4 disabled:cursor-not-allowed"
+                                                    />
+                                                </td>
+                                            )}
                                             <td className="p-2 border text-center text-gray-400 font-medium">{index + 1}</td>
-                                            <td className="p-2 border font-semibold text-gray-700">{formatDate(visitor.visitingDate)}</td>
-                                            <td className="p-2 border font-semibold text-gray-700">{visitor.inquiryId?.inquiryDate ? formatDate(visitor.inquiryId.inquiryDate) : '-'}</td>
+                                            <td className="p-2 border font-semibold text-gray-700">{formatDate(visitor.inquiryId?.inquiryDate || visitor.visitingDate)}</td>
+                                            <td className="p-2 border font-semibold text-gray-700">
+                                                {visitor.latestFollowup?.scheduledDate ? formatDate(visitor.latestFollowup.scheduledDate) : formatDate(visitor.visitingDate)}
+                                            </td>
                                             {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{visitor.branchId?.name || '-'}</td>}
                                             <td className="p-2 border text-gray-600 font-medium">{getFilledBy(visitor)}</td>
-                                            <td className="p-2 border text-gray-600 font-medium">{getHandleBy(visitor)}</td>
-                                            <td className="p-2 border font-bold text-gray-800">{visitor.studentName}</td>
+                                            <td className="p-2 border text-gray-600 font-medium">{getReferenceBy(visitor)}</td>
+                                            <td className="p-2 border font-bold text-gray-800">{getFullName(visitor.inquiryId && typeof visitor.inquiryId === 'object' ? visitor.inquiryId : visitor)}</td>
                                             <td className="p-0 border align-top w-36">
                                                 <div className="flex border-b border-gray-200 last:border-b-0">
                                                     <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">H</div>
@@ -993,7 +1501,7 @@ const TodaysVisitedReport = () => {
                             ) : (
                                 followups.length === 0 ? (
                                     <tr>
-                                        <td colSpan={user?.role === 'Super Admin' ? 13 : 12} className="text-center py-8 text-gray-400 italic">
+                                        <td colSpan={user?.role === 'Super Admin' ? (canTransferRecords ? 14 : 13) : (canTransferRecords ? 13 : 12)} className="text-center py-8 text-gray-400 italic">
                                             No visitor or inquiry follow-ups scheduled for this period.
                                         </td>
                                     </tr>
@@ -1002,35 +1510,51 @@ const TodaysVisitedReport = () => {
                                         const isVisitorFollowUp = hist.recordType === 'visitor';
                                         const visitor = isVisitorFollowUp ? (hist.visitorId || {}) : {};
                                         const inquiry = isVisitorFollowUp ? {} : hist;
-                                        const personName = isVisitorFollowUp
-                                            ? (visitor.studentName || '-')
-                                            : `${inquiry.firstName || ''} ${inquiry.lastName || ''}`.trim() || '-';
-                                        const originalDate = isVisitorFollowUp ? visitor.visitingDate : inquiry.inquiryDate;
-                                        const followUpDate = isVisitorFollowUp ? hist.scheduledDate : inquiry.followUpDate;
-                                        const details = isVisitorFollowUp ? hist.remark : inquiry.followUpDetails;
-                                        const followUpBy = isVisitorFollowUp ? hist.followUpBy : inquiry.followUpBy;
+                                        const visitorInquiry = visitor.inquiryId && typeof visitor.inquiryId === 'object' ? visitor.inquiryId : null;
+                                        const personName = getFullName(isVisitorFollowUp ? (visitorInquiry || visitor) : inquiry);
+                                        const originalDate = isVisitorFollowUp ? (hist.scheduledDate || visitor.visitingDate) : inquiry.inquiryDate;
                                         const status = isVisitorFollowUp ? (hist.status || visitor.status) : inquiry.status;
                                         const branchName = isVisitorFollowUp ? hist.branchId?.name : inquiry.branchId?.name;
-                                        const lastHistoryItem = Array.isArray(inquiry.followUpHistory) && inquiry.followUpHistory.length
-                                            ? inquiry.followUpHistory[inquiry.followUpHistory.length - 1]
-                                            : null;
-                                        const lastFollowUpAt = isVisitorFollowUp ? hist.createdAt : (lastHistoryItem?.createdAt || inquiry.updatedAt || inquiry.followUpDate);
-                                        const lastFollowUpBy = isVisitorFollowUp
+                                        const followupActivities = Array.isArray(inquiry.followUpHistory)
+                                            ? inquiry.followUpHistory.filter(item => item.activityType === 'followup')
+                                            : [];
+                                        const lastHistoryItem = inquiry.latestFollowupActivity || (followupActivities.length ? followupActivities[followupActivities.length - 1] : null);
+                                        const followUpDate = isVisitorFollowUp ? hist.scheduledDate : (hist.followUpDate || lastHistoryItem?.date || inquiry.followUpDate);
+                                        const details = isVisitorFollowUp ? hist.remark : (lastHistoryItem?.remarks || inquiry.followUpDetails);
+                                        const followUpBy = isVisitorFollowUp ? hist.followUpBy : (hist.followUpBy || lastHistoryItem?.followUpBy || inquiry.followUpBy);
+                                        const callingDate = isVisitorFollowUp
+                                            ? (hist.callingDate || hist.createdAt || hist.updatedAt || null)
+                                            : (hist.callingDate || lastHistoryItem?.callingDate || lastHistoryItem?.createdAt || lastHistoryItem?.date || inquiry.updatedAt);
+                                        const callingBy = isVisitorFollowUp
                                             ? hist.followUpBy
                                             : (lastHistoryItem?.followUpBy || inquiry.followUpBy);
                                         const filledBy = isVisitorFollowUp
                                             ? getFilledBy(visitor)
                                             : (inquiry.createdBy?.name || inquiry.createdBy?.username || inquiry.followUpBy?.name || inquiry.followUpBy?.username || '-');
-                                        const handleBy = isVisitorFollowUp
-                                            ? getHandleBy(visitor)
-                                            : (inquiry.allocatedTo?.name || inquiry.allocatedTo?.username || inquiry.followUpBy?.name || inquiry.followUpBy?.username || inquiry.referenceBy || inquiry.source || '-');
+                                        const referenceBy = isVisitorFollowUp
+                                            ? getReferenceBy(visitor)
+                                            : getReferenceBy(inquiry);
+                                        const rowRights = getFollowupRowRights(hist);
+                                        const followupKey = getFollowupKey(hist);
+                                        const rowSelectable = rowRights.edit && Boolean(followupKey);
                                         return (
-                                        <tr key={hist._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
+                                        <tr key={hist._id} className={`${followupKey && selectedFollowupKeys.has(followupKey) ? 'bg-blue-50' : 'hover:bg-blue-50'} text-xs border-b border-gray-100 transition-colors`}>
+                                            {canTransferRecords && (
+                                                <td className="p-2 border text-center text-gray-400 font-medium print:hidden">
+                                                    <input
+                                                        type="checkbox"
+                                                        disabled={!rowSelectable}
+                                                        checked={Boolean(followupKey && selectedFollowupKeys.has(followupKey))}
+                                                        onChange={() => toggleFollowupSelection(hist)}
+                                                        className="h-4 w-4 disabled:cursor-not-allowed"
+                                                    />
+                                                </td>
+                                            )}
                                             <td className="p-2 border text-center text-gray-400 font-medium">{index + 1}</td>
                                             <td className="p-2 border font-semibold text-gray-700">{originalDate ? formatDate(originalDate) : '-'}</td>
                                             {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{branchName || '-'}</td>}
                                             <td className="p-2 border text-gray-600 font-medium">{filledBy}</td>
-                                            <td className="p-2 border text-gray-600 font-medium">{handleBy}</td>
+                                            <td className="p-2 border text-gray-600 font-medium">{referenceBy}</td>
                                             <td className="p-2 border font-bold text-gray-800">{personName}</td>
                                             <td className="p-0 border align-top w-36">
                                                 <div className="flex border-b border-gray-200 last:border-b-0">
@@ -1078,43 +1602,65 @@ const TodaysVisitedReport = () => {
                                             </td>
                                             <td className="p-2 border text-gray-700">{followUpBy?.name || followUpBy?.username || '-'}</td>
                                             <td className="p-2 border text-center">
-                                                {lastFollowUpAt ? (
+                                                {callingDate ? (
                                                     <div className="text-xs">
                                                         <div className="font-semibold text-gray-800">
-                                                            {formatDate(lastFollowUpAt)} {new Date(lastFollowUpAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            {formatDate(callingDate)} {new Date(callingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                         </div>
                                                         <div className="text-gray-500">
-                                                            by {lastFollowUpBy?.name || lastFollowUpBy?.username || '-'}
+                                                            by {callingBy?.name || callingBy?.username || '-'}
                                                         </div>
                                                     </div>
                                                 ) : '-'}
                                             </td>
                                             <td className="p-2 border text-center sticky right-0 bg-white print:hidden">
                                                 <div className="flex justify-center gap-1">
-                                                    <button onClick={() => {
-                                                        if (!edit) {
-                                                            showPermissionDenied("You don't have authority to update follow-ups.");
-                                                            return;
-                                                        }
-                                                        return isVisitorFollowUp
-                                                            ? setFollowUpVisitor({ ...visitor, latestVisitorFollowUp: hist, followUpDetails: hist.remark })
-                                                            : setShowFollowUpModal(inquiry);
-                                                    }} className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100 transition" title="Follow Up">
+                                                    <button
+                                                        onClick={() => {
+                                                            if (!rowRights.edit) {
+                                                                showPermissionDenied("You don't have authority to update follow-ups.");
+                                                                return;
+                                                            }
+                                                            return isVisitorFollowUp
+                                                                ? setFollowUpVisitor({ ...visitor, latestVisitorFollowUp: hist, followUpDetails: hist.remark })
+                                                                : setShowFollowUpModal(inquiry);
+                                                        }}
+                                                        className="bg-purple-50 text-purple-600 border border-purple-200 p-1.5 rounded hover:bg-purple-100 transition"
+                                                        title="Follow Up"
+                                                    >
                                                         <CalendarClock size={14} />
                                                     </button>
-                                                    <button onClick={() => isVisitorFollowUp ? handleView(visitor) : setViewInquiry(inquiry)} className="bg-indigo-50 text-indigo-600 border border-indigo-200 p-1.5 rounded hover:bg-indigo-100 transition" title="View Details">
+                                                    <button
+                                                        onClick={() => {
+                                                            if (!rowRights.view) {
+                                                                showPermissionDenied("You don't have authority to view this record.");
+                                                                return;
+                                                            }
+                                                            return isVisitorFollowUp ? handleView(visitor) : setViewInquiry(inquiry);
+                                                        }}
+                                                        className="bg-indigo-50 text-indigo-600 border border-indigo-200 p-1.5 rounded hover:bg-indigo-100 transition"
+                                                        title="View Details"
+                                                    >
                                                         <Eye size={14} />
                                                     </button>
-                                                    <button onClick={() => {
-                                                        if (!edit) {
-                                                            showPermissionDenied("You don't have authority to edit this record.");
-                                                            return;
-                                                        }
-                                                        return isVisitorFollowUp ? handleEdit(visitor) : setEditInquiryData(inquiry);
-                                                    }} className="bg-blue-50 text-blue-600 border border-blue-200 p-1.5 rounded hover:bg-blue-100 transition" title="Edit">
+                                                    <button
+                                                        onClick={() => {
+                                                            if (!rowRights.edit) {
+                                                                showPermissionDenied("You don't have authority to edit this record.");
+                                                                return;
+                                                            }
+                                                            return isVisitorFollowUp ? handleEdit(visitor) : setEditInquiryData(inquiry);
+                                                        }}
+                                                        className="bg-blue-50 text-blue-600 border border-blue-200 p-1.5 rounded hover:bg-blue-100 transition"
+                                                        title="Edit"
+                                                    >
                                                         <Edit size={14} />
                                                     </button>
-                                                    <button onClick={() => isVisitorFollowUp ? handleDeleteVisitorFollowUp(hist._id) : handleDeleteInquiry(inquiry._id)} className="bg-red-50 text-red-600 border border-red-200 p-1.5 rounded hover:bg-red-100 transition" title={isVisitorFollowUp ? 'Delete Follow-up' : 'Delete Inquiry'}>
+                                                    <button
+                                                        onClick={() => isVisitorFollowUp ? handleDeleteVisitorFollowUp(hist._id) : handleDeleteInquiry(inquiry._id, rowRights.delete)}
+                                                        className="bg-red-50 text-red-600 border border-red-200 p-1.5 rounded hover:bg-red-100 transition"
+                                                        title={isVisitorFollowUp ? 'Delete Follow-up' : 'Delete Inquiry'}
+                                                    >
                                                         <Trash2 size={14} />
                                                     </button>
                                                 </div>

@@ -7,7 +7,7 @@ import { Award, BookOpen, Building2, ChevronDown, ClipboardList, Filter, Loader2
 import logo from '../../../assets/logo2.png';
 
 const getId = (value) => (typeof value === 'object' ? value?._id : value);
-const studentName = (student) => [student?.firstName, student?.lastName].filter(Boolean).join(' ') || '-';
+const studentName = (student) => [student?.firstName, student?.middleName, student?.lastName].filter(Boolean).join(' ') || '-';
 const getBranchId = (result) => getId(result?.student?.branchId);
 const getBranchName = (result) => result?.student?.branchId?.name || result?.student?.branchName || 'Main Branch';
 const percentageOf = (result) => {
@@ -17,6 +17,18 @@ const percentageOf = (result) => {
 };
 
 const subjectLabel = (subjectMark) => subjectMark?.subject?.name || subjectMark?.subjectName || 'Subject';
+const normalizeCourseTitle = (name, shortName) => {
+    const fullName = String(name || '').trim();
+    const short = String(shortName || '').trim();
+    if (!fullName) return '-';
+    if (!short) return fullName;
+    const escapedShort = short.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return fullName.replace(new RegExp(`\\s*\\(\\s*${escapedShort}\\.?\\s*\\)\\s*$`, 'i'), '').trim() || fullName;
+};
+const normalizeSubjectKey = (value) =>
+    String(value || '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '');
 
 const FinalResultDetails = () => {
     const dispatch = useDispatch();
@@ -178,7 +190,7 @@ const FinalResultDetails = () => {
             <div key={group.id} className="mb-10 break-inside-avoid">
                 {/* Course Header */}
                 <div className="flex justify-between items-center bg-slate-100 p-2 border-x border-t border-slate-400">
-                    <h4 className="text-lg font-black text-blue-800 uppercase">{group.name} {group.shortName && `(${group.shortName})`}</h4>
+                    <h4 className="text-lg font-black text-blue-800 uppercase">{normalizeCourseTitle(group.name, group.shortName)}</h4>
                     <div className="text-sm font-bold text-slate-700">Total Students: <span className="text-blue-700">{group.results.length.toString().padStart(2, '0')}</span></div>
                 </div>
 
@@ -192,10 +204,10 @@ const FinalResultDetails = () => {
                                 {regular.map((s, idx) => (
                                     <th key={idx} colSpan="2" className="border border-slate-400 p-1 text-center uppercase">{s.name}</th>
                                 ))}
-                                <th rowSpan="2" className="border border-slate-400 p-1 w-10">TOTAL</th>
                                 <th rowSpan="2" className="border border-slate-400 p-1 w-10 uppercase">{project?.name || 'PROJECT'}</th>
                                 <th rowSpan="2" className="border border-slate-400 p-1 w-10 uppercase">{seminar?.name || 'SEMINAR'}</th>
                                 <th rowSpan="2" className="border border-slate-400 p-1 w-12 uppercase">{discipline?.name || 'DESCIPLINE'}</th>
+                                <th rowSpan="2" className="border border-slate-400 p-1 w-10">TOTAL</th>
                                 <th rowSpan="2" className="border border-slate-400 p-1 w-12">TOTAL O.M.</th>
                                 <th rowSpan="2" className="border border-slate-400 p-1 w-10">PER (%)</th>
                                 <th rowSpan="2" className="border border-slate-400 p-1 w-10">GRADE</th>
@@ -212,8 +224,33 @@ const FinalResultDetails = () => {
                         <tbody>
                             {group.results.map((result, index) => {
                                 const getMarks = (sName) => {
-                                    const sm = result.subjectMarks?.find(m => (m.subject?.name || m.subjectName) === sName);
-                                    return sm ? { theory: Number(sm.theory ?? 0), practical: Number(sm.practical ?? 0), total: Number(sm.total ?? 0) } : { theory: 0, practical: 0, total: 0 };
+                                    const target = normalizeSubjectKey(sName);
+                                    const sm = result.subjectMarks?.find((m) => {
+                                        const candidate = normalizeSubjectKey(m.subject?.name || m.subjectName || m.name);
+                                        return candidate === target || candidate.includes(target) || target.includes(candidate);
+                                    });
+                                    return sm
+                                        ? {
+                                              theory: Number(sm.theory ?? 0),
+                                              practical: Number(sm.practical ?? 0),
+                                              total: Number(sm.total ?? 0),
+                                          }
+                                        : { theory: '-', practical: '-', total: '-' };
+                                };
+
+                                const getSpecialSubjectMarks = (sName) => {
+                                    const mark = getMarks(sName);
+                                    if (mark.theory === '-' && mark.practical === '-' && mark.total === '-') {
+                                        return '-';
+                                    }
+
+                                    const theory = Number(mark.theory || 0);
+                                    const practical = Number(mark.practical || 0);
+                                    const computed = theory + practical;
+
+                                    if (computed > 0) return computed;
+                                    if (Number.isFinite(mark.total) && mark.total !== 0) return mark.total;
+                                    return 0;
                                 };
 
                                 let regularTotal = 0;
@@ -222,12 +259,12 @@ const FinalResultDetails = () => {
                                     regularTotal += m.total;
                                 });
 
-                                const projectMarks = project ? getMarks(project.name).total : 0;
-                                const seminarMarks = seminar ? getMarks(seminar.name).total : 0;
-                                const disciplineMarks = discipline ? getMarks(discipline.name).total : 0;
+                                const projectMarks = project ? getSpecialSubjectMarks(project.name) : 0;
+                                const seminarMarks = seminar ? getSpecialSubjectMarks(seminar.name) : 0;
+                                const disciplineMarks = discipline ? getSpecialSubjectMarks(discipline.name) : 0;
                                 
-                                // TOTAL O.M. is already in result.marksObtained, but let's be safe
-                                const totalOM = result.marksObtained || (regularTotal + projectMarks + seminarMarks + disciplineMarks);
+                                const totalMax = Number(result.totalMarks || 0) || (regularTotal + projectMarks + seminarMarks + disciplineMarks);
+                                const totalOM = Number(result.marksObtained || 0) || (regularTotal + projectMarks + seminarMarks + disciplineMarks);
 
                                 return (
                                     <tr key={result._id} className="hover:bg-slate-50">
@@ -243,10 +280,10 @@ const FinalResultDetails = () => {
                                                 </React.Fragment>
                                             );
                                         })}
-                                        <td className="border border-slate-400 p-1 text-center bg-slate-50">{regularTotal}</td>
                                         <td className="border border-slate-400 p-1 text-center">{project ? projectMarks : '-'}</td>
                                         <td className="border border-slate-400 p-1 text-center">{seminar ? seminarMarks : '-'}</td>
                                         <td className="border border-slate-400 p-1 text-center">{discipline ? disciplineMarks : '-'}</td>
+                                        <td className="border border-slate-400 p-1 text-center bg-slate-50">{totalMax}</td>
                                         <td className="border border-slate-400 p-1 text-center font-black bg-blue-50">{totalOM}</td>
                                         <td className="border border-slate-400 p-1 text-center font-black">{percentageOf(result)}%</td>
                                         <td className="border border-slate-400 p-1 text-center">{result.grade || '-'}</td>
@@ -338,11 +375,10 @@ const FinalResultDetails = () => {
 
                 <div ref={componentRef} className="print-container bg-white p-5 sm:p-7 shadow-lg border border-slate-200 rounded-lg">
                     {/* Page Header */}
-                    <div className="mb-6 flex justify-between items-start">
+                    <div className="mb-6 grid grid-cols-[auto_1fr_auto] items-start gap-4">
                         <img src={logo} alt="Institute Logo" className="h-14 w-auto object-contain" />
-                        <div className="text-center flex-1 mx-4">
+                        <div className="flex justify-center text-center">
                             <h2 className="text-2xl font-black text-blue-800 uppercase tracking-tighter">Final Examination {filters.examName === 'All' ? moment().format('MMMM - YYYY') : filters.examName}</h2>
-
                         </div>
                         <div className="text-right text-[10px] font-bold text-slate-800">
                             <div>Date : <span className="ml-2 border-b border-slate-800 px-4">{moment().format('DD-MMM-YY')}</span></div>
@@ -365,12 +401,14 @@ const FinalResultDetails = () => {
                     .print-container {
                         border: 0 !important;
                         box-shadow: none !important;
-                        padding: 4mm !important;
-                        width: 297mm;
+                        padding: 5mm !important;
+                        width: 100% !important;
+                        max-width: 297mm !important;
+                        box-sizing: border-box !important;
                     }
                     @page { 
                         size: A4 landscape; 
-                        margin: 0; 
+                        margin: 5mm; 
                     }
                 }
             ` }} />

@@ -99,7 +99,7 @@ const VisitorViewModal = ({ visitor, onClose }) => {
             remarks: visitor.inquiryId.followUpDetails || 'Initial follow-up',
             status: visitor.inquiryId.status || 'Open',
             followUpBy: visitor.inquiryId.followUpBy,
-            createdAt: visitor.inquiryId.createdAt || visitor.inquiryId.inquiryDate
+            callingDate: visitor.inquiryId.followUpHistory?.[visitor.inquiryId.followUpHistory.length - 1]?.createdAt || visitor.inquiryId.createdAt || visitor.inquiryId.inquiryDate
         }] : []);
 
     const statusClass = (status) => (
@@ -296,7 +296,7 @@ const VisitorViewModal = ({ visitor, onClose }) => {
                                             </div>
                                             <div className="text-[9px] text-gray-400 mt-2 flex justify-between gap-2">
                                                 <span>Followup By: {item.followUpBy?.name || item.followUpBy?.username || '-'}</span>
-                                                <span>Logged: {new Date(item.createdAt || item.scheduledDate).toLocaleString()}</span>
+                                                <span>Logged: {new Date(item.callingDate || item.createdAt || item.scheduledDate).toLocaleString()}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -346,7 +346,7 @@ const VisitorViewModal = ({ visitor, onClose }) => {
                                                 </div>
                                                 <div className="text-[9px] text-gray-400 mt-2 flex justify-between gap-2">
                                                     <span>Followup By: {item.followUpBy?.name || item.followUpBy?.username || '-'}</span>
-                                                    <span>Logged: {new Date(item.createdAt || item.date).toLocaleString()}</span>
+                                                    <span>Logged: {new Date(item.callingDate || item.createdAt || item.date).toLocaleString()}</span>
                                                 </div>
                                             </div>
                                         </div>

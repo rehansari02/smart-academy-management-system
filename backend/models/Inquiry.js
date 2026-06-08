@@ -88,6 +88,7 @@ const inquirySchema = new mongoose.Schema(
         remarks: { type: String },
         status: { type: String },
         followUpBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        activityType: { type: String, enum: ["created", "followup", "updated"], default: "followup" },
         createdAt: { type: Date, default: Date.now }
       }
     ],

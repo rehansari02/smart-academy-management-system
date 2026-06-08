@@ -14,6 +14,43 @@ const asyncHandler = require('express-async-handler');
 const Counter = require('../models/Counter');
 const generateEnrollmentNumber = require('../utils/enrollmentGenerator');
 
+const getBatchCapacityStatus = async ({ batchName, courseId, branchId, excludeStudentId = null }) => {
+    if (!batchName || !courseId) {
+        return { batch: null, activeCount: 0, isFull: false };
+    }
+
+    const batchQuery = {
+        name: batchName,
+        isDeleted: false
+    };
+    if (branchId) batchQuery.branchId = branchId;
+
+    const batch = await Batch.findOne(batchQuery).lean();
+    if (!batch) {
+        return { batch: null, activeCount: 0, isFull: false };
+    }
+
+    const activeStudentQuery = {
+        isDeleted: false,
+        isActive: true,
+        isCancelled: false,
+        batch: batchName,
+        course: courseId
+    };
+    if (branchId) activeStudentQuery.branchId = branchId;
+    if (excludeStudentId) activeStudentQuery._id = { $ne: excludeStudentId };
+
+    const activeCount = await Student.countDocuments(activeStudentQuery);
+    const batchSize = Number(batch.batchSize || 0);
+
+    return {
+        batch,
+        activeCount,
+        batchSize,
+        isFull: batchSize > 0 && activeCount >= batchSize
+    };
+};
+
 // @desc    Get Students
 const getStudents = asyncHandler(async (req, res) => {
     // Added branchId to destructuring
@@ -217,6 +254,29 @@ const createStudent = asyncHandler(async (req, res) => {
 
         if (finalBranchId) {
             studentData.enrollmentNo = await generateEnrollmentNumber(finalBranchId);
+        }
+
+        const batchCapacity = await getBatchCapacityStatus({
+            batchName: studentData.batch,
+            courseId: studentData.course,
+            branchId: finalBranchId
+        });
+
+        if (!batchCapacity.batch) {
+            res.status(400);
+            throw new Error('Selected batch not found for this branch');
+        }
+
+        const batchCourseIds = (batchCapacity.batch.courses || []).map(course => course?.toString ? course.toString() : String(course));
+        const selectedCourseId = studentData.course?.toString ? studentData.course.toString() : String(studentData.course || '');
+        if (batchCourseIds.length && !batchCourseIds.includes(selectedCourseId)) {
+            res.status(400);
+            throw new Error('Selected batch is not mapped to the chosen course');
+        }
+
+        if (batchCapacity.isFull) {
+            res.status(400);
+            throw new Error(`Selected batch is full for this course. Capacity ${batchCapacity.batchSize}, already filled ${batchCapacity.activeCount}.`);
         }
 
         const student = await Student.create(studentData);
@@ -689,6 +749,33 @@ const updateStudent = asyncHandler(async (req, res) => {
         if(req.body.isAddressProof !== undefined) student.isAddressProof = req.body.isAddressProof;
         
         if(req.body.isActive !== undefined) student.isActive = req.body.isActive;
+
+        const finalCourseId = (req.body.course || student.course)?.toString ? (req.body.course || student.course).toString() : String(req.body.course || student.course || '');
+        const finalBatchName = req.body.batch || student.batch;
+        if (finalCourseId && finalBatchName) {
+            const batchCapacity = await getBatchCapacityStatus({
+                batchName: finalBatchName,
+                courseId: finalCourseId,
+                branchId: student.branchId,
+                excludeStudentId: student._id
+            });
+
+            if (!batchCapacity.batch) {
+                res.status(400);
+                throw new Error('Selected batch not found for this branch');
+            }
+
+            const batchCourseIds = (batchCapacity.batch.courses || []).map(course => course?.toString ? course.toString() : String(course));
+            if (batchCourseIds.length && !batchCourseIds.includes(finalCourseId)) {
+                res.status(400);
+                throw new Error('Selected batch is not mapped to the chosen course');
+            }
+
+            if (batchCapacity.isFull) {
+                res.status(400);
+                throw new Error(`Selected batch is full for this course. Capacity ${batchCapacity.batchSize}, already filled ${batchCapacity.activeCount}.`);
+            }
+        }
 
         if (req.file) student.studentPhoto = req.file.path.replace(/\\/g, "/");
         if(req.body.admissionDate) student.admissionDate = req.body.admissionDate;

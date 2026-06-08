@@ -8,6 +8,7 @@ import logo from '../../../assets/logo2.png';
 
 const getId = (value) => (typeof value === 'object' ? value?._id : value);
 const studentName = (student) => [student?.firstName, student?.middleName, student?.lastName].filter(Boolean).join(' ') || '-';
+const studentFullName = (student) => studentName(student);
 const getBranchId = (result) => getId(result?.student?.branchId);
 const getBranchName = (result) => result?.student?.branchId?.name || result?.student?.branchName || 'Main Branch';
 
@@ -41,7 +42,7 @@ const CertificateIssueRegister = () => {
             .filter((result) => {
                 if (!search) return true;
                 const text = [
-                    studentName(result.student),
+                    studentFullName(result.student),
                     result.student?.regNo,
                     result.student?.enrollmentNo,
                     result.course?.name,
@@ -104,12 +105,19 @@ const CertificateIssueRegister = () => {
     const headerBranch = useMemo(() => {
         const branchId = getId(user?.branchId);
         if (user?.role === 'Super Admin') {
-            return { name: 'Main Branch', address: 'Smart Institute', phone: '96017-49300', mobile: '98988-30409', email: 'smartinstitutes@gmail.com' };
+            return { name: 'Head Office', address: '', phone: '96017-49300', mobile: '98988-30409', email: 'smartinstitutes@gmail.com' };
         }
         if (user?.branchDetails?.address) return user.branchDetails;
         const found = branches?.find((branch) => branch._id === branchId);
-        return found || { name: user?.branchName || 'Main Branch', address: 'Smart Institute', phone: '96017-49300', mobile: '98988-30409', email: 'smartinstitutes@gmail.com' };
+        return found || { name: user?.branchName || 'Head Office', address: '', phone: '96017-49300', mobile: '98988-30409', email: 'smartinstitutes@gmail.com' };
     }, [branches, user]);
+
+    const headerDisplayName = useMemo(() => {
+        if (filters.branchId !== 'All') {
+            return availableBranches.find((branch) => branch._id === filters.branchId)?.name || headerBranch.name;
+        }
+        return 'Head Office';
+    }, [availableBranches, filters.branchId, headerBranch.name]);
 
     const printReport = useReactToPrint({
         contentRef: componentRef,
@@ -199,17 +207,21 @@ const CertificateIssueRegister = () => {
                     </div>
                 </div>
 
-                <div ref={componentRef} className="print-container bg-white p-5 shadow-sm sm:p-7 border border-slate-200 rounded-lg" style={{ width: '297mm' }}>
+                                <div ref={componentRef} className="print-container bg-white p-5 shadow-sm sm:p-7 border border-slate-200 rounded-lg" style={{ width: '100%', maxWidth: '297mm' }}>
                     {/* Page Header */}
-                    <div className="mb-4 flex items-start justify-between">
-                        <div className="flex items-center gap-3">
+                    <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                        <div className="flex items-center gap-3 justify-self-start">
                             <img src={logo} alt="Institute Logo" className="h-12 w-auto object-contain" />
-                            <div className="flex flex-col">
-                                <h2 className="text-xl font-black text-blue-800 uppercase leading-none tracking-tighter">Smart Institute</h2>
-                            </div>
                         </div>
-                        <div className="text-right text-[11px] font-black text-slate-800">
-                            ({headerBranch.name})
+                        <div className="justify-self-center px-2 text-center">
+                            <h3 className="text-2xl md:text-4xl font-black text-gray-900 tracking-tight">
+                                <span className="text-gray-800">सपने जो</span>{' '}
+                                <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600 font-extrabold mx-1 font-sans">SMART</span>{' '}
+                                <span className="text-gray-800">बना दे</span>
+                            </h3>
+                        </div>
+                        <div className="justify-self-end text-right text-[11px] font-black text-slate-800">
+                            ({headerDisplayName})
                         </div>
                     </div>
 
@@ -222,7 +234,7 @@ const CertificateIssueRegister = () => {
                         <div className="border border-slate-300 bg-slate-50 p-10 text-center text-sm font-bold text-slate-500 rounded-lg">No certificate records found for the selected filters.</div>
                     ) : (
                         groupedResults.map((group, gIdx) => (
-                            <div key={group.id || gIdx} className="mb-8 break-inside-avoid">
+                            <div key={group.id || gIdx} className="mb-6">
                                 {/* Course Header */}
                                 <div className="flex justify-between items-center border border-slate-900 bg-slate-100 p-1.5 mb-0">
                                     <h4 className="text-sm font-black text-blue-800 uppercase">
@@ -251,7 +263,7 @@ const CertificateIssueRegister = () => {
                                                 <tr key={result._id} style={{ height: '9mm' }}>
                                                     <td className="border border-slate-900 p-1 text-center">{index + 1}</td>
                                                     <td className="border border-slate-900 p-1 text-center font-mono">{result.student?.regNo || '-'}</td>
-                                                    <td className="border border-slate-900 p-1 text-left uppercase whitespace-nowrap">{studentName(result.student)}</td>
+                                                    <td className="border border-slate-900 p-1 text-left uppercase whitespace-nowrap">{studentFullName(result.student)}</td>
                                                     <td className="border border-slate-900 p-1 text-center uppercase">{result.course?.shortName || result.course?.name || '-'}</td>
                                                     <td className="border border-slate-900 p-1 text-center uppercase">{result.somNumber || '-'}</td>
                                                     <td className="border border-slate-900 p-1 text-center uppercase">{result.csrNumber || result.certificateNumber || '-'}</td>
@@ -280,19 +292,21 @@ const CertificateIssueRegister = () => {
                 </div>
             </div>
 
-            <style dangerouslySetInnerHTML={{ __html: `
+                        <style dangerouslySetInnerHTML={{ __html: `
                 .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
                 @media print {
                     body { background: #fff !important; margin: 0; }
                     .print-container {
                         border: 0 !important;
                         box-shadow: none !important;
-                        padding: 4mm !important;
-                        width: 297mm;
+                        padding: 5mm !important;
+                        width: 100% !important;
+                        max-width: 297mm !important;
+                        box-sizing: border-box !important;
                     }
-                    @page { 
-                        size: A4 landscape; 
-                        margin: 0; 
+                    @page {
+                        size: A4 landscape;
+                        margin: 5mm;
                     }
                 }
             ` }} />

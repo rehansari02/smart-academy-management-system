@@ -10,21 +10,199 @@ import VisitorFollowUpModal from '../../../components/transaction/VisitorFollowU
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
-import { getTodayDateISO } from '../../../utils/dateUtils';
+import { formatDate, getTodayDateISO } from '../../../utils/dateUtils';
 
 const TodaysVisitorsList = () => {
     const navigate = useNavigate();
     const { add, edit, delete: canDelete } = useUserRights('Visitors - Todays Visitors List');
     
+    const printHtml = (title, bodyHtml) => {
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.style.visibility = 'hidden';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow?.document;
+        if (!doc) return;
+
+        doc.open();
+        doc.write(`
+            <!doctype html>
+            <html>
+                <head>
+                    <meta charset="utf-8" />
+                    <title>${title}</title>
+                    <style>
+                        @page { size: landscape; margin: 10mm; }
+                        body { font-family: Arial, sans-serif; margin: 0; color: #111827; }
+                        .header { margin-bottom: 12px; }
+                        .header h1 { margin: 0; font-size: 18px; }
+                        .header p { margin: 4px 0 0; font-size: 11px; color: #6b7280; }
+                        table { width: 100%; border-collapse: collapse; font-size: 10px; }
+                        th, td { border: 1px solid #d1d5db; padding: 6px; vertical-align: top; }
+                        th { background: #2563eb; color: #fff; text-align: left; }
+                        .text-center { text-align: center; }
+                        .muted { color: #6b7280; }
+                        .status { font-weight: 700; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>${title}</h1>
+                        <p>Generated on ${new Date().toLocaleString()}</p>
+                    </div>
+                    ${bodyHtml}
+                </body>
+            </html>
+        `);
+        doc.close();
+
+        setTimeout(() => {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+            setTimeout(() => document.body.removeChild(iframe), 1000);
+        }, 250);
+    };
+
     const handlePrintList = () => {
-        window.print();
+        const headers = `
+            <tr>
+                <th>Sr No</th>
+                <th>Visiting Date</th>
+                ${user?.role === 'Super Admin' ? '<th>Branch</th>' : ''}
+                <th>Student Name</th>
+                <th>Contact</th>
+                <th>Reference</th>
+                <th>Attend By</th>
+                <th>Status</th>
+                <th>In Time</th>
+                <th>Out Time</th>
+                <th>Remarks</th>
+                <th>Create Date</th>
+            </tr>
+        `;
+        const rows = visitors.map((visitor, index) => `
+            <tr>
+                <td class="text-center">${index + 1}</td>
+                <td>${visitor.latestFollowup?.scheduledDate ? formatDate(visitor.latestFollowup.scheduledDate) : (visitor.visitingDate ? formatDate(visitor.visitingDate) : '-')}</td>
+                ${user?.role === 'Super Admin' ? `<td>${visitor.branchId?.name || '-'}</td>` : ''}
+                <td>${visitor.studentName || '-'}</td>
+                <td>
+                    <div><strong>G</strong> ${visitor.contactParent || '-'}</div>
+                    <div><strong>H</strong> ${visitor.contactHome || '-'}</div>
+                    <div><strong>S</strong> ${visitor.mobileNumber || '-'}</div>
+                </td>
+                <td>${visitor.reference || '-'}</td>
+                <td>${visitor.attendedBy?.name || visitor.attendedBy?.username || '-'}</td>
+                <td class="status">${visitor.status || 'Open'}</td>
+                <td>${visitor.inTime || '-'}</td>
+                <td>${visitor.outTime || '-'}</td>
+                <td>${visitor.remarks || '-'}</td>
+                <td>${visitor.createdAt ? `${formatDate(visitor.createdAt)} ${new Date(visitor.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}</td>
+            </tr>
+        `).join('');
+
+        printHtml('Visitors List', `
+            <table>
+                <thead>${headers}</thead>
+                <tbody>${rows || `<tr><td colspan="${user?.role === 'Super Admin' ? 12 : 11}" class="text-center muted">No visitors found for this range.</td></tr>`}</tbody>
+            </table>
+        `);
+    };
+    const handlePrintFollowupsList = async () => {
+        try {
+            const followups = Array.isArray(stats?.followupDetails) && stats.followupDetails.length
+                ? stats.followupDetails
+                : await visitorService.getVisitorFollowUps({
+                    fromDate,
+                    toDate,
+                    branchId: filterBranch,
+                    employeeId,
+                    studentName,
+                    referenceBy,
+                    dateFilterType: 'callingDate'
+                });
+
+            const headers = `
+                <tr>
+                    <th>Sr No</th>
+                    <th>Inquiry Date</th>
+                    <th>Visitor Date</th>
+                    ${user?.role === 'Super Admin' ? '<th>Branch</th>' : ''}
+                    <th>Filled By</th>
+                    <th>Reference By</th>
+                    <th>Student Name</th>
+                    <th>Contact (H/S/P)</th>
+                    <th>Status</th>
+                    <th>Followup</th>
+                    <th>Followup Details</th>
+                    <th>Followup By</th>
+                    <th>Calling Date</th>
+                </tr>
+            `;
+
+            const rows = followups.map((item, index) => {
+                const visitor = item.visitorId || item;
+                const followUpBy = item.followUpBy;
+                const inquiry = visitor.inquiryId && typeof visitor.inquiryId === 'object' ? visitor.inquiryId : null;
+                const student = inquiry || visitor;
+                const inquiryDate = item.inquiryDate || inquiry?.inquiryDate || visitor.visitingDate || item.scheduledDate || item.followUpDate;
+                const visitorDate = item.scheduledDate || item.followUpDate || visitor.visitingDate || inquiryDate;
+                const branchName = item.branchName || item.branchId?.name || visitor.branchId?.name || '-';
+                const filledBy = item.filledBy || visitor.createdBy?.name || visitor.createdBy?.username || visitor.allocatedTo?.name || visitor.allocatedTo?.username || '-';
+                const referenceByValue = item.referenceBy || visitor.reference || inquiry?.reference || '-';
+                const contactHome = item.contactHome || visitor.contactHome || '-';
+                const contactStudent = item.contactStudent || visitor.mobileNumber || '-';
+                const contactParent = item.contactParent || visitor.contactParent || '-';
+                const status = item.status || visitor.status || 'Open';
+                const followUpDetails = item.followUpDetails || item.remark || '-';
+                const followUpByValue = followUpBy?.name || followUpBy?.username || item.followUpBy || '-';
+                const callingDate = item.callingDate || item.createdAt || null;
+                return `
+                    <tr>
+                        <td class="text-center">${index + 1}</td>
+                        <td>${inquiryDate ? formatDate(inquiryDate) : '-'}</td>
+                        <td>${visitorDate ? formatDate(visitorDate) : '-'}</td>
+                        ${user?.role === 'Super Admin' ? `<td>${branchName}</td>` : ''}
+                        <td>${filledBy}</td>
+                        <td>${referenceByValue}</td>
+                        <td>${(student.firstName || student.middleName || student.lastName) ? `${[student.firstName, student.middleName, student.lastName].filter(Boolean).join(' ')}` : (student.studentName || '-') }</td>
+                        <td>${contactHome} / ${contactStudent} / ${contactParent}</td>
+                        <td>${status}</td>
+                        <td>${(item.scheduledDate || item.followUpDate) ? `${formatDate(item.scheduledDate || item.followUpDate)} ${new Date(item.scheduledDate || item.followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}</td>
+                        <td>${followUpDetails}</td>
+                        <td>${followUpByValue}</td>
+                        <td>${callingDate ? `${formatDate(callingDate)} ${new Date(callingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            printHtml('Visitor Followups List', `
+                <table>
+                    <thead>${headers}</thead>
+                    <tbody>${rows || `<tr><td colspan="${user?.role === 'Super Admin' ? 13 : 12}" class="text-center muted">No followups found for this range.</td></tr>`}</tbody>
+                </table>
+            `);
+        } catch (error) {
+            console.error("Error printing followups list:", error);
+        }
     };
     // State
     const [visitors, setVisitors] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [stats, setStats] = useState(null);
+    const [employees, setEmployees] = useState([]);
     
-    // Fixed filter for Today - Using local time utility
+    // Range filters
     const today = getTodayDateISO();
+    const [fromDate, setFromDate] = useState(today);
+    const [toDate, setToDate] = useState(today);
+    const [employeeId, setEmployeeId] = useState('');
     const [studentName, setStudentName] = useState('');
     const [referenceBy, setReferenceBy] = useState('');
     const [filterBranch, setFilterBranch] = useState('');
@@ -34,6 +212,7 @@ const TodaysVisitorsList = () => {
     const [showModal, setShowModal] = useState(false);
     const [selectedVisitor, setSelectedVisitor] = useState(null);
     const [branches, setBranches] = useState([]);
+    const [showPendingBreakup, setShowPendingBreakup] = useState(false);
     
     // View Modal State
     const [showViewModal, setShowViewModal] = useState(false);
@@ -41,16 +220,46 @@ const TodaysVisitorsList = () => {
     const [followUpVisitor, setFollowUpVisitor] = useState(null);
     const activeStudentNames = [...new Set(visitors.map(v => v.studentName).filter(Boolean))].sort();
     const activeReferences = [...new Set(visitors.map(v => v.reference).filter(Boolean))].sort();
+    const pendingBreakup = stats?.pendingByDate || [];
 
     useEffect(() => {
         fetchVisitors();
-    }, [filterBranch]);
+        fetchStats();
+    }, [fromDate, toDate, filterBranch, studentName, referenceBy, inquirySource, employeeId]);
 
     useEffect(() => {
         if (user?.role === 'Super Admin') {
             fetchBranches();
         }
+        fetchEmployees();
     }, [user]);
+
+    const fetchEmployees = async () => {
+        try {
+            const res = await axios.get(`${import.meta.env.VITE_API_URL}/employees`, { withCredentials: true });
+            setEmployees(res.data?.employees || res.data || []);
+        } catch (error) {
+            console.error("Error fetching employees:", error);
+        }
+    };
+
+    const fetchStats = async (override = {}) => {
+        try {
+            const res = await axios.get(`${import.meta.env.VITE_API_URL}/visitors/followup-stats`, {
+                params: {
+                    fromDate: override.fromDate || fromDate,
+                    toDate: override.toDate || toDate,
+                    branchId: override.branchId ?? filterBranch,
+                    employeeId: override.employeeId ?? employeeId,
+                    dateFilterType: 'followUpDate'
+                },
+                withCredentials: true,
+            });
+            setStats(res.data);
+        } catch (error) {
+            setStats(null);
+        }
+    };
 
     const fetchVisitors = async (override = {}) => {
         setLoading(true);
@@ -58,14 +267,20 @@ const TodaysVisitorsList = () => {
         const nextReferenceBy = override.referenceBy ?? referenceBy;
         const nextBranch = override.branchId ?? filterBranch;
         const nextInquirySource = override.inquirySource ?? inquirySource;
+        const nextEmployee = override.employeeId ?? employeeId;
+        const nextFromDate = override.fromDate ?? fromDate;
+        const nextToDate = override.toDate ?? toDate;
         try {
             const data = await visitorService.getAllVisitors({
-                fromDate: today,
-                toDate: today,
+                fromDate: nextFromDate,
+                toDate: nextToDate,
                 studentName: nextStudentName,
                 referenceBy: nextReferenceBy,
                 branchId: nextBranch,
-                inquirySource: nextInquirySource
+                inquirySource: nextInquirySource,
+                employeeId: nextEmployee,
+                dateFilterType: 'followUpDate',
+                excludeFollowedVisitors: 'true'
             });
             setVisitors(data);
         } catch (error) {
@@ -86,14 +301,20 @@ const TodaysVisitorsList = () => {
 
     const handleSearch = () => {
         fetchVisitors();
+        fetchStats();
     };
 
     const handleResetSearch = () => {
+        setFromDate(today);
+        setToDate(today);
+        setEmployeeId('');
         setStudentName('');
         setReferenceBy('');
         setFilterBranch('');
         setInquirySource('');
-        fetchVisitors({ studentName: '', referenceBy: '', branchId: '', inquirySource: '' });
+        setShowPendingBreakup(false);
+        fetchVisitors({ fromDate: today, toDate: today, studentName: '', referenceBy: '', branchId: '', inquirySource: '', employeeId: '' });
+        fetchStats({ fromDate: today, toDate: today, branchId: '', employeeId: '' });
     };
 
     const handleDelete = async (id) => {
@@ -169,6 +390,14 @@ const TodaysVisitorsList = () => {
         }
     };
 
+    const getCreatedByName = (visitor) => {
+        return visitor.createdBy?.name || visitor.createdBy?.username || visitor.allocatedTo?.name || visitor.allocatedTo?.username || '-';
+    };
+
+    const summary = stats?.summary || {};
+    const employeeSummary = stats?.employees || [];
+    const followUpsDoneToday = stats?.followUpsDoneToday ?? summary.followUpsToday ?? 0;
+
     return (
         <div className="w-full p-2 animate-fadeIn">
             <style>{`
@@ -210,15 +439,15 @@ const TodaysVisitorsList = () => {
                     }
                 }
             `}</style>
-            <div className="bg-white rounded-lg shadow-lg p-2">
-                <div className="flex justify-between items-center mb-3 border-b pb-2">
-                    <div className="flex items-center gap-2">
-                        <Calendar className="text-blue-500" size={24} />
-                        <div>
-                            <h2 className="text-xl font-bold text-gray-800">Today's Visitors</h2>
-                            <p className="text-xs text-gray-500">{new Date().toDateString()}</p>
+                <div className="bg-white rounded-lg shadow-lg p-2">
+                    <div className="flex justify-between items-center mb-3 border-b pb-2">
+                        <div className="flex items-center gap-2">
+                            <Calendar className="text-blue-500" size={24} />
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-800">Visitors</h2>
+                                <p className="text-xs text-gray-500">Range: {formatDate(fromDate)} to {formatDate(toDate)}</p>
+                            </div>
                         </div>
-                    </div>
                     <div className="flex gap-2">
                         <button 
                             onClick={handlePrintList}
@@ -235,14 +464,152 @@ const TodaysVisitorsList = () => {
                     </div>
                 </div>
 
+                <div className="flex flex-wrap items-center gap-3 mb-4 bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
+                    <div className="flex items-center gap-2 px-3 border-r border-gray-100">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Total</p>
+                        <p className="text-sm font-black text-gray-700">{summary.total || visitors.length}</p>
+                    </div>
+                    <div className="flex items-center gap-2 px-3 border-r border-gray-100">
+                        <p className="text-[10px] font-bold text-orange-400 uppercase">Open</p>
+                        <p className="text-sm font-black text-orange-600">{summary.open ?? '-'}</p>
+                    </div>
+                    <div className="flex items-center gap-2 px-3 border-r border-gray-100">
+                        <p className="text-[10px] font-bold text-green-400 uppercase">Completed</p>
+                        <p className="text-sm font-black text-green-600">{summary.completed ?? '-'}</p>
+                    </div>
+                    <div className="flex items-center gap-2 px-3 border-r border-gray-100">
+                        <p className="text-[10px] font-bold text-blue-400 uppercase">Followups Done</p>
+                        <p className="text-sm font-black text-blue-600">{followUpsDoneToday}</p>
+                    </div>
+                    <div className="flex items-center gap-2 px-3">
+                        <p className="text-[10px] font-bold text-purple-400 uppercase">Remaining</p>
+                        <p className="text-sm font-black text-purple-600">{Math.max((summary.total || 0) - followUpsDoneToday, 0)}</p>
+                    </div>
+                </div>
+
+                {user?.role === 'Super Admin' && stats && (
+                    <div className="bg-white border border-gray-200 rounded-lg shadow mb-4 p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <div className="border rounded p-3">
+                                <div className="text-xs text-gray-500 font-bold uppercase">Range Visitors</div>
+                                <div className="text-2xl font-black text-blue-700">
+                                    {stats.openCount || 0}<span className="text-lg font-bold text-gray-400">/{stats.totalInquiries || 0}</span>
+                                </div>
+                                {stats.pendingFromBefore > 0 && (
+                                    <div className="mt-1 text-[10px]">
+                                        <span className="text-orange-500 font-bold">Prev Pending: {stats.pendingFromBefore}</span>
+                                        <span className="text-gray-400 mx-1">|</span>
+                                        <span className="text-green-600">New: {stats.totalInquiries || 0}</span>
+                                    </div>
+                                )}
+                                {employeeId && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPendingBreakup(true)}
+                                        className="mt-2 rounded bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700 hover:bg-orange-200"
+                                    >
+                                        View Pending
+                                    </button>
+                                )}
+                            </div>
+                            <div className="border rounded p-3">
+                                <div className="text-xs text-gray-500 font-bold uppercase">Followups Done</div>
+                                <div className="text-2xl font-black text-purple-700">{followUpsDoneToday}</div>
+                                <div className="mt-1 text-[10px] text-gray-400">
+                                    {Math.max((summary.total || 0) - followUpsDoneToday, 0)} remaining
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handlePrintFollowupsList}
+                                    disabled={!employeeId}
+                                    className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <Printer size={12} /> Print Followups List
+                                </button>
+                            </div>
+                            <div className="border rounded p-3">
+                                <div className="text-xs text-gray-500 font-bold uppercase">Top Followup</div>
+                                <div className="text-sm font-bold text-gray-800">{employeeSummary[0]?.employeeName || '-'}</div>
+                                <div className="text-xs text-gray-500">{employeeSummary[0]?.latestFollowUpAt ? new Date(employeeSummary[0].latestFollowUpAt).toLocaleString() : '-'}</div>
+                            </div>
+                            <div className="border rounded p-3">
+                                <div className="text-xs text-gray-500 font-bold uppercase mb-2">Employee Followups</div>
+                                <div className="flex flex-wrap gap-2">
+                                    {employeeSummary.length ? employeeSummary.map((item) => (
+                                        <span key={item.employeeId} className="inline-flex items-center gap-1 text-[10px] border rounded-full px-3 py-1 bg-gray-50 font-bold">
+                                            <span className="text-blue-700">{item.employeeName}</span>: {item.followUpCount} followups
+                                        </span>
+                                    )) : <span className="text-xs text-gray-400">No followups in this range.</span>}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showPendingBreakup && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[85vh] overflow-hidden">
+                            <div className="flex items-center justify-between border-b px-4 py-3">
+                                <div>
+                                    <h3 className="font-bold text-gray-800">Pending Visitor Dates</h3>
+                                    <p className="text-xs text-gray-500">Total pending: {stats?.pendingFromBefore || 0}</p>
+                                </div>
+                                <button onClick={() => setShowPendingBreakup(false)} className="p-1 rounded hover:bg-gray-100">
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div className="p-4 overflow-y-auto max-h-[65vh]">
+                                {pendingBreakup.length ? (
+                                    <table className="w-full text-sm border">
+                                        <thead className="bg-gray-100 text-gray-700">
+                                            <tr>
+                                                <th className="p-2 border text-left">Follow-up Date</th>
+                                                <th className="p-2 border text-right">Pending</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {pendingBreakup.map((item) => (
+                                                <tr key={item.date} className="hover:bg-blue-50">
+                                                    <td className="p-2 border font-medium">{formatDate(item.date)}</td>
+                                                    <td className="p-2 border text-right font-bold text-orange-600">{item.count}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <div className="text-center text-gray-400 py-8">No previous pending visitors.</div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Search Section */}
                 <div className="bg-white p-4 rounded-lg shadow mb-6 border border-gray-200">
                     <h2 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
-                        <Search size={16} /> Search Today's Visitors
+                        <Search size={16} /> Search Visitor Activity
                     </h2>
 
                     <div className="flex flex-col gap-4">
-                        <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
+                        <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-4 lg:grid-cols-7' : 'md:grid-cols-3 lg:grid-cols-6'} gap-4`}>
+                            <div>
+                                <label className="text-xs text-gray-500 font-semibold mb-1 block">From Date</label>
+                                <input
+                                    type="date"
+                                    value={fromDate}
+                                    onChange={(e) => setFromDate(e.target.value)}
+                                    className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 font-semibold mb-1 block">To Date</label>
+                                <input
+                                    type="date"
+                                    value={toDate}
+                                    onChange={(e) => setToDate(e.target.value)}
+                                    className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                            </div>
                             {user?.role === 'Super Admin' && (
                                 <div>
                                     <label className="text-xs text-gray-500 font-semibold mb-1 block">Branch</label>
@@ -258,6 +625,19 @@ const TodaysVisitorsList = () => {
                                     </select>
                                 </div>
                             )}
+                            <div>
+                                <label className="text-xs text-gray-500 font-semibold mb-1 block">Employee</label>
+                                <select
+                                    value={employeeId}
+                                    onChange={(e) => setEmployeeId(e.target.value)}
+                                    className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                >
+                                    <option value="">All Employees</option>
+                                    {employees.map(emp => (
+                                        <option key={emp._id} value={emp._id}>{emp.name}</option>
+                                    ))}
+                                </select>
+                            </div>
                             <div>
                                 <SearchableDropdown
                                     options={activeStudentNames}
@@ -289,7 +669,7 @@ const TodaysVisitorsList = () => {
                                     <option value="Online">Online</option>
                                     <option value="Walk-in">Offline</option>
                                     <option value="DSR">DSR</option>
-                                </select>
+                                    </select>
                             </div>
                         </div>
 
@@ -313,7 +693,7 @@ const TodaysVisitorsList = () => {
                 {/* Table */}
                 <div className="overflow-x-auto printable-table-container">
                     <div className="print-only-header mb-6 text-center">
-                        <h1 className="text-2xl font-bold text-blue-800 uppercase tracking-wide">Today's Visitors List</h1>
+                        <h1 className="text-2xl font-bold text-blue-800 uppercase tracking-wide">Visitors List</h1>
                         <p className="text-xs text-gray-500 mt-1">Generated on {new Date().toLocaleDateString('en-GB')} | Total Visitors: {visitors?.length || 0}</p>
                     </div>
                     <table className="w-full border-collapse min-w-[1300px]">
@@ -338,12 +718,16 @@ const TodaysVisitorsList = () => {
                             {loading ? (
                                 <tr><td colSpan="13" className="text-center p-4">Loading...</td></tr>
                             ) : visitors.length === 0 ? (
-                                <tr><td colSpan="13" className="text-center p-4 text-gray-500">No visitors today.</td></tr>
+                                <tr><td colSpan="13" className="text-center p-4 text-gray-500">No visitors found for this range.</td></tr>
                             ) : (
                                 visitors.map((visitor, index) => (
                                     <tr key={visitor._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
                                         <td className="p-2 text-center">{index + 1}</td>
-                                        <td className="p-2">{visitor.visitingDate ? new Date(visitor.visitingDate).toLocaleDateString('en-GB') : '-'}</td>
+                                        <td className="p-2">
+                                            {visitor.latestFollowup?.scheduledDate
+                                                ? new Date(visitor.latestFollowup.scheduledDate).toLocaleDateString('en-GB')
+                                                : (visitor.visitingDate ? new Date(visitor.visitingDate).toLocaleDateString('en-GB') : '-')}
+                                        </td>
                                         {user?.role === 'Super Admin' && <td className="p-2 text-gray-600">{visitor.branchId?.name || '-'}</td>}
                                         <td className="p-2 font-bold text-gray-800">{visitor.studentName}</td>
                                         <td className="p-0 border align-top w-36">
@@ -391,6 +775,9 @@ const TodaysVisitorsList = () => {
                                                 <div className="flex flex-col">
                                                     <span>{new Date(visitor.createdAt).toLocaleDateString('en-GB')}</span>
                                                     <span className="text-gray-500">{new Date(visitor.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    <span className="text-[10px] text-blue-600 font-semibold truncate" title={getCreatedByName(visitor)}>
+                                                        by {getCreatedByName(visitor)}
+                                                    </span>
                                                 </div>
                                             ) : '-'}
                                         </td>

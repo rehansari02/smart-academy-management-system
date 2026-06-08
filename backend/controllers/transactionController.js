@@ -337,11 +337,13 @@ const getInquiries = asyncHandler(async (req, res) => {
 
   // Date Filters
   const dateField = dateFilterType || "inquiryDate";
-  const shouldDefaultToday = source && ["Online", "Walk-in", "DSR"].includes(source) && !startDate && !endDate;
+  const skipDefaultDate = req.query.skipDefaultDate === "true";
+  const shouldDefaultToday = source && ["Online", "Walk-in", "DSR"].includes(source) && !startDate && !endDate && !skipDefaultDate;
   // If no dates provided, use today's range in local time to avoid timezone shifts
   const effectiveStartDate = startDate || (shouldDefaultToday ? new Date() : null);
   const effectiveEndDate = endDate || (shouldDefaultToday ? new Date() : null);
 
+  let dateRange = null;
   if (effectiveStartDate && effectiveEndDate) {
     const start = new Date(effectiveStartDate);
     start.setHours(0, 0, 0, 0);
@@ -356,13 +358,32 @@ const getInquiries = asyncHandler(async (req, res) => {
       start.setHours(18, 0, 0, 0); // Catch evening entries from UTC
     }
 
-    query[dateField] = { $gte: start, $lte: end };
+    dateRange = { $gte: start, $lte: end };
+    query[dateField] = dateRange;
+  }
+
+  if (req.query.onlyFollowupActivity === "true") {
+    const activityMatch = { activityType: "followup" };
+    if (dateField === "followUpHistory.createdAt" && dateRange) {
+      activityMatch.createdAt = dateRange;
+      delete query[dateField];
+    }
+    query.followUpHistory = { $elemMatch: activityMatch };
+  } else if (
+    !isAdmissionLookup &&
+    req.query.includeFollowupActivity !== "true" &&
+    source &&
+    ["Online", "Walk-in", "DSR"].includes(source)
+  ) {
+    query.followUpHistory = {
+      $not: { $elemMatch: { activityType: "followup" } }
+    };
   }
 
   // Status Filter
   if (status) {
     query.status = status;
-  } else if (!isAdmissionLookup && source && ["Online", "Walk-in", "DSR"].includes(source)) {
+  } else if (!isAdmissionLookup && req.query.includeClosed !== "true" && source && ["Online", "Walk-in", "DSR"].includes(source)) {
     // Default: hide Close/Complete inquiries for main inquiry pages
     // User must explicitly select Close/Complete from filter to see them
     query.status = { $nin: ["Close", "Complete"] };
@@ -374,11 +395,23 @@ const getInquiries = asyncHandler(async (req, res) => {
   // Student Name or Contact Search
   const searchTerm = studentName || req.query.search;
   if (searchTerm) {
+    const searchRegex = { $regex: searchTerm, $options: "i" };
+    const nameTerms = String(searchTerm).trim().split(/\s+/).filter(Boolean);
+    const nameTermFilters = nameTerms.map((term) => ({
+      $or: [
+        { firstName: { $regex: term, $options: "i" } },
+        { middleName: { $regex: term, $options: "i" } },
+        { lastName: { $regex: term, $options: "i" } },
+      ],
+    }));
+
     query.$or = [
-      { firstName: { $regex: searchTerm, $options: "i" } },
-      { lastName: { $regex: searchTerm, $options: "i" } },
-      { contactStudent: { $regex: searchTerm, $options: "i" } },
-      { contactParent: { $regex: searchTerm, $options: "i" } },
+      { firstName: searchRegex },
+      { middleName: searchRegex },
+      { lastName: searchRegex },
+      { contactStudent: searchRegex },
+      { contactParent: searchRegex },
+      ...(nameTermFilters.length > 1 ? [{ $and: nameTermFilters }] : []),
     ];
   }
 
@@ -439,6 +472,8 @@ const getInquiries = asyncHandler(async (req, res) => {
 
   const sort = dateFilterType === "followUpDate"
     ? { followUpDate: 1, createdAt: -1, _id: 1 }
+    : dateFilterType === "followUpHistory.createdAt"
+      ? { "followUpHistory.createdAt": -1, createdAt: -1, _id: 1 }
     : { createdAt: -1, _id: 1 };
 
   let inquiryQuery = Inquiry.find(query)
@@ -574,6 +609,7 @@ const createInquiry = asyncHandler(async (req, res) => {
       remarks: data.followUpDetails || data.remarks || "Inquiry Created (First Follow-up)",
       status: data.status || "Open",
       followUpBy: req.user?._id,
+      activityType: "created",
       createdAt: new Date()
     }];
   }
@@ -846,6 +882,7 @@ const importInquiries = asyncHandler(async (req, res) => {
         remarks: doc.followUpDetails || "Inquiry Created (Excel Import)",
         status: doc.status,
         followUpBy: req.user?._id,
+        activityType: "created",
         createdAt: new Date()
       }];
     }
@@ -971,11 +1008,13 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
     .populate("allocatedTo", "name username")
     .populate("createdBy", "name username")
     .populate("followUpHistory.followUpBy", "name username")
-    .select("firstName lastName contactStudent allocatedTo createdBy followUpHistory status")
+    .populate("branchId", "name shortCode")
+    .select("inquiryDate branchId referenceBy firstName middleName lastName contactStudent contactParent contactHome allocatedTo createdBy followUpHistory status")
     .lean();
 
   const employeeMap = new Map();
-  let followUpsToday = 0;
+  const followupDetailsMap = new Map();
+  const uniqueFollowupInquiryIds = new Set();
 
   inquiries.forEach((inquiry) => {
     (inquiry.followUpHistory || []).forEach((history) => {
@@ -985,22 +1024,48 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
       if (actionTime < start.getTime() || actionTime > end.getTime()) return;
 
       const user = history.followUpBy || inquiry.allocatedTo || inquiry.createdBy || {};
-      if (selectedEmployeeUserId && String(user._id || "") !== String(selectedEmployeeUserId)) return;
       
-      followUpsToday++;
-      
+      const inquiryId = String(inquiry._id);
+      uniqueFollowupInquiryIds.add(inquiryId);
+
       const key = user._id ? String(user._id) : "unassigned";
       const current = employeeMap.get(key) || {
         employeeId: user._id || null,
         employeeName: user.name || user.username || "Unassigned",
         followUpCount: 0,
         latestFollowUpAt: null,
+        inquiryIds: new Set(),
       };
-      current.followUpCount += 1;
+      current.inquiryIds.add(inquiryId);
       if (!current.latestFollowUpAt || new Date(actionDate) > new Date(current.latestFollowUpAt)) {
         current.latestFollowUpAt = actionDate;
       }
       employeeMap.set(key, current);
+
+      if (selectedEmployeeUserId) {
+        const nextRow = {
+          inquiryId: inquiry._id,
+          inquiryDate: inquiry.inquiryDate,
+          branchName: inquiry.branchId?.name || "",
+          filledBy: inquiry.createdBy?.name || inquiry.createdBy?.username || "",
+          referenceBy: inquiry.referenceBy || "Direct",
+          studentName: [inquiry.firstName, inquiry.middleName, inquiry.lastName].filter(Boolean).join(" "),
+          contactStudent: inquiry.contactStudent || "",
+          contactParent: inquiry.contactParent || "",
+          contactHome: inquiry.contactHome || "",
+          status: inquiry.status,
+          followUpDate: history.date || "",
+          followUpDetails: history.remarks || history.remark || "",
+          followUpBy: user.name || user.username || "Unassigned",
+          followUpAt: actionDate,
+          callingDate: history.createdAt || actionDate,
+          remarks: history.remarks || history.remark || "",
+        };
+        const existingRow = followupDetailsMap.get(inquiryId);
+        if (!existingRow || new Date(nextRow.followUpAt) > new Date(existingRow.followUpAt || 0)) {
+          followupDetailsMap.set(inquiryId, nextRow);
+        }
+      }
     });
   });
 
@@ -1020,7 +1085,7 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
     ]);
     
     summary = stats[0] || { total: 0, open: 0, completed: 0 };
-    summary.followUpsToday = followUpsToday;
+    summary.followUpsToday = followupDetailsMap.size;
   }
 
   // Count open inquiries within date range
@@ -1031,26 +1096,61 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
 
   // Count pending inquiries from BEFORE date range that are still open
   let pendingFromBefore = 0;
+  let pendingByDate = [];
   if (selectedEmployeeUserId) {
-    pendingFromBefore = await Inquiry.countDocuments({
+    const pendingQuery = {
       ...inquiryQuery,
       inquiryDate: { $lt: start },
       status: { $in: openStatuses }
-    });
+    };
+    const [pendingCount, pendingGroups] = await Promise.all([
+      Inquiry.countDocuments(pendingQuery),
+      Inquiry.aggregate([
+        { $match: pendingQuery },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: "$inquiryDate",
+                timezone: "Asia/Kolkata"
+              }
+            },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ])
+    ]);
+    pendingFromBefore = pendingCount;
+    pendingByDate = pendingGroups.map((item) => ({
+      date: item._id,
+      count: item.count
+    }));
   }
 
   const [totalInquiries] = await Promise.all([
     Inquiry.countDocuments(inquiriesTodayQuery),
   ]);
 
-  const employees = [...employeeMap.values()].sort((a, b) => b.followUpCount - a.followUpCount);
+  const employees = [...employeeMap.values()]
+    .map((item) => {
+      const { inquiryIds, ...rest } = item;
+      return {
+        ...rest,
+        followUpCount: inquiryIds.size,
+      };
+    })
+    .sort((a, b) => b.followUpCount - a.followUpCount);
 
   res.json({
     range: { startDate: start, endDate: end },
     totalInquiries,
     openCount: openInDateRange,
-    totalFollowUps: employees.reduce((sum, item) => sum + item.followUpCount, 0),
+    totalFollowUps: uniqueFollowupInquiryIds.size,
     pendingFromBefore,
+    pendingByDate,
+    followupDetails: [...followupDetailsMap.values()].sort((a, b) => new Date(b.followUpAt || 0) - new Date(a.followUpAt || 0)),
     employees,
     summary
   });
@@ -1206,6 +1306,9 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
     if (req.body.status && req.body.status !== inquiry.status) {
       hasFollowUpChanged = true;
     }
+    if (req.body.recordFollowUpActivity === true || req.body.recordFollowUpActivity === "true") {
+      hasFollowUpChanged = true;
+    }
 
     const fields = [
       "status",
@@ -1310,6 +1413,7 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
         remarks: historyRemarks,
         status: req.body.status || inquiry.status || "Open",
         followUpBy: req.user?._id,
+        activityType: (req.body.recordFollowUpActivity === true || req.body.recordFollowUpActivity === "true") ? "followup" : "updated",
         createdAt: new Date()
       });
       inquiry.followUpCount = inquiry.followUpHistory.length;

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { fetchStudents, cancelStudent, reactivateStudent, resetStatus } from '../../../features/student/studentSlice';
 import { fetchBranches } from '../../../features/master/masterSlice';
-import { XCircle, UserX, Search, Filter, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
+import { XCircle, UserX, Search, Filter, AlertTriangle, CheckCircle, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import StudentSearch from '../../../components/StudentSearch';
 import { useUserRights } from '../../../hooks/useUserRights';
@@ -10,6 +11,7 @@ import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const StudentCancellation = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { students, pagination, isLoading } = useSelector((state) => state.students);
   const { branches } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
@@ -111,11 +113,23 @@ const StudentCancellation = () => {
   return (
     <div className="container mx-auto p-4 max-w-7xl">
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="flex items-center gap-3 mb-6 border-b pb-4">
-          <XCircle className="text-red-500" size={28} />
-          <div>
-            <h2 className="text-2xl font-bold text-gray-800">Student Cancellation</h2>
-            <p className="text-sm text-gray-500">Process student admission cancellations</p>
+        <div className="mb-6 border-b pb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <XCircle className="text-red-500" size={28} />
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">Student Cancellation</h2>
+                <p className="text-sm text-gray-500">Process student admission cancellations</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/transaction/cancelled-students')}
+              className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700 hover:bg-red-100"
+            >
+              <Trash2 size={16} />
+              Cancelled Students
+            </button>
           </div>
         </div>
 
@@ -149,9 +163,6 @@ const StudentCancellation = () => {
 
       {/* Active Students Section */}
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
-          <Search className="text-blue-500" size={24} /> Search Results
-        </h3>
         {searchedStudents.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse border border-gray-300 text-sm">
@@ -208,9 +219,7 @@ const StudentCancellation = () => {
               </tbody>
             </table>
           </div>
-        ) : (
-          <p className="text-gray-500 text-center py-8 italic font-medium">Use the search box above to find a student to manage their admission status.</p>
-        )}
+        ) : null}
       </div>
 
       {/* Cancelled Students Section */}

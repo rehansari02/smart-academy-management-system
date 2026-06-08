@@ -166,8 +166,8 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
             .sort({ visitingDate: -1, createdAt: -1 })
             .limit(RECENT_LIST_LIMIT)
             .lean(),
-        Student.countDocuments(addBranchScope({ isDeleted: false, isAdmissionFeesPaid: false }, 'branchId', branchObjectId)),
-        Student.countDocuments(addBranchScope({ isDeleted: false, isRegistered: false }, 'branchId', branchObjectId)),
+        Student.countDocuments(addBranchScope({ isDeleted: false, isCancelled: false, isAdmissionFeesPaid: false }, 'branchId', branchObjectId)),
+        Student.countDocuments(addBranchScope({ isDeleted: false, isCancelled: false, isRegistered: false }, 'branchId', branchObjectId)),
         Expense.aggregate([
             { $match: expenseQuery },
             { $group: { _id: null, amount: { $sum: '$amount' }, count: { $sum: 1 } } }

@@ -72,6 +72,7 @@ const FollowUpModal = ({ inquiry, onClose, onSave }) => {
             followUpDetails: finalDetails,
             followUpDate: fDate,
             newRemarks: data.newRemarks,
+            recordFollowUpActivity: true,
         };
 
         // Save the inquiry update first
@@ -176,8 +177,9 @@ const InquiryDSR = () => {
         if (!history || history.length === 0) return '-';
         const last = history[history.length - 1];
         if (!last) return '-';
-        const dateStr = last.date
-            ? `${formatDate(last.date)} ${new Date(last.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+        const callingDate = last.createdAt || inquiry.updatedAt || last.date;
+        const dateStr = callingDate
+            ? `${formatDate(callingDate)} ${new Date(callingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
             : '';
         const by = last.followUpBy?.name || last.followUpBy?.username || '-';
         if (!dateStr) return by;
@@ -206,6 +208,7 @@ const InquiryDSR = () => {
     const [filters, setFilters] = useState({ startDate: getTodayDate(), endDate: getTodayDate(), status: '', studentName: '', referenceBy: '', branchId: '', employeeId: '', source: 'DSR', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 });
     const [modal, setModal] = useState({ type: null, data: null });
     const [stats, setStats] = useState(null);
+    const [showPendingBreakup, setShowPendingBreakup] = useState(false);
     const [selectedInquiryIds, setSelectedInquiryIds] = useState(new Set());
     const [bulkAssignee, setBulkAssignee] = useState('');
     const [transferMode, setTransferMode] = useState(false);
@@ -237,6 +240,104 @@ const InquiryDSR = () => {
         } catch (error) {
             setStats(null);
         }
+    };
+
+    const handlePrintFollowupsList = () => {
+        const rows = stats?.followupDetails || [];
+        if (!filters.employeeId) {
+            toast.error('Please select employee first');
+            return;
+        }
+        const employeeName = employees?.find((item) => item._id === filters.employeeId)?.name || 'Selected Employee';
+        const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+        const printFrame = document.createElement('iframe');
+        printFrame.style.position = 'fixed';
+        printFrame.style.right = '0';
+        printFrame.style.bottom = '0';
+        printFrame.style.width = '0';
+        printFrame.style.height = '0';
+        printFrame.style.border = '0';
+        document.body.appendChild(printFrame);
+
+        const printDocument = printFrame.contentWindow?.document;
+        if (!printDocument) {
+            printFrame.remove();
+            toast.error('Unable to open print dialog');
+            return;
+        }
+
+        printDocument.write(`
+            <html>
+            <head>
+                <title>Followups List - ${escapeHtml(employeeName)}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; color: #111827; }
+                    h1 { font-size: 20px; margin: 0 0 4px; color: #1d4ed8; }
+                    p { margin: 2px 0; font-size: 12px; color: #4b5563; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 10px; }
+                    th { background: #1d4ed8; color: white; padding: 6px; text-align: left; }
+                    td { border: 1px solid #e5e7eb; padding: 5px; vertical-align: top; }
+                    tr:nth-child(even) { background: #f9fafb; }
+                </style>
+            </head>
+            <body>
+                <h1>DSR Followups List</h1>
+                <p>Employee: ${escapeHtml(employeeName)}</p>
+                <p>Date Range: ${escapeHtml(formatDate(filters.startDate))} to ${escapeHtml(formatDate(filters.endDate))}</p>
+                <p>Total Followups: ${rows.length}</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Sr. No.</th>
+                            <th>Inquiry Date</th>
+                            <th>Branch</th>
+                            <th>Filled By</th>
+                            <th>Reference By</th>
+                            <th>Student Name</th>
+                            <th>Contact (H/S/P)</th>
+                            <th>Status</th>
+                            <th>Followup</th>
+                            <th>Followup Details</th>
+                            <th>Followup By</th>
+                            <th>Calling Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.length ? rows.map((item, index) => `
+                            <tr>
+                                <td>${index + 1}</td>
+                                <td>${escapeHtml(item.inquiryDate ? formatDate(item.inquiryDate) : '-')}</td>
+                                <td>${escapeHtml(item.branchName || '-')}</td>
+                                <td>${escapeHtml(item.filledBy || '-')}</td>
+                                <td>${escapeHtml(item.referenceBy || '-')}</td>
+                                <td>${escapeHtml(item.studentName || '-')}</td>
+                                <td>
+                                    H: ${escapeHtml(item.contactHome || '-')}<br>
+                                    S: ${escapeHtml(item.contactStudent || '-')}<br>
+                                    P: ${escapeHtml(item.contactParent || '-')}
+                                </td>
+                                <td>${escapeHtml(item.status || '-')}</td>
+                                <td>${escapeHtml(item.followUpDate ? `${formatDate(item.followUpDate)} ${new Date(item.followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-')}</td>
+                                <td>${escapeHtml(item.followUpDetails || '-')}</td>
+                                <td>${escapeHtml(item.followUpBy || '-')}</td>
+                                <td>${escapeHtml(item.callingDate ? `${formatDate(item.callingDate)} ${new Date(item.callingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-')}</td>
+                            </tr>
+                        `).join('') : `
+                            <tr>
+                                <td colspan="12" style="text-align:center;padding:20px;color:#6b7280;">No followups found for the selected employee in this date range.</td>
+                            </tr>
+                        `}
+                    </tbody>
+                </table>
+            </body>
+            </html>
+        `);
+        printDocument.close();
+        setTimeout(() => {
+            printFrame.contentWindow?.focus();
+            printFrame.contentWindow?.print();
+            setTimeout(() => printFrame.remove(), 1000);
+        }, 250);
     };
 
     useEffect(() => { 
@@ -501,9 +602,47 @@ const InquiryDSR = () => {
                 </div>
             </div>
 
+            {showPendingBreakup && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[85vh] overflow-hidden">
+                        <div className="flex items-center justify-between border-b px-4 py-3">
+                            <div>
+                                <h3 className="font-bold text-gray-800">Pending Inquiry Dates</h3>
+                                <p className="text-xs text-gray-500">Total pending: {stats?.pendingFromBefore || 0}</p>
+                            </div>
+                            <button onClick={() => setShowPendingBreakup(false)} className="p-1 rounded hover:bg-gray-100">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="p-4 overflow-y-auto max-h-[65vh]">
+                            {stats?.pendingByDate?.length ? (
+                                <table className="w-full text-sm border">
+                                    <thead className="bg-gray-100 text-gray-700">
+                                        <tr>
+                                            <th className="p-2 border text-left">Inquiry Date</th>
+                                            <th className="p-2 border text-right">Pending</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {stats.pendingByDate.map((item) => (
+                                            <tr key={item.date} className="hover:bg-blue-50">
+                                                <td className="p-2 border font-medium">{formatDate(item.date)}</td>
+                                                <td className="p-2 border text-right font-bold text-orange-600">{item.count}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <div className="text-center text-gray-400 py-8">No previous pending inquiries.</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {user?.role === 'Super Admin' && stats && (
                 <div className="bg-white border border-gray-200 rounded-lg shadow mb-6 p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="border rounded p-3">
                             <div className="text-xs text-gray-500 font-bold uppercase">Range Inquiries</div>
                             <div className="text-2xl font-black text-blue-700">
@@ -516,6 +655,15 @@ const InquiryDSR = () => {
                                     <span className="text-green-600">New: {stats.totalInquiries || 0}</span>
                                 </div>
                             )}
+                            {filters.employeeId && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPendingBreakup(true)}
+                                    className="mt-2 rounded bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700 hover:bg-orange-200"
+                                >
+                                    View Pending
+                                </button>
+                            )}
                         </div>
                         <div className="border rounded p-3">
                             <div className="text-xs text-gray-500 font-bold uppercase">Followups Done</div>
@@ -523,84 +671,16 @@ const InquiryDSR = () => {
                             <div className="mt-1 text-[10px] text-gray-400">
                                 {stats.openCount || 0} remaining
                             </div>
-                        </div>
-                        <div className="border rounded p-3">
-                            <div className="text-xs text-gray-500 font-bold uppercase">Top Followup</div>
-                            <div className="text-sm font-bold text-gray-800">{stats.employees?.[0]?.employeeName || '-'}</div>
-                            <div className="text-xs text-gray-500">{stats.employees?.[0]?.latestFollowUpAt ? new Date(stats.employees[0].latestFollowUpAt).toLocaleString() : '-'}</div>
-                        </div>
-                        <div className="border rounded p-3">
-                            <div className="text-xs text-gray-500 font-bold uppercase">Completed</div>
-                            <div className="text-2xl font-black text-green-700">{stats.summary?.completed || 0}</div>
+                            <button
+                                type="button"
+                                onClick={handlePrintFollowupsList}
+                                disabled={!filters.employeeId}
+                                className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                <Printer size={12} /> Print Followups List
+                            </button>
                         </div>
                     </div>
-                    {stats.employees?.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                            {stats.employees.map((item) => (
-                                <span key={item.employeeId || item.employeeName} className="inline-flex items-center gap-1 text-xs border rounded-full px-3 py-1 bg-gray-50">
-                                    <b>{item.employeeName}</b>: {item.followUpCount} followups
-                                    <button
-                                        onClick={() => {
-                                            const printWindow = window.open('', '_blank');
-                                            if (!printWindow) {
-                                                toast.error('Please allow pop-ups for this site');
-                                                return;
-                                            }
-                                            printWindow.document.write(`
-                                                <html>
-                                                <head>
-                                                    <title>Followup Report - ${item.employeeName}</title>
-                                                    <style>
-                                                        body { font-family: Arial, sans-serif; padding: 20px; }
-                                                        h1 { color: #1e40af; font-size: 18px; margin-bottom: 5px; }
-                                                        h2 { color: #374151; font-size: 14px; margin-bottom: 15px; font-weight: normal; }
-                                                        table { width: 100%; border-collapse: collapse; font-size: 12px; }
-                                                        th { background: #1e40af; color: white; padding: 8px 6px; text-align: left; }
-                                                        td { padding: 6px; border-bottom: 1px solid #e5e7eb; }
-                                                        tr:nth-child(even) { background: #f9fafb; }
-                                                        .header { text-align: center; margin-bottom: 20px; }
-                                                        .header p { margin: 2px 0; font-size: 11px; color: #6b7280; }
-                                                        @media print { @page { margin: 15mm; } }
-                                                    </style>
-                                                </head>
-                                                <body>
-                                                    <div class="header">
-                                                        <h1>Follow-up Report</h1>
-                                                        <h2>Employee: ${item.employeeName}</h2>
-                                                        <p>Total Followups: ${item.followUpCount} | Latest: ${item.latestFollowUpAt ? new Date(item.latestFollowUpAt).toLocaleString() : '-'}</p>
-                                                        <p>Report Date: ${new Date().toLocaleDateString('en-GB')}</p>
-                                                    </div>
-                                                    <table>
-                                                        <thead>
-                                                            <tr>
-                                                                <th>#</th>
-                                                                <th>Inquiry</th>
-                                                                <th>Contact</th>
-                                                                <th>Status</th>
-                                                                <th>Followup By</th>
-                                                                <th>Date/Time</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:20px;">Detailed data available on screen</td></tr>
-                                                        </tbody>
-                                                    </table>
-                                                    <p style="text-align:center;color:#9ca3af;font-size:10px;margin-top:20px;">Generated by Smart Institute Management System</p>
-                                                    <script>window.print();window.close();<\/script>
-                                                </body>
-                                                </html>
-                                            `);
-                                            printWindow.document.close();
-                                        }}
-                                        className="ml-1 text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-full p-0.5"
-                                        title="Print Followups"
-                                    >
-                                        <Printer size={10} />
-                                    </button>
-                                </span>
-                            ))}
-                        </div>
-                    )}
                 </div>
             )}
 
@@ -647,10 +727,12 @@ const InquiryDSR = () => {
                             <StudentSearch
                                 label="Search Student"
                                 mode="inquiry"
-                                additionalFilters={{ source: 'DSR' }}
+                                selectedValue={filters.studentName}
+                                additionalFilters={{ source: 'DSR', skipDefaultDate: 'true', includeClosed: 'true' }}
                                 onSelect={(id, student) => {
                                     if (student) {
-                                        setFilters({ ...filters, studentName: student.firstName, page: 1 });
+                                        const fullName = [student.firstName, student.middleName, student.lastName].filter(Boolean).join(' ');
+                                        setFilters({ ...filters, studentName: fullName, page: 1 });
                                     } else {
                                         setFilters({ ...filters, studentName: '', page: 1 });
                                     }
@@ -779,14 +861,14 @@ const InquiryDSR = () => {
                             <th className="p-2 border font-semibold">Inquiry Date</th>
                             {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
                             {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Filled By</th>}
-                            {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Handle By</th>}
+                            {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Reference By</th>}
                             <th className="p-2 border font-semibold">Student Name</th>
                             <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                             <th className="p-2 border font-semibold text-center">Status</th>
                             <th className="p-2 border font-semibold">Followup</th>
                             <th className="p-2 border font-semibold w-36">Followup Details</th>
                             <th className="p-2 border font-semibold">Followup By</th>
-                            <th className="p-2 border font-semibold">Last Followup</th>
+                            <th className="p-2 border font-semibold">Calling Date</th>
                             <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-32">Actions</th>
                         </tr>
                     </thead>
@@ -809,7 +891,7 @@ const InquiryDSR = () => {
                                     <div>{getHandleBy(inquiry)}</div>
                                     {assignedByAdmin && <span className="inline-block mt-1 rounded border border-red-300 bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase text-red-700">Assigned</span>}
                                 </td>}
-                                <td className="p-2 border font-bold text-gray-800">{inquiry.firstName} {inquiry.lastName}</td>
+                                <td className="p-2 border font-bold text-gray-800">{[inquiry.firstName, inquiry.middleName, inquiry.lastName].filter(Boolean).join(' ')}</td>
                                 <td className="p-0 border align-top">
                                     <div className="flex border-b border-gray-200 last:border-b-0">
                                         <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">H</div>

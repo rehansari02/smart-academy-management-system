@@ -60,7 +60,7 @@ export const MENU_CONFIG = [
       { title: 'Pending Admission Fees', path: '/transaction/pending-admission-fees' },
       { title: 'Pending Student Registration', path: '/transaction/pending-registration' },
       { title: 'Student Cancellation', path: '/transaction/student-cancellation' },
-      { title: 'Cancelled Students', path: '/transaction/cancelled-students' },
+      // { title: 'Cancelled Students', path: '/transaction/cancelled-students' },
       { title: 'Fees Receipt', path: '/transaction/fees-receipt' },
       { title: 'Expenses', path: '/transaction/expenses' },
       {

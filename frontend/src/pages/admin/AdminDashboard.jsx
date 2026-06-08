@@ -21,6 +21,7 @@ import {
   Building2,
   CalendarDays,
   CheckCircle,
+  Globe,
   RefreshCw,
   UserPlus,
   Users,
@@ -89,14 +90,50 @@ const AdminDashboard = () => {
   const cards = dashboardData?.cards || {};
   const listData = dashboardData?.lists || {};
 
+  const normalizeInquirySource = (source) => {
+    const value = String(source || '').trim().toLowerCase();
+    if (!value) return 'Other';
+    if (value.includes('dsr')) return 'DSR';
+    if (value.includes('walk') || value.includes('offline') || value === 'direct') return 'Offline';
+    if (value.includes('online') || value.includes('quickcontact')) return 'Online';
+    return 'Other';
+  };
+
+  const inquirySourceStats = useMemo(() => {
+    const rows = dashboardData?.charts?.sourceCounts || [];
+    const stats = { online: 0, offline: 0, dsr: 0, other: 0 };
+    rows.forEach((row) => {
+      const count = Number(row?.count || 0);
+      const bucket = normalizeInquirySource(row?._id);
+      if (bucket === 'Online') stats.online += count;
+      else if (bucket === 'Offline') stats.offline += count;
+      else if (bucket === 'DSR') stats.dsr += count;
+      else stats.other += count;
+    });
+    return stats;
+  }, [dashboardData]);
+
   const sourceChart = useMemo(() => {
     const rows = dashboardData?.charts?.sourceCounts || [];
+    const normalized = rows.reduce((acc, row) => {
+      const bucket = normalizeInquirySource(row?._id);
+      const count = Number(row?.count || 0);
+      acc[bucket] = (acc[bucket] || 0) + count;
+      return acc;
+    }, { Online: 0, Offline: 0, DSR: 0, Other: 0 });
+    const labels = ['Online', 'Offline', 'DSR', 'Other'].filter(label => label !== 'Other' || normalized[label] > 0);
+    const colors = {
+      Online: '#2563eb',
+      Offline: '#16a34a',
+      DSR: '#f97316',
+      Other: '#9333ea'
+    };
     return {
-      labels: rows.map(row => row._id || 'Unknown'),
+      labels,
       datasets: [{
         label: 'Inquiries',
-        data: rows.map(row => row.count),
-        backgroundColor: ['#2563eb', '#16a34a', '#f97316', '#9333ea', '#0891b2', '#dc2626', '#64748b'],
+        data: labels.map(label => normalized[label]),
+        backgroundColor: labels.map(label => colors[label]),
         borderWidth: 0
       }]
     };
@@ -180,6 +217,13 @@ const AdminDashboard = () => {
     { label: 'Admission Fees', value: formatAmount(cards.admissionFees), icon: <Building2 size={22} />, tone: 'border-l-indigo-500', helper: 'Admission collection', iconTone: 'bg-indigo-50 text-indigo-700' },
     { label: 'Registration Fees', value: formatAmount(cards.registrationFees), icon: <Building2 size={22} />, tone: 'border-l-pink-500', helper: 'Registration collection', iconTone: 'bg-pink-50 text-pink-700' },
     { label: 'Total Expenses', value: formatAmount(cards.totalExpenses), icon: <Receipt size={22} />, tone: 'border-l-red-500', helper: `${cards.expenseCount || 0} expense entries`, iconTone: 'bg-red-50 text-red-700' }
+  ];
+
+  const inquirySourceCards = [
+    { label: 'Online Inquiries', value: inquirySourceStats.online, icon: <Globe size={22} />, tone: 'border-l-sky-500', helper: 'Online lead source', iconTone: 'bg-sky-50 text-sky-700' },
+    { label: 'Offline Inquiries', value: inquirySourceStats.offline, icon: <Building2 size={22} />, tone: 'border-l-amber-500', helper: 'Walk-in / offline leads', iconTone: 'bg-amber-50 text-amber-700' },
+    { label: 'DSR Inquiries', value: inquirySourceStats.dsr, icon: <BarChart3 size={22} />, tone: 'border-l-orange-500', helper: 'Field / DSR leads', iconTone: 'bg-orange-50 text-orange-700' },
+    { label: 'Other Sources', value: inquirySourceStats.other, icon: <Users size={22} />, tone: 'border-l-slate-400', helper: 'Unmapped sources', iconTone: 'bg-slate-100 text-slate-600' }
   ];
 
   return (
@@ -348,6 +392,21 @@ const AdminDashboard = () => {
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {inquirySourceCards.map(card => (
+                  <div key={card.label} className={`rounded-2xl border border-slate-200 border-l-4 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${card.tone}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-black uppercase tracking-wide text-slate-500">{card.label}</p>
+                        <p className="mt-2 break-words text-2xl font-black text-slate-900">{card.value ?? 0}</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-400">{card.helper}</p>
+                      </div>
+                      <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${card.iconTone}`}>{card.icon}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {summaryCards.map(card => (
                   <div key={card.label} className={`rounded-2xl border border-slate-200 border-l-4 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${card.tone}`}>
                     <div className="flex items-start justify-between gap-3">
@@ -367,7 +426,19 @@ const AdminDashboard = () => {
                   <Line data={overviewChart} options={chartOptions} />
                 </ChartPanel>
                 <ChartPanel title="Inquiry Source" subtitle="Source wise inquiries">
-                  <Doughnut data={sourceChart} options={doughnutOptions} />
+                  <div className="flex h-full flex-col">
+                    <div className="min-h-0 flex-1">
+                      <Doughnut data={sourceChart} options={doughnutOptions} />
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <SourceLegendItem label="Online" value={inquirySourceStats.online} color="#2563eb" />
+                      <SourceLegendItem label="Offline" value={inquirySourceStats.offline} color="#16a34a" />
+                      <SourceLegendItem label="DSR" value={inquirySourceStats.dsr} color="#f97316" />
+                      {inquirySourceStats.other > 0 && (
+                        <SourceLegendItem label="Other" value={inquirySourceStats.other} color="#9333ea" />
+                      )}
+                    </div>
+                  </div>
                 </ChartPanel>
                 <ChartPanel title="Payment Collection" subtitle="Payment mode wise amount">
                   <Bar data={paymentChart} options={chartOptions} />
@@ -480,6 +551,16 @@ const HeaderStat = ({ label, value }) => (
   <div className="rounded-xl border border-white/10 bg-white/10 px-4 py-3">
     <p className="text-[10px] font-black uppercase tracking-wide text-slate-300">{label}</p>
     <p className="mt-1 max-w-[190px] truncate text-sm font-black text-white" title={value}>{value}</p>
+  </div>
+);
+
+const SourceLegendItem = ({ label, value, color }) => (
+  <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+      <span className="truncate text-xs font-black uppercase tracking-wide text-slate-600">{label}</span>
+    </div>
+    <span className="text-sm font-black text-slate-900">{value ?? 0}</span>
   </div>
 );
 

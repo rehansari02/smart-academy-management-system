@@ -197,6 +197,24 @@ const ExamResultPrint = () => {
     return grade;
   };
 
+  const toTitleCase = (value) => {
+    const text = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+    if (!text) return "";
+    return text.replace(/\b([a-z])/g, (match) => match.toUpperCase());
+  };
+
+  const getStudentFullName = () =>
+    [student?.firstName, student?.lastName]
+      .map(toTitleCase)
+      .filter(Boolean)
+      .join(" ");
+
+  const getParentFullName = () =>
+    [student?.fatherName || student?.middleName, student?.lastName]
+      .map(toTitleCase)
+      .filter(Boolean)
+      .join(" ");
+
   const getDaySuffix = (day) => {
     if (day > 3 && day < 21) return "th";
     switch (day % 10) {
@@ -465,7 +483,7 @@ const ExamResultPrint = () => {
   }
 
   const studentPrefix =
-    student?.gender?.toLowerCase() === "female" ? "MISS." : "MR.";
+    student?.gender?.toLowerCase() === "female" ? "MISS." : "Mr.";
   const fatherPrefix = "SHRI";
 
   return (
@@ -567,8 +585,7 @@ const ExamResultPrint = () => {
                           fontSize: "3.5mm",
                         }}
                       >
-                        : {studentPrefix} {student?.firstName?.toUpperCase()}{" "}
-                        {student?.lastName?.toUpperCase()}
+                        : {studentPrefix} {getStudentFullName()}
                       </td>
                     </tr>
                     <tr style={{ height: "5.2mm" }}>
@@ -590,11 +607,7 @@ const ExamResultPrint = () => {
                           fontSize: "3.5mm",
                         }}
                       >
-                        : {fatherPrefix}{" "}
-                        {(
-                          student?.fatherName || student?.middleName
-                        )?.toUpperCase()}{" "}
-                        {student?.lastName?.toUpperCase()}
+                        : {fatherPrefix} {getParentFullName()}
                       </td>
                     </tr>
                     <tr style={{ height: "5.2mm" }}>
@@ -1271,8 +1284,7 @@ const ExamResultPrint = () => {
                   letterSpacing: "0.3px",
                 }}
               >
-                {studentPrefix} {student?.firstName?.toUpperCase()}{" "}
-                {student?.lastName?.toUpperCase()}
+                {studentPrefix} {getStudentFullName()}
               </p>
 
               {/* D/o or S/o parent text */}
@@ -1286,9 +1298,7 @@ const ExamResultPrint = () => {
                 }}
               >
                 {student?.gender?.toLowerCase() === "female" ? "D/o" : "S/o"}{" "}
-                SHRI{" "}
-                {(student?.fatherName || student?.middleName)?.toUpperCase()}{" "}
-                {student?.lastName?.toUpperCase()} On the{" "}
+                Shri {getParentFullName()} On the{" "}
                 {issueDate.isValid() ? issueDate.date() : "15"} day of the month{" "}
                 {issueDate.isValid() ? issueDate.format("MMMM") : "November"}{" "}
                 <br />

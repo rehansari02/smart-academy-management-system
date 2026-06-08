@@ -29,3 +29,20 @@
     @apply bg-white rounded-lg shadow-md p-6;
   }
 }
+
+@layer utilities {
+  @keyframes fadeInDropdown {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .animate-fadeInDropdown {
+    animation: fadeInDropdown 0.2s ease-out;
+  }
+}

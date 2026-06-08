@@ -212,7 +212,7 @@ const appendVisitorFilters = (query, { search, searchField, studentName, referen
 // Create a new visitor
 exports.createVisitor = async (req, res) => {
     try {
-        let { visitingDate, studentName, mobileNumber, contactParent, contactHome, address, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId, isExternalRef } = req.body;
+        let { visitingDate, studentName, mobileNumber, contactParent, contactHome, address, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId, isExternalRef, allocatedTo: assignedTo } = req.body;
 
         // Auto-assign branch for non-Super Admin
         if (req.user.role !== 'Super Admin') {
@@ -289,9 +289,10 @@ exports.createVisitor = async (req, res) => {
 // Get all visitors with filters
 exports.getAllVisitors = async (req, res) => {
     try {
-        const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, branchId, inquirySource, employeeId, allocatedTo, onlyWithFollowups, scope, status } = req.query;
+        const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, branchId, inquirySource, employeeId, allocatedTo, onlyWithFollowups, excludeFollowedVisitors, scope, status, dateFilterType } = req.query;
         let query = { isDeleted: false };
         const isAdmissionLookup = scope === 'admission' || req.query.forAdmission === 'true';
+        const dateRange = buildDateRange(fromDate, toDate);
 
         // Branch Filter Logic
         if (req.user.role !== 'Super Admin') {
@@ -301,12 +302,14 @@ exports.getAllVisitors = async (req, res) => {
         }
 
         // Date Range Filter
-        if (fromDate && toDate) {
-            query.visitingDate = buildDateRange(fromDate, toDate);
-        } else if (fromDate) {
-             query.visitingDate = buildDateRange(fromDate, null);
-        } else if (toDate) {
-             query.visitingDate = buildDateRange(null, toDate);
+        if (dateFilterType !== 'followUpDate') {
+            if (fromDate && toDate) {
+                query.visitingDate = dateRange;
+            } else if (fromDate) {
+                 query.visitingDate = buildDateRange(fromDate, null);
+            } else if (toDate) {
+                 query.visitingDate = buildDateRange(null, toDate);
+            }
         }
 
         appendVisitorFilters(query, { search, searchField, studentName, referenceBy });
@@ -367,12 +370,27 @@ exports.getAllVisitors = async (req, res) => {
             }
         }
 
-        // Requirement: "jab tak uska visitor followups nhi ata jab tak ... isme visitors me show nhi hona chaiye"
-        // This is handled by checking if there's at least one followup record or if 'onlyWithFollowups' is passed
-        if (onlyWithFollowups === 'true') {
-            const followups = await VisitorFollowUp.find({ isDeleted: false }).select('visitorId').lean();
+        // Requirement: show visitor rows by follow-up schedule date when requested
+        if (dateFilterType === 'followUpDate' || onlyWithFollowups === 'true') {
+            const followupQuery = { isDeleted: false };
+
+            if (dateFilterType === 'followUpDate' && dateRange) {
+                followupQuery.scheduledDate = dateRange;
+            }
+
+            if (branchId && req.user.role === 'Super Admin') {
+                followupQuery.branchId = branchId;
+            } else if (req.user.role !== 'Super Admin') {
+                followupQuery.branchId = req.user.branchId;
+            }
+
+            const followups = await VisitorFollowUp.find(followupQuery).select('visitorId').lean();
             const visitorIdsWithFollowups = [...new Set(followups.map(f => f.visitorId.toString()))];
-            query._id = { ...query._id, $in: visitorIdsWithFollowups };
+            if (visitorIdsWithFollowups.length) {
+                query._id = { ...query._id, $in: visitorIdsWithFollowups };
+            } else {
+                query._id = { $in: [] };
+            }
         }
 
         let queryExec = Visitor.find(query)
@@ -413,7 +431,16 @@ exports.getAllVisitors = async (req, res) => {
             return visitorObj;
         });
 
-        res.status(200).json(visitorsWithLatestFollowup);
+        const shouldExcludeFollowedVisitors = excludeFollowedVisitors === 'true';
+        const filteredVisitors = shouldExcludeFollowedVisitors
+            ? visitorsWithLatestFollowup.filter((visitor) => {
+                const hasRemark = String(visitor.remarks || '').trim().length > 0;
+                const hasFollowup = Boolean(visitor.latestFollowup);
+                return !hasRemark && !hasFollowup;
+            })
+            : visitorsWithLatestFollowup;
+
+        res.status(200).json(filteredVisitors);
     } catch (error) {
         console.error("Error fetching visitors:", error);
         res.status(500).json({ message: 'Error fetching visitors', error: error.message });
@@ -482,6 +509,10 @@ exports.updateVisitor = async (req, res) => {
         visitor.branchId = branchId || visitor.branchId;
         visitor.inquiryId = inquiryId || visitor.inquiryId;
 
+        if (assignedTo !== undefined) {
+            visitor.allocatedTo = await resolveAssignableUserId(assignedTo) || visitor.allocatedTo;
+        }
+
         if (isExternalRef !== undefined) {
             visitor.isExternalRef = isExternalRef === 'true' || isExternalRef === true;
         }
@@ -529,6 +560,7 @@ exports.createVisitorFollowUp = async (req, res) => {
         const followUp = await VisitorFollowUp.create({
             visitorId,
             scheduledDate,
+            callingDate: new Date(),
             status: status || visitor.status || 'Open',
             remark,
             attendedBy: visitor.attendedBy,
@@ -569,7 +601,7 @@ exports.createVisitorFollowUp = async (req, res) => {
 // Get visitor follow-ups with filters
 exports.getVisitorFollowUps = async (req, res) => {
     try {
-        const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, branchId, visitorId, employeeId } = req.query;
+        const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, branchId, visitorId, employeeId, dateFilterType } = req.query;
         const query = { isDeleted: false };
 
         if (visitorId) {
@@ -587,7 +619,11 @@ exports.getVisitorFollowUps = async (req, res) => {
 
         const dateRange = buildDateRange(fromDate, toDate);
         if (dateRange) {
-            query.scheduledDate = dateRange;
+            if (dateFilterType === 'callingDate') {
+                query.callingDate = dateRange;
+            } else {
+                query.scheduledDate = dateRange;
+            }
         }
 
         if (req.user.role !== 'Super Admin') {
@@ -634,7 +670,12 @@ exports.getVisitorFollowUps = async (req, res) => {
         }
 
         const followUps = await queryExec;
-        res.status(200).json(followUps);
+        const followUpsWithCallingDate = followUps.map((followUp) => {
+            const item = followUp.toObject ? followUp.toObject() : { ...followUp };
+            item.callingDate = item.callingDate || item.createdAt || item.updatedAt || null;
+            return item;
+        });
+        res.status(200).json(followUpsWithCallingDate);
     } catch (error) {
         console.error("Error fetching visitor follow-ups:", error);
         res.status(500).json({ message: 'Error fetching visitor follow-ups', error: error.message });
@@ -670,7 +711,9 @@ exports.deleteVisitorFollowUp = async (req, res) => {
 // Get Visitor follow-up statistics
 exports.getVisitorFollowUpStats = async (req, res) => {
     try {
-        const { fromDate, toDate, branchId, employeeId } = req.query;
+        const { fromDate, toDate, branchId, employeeId, dateFilterType } = req.query;
+        const useFollowUpDate = dateFilterType === 'followUpDate';
+        const employeeUserId = employeeId ? await resolveAssignableUserId(employeeId) : null;
 
         // Date Range for "New" visitors and followups performed
         const start = fromDate ? new Date(fromDate) : new Date();
@@ -685,11 +728,15 @@ exports.getVisitorFollowUpStats = async (req, res) => {
             query.branchId = branchId;
         }
 
-        // Stats for visitors created within range
-        const rangeVisitorsQuery = {
-            ...query,
-            visitingDate: { $gte: start, $lte: end }
-        };
+        // Stats for visitors created within range or visitors with followups in range
+        const rangeVisitorsQuery = useFollowUpDate
+            ? {
+                ...query
+            }
+            : {
+                ...query,
+                visitingDate: { $gte: start, $lte: end }
+            };
 
         // Stats for followups scheduled within range
         const followUpStatsQuery = {
@@ -697,41 +744,138 @@ exports.getVisitorFollowUpStats = async (req, res) => {
             scheduledDate: { $gte: start, $lte: end }
         };
 
-        if (employeeId) {
-            const employeeUserId = await resolveAssignableUserId(employeeId);
-            if (employeeUserId) {
-                followUpStatsQuery.followUpBy = employeeUserId;
-            }
+        if (employeeUserId) {
+            followUpStatsQuery.followUpBy = employeeUserId;
         }
 
         const openStatuses = ["Open", "InProgress", "Recall", "Pending"];
         const completedStatuses = ["Complete", "Converted"];
 
         // Pending from before the selected range
-        const pendingFromBeforeQuery = {
-            ...query,
-            visitingDate: { $lt: start },
-            status: { $in: openStatuses }
-        };
+        const pendingFromBeforeQuery = useFollowUpDate
+            ? {
+                ...query,
+                ...(employeeUserId ? { followUpBy: employeeUserId } : {}),
+                scheduledDate: { $lt: start }
+            }
+            : {
+                ...query,
+                visitingDate: { $lt: start }
+            };
+
+        const pendingFollowupsQuery = useFollowUpDate
+            ? {
+                ...query,
+                ...(employeeUserId ? { followUpBy: employeeUserId } : {}),
+                scheduledDate: { $lt: start }
+            }
+            : {
+                ...query,
+                scheduledDate: { $lt: start }
+            };
 
         const [
-            totalInquiries, 
-            openCount, 
-            completedCount, 
-            totalFollowUps, 
-            pendingFromBefore,
-            followUpsToday
+            rangeVisitors,
+            allOpenVisitors,
+            rangeCompletedVisitors,
+            totalFollowUps,
+            pendingBeforeFollowups,
+            followUpsInRange
         ] = await Promise.all([
-            Visitor.countDocuments(rangeVisitorsQuery),
-            Visitor.countDocuments({ ...query, status: { $in: openStatuses } }), // Current open across all time for this branch
-            Visitor.countDocuments({ ...rangeVisitorsQuery, status: { $in: completedStatuses } }),
+            useFollowUpDate
+                ? VisitorFollowUp.find(followUpStatsQuery).select('visitorId scheduledDate followUpBy callingDate createdAt updatedAt status').populate('followUpBy', 'name username').lean()
+                : Visitor.find(rangeVisitorsQuery).lean(),
+            Visitor.find({ ...query, status: { $in: openStatuses } }).select('_id').lean(),
+            useFollowUpDate
+                ? Visitor.find({ ...query, status: { $in: completedStatuses } }).select('_id').lean()
+                : Visitor.find({ ...rangeVisitorsQuery, status: { $in: completedStatuses } }).select('_id').lean(),
             VisitorFollowUp.countDocuments(followUpStatsQuery),
-            Visitor.countDocuments(pendingFromBeforeQuery),
-            VisitorFollowUp.countDocuments({ ...query, createdAt: { $gte: start, $lte: end } })
+            VisitorFollowUp.find(pendingFollowupsQuery).select('visitorId scheduledDate followUpBy callingDate createdAt updatedAt status').populate('followUpBy', 'name username').lean(),
+            VisitorFollowUp.find({
+                ...query,
+                scheduledDate: { $gte: start, $lte: end },
+                ...(employeeUserId ? { followUpBy: employeeUserId } : {})
+            })
+                .select('visitorId scheduledDate followUpBy callingDate createdAt updatedAt status')
+                .populate('followUpBy', 'name username')
+                .lean()
         ]);
 
+        const rangeVisitorDocs = useFollowUpDate
+            ? [...new Set(rangeVisitors.map((item) => item.visitorId?.toString()).filter(Boolean))]
+            : rangeVisitors.map((v) => v._id.toString());
+
+        const visitorsForCounts = useFollowUpDate && rangeVisitorDocs.length
+            ? await Visitor.find({ ...query, _id: { $in: rangeVisitorDocs } }).select('_id status').lean()
+            : [];
+
+        const totalInquiries = useFollowUpDate ? visitorsForCounts.length : rangeVisitors.length;
+        const openCount = useFollowUpDate
+            ? visitorsForCounts.filter((visitor) => openStatuses.includes(visitor.status)).length
+            : await Visitor.countDocuments({ ...query, status: { $in: openStatuses } });
+        const completedCount = useFollowUpDate
+            ? visitorsForCounts.filter((visitor) => completedStatuses.includes(visitor.status)).length
+            : await Visitor.countDocuments({ ...rangeVisitorsQuery, status: { $in: completedStatuses } });
+
+        const buildVisitorMap = (items) => {
+            const map = new Map();
+            for (const item of items) {
+                const visitorId = useFollowUpDate ? item.visitorId?.toString() : item._id.toString();
+                if (!visitorId) continue;
+                const existing = map.get(visitorId);
+                if (!existing) {
+                    map.set(visitorId, item);
+                    continue;
+                }
+                const currentDate = new Date(item.callingDate || item.createdAt || item.scheduledDate || 0);
+                const existingDate = new Date(existing.callingDate || existing.createdAt || existing.scheduledDate || 0);
+                if (currentDate > existingDate) {
+                    map.set(visitorId, item);
+                }
+            }
+            return map;
+        };
+
+        const latestPendingMap = buildVisitorMap(pendingBeforeFollowups);
+        const pendingVisitorIds = [...latestPendingMap.keys()];
+        const pendingVisitorDocs = pendingVisitorIds.length
+            ? await Visitor.find({ ...query, _id: { $in: pendingVisitorIds } }).select('_id status').lean()
+            : [];
+        const pendingFromBefore = pendingVisitorDocs.filter((visitor) => openStatuses.includes(visitor.status)).length;
+        const pendingByDateMap = new Map();
+        for (const visitor of pendingVisitorDocs) {
+            if (!openStatuses.includes(visitor.status)) continue;
+            const followUp = latestPendingMap.get(visitor._id.toString());
+            const baseDate = followUp?.scheduledDate;
+            if (!baseDate) continue;
+            const key = new Date(baseDate).toISOString().slice(0, 10);
+            pendingByDateMap.set(key, (pendingByDateMap.get(key) || 0) + 1);
+        }
+        const pendingByDate = [...pendingByDateMap.entries()]
+            .map(([date, count]) => ({ date, count }))
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        const totalFollowUpsCount = useFollowUpDate ? followUpsInRange.length : totalFollowUps;
+        const followUpsToday = useFollowUpDate ? followUpsInRange.length : VisitorFollowUp.countDocuments({ ...query, scheduledDate: { $gte: start, $lte: end } });
+        const followUpsDoneQuery = {
+            ...query,
+            $or: [
+                { callingDate: { $gte: start, $lte: end } },
+                { callingDate: { $exists: false }, createdAt: { $gte: start, $lte: end } },
+                { callingDate: null, createdAt: { $gte: start, $lte: end } }
+            ],
+            ...(employeeUserId ? { followUpBy: employeeUserId } : {})
+        };
+        const followUpsDoneDocs = await VisitorFollowUp.find(followUpsDoneQuery)
+            .select('visitorId scheduledDate followUpBy callingDate createdAt updatedAt status remark attendedBy branchId')
+            .populate('visitorId', 'studentName mobileNumber contactParent contactHome visitingDate inquiryId reference createdBy allocatedTo')
+            .populate('followUpBy', 'name username')
+            .populate('branchId', 'name')
+            .lean();
+        const followUpsDoneToday = followUpsDoneDocs.length;
+
         // Employee performance
-        const followUps = await VisitorFollowUp.find(followUpStatsQuery)
+        const followUps = useFollowUpDate ? followUpsInRange : await VisitorFollowUp.find(followUpStatsQuery)
             .populate('followUpBy', 'name username')
             .lean();
 
@@ -761,14 +905,32 @@ exports.getVisitorFollowUpStats = async (req, res) => {
             totalInquiries,
             openCount,
             completedCount,
-            totalFollowUps,
+            totalFollowUps: totalFollowUpsCount,
             pendingFromBefore,
+            pendingByDate,
+            followUpsDoneToday,
+            followupDetails: followUpsDoneDocs.map((item) => ({
+                inquiryDate: item.visitorId?.visitingDate || null,
+                branchName: item.branchId?.name || '-',
+                filledBy: item.visitorId?.createdBy?.name || item.visitorId?.createdBy?.username || item.visitorId?.allocatedTo?.name || item.visitorId?.allocatedTo?.username || '-',
+                referenceBy: item.visitorId?.reference || '-',
+                studentName: item.visitorId?.studentName || '-',
+                contactHome: item.visitorId?.contactHome || '-',
+                contactStudent: item.visitorId?.mobileNumber || '-',
+                contactParent: item.visitorId?.contactParent || '-',
+                status: item.status || item.visitorId?.status || 'Open',
+                followUpDate: item.scheduledDate || null,
+                followUpDetails: item.remark || '-',
+                followUpBy: item.followUpBy?.name || item.followUpBy?.username || '-',
+                callingDate: item.callingDate || item.createdAt || null
+            })),
             employees: employeeStats,
             summary: {
                 total: totalInquiries,
                 open: openCount,
                 completed: completedCount,
-                followUpsToday: followUpsToday
+                followUpsToday: followUpsToday,
+                followUpsDoneToday: followUpsDoneToday
             }
         });
     } catch (error) {

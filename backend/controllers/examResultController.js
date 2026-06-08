@@ -300,23 +300,54 @@ const getNextResultNumbers = asyncHandler(async (req, res) => {
 // @desc    Verify Exam Result Publicly
 // @route   POST /api/master/exam-result/verify
 const verifyExamResult = asyncHandler(async (req, res) => {
-    const { email, enrollmentNo } = req.body;
+    const { email, enrollmentNo, regNo, identifier, dob } = req.body;
+    const searchVal = identifier || enrollmentNo || regNo;
 
-    if (!email || !enrollmentNo) {
-        res.status(400);
-        throw new Error('Email and Enrollment number are required');
-    }
+    let student;
 
-    // Find student with both Email and Enrollment number
-    const student = await Student.findOne({
-        email: { $regex: new RegExp(`^${email.trim()}$`, 'i') },
-        enrollmentNo: { $regex: new RegExp(`^${enrollmentNo.trim()}$`, 'i') },
-        isDeleted: false
-    }).lean();
+    if (searchVal && dob) {
+        student = await Student.findOne({
+            $or: [
+                { enrollmentNo: { $regex: new RegExp(`^${searchVal.trim()}$`, 'i') } },
+                { regNo: { $regex: new RegExp(`^${searchVal.trim()}$`, 'i') } }
+            ],
+            isDeleted: false
+        })
+            .populate('course', 'name duration durationType shortName')
+            .lean();
 
-    if (!student) {
-        res.status(404);
-        throw new Error('No student found with the provided Email and Enrollment number');
+        if (!student) {
+            res.status(404);
+            throw new Error('No student found with the provided Enrollment/Registration number');
+        }
+
+        const d1 = new Date(dob);
+        const d2 = new Date(student.dob);
+        const isSameDate = (d1.getUTCDate() === d2.getUTCDate() && d1.getUTCMonth() === d2.getUTCMonth() && d1.getUTCFullYear() === d2.getUTCFullYear()) ||
+            (d1.getDate() === d2.getDate() && d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear());
+
+        if (!isSameDate) {
+            res.status(400);
+            throw new Error('Invalid Date of Birth for the provided student');
+        }
+    } else {
+        if (!email || !enrollmentNo) {
+            res.status(400);
+            throw new Error('Email and Enrollment number are required');
+        }
+
+        student = await Student.findOne({
+            email: { $regex: new RegExp(`^${email.trim()}$`, 'i') },
+            enrollmentNo: { $regex: new RegExp(`^${enrollmentNo.trim()}$`, 'i') },
+            isDeleted: false
+        })
+            .populate('course', 'name duration durationType shortName')
+            .lean();
+
+        if (!student) {
+            res.status(404);
+            throw new Error('No student found with the provided Email and Enrollment number');
+        }
     }
 
     // Find exam result for this student

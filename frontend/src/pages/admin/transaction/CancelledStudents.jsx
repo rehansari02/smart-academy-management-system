@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { fetchCancelledStudents, deleteStudent } from '../../../features/student/studentSlice';
 import { fetchBranches } from '../../../features/master/masterSlice';
-import { UserX, Search, ChevronLeft, ChevronRight, Trash2, AlertTriangle } from 'lucide-react';
+import { UserX, Search, ChevronLeft, ChevronRight, Trash2, AlertTriangle, XCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
@@ -15,6 +16,7 @@ const CONFIRM_STEPS = [
 
 const CancelledStudents = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { cancelledStudents, cancelledPagination, isLoading } = useSelector((state) => state.students);
   const { branches } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
@@ -120,13 +122,25 @@ const CancelledStudents = () => {
   return (
     <div className="container mx-auto p-4 max-w-7xl">
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="flex items-center gap-3 mb-6 border-b pb-4">
-          <UserX className="text-red-500" size={28} />
-          <div>
-            <h2 className="text-2xl font-bold text-gray-800">Cancelled Students</h2>
-            <p className="text-sm text-gray-500">
-              Showing {cancelledPagination.count || 0} total cancelled students
-            </p>
+        <div className="mb-6 border-b pb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <UserX className="text-red-500" size={28} />
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">Cancelled Students</h2>
+                <p className="text-sm text-gray-500">
+                  Showing {cancelledPagination.count || 0} total cancelled students
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/transaction/student-cancellation')}
+              className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100"
+            >
+              <XCircle size={16} />
+              Student Cancellation
+            </button>
           </div>
         </div>
 
