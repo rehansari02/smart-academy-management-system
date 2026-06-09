@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchStudents, resetStudentLogin, resetStatus, deleteStudent, fetchUniqueReferences } from '../../../features/student/studentSlice';
 import { fetchCourses, fetchBatches, fetchBranches } from '../../../features/master/masterSlice';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Edit, Printer, FileText, CheckSquare, Square, Search, RefreshCw, Plus, Lock, X, Save, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Edit, Printer, FileText, Award, CheckSquare, Square, Search, RefreshCw, Plus, Lock, X, Save, Trash2 } from 'lucide-react';
 import StudentSearch from '../../../components/StudentSearch';
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
 import { toast } from 'react-toastify';
@@ -20,6 +20,14 @@ const StudentList = () => {
   const { courses, branches } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
   const { view, add, edit, delete: canDelete } = useUserRights('Student');
+
+  const getStudentFullName = (student) => {
+    return [student?.firstName, student?.middleName, student?.lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim()
+      .replace(/\s+/g, ' ') || '-';
+  };
   
   // Filter States - UPDATED KEYS TO MATCH BACKEND
   const [filters, setFilters] = useState({
@@ -212,7 +220,7 @@ const StudentList = () => {
                         label="Search Student"
                         onSelect={(id, student) => {
                             if (student) {
-                                const studentName = `${student.firstName || ''} ${student.middleName || ''} ${student.lastName || ''}`.trim().replace(/\s+/g, ' ');
+                                const studentName = getStudentFullName(student);
                                 const newFilters = { ...filters, studentName, page: 1 };
                                 setFilters(newFilters);
                                 setAppliedFilters(newFilters);
@@ -330,7 +338,7 @@ const StudentList = () => {
               <th className="p-2 border font-semibold">Course</th>
               <th className="p-2 border font-semibold">Duration</th>
               <th className="p-2 border font-semibold">Branch</th>
-              <th className="p-2 border font-semibold text-center">Marksheet</th>
+              <th className="p-2 border font-semibold text-center">Result</th>
               <th className="p-2 border font-semibold text-center">Status</th>
               <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-32">Actions</th>
             </tr>
@@ -345,7 +353,7 @@ const StudentList = () => {
                 <td className="p-2 border whitespace-nowrap">{moment(s.admissionDate).format('DD/MM/YYYY')}</td>
                 <td className="p-2 border whitespace-nowrap">{s.registrationDate ? moment(s.registrationDate).format('DD/MM/YYYY') : '-'}</td>
 
-                <td className="p-2 border font-medium text-gray-900">{s.firstName} {s.middleName} {s.lastName}</td>
+                <td className="p-2 border font-medium text-gray-900">{getStudentFullName(s)}</td>
                 {/* <td className="p-2 border">{s.middleName || '-'}</td>
                 <td className="p-2 border">{s.lastName}</td> */}
 
@@ -376,15 +384,26 @@ const StudentList = () => {
                 
                 <td className="p-2 border text-center whitespace-nowrap">
                     {s.examResult ? (
-                        <a 
-                            href={`/print/exam-result/${s.examResult._id}?type=Marksheet`} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-md border border-purple-200 hover:bg-purple-100 transition-colors inline-flex items-center gap-1 text-xs font-bold shadow-sm" 
-                            title="Print Marksheet"
-                        >
-                            <Printer size={13} /> Print
-                        </a>
+                        <div className="flex justify-center gap-1">
+                            <a
+                                href={`/print/exam-result/${s.examResult._id}?type=Marksheet`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="bg-purple-50 text-purple-700 p-1.5 rounded border border-purple-200 hover:bg-purple-100 transition inline-flex items-center"
+                                title="Marksheet"
+                            >
+                                <FileText size={14} />
+                            </a>
+                            <a
+                                href={`/print/exam-result/${s.examResult._id}?type=Certificate`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="bg-emerald-50 text-emerald-700 p-1.5 rounded border border-emerald-200 hover:bg-emerald-100 transition inline-flex items-center"
+                                title="Certificate"
+                            >
+                                <Award size={14} />
+                            </a>
+                        </div>
                     ) : (
                         <span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full font-medium">Pending</span>
                     )}

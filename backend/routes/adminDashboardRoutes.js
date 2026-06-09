@@ -6,6 +6,6 @@ const { getAdminDashboard, getReferenceIncentive, updateIncentiveStatus } = requ
 
 router.get('/overview', protect, checkPermission('Dashboard', 'view'), getAdminDashboard);
 router.get('/reference-incentive', protect, checkPermission('Reference Incentive', 'view'), getReferenceIncentive);
-router.put('/reference-incentive/update-status', protect, updateIncentiveStatus);
+router.put('/reference-incentive/update-status', protect, checkPermission('Reference Incentive', 'edit'), updateIncentiveStatus);
 
 module.exports = router;

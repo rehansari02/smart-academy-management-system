@@ -311,6 +311,35 @@ export const createEducation = createAsyncThunk('master/createEducation', async 
     } catch (error) { return thunkAPI.rejectWithValue(error.response.data.message); }
 });
 
+// --- Employee Role Thunks ---
+export const fetchEmployeeRoles = createAsyncThunk('master/fetchEmployeeRoles', async (_, thunkAPI) => {
+    try {
+        const response = await axios.get(API_URL + 'employee-role');
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+});
+
+export const createEmployeeRole = createAsyncThunk('master/createEmployeeRole', async (data, thunkAPI) => {
+    try {
+        const response = await axios.post(API_URL + 'employee-role', data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const updateEmployeeRole = createAsyncThunk('master/updateEmployeeRole', async ({ id, data }, thunkAPI) => {
+    try {
+        const response = await axios.put(`${API_URL}employee-role/${id}`, data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const deleteEmployeeRole = createAsyncThunk('master/deleteEmployeeRole', async (id, thunkAPI) => {
+    try {
+        const response = await axios.delete(`${API_URL}employee-role/${id}`);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
 // --- Free Learning Thunks ---
 export const fetchFreeLearningQuestions = createAsyncThunk('master/fetchFreeLearningQuestions', async (params, thunkAPI) => {
     try {
@@ -416,6 +445,7 @@ const masterSlice = createSlice({
         pendingExams: [],
         references: [],
         educations: [],
+        employeeRoles: [],
         exams: [],
         branches: [],
         freeLearningQuestions: [],
@@ -626,6 +656,27 @@ const masterSlice = createSlice({
                 state.educations.push(action.payload); // push to sort alphabetically usually handled by backend but good here
                 state.isSuccess = true;
                 state.message = 'Education Added Successfully';
+            })
+
+            // --- Employee Roles ---
+            .addCase(fetchEmployeeRoles.fulfilled, (state, action) => { state.employeeRoles = action.payload; })
+            .addCase(createEmployeeRole.fulfilled, (state, action) => {
+                state.employeeRoles.push(action.payload);
+                state.employeeRoles.sort((a, b) => a.name.localeCompare(b.name));
+                state.isSuccess = true;
+                state.message = 'Role Added Successfully';
+            })
+            .addCase(updateEmployeeRole.fulfilled, (state, action) => {
+                const index = state.employeeRoles.findIndex(r => r._id === action.payload._id);
+                if (index !== -1) state.employeeRoles[index] = action.payload;
+                state.employeeRoles.sort((a, b) => a.name.localeCompare(b.name));
+                state.isSuccess = true;
+                state.message = 'Role Updated Successfully';
+            })
+            .addCase(deleteEmployeeRole.fulfilled, (state, action) => {
+                state.employeeRoles = state.employeeRoles.filter(r => r._id !== action.payload.id);
+                state.isSuccess = true;
+                state.message = 'Role Deleted Successfully';
             })
 
             // --- Exams ---

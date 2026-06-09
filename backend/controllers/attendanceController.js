@@ -14,6 +14,29 @@ const normalizeDateRange = (dateValue) => {
     return { start, end };
 };
 
+const getCourseEndDate = (student) => {
+    const duration = Number(student?.course?.duration || 0);
+    if (!duration) return null;
+
+    const startDate = new Date(student.batchStartDate || student.admissionDate);
+    if (Number.isNaN(startDate.getTime())) return null;
+
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(startDate);
+    const durationType = String(student?.course?.durationType || 'Month').toLowerCase();
+
+    if (durationType.startsWith('year')) {
+        endDate.setFullYear(endDate.getFullYear() + duration);
+    } else if (durationType.startsWith('day')) {
+        endDate.setDate(endDate.getDate() + duration);
+    } else {
+        endDate.setMonth(endDate.getMonth() + duration);
+    }
+
+    endDate.setHours(23, 59, 59, 999);
+    return endDate;
+};
+
 const getCalendarYears = (fromDate, toDate) => {
     const currentYear = new Date().getFullYear();
     const startYear = fromDate ? new Date(fromDate).getFullYear() : currentYear;
@@ -297,9 +320,13 @@ exports.getStudentsForAttendance = async (req, res) => {
 
         const query = {
             batch: { $in: batchMatchers },
-            isRegistered: true,
+            isActive: true,
             isDeleted: { $ne: true },
-            isCancelled: { $ne: true }
+            isCancelled: { $ne: true },
+            $or: [
+                { isRegistered: true },
+                { registrationFeeAmount: { $gt: 0 } }
+            ]
         };
 
         if (req.user && req.user.role !== 'Super Admin' && req.user.branchId) {
@@ -307,16 +334,21 @@ exports.getStudentsForAttendance = async (req, res) => {
         }
 
         const students = await Student.find(query)
-            .populate('course', 'name')
+            .populate('course', 'name duration durationType')
             .sort({ admissionDate: -1, createdAt: -1 });
 
         const attendanceDate = date ? new Date(date) : new Date();
         attendanceDate.setHours(23, 59, 59, 999);
+        const attendanceDayStart = new Date(attendanceDate);
+        attendanceDayStart.setHours(0, 0, 0, 0);
 
-        let eligibleStudents = students;
-        if (!Number.isNaN(attendanceDate.getTime()) && students.length > 0) {
+        let eligibleStudents = students.filter(student => {
+            const courseEndDate = getCourseEndDate(student);
+            return !courseEndDate || courseEndDate >= attendanceDayStart;
+        });
+        if (!Number.isNaN(attendanceDate.getTime()) && eligibleStudents.length > 0) {
             const scheduledStudentIds = await ExamSchedule.distinct('attendees', {
-                attendees: { $in: students.map(student => student._id) },
+                attendees: { $in: eligibleStudents.map(student => student._id) },
                 isDeleted: { $ne: true },
                 isActive: { $ne: false },
                 'timeTable.date': { $lte: attendanceDate }

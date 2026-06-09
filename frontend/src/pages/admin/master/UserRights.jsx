@@ -14,7 +14,24 @@ import { Save, CheckSquare, Square, Trash2, Plus } from 'lucide-react';
 import { getMenuSections, getAllPermissionPages } from '../../../utils/menuConfig';
 import { normalizePermissionRecord } from '../../../utils/permissionUtils';
 
-const buildDefaultPermissions = () => getAllPermissionPages().map(page => ({
+const ACTIONS = ['view', 'add', 'edit', 'delete'];
+const PAGE_ALLOWED_ACTIONS = {
+  Dashboard: ['view']
+};
+
+const isActionAllowed = (page, action) => !PAGE_ALLOWED_ACTIONS[page] || PAGE_ALLOWED_ACTIONS[page].includes(action);
+
+const normalizePagePermission = (permission = {}) => {
+  const normalized = normalizePermissionRecord(permission);
+  ACTIONS.forEach(action => {
+    if (!isActionAllowed(normalized.page, action)) {
+      normalized[action] = false;
+    }
+  });
+  return normalized;
+};
+
+const buildDefaultPermissions = () => getAllPermissionPages().map(page => normalizePagePermission({
   page,
   view: false,
   add: false,
@@ -63,7 +80,7 @@ const UserRights = () => {
           
           if (existing) {
             // Use existing data with proper boolean conversion
-            return normalizePermissionRecord({
+            return normalizePagePermission({
               page,
               view: Boolean(existing.view),
               add: Boolean(existing.add),
@@ -71,7 +88,7 @@ const UserRights = () => {
               delete: Boolean(existing.delete)
             });
           }
-          return { page, view: false, add: false, edit: false, delete: false };
+          return normalizePagePermission({ page, view: false, add: false, edit: false, delete: false });
         });
       
       setPermissions(mergedPermissions);
@@ -102,7 +119,7 @@ const UserRights = () => {
           // Merge template permissions with current state structure
           const newPerms = permissions.map(p => {
               const tmplPerm = tmpl.permissions.find(tp => tp.page === p.page);
-              return tmplPerm ? normalizePermissionRecord({
+              return tmplPerm ? normalizePagePermission({
                   ...p,
                   view: tmplPerm.view,
                   add: tmplPerm.add,
@@ -138,6 +155,7 @@ const UserRights = () => {
   const handleCheckboxChange = (pageName, field, value) => {
       setPermissions(prev => prev.map(p => {
         if (p.page !== pageName) return p;
+        if (!isActionAllowed(p.page, field)) return p;
         const next = { ...p, [field]: value };
         if (field === 'view' && !value) {
           next.add = false;
@@ -166,7 +184,7 @@ const UserRights = () => {
             next.edit = true;
           }
         }
-        return normalizePermissionRecord(next);
+        return normalizePagePermission(next);
       }));
   };
 
@@ -174,8 +192,11 @@ const UserRights = () => {
   const handleRowSelectAll = (pageName, isChecked) => {
     setPermissions(prev => prev.map(p => 
       p.page === pageName ? { 
-        ...p, 
-        view: isChecked, add: isChecked, edit: isChecked, delete: isChecked 
+        ...p,
+        ...ACTIONS.reduce((acc, action) => ({
+          ...acc,
+          [action]: isActionAllowed(pageName, action) ? isChecked : false
+        }), {})
       } : p
     ));
   };
@@ -184,9 +205,9 @@ const UserRights = () => {
   const handleColumnSelectAll = (field, isChecked) => {
       const visiblePages = sections[activeTab] || [];
       setPermissions(prev => prev.map(p => {
-        if (visiblePages.includes(p.page)) {
+        if (visiblePages.includes(p.page) && isActionAllowed(p.page, field)) {
           const next = { ...p, [field]: isChecked };
-          return normalizePermissionRecord(next);
+          return normalizePagePermission(next);
         }
         return p;
       }));
@@ -266,7 +287,7 @@ const UserRights = () => {
 
                     <button 
                       onClick={() => {
-                        setPermissions(prev => prev.map(p => normalizePermissionRecord({ ...p, view: true, add: true, edit: true, delete: true })))
+                        setPermissions(prev => prev.map(p => normalizePagePermission({ ...p, view: true, add: true, edit: true, delete: true })))
                       }}
                     className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300 flex items-center gap-2"
                 >
@@ -326,18 +347,19 @@ const UserRights = () => {
                   <th className="p-2 border font-semibold w-1/4">
                     Page Name
                   </th>
-                  {['view', 'add', 'edit', 'delete'].map(action => (
+                  {ACTIONS.map(action => (
                     <th key={action} className="p-2 border font-semibold text-center">
                       <div className="flex flex-col items-center gap-1 cursor-pointer group"
                            onClick={() => {
                              // Check if all visible rows have this action checked
-                             const allChecked = visiblePermissions.every(p => p[action]);
+                             const actionablePermissions = visiblePermissions.filter(p => isActionAllowed(p.page, action));
+                             const allChecked = actionablePermissions.length > 0 && actionablePermissions.every(p => p[action]);
                              handleColumnSelectAll(action, !allChecked);
                            }}
                       >
                          <span className="group-hover:text-blue-200 transition-colors uppercase">{action}</span>
                          {/* Visual indicator for Column Select All */}
-                         {visiblePermissions.length > 0 && visiblePermissions.every(p => p[action]) 
+                         {visiblePermissions.filter(p => isActionAllowed(p.page, action)).length > 0 && visiblePermissions.filter(p => isActionAllowed(p.page, action)).every(p => p[action]) 
                            ? <CheckSquare size={16} className="text-white"/> 
                            : <Square size={16} className="text-blue-300"/>
                          }
@@ -356,20 +378,24 @@ const UserRights = () => {
                       <td className="p-2 border font-medium text-gray-900">
                         {perm.page}
                       </td>
-                      {['view', 'add', 'edit', 'delete'].map(action => (
+                      {ACTIONS.map(action => (
                         <td key={action} className="p-2 border text-center">
-                          <input 
-                            type="checkbox"
-                            checked={perm[action]}
-                            onChange={(e) => handleCheckboxChange(perm.page, action, e.target.checked)}
-                            className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded cursor-pointer transition-all"
-                          />
+                          {isActionAllowed(perm.page, action) ? (
+                            <input 
+                              type="checkbox"
+                              checked={perm[action]}
+                              onChange={(e) => handleCheckboxChange(perm.page, action, e.target.checked)}
+                              className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded cursor-pointer transition-all"
+                            />
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
                         </td>
                       ))}
                       <td className="p-2 border text-center">
                         <input 
                           type="checkbox"
-                          checked={perm.view && perm.add && perm.edit && perm.delete}
+                          checked={ACTIONS.filter(action => isActionAllowed(perm.page, action)).every(action => perm[action])}
                           onChange={(e) => handleRowSelectAll(perm.page, e.target.checked)}
                           className="h-4 w-4 text-accent focus:ring-accent border-gray-300 rounded cursor-pointer"
                         />

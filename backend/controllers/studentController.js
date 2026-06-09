@@ -58,7 +58,7 @@ const getStudents = asyncHandler(async (req, res) => {
         page = 1, pageSize = 10, courseFilter, studentName,
         hasPendingFees, reference, startDate, endDate,
         isRegistered, isAdmissionFeesPaid, batch, branchId,
-        sortBy = '-admissionDate -createdAt', ids, isActive
+        sortBy = '-admissionDate -createdAt', ids, isActive, registrationPaidOrRegistered
     } = req.query;
     
     let query = { isDeleted: false };
@@ -106,7 +106,23 @@ const getStudents = asyncHandler(async (req, res) => {
         query.admissionDate = { $gte: new Date(startDate), $lte: end };
     }
 
-    if (isRegistered !== undefined) {
+    if (registrationPaidOrRegistered === 'true') {
+        const registrationEligibility = [
+            { isRegistered: true },
+            { registrationFeeAmount: { $gt: 0 } }
+        ];
+
+        if (query.$or) {
+            query.$and = [
+                ...(query.$and || []),
+                { $or: query.$or },
+                { $or: registrationEligibility }
+            ];
+            delete query.$or;
+        } else {
+            query.$or = registrationEligibility;
+        }
+    } else if (isRegistered !== undefined) {
         query.isRegistered = isRegistered === 'true';
     }
 
@@ -362,6 +378,7 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
     // const { id } = req.params;
     // const { data } = req.body; // ERROR HERE: Frontend sends body directly!
     const { username, password, feeDetails } = req.body;
+    const selectedRegistrationDate = feeDetails?.date ? new Date(feeDetails.date) : new Date();
 
     // console.log("DEBUG: Confirming Registration for Student ID:", id);
     // console.log("DEBUG: Received Data:", JSON.stringify(data, null, 2));
@@ -484,7 +501,7 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
                         student: student._id,
                         course: student.course,
                         amountPaid: Number(feeDetails.amount),
-                        date: feeDetails.date || new Date(),
+                        date: selectedRegistrationDate,
                         paymentMode: feeDetails.paymentMode,
                         remarks: feeDetails.remarks || 'Registration Fee',
                         createdBy: req.user?._id, 
@@ -515,7 +532,7 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
             }        
             student.regNo = finalRegNo;
             student.isRegistered = true;
-            student.registrationDate = new Date();
+            student.registrationDate = selectedRegistrationDate;
             if (newUser) {
                 student.userId = newUser._id;
             }
@@ -907,7 +924,7 @@ const getExamPendingStudents = asyncHandler(async (req, res) => {
     const skip = limit * (Number(page) - 1);
     const pendingDays = Number(minPendingDays) || 30;
 
-    let query = { isDeleted: false, isRegistered: true, isCancelled: false };
+    let query = { isDeleted: false, isRegistered: true, isActive: true, isCancelled: false };
 
     if (req.user.role !== 'Super Admin' && req.user.branchId) {
         query.branchId = req.user.branchId;
@@ -942,10 +959,8 @@ const getExamPendingStudents = asyncHandler(async (req, res) => {
 
         student.courseEndDate = endDate;
         
-        const now = new Date();
-
-        // Show only if ending in the selected days range, but hasn't ended yet (before completion)
-        return endDate >= now && endDate <= targetDateFromNow;
+        // Show active students whose course has already ended or ends within the selected days range.
+        return endDate <= targetDateFromNow;
     });
 
     // Check if exam already taken OR already requested

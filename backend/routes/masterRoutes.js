@@ -9,6 +9,7 @@ const {
     getSubjects, createSubject, updateSubject, deleteSubject,
     getReferences, createReference,
     getEducations, createEducation,
+    getEmployeeRoles, createEmployeeRole, updateEmployeeRole, deleteEmployeeRole,
     getExams, createExam,
     updateExam, deleteExam
 } = require('../controllers/masterController');
@@ -61,6 +62,15 @@ router.route('/reference')
 router.route('/education')
     .get(getEducations) // Public Access
     .post(protect, createEducation);
+
+// --- Employee Role Routes ---
+router.route('/employee-role')
+    .get(protect, getEmployeeRoles)
+    .post(protect, checkPermission('Employee', 'add'), createEmployeeRole);
+
+router.route('/employee-role/:id')
+    .put(protect, checkPermission('Employee', 'edit'), updateEmployeeRole)
+    .delete(protect, checkPermission('Employee', 'delete'), deleteEmployeeRole);
 
 // --- Exam Name Routes ---
 router.route('/exam-name')

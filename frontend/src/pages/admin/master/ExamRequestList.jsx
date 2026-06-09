@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchExamRequests, cancelExamRequest, fetchCourses, fetchExamRequestBranches } from '../../../features/master/masterSlice';
+import { fetchExamRequests, cancelExamRequest, fetchExamRequestBranches } from '../../../features/master/masterSlice';
 import { Search, RefreshCw, XCircle } from 'lucide-react';
 import StudentSearch from '../../../components/StudentSearch';
 import { toast } from 'react-toastify';
@@ -10,7 +10,7 @@ const ExamRequestList = () => {
   const dispatch = useDispatch();
   
   // Redux Data
-  const { examRequests, courses, examRequestBranches, isLoading } = useSelector((state) => state.master);
+  const { examRequests, examRequestBranches, isLoading } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
 
   const [filters, setFilters] = useState({
@@ -21,9 +21,20 @@ const ExamRequestList = () => {
   const [cancelModal, setCancelModal] = useState({ show: false, requestId: null, reason: '' });
   const [selectedRequests, setSelectedRequests] = useState([]);
   const navigate = useNavigate();
+  const pendingCourseOptions = React.useMemo(() => {
+    const courseMap = new Map();
+
+    (examRequests || [])
+      .filter(req => req.status === 'Pending' && req.student?.course?._id)
+      .forEach(req => {
+        const course = req.student.course;
+        courseMap.set(course._id, course);
+      });
+
+    return [...courseMap.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [examRequests]);
 
   useEffect(() => {
-    dispatch(fetchCourses());
     dispatch(fetchExamRequests());
     dispatch(fetchExamRequestBranches());
   }, [dispatch]);
@@ -58,19 +69,14 @@ const ExamRequestList = () => {
   const handleScheduleExam = () => {
     if (selectedRequests.length === 0) return;
     
-    // Check if all selected requests belong to the same course
     const selectedData = examRequests.filter(r => selectedRequests.includes(r._id));
-    const courseIds = [...new Set(selectedData.map(r => r.student?.course?._id))];
-    
-    if (courseIds.length > 1) {
-        toast.warning("Please select students from the same course to schedule together.");
-        return;
-    }
+    const courseIds = [...new Set(selectedData.map(r => r.student?.course?._id).filter(Boolean))];
 
     navigate('/master/exam-schedule', { 
         state: { 
             selectedStudentIds: selectedData.map(r => r.student?._id),
-            courseId: courseIds[0],
+            courseId: courseIds[0] || '',
+            selectedCourseIds: courseIds,
             fromRequest: true
         } 
     });
@@ -117,8 +123,11 @@ const ExamRequestList = () => {
                 onChange={(e) => setFilters({...filters, courseId: e.target.value})}
             >
                 <option value="">-- All Courses --</option>
-                {courses.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                {pendingCourseOptions.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
             </select>
+            {pendingCourseOptions.length === 0 && (
+                <p className="text-[10px] text-gray-400 mt-1">No courses with pending exam requests</p>
+            )}
           </div>
 
           {/* Branch Filter - only for Super Admin, only show branches with exam request data */}

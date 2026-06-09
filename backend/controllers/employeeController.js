@@ -1,5 +1,6 @@
 const Employee = require('../models/Employee');
 const User = require('../models/User');
+const Branch = require('../models/Branch');
 const sendSMS = require('../utils/smsSender');
 const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
@@ -54,7 +55,7 @@ const getEmployees = asyncHandler(async (req, res) => {
         query.gender = gender;
     }
     
-    // 3. Dynamic Search (Name, Email, Mobile)
+    // 3. Dynamic Search (Name, Email, Mobile, Branch)
     if (searchBy && searchValue) {
         const regex = { $regex: searchValue, $options: 'i' }; // Case-insensitive
         
@@ -64,12 +65,25 @@ const getEmployees = asyncHandler(async (req, res) => {
             query.email = regex;
         } else if (searchBy === 'mobile') {
             query.mobile = regex;
+        } else if (searchBy === 'branch') {
+            const matchingBranches = await Branch.find({
+                $or: [
+                    { name: regex },
+                    { shortCode: regex }
+                ]
+            }).select('_id');
+            query.branchId = { $in: matchingBranches.map((branch) => branch._id) };
         }
     }
 
     // 4. Branch Restriction for Non-Super Admins
     if (req.user && req.user.role !== 'Super Admin' && req.user.branchId) {
-        query.branchId = req.user.branchId;
+        if (query.branchId && query.branchId.$in) {
+            const branchMatch = query.branchId.$in.some((branchId) => branchId.toString() === req.user.branchId.toString());
+            query.branchId = branchMatch ? req.user.branchId : { $in: [] };
+        } else {
+            query.branchId = req.user.branchId;
+        }
     }
     // Allow manual filter if Super Admin wants to see specific branch
     if (req.user && req.user.role === 'Super Admin' && req.query.branchId) {

@@ -134,8 +134,10 @@ export const MENU_CONFIG = [
     type: 'dropdown',
     subItems: [
       { title: 'Video Call', path: '/connect/video-call' },
-      { title: 'Inquiry List', path: '/connect/inquiry-list' },
-      { title: 'Feedback & Support', path: '/master/feedback' }
+      // { title: 'Inquiry List', path: '/connect/inquiry-list' },
+      { title: 'Feedback & Support', path: '/master/feedback' },
+      { title: 'Manage Contacts', path: '/utility/contacts' },
+      { title: 'Complain Box', path: '/utility/complains' }
     ]
   },
   {
@@ -146,10 +148,8 @@ export const MENU_CONFIG = [
       { title: 'Branch', path: '/master/branch', restricted: true },
       { title: 'Location', path: '/utility/location' },
       { title: 'Manage Terms', path: '/master/manage-terms' },
-      { title: 'Manage Contacts', path: '/utility/contacts' },
       { title: 'Cloudinary Management', path: '/utility/cloudinary-manager' },
       { title: 'SMS Station', path: '/utility/sms-station' },
-      { title: 'Complain Box', path: '/utility/complains' },
       // { title: 'Downloads', path: '/utility/downloads' },
     ]
   }
@@ -188,14 +188,11 @@ export const getMenuSections = () => {
             
             if (pageNames.length > 0) {
                 // If it's Home, we might want to group it separately or just add to sections
-                sections[item.title] = pageNames;
+                sections[item.title] = [...new Set(pageNames)];
             }
         }
     });
 
-    // Add standalone pages that aren't in the menu navigation but need user rights
-    sections['Dashboard'] = ['Dashboard'];
-    
     // Add Reference Incentive to the Home section (or create if not exists)
     if (sections['Home']) {
         if (!sections['Home'].includes('Reference Incentive')) {

@@ -98,8 +98,8 @@ const BranchMaster = () => {
                 await dispatch(createBranch(formData)).unwrap();
                 toast.success('Branch Created Successfully');
             }
+            dispatch(getBranches());
             closeModal();
-            // dispatch(getBranches()); // Removed to rely on Redux state update and avoid race conditions
         } catch (error) {
             toast.error(error || 'Something went wrong');
         }

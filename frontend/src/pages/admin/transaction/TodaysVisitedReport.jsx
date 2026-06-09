@@ -149,6 +149,30 @@ const TodaysVisitedReport = () => {
         return onlineInquiryRights;
     };
 
+    const getPrintStatusClass = (status = 'Open') => {
+        if (status === 'Open') return 'status-open';
+        if (status === 'Recall') return 'status-recall';
+        if (status === 'Complete') return 'status-complete';
+        if (status === 'Close') return 'status-close';
+        return 'status-default';
+    };
+
+    const renderPrintStatus = (status) => {
+        const value = status || 'Open';
+        return `<span class="status-badge ${getPrintStatusClass(value)}">${value}</span>`;
+    };
+
+    const renderPrintContact = (items) => `
+        <div class="contact-grid">
+            ${items.map((item) => `
+                <div class="contact-row">
+                    <div class="contact-label">${item.label}</div>
+                    <div class="contact-value ${item.highlight ? 'contact-highlight' : ''}">${item.value || '-'}</div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+
     const getLastFollowUpInfo = (visitor) => {
         const last = visitor.latestFollowup;
         if (!last) return '-';
@@ -189,6 +213,7 @@ const TodaysVisitedReport = () => {
                     <title>${title}</title>
                     <style>
                         @page { size: landscape; margin: 10mm; }
+                        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
                         body { font-family: Arial, sans-serif; margin: 0; color: #111827; }
                         .header { margin-bottom: 12px; }
                         .header h1 { margin: 0; font-size: 18px; }
@@ -196,8 +221,56 @@ const TodaysVisitedReport = () => {
                         table { width: 100%; border-collapse: collapse; font-size: 10px; }
                         th, td { border: 1px solid #d1d5db; padding: 6px; vertical-align: top; }
                         th { background: #2563eb; color: #fff; text-align: left; }
+                        tbody tr { border-bottom: 1px solid #f3f4f6; }
+                        tr.handled-row { background: #fef2f2; }
                         .text-center { text-align: center; }
                         .muted { color: #6b7280; }
+                        .sr { color: #9ca3af; font-weight: 600; }
+                        .name { color: #1f2937; font-weight: 700; }
+                        .muted-cell { color: #4b5563; font-weight: 600; }
+                        .time-in { color: #15803d; font-weight: 700; }
+                        .time-out { color: #ef4444; font-weight: 700; }
+                        .date-stack { display: flex; flex-direction: column; gap: 2px; }
+                        .date-main { color: #1f2937; font-weight: 700; }
+                        .date-time { color: #2563eb; font-size: 9px; }
+                        .byline { color: #6b7280; font-size: 9px; }
+                        .contact-cell { padding: 0; width: 110px; }
+                        .contact-grid { display: table; width: 100%; border-collapse: collapse; }
+                        .contact-row { display: table-row; }
+                        .contact-label,
+                        .contact-value {
+                            display: table-cell;
+                            border-bottom: 1px solid #e5e7eb;
+                            padding: 4px;
+                        }
+                        .contact-row:last-child .contact-label,
+                        .contact-row:last-child .contact-value { border-bottom: 0; }
+                        .contact-label {
+                            width: 18px;
+                            background: #f9fafb;
+                            color: #6b7280;
+                            border-right: 1px solid #e5e7eb;
+                            text-align: center;
+                            font-weight: 700;
+                        }
+                        .contact-value { color: #374151; font-weight: 600; }
+                        .contact-highlight { color: #2563eb; }
+                        .status-badge {
+                            display: inline-block;
+                            padding: 2px 6px;
+                            border-radius: 4px;
+                            font-size: 9px;
+                            line-height: 1.2;
+                            text-transform: uppercase;
+                            letter-spacing: .04em;
+                            font-weight: 700;
+                            border: 1px solid transparent;
+                        }
+                        .status-open { background: #dcfce7; color: #15803d; border-color: #bbf7d0; }
+                        .status-recall { background: #fef9c3; color: #854d0e; border-color: #fde68a; }
+                        .status-complete { background: #f3e8ff; color: #7e22ce; border-color: #e9d5ff; }
+                        .status-close { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+                        .status-default { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
                     </style>
                 </head>
                 <body>
@@ -238,20 +311,24 @@ const TodaysVisitedReport = () => {
                 </tr>
             `;
             const rows = visitors.map((visitor, index) => `
-                <tr>
-                    <td class="text-center">${index + 1}</td>
-                    <td>${formatDate(visitor.inquiryId?.inquiryDate || visitor.visitingDate)}</td>
-                    <td>${visitor.latestFollowup?.scheduledDate ? formatDate(visitor.latestFollowup.scheduledDate) : formatDate(visitor.visitingDate)}</td>
-                    ${user?.role === 'Super Admin' ? `<td>${visitor.branchId?.name || '-'}</td>` : ''}
-                    <td>${getFilledBy(visitor)}</td>
-                    <td>${getReferenceBy(visitor)}</td>
-                    <td>${getFullName(visitor.inquiryId && typeof visitor.inquiryId === 'object' ? visitor.inquiryId : visitor)}</td>
-                    <td>${visitor.contactHome || '-'} / ${visitor.mobileNumber || '-'} / ${visitor.contactParent || '-'}</td>
-                    <td>${visitor.status || 'Open'}</td>
-                    <td>${visitor.inTime || '-'}</td>
-                    <td>${visitor.outTime || '-'}</td>
+                <tr class="${isVisitorHandled(visitor) ? 'handled-row' : ''}">
+                    <td class="text-center sr">${index + 1}</td>
+                    <td class="date-main">${formatDate(visitor.inquiryId?.inquiryDate || visitor.visitingDate)}</td>
+                    <td class="date-main">${visitor.latestFollowup?.scheduledDate ? formatDate(visitor.latestFollowup.scheduledDate) : formatDate(visitor.visitingDate)}</td>
+                    ${user?.role === 'Super Admin' ? `<td class="muted-cell">${visitor.branchId?.name || '-'}</td>` : ''}
+                    <td class="muted-cell">${getFilledBy(visitor)}</td>
+                    <td class="muted-cell">${getReferenceBy(visitor)}</td>
+                    <td class="name">${getFullName(visitor.inquiryId && typeof visitor.inquiryId === 'object' ? visitor.inquiryId : visitor)}</td>
+                    <td class="contact-cell">${renderPrintContact([
+                        { label: 'H', value: visitor.contactHome },
+                        { label: 'S', value: visitor.mobileNumber, highlight: true },
+                        { label: 'P', value: visitor.contactParent }
+                    ])}</td>
+                    <td class="text-center">${renderPrintStatus(visitor.status)}</td>
+                    <td><span class="time-in">${visitor.inTime || '-'}</span></td>
+                    <td>${visitor.outTime ? `<span class="time-out">${visitor.outTime}</span>` : '-'}</td>
                     <td>${visitor.remarks || '-'}</td>
-                    <td>${visitor.createdAt ? `${formatDate(visitor.createdAt)} ${new Date(visitor.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}</td>
+                    <td>${visitor.createdAt ? `<div class="date-stack"><span class="date-main">${formatDate(visitor.createdAt)}</span><span class="date-time">${new Date(visitor.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>` : '-'}</td>
                 </tr>
             `).join('');
             printHtml('Visitors List', `<table><thead>${headers}</thead><tbody>${rows || `<tr><td colspan="${user?.role === 'Super Admin' ? 13 : 12}" class="text-center muted">No visitors found for this period.</td></tr>`}</tbody></table>`);
@@ -295,18 +372,22 @@ const TodaysVisitedReport = () => {
                 : (item.callingDate || lastHistoryItem?.callingDate || lastHistoryItem?.createdAt || lastHistoryItem?.date || inquiry.updatedAt);
             return `
                 <tr>
-                    <td class="text-center">${index + 1}</td>
-                    <td>${originalDate ? formatDate(originalDate) : '-'}</td>
-                    ${user?.role === 'Super Admin' ? `<td>${branchName || '-'}</td>` : ''}
-                    <td>${isVisitorFollowUp ? getFilledBy(visitor) : (inquiry.createdBy?.name || inquiry.createdBy?.username || inquiry.followUpBy?.name || inquiry.followUpBy?.username || '-')}</td>
-                    <td>${isVisitorFollowUp ? getReferenceBy(visitor) : getReferenceBy(inquiry)}</td>
-                    <td>${personName}</td>
-                    <td>${(isVisitorFollowUp ? visitor.contactHome : inquiry.contactHome) || '-'} / ${(isVisitorFollowUp ? visitor.mobileNumber : inquiry.contactStudent) || '-'} / ${(isVisitorFollowUp ? visitor.contactParent : inquiry.contactParent) || '-'}</td>
-                    <td>${status || 'Open'}</td>
-                    <td>${followUpDate ? `${formatDate(followUpDate)} ${new Date(followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}</td>
+                    <td class="text-center sr">${index + 1}</td>
+                    <td class="date-main">${originalDate ? formatDate(originalDate) : '-'}</td>
+                    ${user?.role === 'Super Admin' ? `<td class="muted-cell">${branchName || '-'}</td>` : ''}
+                    <td class="muted-cell">${isVisitorFollowUp ? getFilledBy(visitor) : (inquiry.createdBy?.name || inquiry.createdBy?.username || inquiry.followUpBy?.name || inquiry.followUpBy?.username || '-')}</td>
+                    <td class="muted-cell">${isVisitorFollowUp ? getReferenceBy(visitor) : getReferenceBy(inquiry)}</td>
+                    <td class="name">${personName}</td>
+                    <td class="contact-cell">${renderPrintContact([
+                        { label: 'H', value: isVisitorFollowUp ? visitor.contactHome : inquiry.contactHome },
+                        { label: 'S', value: isVisitorFollowUp ? visitor.mobileNumber : inquiry.contactStudent, highlight: true },
+                        { label: 'P', value: isVisitorFollowUp ? visitor.contactParent : inquiry.contactParent }
+                    ])}</td>
+                    <td class="text-center">${renderPrintStatus(status)}</td>
+                    <td>${followUpDate ? `<div class="date-stack"><span class="date-main">${formatDate(followUpDate)}</span><span class="date-time">${new Date(followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>` : '-'}</td>
                     <td>${details || '-'}</td>
                     <td>${followUpBy?.name || followUpBy?.username || '-'}</td>
-                    <td>${callingDate ? `${formatDate(callingDate)} ${new Date(callingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}</td>
+                    <td>${callingDate ? `<div class="date-stack"><span class="date-main">${formatDate(callingDate)} ${new Date(callingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span class="byline">by ${followUpBy?.name || followUpBy?.username || '-'}</span></div>` : '-'}</td>
                 </tr>
             `;
         }).join('');

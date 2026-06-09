@@ -5,8 +5,13 @@ const Subject = require('../models/Subject');
 const Student = require('../models/Student'); // Imported Student model for aggregation
 const Reference = require('../models/Reference');
 const Education = require('../models/Education');
+const EmployeeRole = require('../models/EmployeeRole');
 const Exam = require('../models/Exam');
 const asyncHandler = require('express-async-handler');
+
+const DEFAULT_EMPLOYEE_ROLES = ['Faculty', 'Manager', 'Marketing Person', 'Branch Director', 'Receptionist', 'Other'];
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // --- COURSE CONTROLLERS ---
 const getCourses = asyncHandler(async (req, res) => {
@@ -261,6 +266,83 @@ const createEducation = asyncHandler(async (req, res) => {
     res.status(201).json(education);
 });
 
+// --- EMPLOYEE ROLE CONTROLLERS ---
+const ensureDefaultEmployeeRoles = async () => {
+    const count = await EmployeeRole.countDocuments({});
+    if (count > 0) return;
+
+    await EmployeeRole.insertMany(
+        DEFAULT_EMPLOYEE_ROLES.map((name) => ({ name })),
+        { ordered: false }
+    ).catch(() => {});
+};
+
+const getEmployeeRoles = asyncHandler(async (req, res) => {
+    await ensureDefaultEmployeeRoles();
+    const roles = await EmployeeRole.find({ isDeleted: false }).sort({ name: 1 });
+    res.json(roles);
+});
+
+const createEmployeeRole = asyncHandler(async (req, res) => {
+    const name = (req.body.name || '').trim();
+    if (!name) {
+        res.status(400);
+        throw new Error('Role name is required');
+    }
+
+    const exists = await EmployeeRole.findOne({
+        name: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') },
+        isDeleted: false
+    });
+    if (exists) {
+        res.status(400);
+        throw new Error('Role already exists');
+    }
+
+    const role = await EmployeeRole.create({ name });
+    res.status(201).json(role);
+});
+
+const updateEmployeeRole = asyncHandler(async (req, res) => {
+    const name = (req.body.name || '').trim();
+    if (!name) {
+        res.status(400);
+        throw new Error('Role name is required');
+    }
+
+    const role = await EmployeeRole.findOne({ _id: req.params.id, isDeleted: false });
+    if (!role) {
+        res.status(404);
+        throw new Error('Role not found');
+    }
+
+    const exists = await EmployeeRole.findOne({
+        _id: { $ne: req.params.id },
+        name: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') },
+        isDeleted: false
+    });
+    if (exists) {
+        res.status(400);
+        throw new Error('Role already exists');
+    }
+
+    role.name = name;
+    const updatedRole = await role.save();
+    res.json(updatedRole);
+});
+
+const deleteEmployeeRole = asyncHandler(async (req, res) => {
+    const role = await EmployeeRole.findOne({ _id: req.params.id, isDeleted: false });
+    if (!role) {
+        res.status(404);
+        throw new Error('Role not found');
+    }
+
+    role.isDeleted = true;
+    await role.save();
+    res.json({ id: req.params.id, message: 'Role Deleted Successfully' });
+});
+
 // --- EXAM NAME MASTER CONTROLLERS ---
 const getExams = asyncHandler(async (req, res) => {
     const exams = await Exam.find({ isDeleted: false }).sort({ name: 1 });
@@ -327,6 +409,7 @@ module.exports = {
     createEmployee, getEmployees,
     getReferences, createReference,
     getEducations, createEducation,
+    getEmployeeRoles, createEmployeeRole, updateEmployeeRole, deleteEmployeeRole,
     getExams, createExam,
     updateExam, deleteExam
 };

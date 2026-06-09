@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchBatches, fetchBranches, fetchCourses } from '../../../features/master/masterSlice';
+import { fetchBatches, fetchBranches, fetchCourses, fetchExamSchedules } from '../../../features/master/masterSlice';
 import { fetchStudentAttendanceHistory } from '../../../features/transaction/attendanceSlice';
 import { fetchStudents } from '../../../features/student/studentSlice';
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
@@ -12,9 +12,33 @@ import logo from '../../../assets/logo2.png';
 import { toast } from 'react-toastify';
 import axios from 'axios';
 
+const getStudentStartDate = (student) => {
+    const date = moment(student?.batchStartDate || student?.admissionDate);
+    return date.isValid() ? date.startOf('day') : null;
+};
+
+const getCourseEndDate = (student) => {
+    const duration = Number(student?.course?.duration || 0);
+    const startDate = getStudentStartDate(student);
+    if (!duration || !startDate) return null;
+
+    const durationType = String(student?.course?.durationType || 'Month').toLowerCase();
+    const endDate = startDate.clone();
+
+    if (durationType.startsWith('year')) {
+        endDate.add(duration, 'years');
+    } else if (durationType.startsWith('day')) {
+        endDate.add(duration, 'days');
+    } else {
+        endDate.add(duration, 'months');
+    }
+
+    return endDate.endOf('day');
+};
+
 const StudentAttendanceReport = () => {
     const dispatch = useDispatch();
-    const { batches, branches, courses } = useSelector((state) => state.master);
+    const { batches, branches, courses, examSchedules } = useSelector((state) => state.master);
     const { attendanceList, isLoading: attendanceLoading } = useSelector((state) => state.attendance);
     const { students } = useSelector((state) => state.students);
     const { employees } = useSelector((state) => state.employees);
@@ -28,7 +52,7 @@ const StudentAttendanceReport = () => {
         courseFilter: '',
         branchId: user?.branchId || '',
         reference: '',
-        isRegistered: 'true'
+        registrationPaidOrRegistered: 'true'
     });
 
     const [reportData, setReportData] = useState([]);
@@ -103,7 +127,7 @@ const StudentAttendanceReport = () => {
             courseFilter: '',
             branchId: user?.branchId || '',
             reference: '',
-            isRegistered: 'true'
+            registrationPaidOrRegistered: 'true'
         };
         setFilters(initialFilters);
         loadReport(initialFilters);
@@ -125,11 +149,14 @@ const StudentAttendanceReport = () => {
             batch: reportFilters.batch || undefined,
             branchId: reportFilters.branchId || undefined
         }));
+        dispatch(fetchExamSchedules({
+            branchId: reportFilters.branchId || undefined
+        }));
 
         // Fetch Students
         const studentParams = {
-            isActive: true,
-            isRegistered: 'true',
+            isActive: 'true',
+            registrationPaidOrRegistered: 'true',
             pageSize: 2000,
             branchId: reportFilters.branchId || undefined,
             courseFilter: reportFilters.courseFilter || undefined,
@@ -156,6 +183,32 @@ const StudentAttendanceReport = () => {
             loadReport(filters);
         }
     }, [user]);
+
+    const firstExamDateByStudentId = useMemo(() => {
+        const map = {};
+
+        (examSchedules || []).forEach((schedule) => {
+            if (schedule?.isDeleted || schedule?.isActive === false) return;
+
+            const dates = (schedule.timeTable || [])
+                .map((item) => moment(item?.date).startOf('day'))
+                .filter((date) => date.isValid());
+
+            if (dates.length === 0) return;
+
+            const firstDate = moment.min(dates);
+            (schedule.attendees || []).forEach((attendee) => {
+                const studentId = typeof attendee === 'object' ? attendee?._id : attendee;
+                if (!studentId) return;
+
+                if (!map[studentId] || firstDate.isBefore(map[studentId], 'day')) {
+                    map[studentId] = firstDate.clone();
+                }
+            });
+        });
+
+        return map;
+    }, [examSchedules]);
 
     // Calculate Report Data
     useEffect(() => {
@@ -187,22 +240,44 @@ const StudentAttendanceReport = () => {
                 }
             });
 
+            const monthStart = moment(filters.month, 'YYYY-MM').startOf('month');
             const processedData = students.map(student => {
                 let presentCount = 0;
                 let absentCount = 0;
                 let sundayCount = 0;
                 let closureCount = 0;
+                let workingDayCount = 0;
                 let daysData = {};
+                let hasEligibleDay = false;
+                const studentStartDate = getStudentStartDate(student);
+                const courseEndDate = getCourseEndDate(student);
+                const examDate = firstExamDateByStudentId[student._id];
+                const examCutoffDate = examDate ? examDate.clone().subtract(1, 'day').endOf('day') : null;
+                const eligibilityEndDate = [courseEndDate, examCutoffDate]
+                    .filter(Boolean)
+                    .reduce((earliest, date) => (!earliest || date.isBefore(earliest) ? date : earliest), null);
 
                 daysInMonth.forEach(day => {
+                    const reportDay = moment(day.fullDate, 'YYYY-MM-DD').startOf('day');
                     const closureType = closureMap[day.fullDate];
-                    if (day.isSunday || closureType === 'Sunday') {
-                        daysData[day.date] = 'S';
+                    const closedStatus = closureType === 'Vacation' ? 'V' : (day.isSunday || closureType === 'Sunday') ? 'S' : closureType ? 'H' : null;
+                    const isBeforeStart = studentStartDate && reportDay.isBefore(studentStartDate, 'day');
+                    const isAfterEnd = eligibilityEndDate && reportDay.isAfter(eligibilityEndDate, 'day');
+
+                    if (isBeforeStart || isAfterEnd) {
+                        daysData[day.date] = closedStatus || '-';
+                        return;
+                    }
+
+                    hasEligibleDay = true;
+                    if (closedStatus === 'S') {
+                        daysData[day.date] = closedStatus;
                         sundayCount++;
-                    } else if (closureType) {
-                        daysData[day.date] = closureType === 'Vacation' ? 'V' : 'H';
+                    } else if (closedStatus) {
+                        daysData[day.date] = closedStatus;
                         closureCount++;
                     } else {
+                        workingDayCount++;
                         const status = attendanceMap[day.fullDate]?.[student._id];
                         if (status) {
                             daysData[day.date] = status;
@@ -214,8 +289,11 @@ const StudentAttendanceReport = () => {
                     }
                 });
 
-                const totalWD = daysInMonth.length - sundayCount - closureCount;
-                const percentage = totalWD > 0 ? ((presentCount / totalWD) * 100).toFixed(2) : 0;
+                if (!hasEligibleDay || (eligibilityEndDate && eligibilityEndDate.isBefore(monthStart, 'day'))) {
+                    return null;
+                }
+
+                const percentage = workingDayCount > 0 ? ((presentCount / workingDayCount) * 100).toFixed(2) : 0;
 
                 return {
                     ...student,
@@ -223,19 +301,19 @@ const StudentAttendanceReport = () => {
                     stats: {
                         present: presentCount,
                         absent: absentCount,
-                        wd: totalWD,
+                        wd: workingDayCount,
                         sundays: sundayCount,
                         festival: closureCount,
                         rank: percentage
                     }
                 };
-            });
+            }).filter(Boolean);
 
             processedData.sort((a, b) => (a.firstName || '').localeCompare(b.firstName || ''));
 
             setReportData(processedData);
         }
-    }, [students, attendanceList, daysInMonth, attendanceClosures]);
+    }, [students, attendanceList, daysInMonth, attendanceClosures, firstExamDateByStudentId, filters.month]);
 
     useEffect(() => {
         const originalTitle = document.title;
@@ -360,7 +438,8 @@ const StudentAttendanceReport = () => {
                             selectedValue={filters.studentName}
                             displayField="name"
                             additionalFilters={{
-                                isRegistered: 'true',
+                                isActive: 'true',
+                                registrationPaidOrRegistered: 'true',
                                 branchId: filters.branchId,
                                 courseFilter: filters.courseFilter || undefined
                             }}

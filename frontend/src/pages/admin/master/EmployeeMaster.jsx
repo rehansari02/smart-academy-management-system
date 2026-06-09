@@ -4,7 +4,16 @@ import { useForm } from 'react-hook-form';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchEmployees, createEmployee, updateEmployee, deleteEmployee, resetEmployeeStatus } from '../../../features/employee/employeeSlice';
 import { getBranches } from '../../../features/master/branchSlice'; // Import API
-import { fetchEducations, createEducation, fetchReferences, createReference } from '../../../features/master/masterSlice';
+import {
+  fetchEducations,
+  createEducation,
+  fetchReferences,
+  createReference,
+  fetchEmployeeRoles,
+  createEmployeeRole,
+  updateEmployeeRole,
+  deleteEmployeeRole
+} from '../../../features/master/masterSlice';
 import { formatInputText } from '../../../utils/textFormatter';
 import { toast } from 'react-toastify';
 import { Search, Plus, X, Upload, User, Briefcase, Lock, Trash2, Edit, RotateCcw, Loader, Printer } from 'lucide-react';
@@ -19,7 +28,7 @@ const EmployeeMaster = () => {
   const dispatch = useDispatch();
   const { employees, isSuccess, isError, message, isLoading } = useSelector((state) => state.employees);
   const { branches } = useSelector((state) => state.branch);
-  const { educations, references } = useSelector((state) => state.master);
+  const { educations, references, employeeRoles } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth); // Get Auth User
   const [showForm, setShowForm] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -30,6 +39,9 @@ const EmployeeMaster = () => {
   const [showEduModal, setShowEduModal] = useState(false);
   const [newEdu, setNewEdu] = useState('');
   const [isEduLoading, setIsEduLoading] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [roleForm, setRoleForm] = useState({ id: null, name: '' });
+  const [isRoleLoading, setIsRoleLoading] = useState(false);
 
   // Reference States
   const [showRefModal, setShowRefModal] = useState(false);
@@ -113,6 +125,7 @@ const EmployeeMaster = () => {
       let val = emp.name;
       if (filters.searchBy === 'email') val = emp.email;
       if (filters.searchBy === 'mobile') val = emp.mobile;
+      if (filters.searchBy === 'branch') val = emp.branchId?.name || emp.branchName || '';
       
       const updatedFilters = { ...filters, searchValue: val };
       setFilters(updatedFilters);
@@ -124,6 +137,7 @@ const EmployeeMaster = () => {
     dispatch(fetchEmployees(filters));
     dispatch(fetchEducations());
     dispatch(fetchReferences());
+    dispatch(fetchEmployeeRoles());
     if(user?.role === 'Super Admin') {
         dispatch(getBranches());
     }
@@ -294,6 +308,81 @@ const EmployeeMaster = () => {
       dispatch(fetchEmployees(updated));
   };
 
+  const resetRoleForm = () => {
+      setRoleForm({ id: null, name: '' });
+  };
+
+  const handleSaveRole = () => {
+      const name = roleForm.name.trim();
+      if (!name) {
+          toast.error('Role name is required');
+          return;
+      }
+
+      setIsRoleLoading(true);
+      const action = roleForm.id
+          ? updateEmployeeRole({ id: roleForm.id, data: { name } })
+          : createEmployeeRole({ name });
+
+      dispatch(action).then((res) => {
+          setIsRoleLoading(false);
+          if (res.error) {
+              toast.error(res.payload || 'Failed to save role');
+              return;
+          }
+
+          setValue('type', res.payload.name);
+          toast.success(roleForm.id ? 'Role Updated!' : 'Role Added!');
+          resetRoleForm();
+      });
+  };
+
+  const handleEditRole = (role) => {
+      if (!edit) {
+          toast.error("You don't have permission to edit roles");
+          return;
+      }
+      setRoleForm({ id: role._id, name: role.name });
+  };
+
+  const handleDeleteRole = (role) => {
+      if (!canDelete) {
+          Swal.fire({
+              title: 'Access Denied',
+              text: "You don't have permission to delete roles.",
+              icon: 'error',
+              confirmButtonColor: '#d33',
+          });
+          return;
+      }
+
+      Swal.fire({
+          title: 'Delete role?',
+          text: `Are you sure you want to delete "${role.name}"?`,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#d33',
+          cancelButtonColor: '#3085d6',
+          confirmButtonText: 'Yes, delete it!'
+      }).then((result) => {
+          if (!result.isConfirmed) return;
+
+          dispatch(deleteEmployeeRole(role._id)).then((res) => {
+              if (res.error) {
+                  toast.error(res.payload || 'Failed to delete role');
+                  return;
+              }
+              if (watchType === role.name) {
+                  setValue('type', '');
+              }
+              if (roleForm.id === role._id) {
+                  resetRoleForm();
+              }
+              toast.success('Role Deleted!');
+          });
+      });
+  };
+
   return (
     <div className="container mx-auto p-4">
       
@@ -376,6 +465,7 @@ const EmployeeMaster = () => {
                         <option value="name">Employee Name</option>
                         <option value="email">Email ID</option>
                         <option value="mobile">Mobile Number</option>
+                        <option value="branch">Branch</option>
                     </select>
                 </div>
 
@@ -385,7 +475,7 @@ const EmployeeMaster = () => {
                     <div className="relative">
                         <input 
                             type="text" 
-                            placeholder={`Search by ${filters.searchBy === 'name' ? 'Employee Name' : filters.searchBy === 'email' ? 'Email ID' : 'Mobile Number'}...`}
+                            placeholder={`Search by ${filters.searchBy === 'name' ? 'Employee Name' : filters.searchBy === 'email' ? 'Email ID' : filters.searchBy === 'mobile' ? 'Mobile Number' : 'Branch'}...`}
                             value={filters.searchValue} 
                             onChange={e => {
                                 setFilters({...filters, searchValue: e.target.value});
@@ -435,11 +525,13 @@ const EmployeeMaster = () => {
                                                 {filters.searchBy === 'name' && emp.name}
                                                 {filters.searchBy === 'email' && emp.email}
                                                 {filters.searchBy === 'mobile' && emp.mobile}
+                                                {filters.searchBy === 'branch' && (emp.branchId?.name || emp.branchName || 'Main')}
                                             </div>
                                             <div className="text-[10px] text-gray-500 mt-0.5">
                                                 {filters.searchBy !== 'name' && <span>{emp.name} • </span>}
                                                 {filters.searchBy !== 'email' && <span>{emp.email} • </span>}
                                                 {filters.searchBy !== 'mobile' && <span>{emp.mobile}</span>}
+                                                {filters.searchBy !== 'branch' && <span> - {emp.branchId?.name || emp.branchName || 'Main'}</span>}
                                                 <span> ({emp.type})</span>
                                             </div>
                                         </div>
@@ -671,6 +763,79 @@ const EmployeeMaster = () => {
                       </div>
                   </div>
                 )}
+                {/* Role Modal */}
+                {showRoleModal && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 rounded-lg p-4">
+                      <div className="bg-white p-5 rounded-lg shadow-2xl w-full max-w-md border animate-fadeIn">
+                          <div className="flex justify-between items-center mb-4 border-b pb-2">
+                              <h4 className="font-bold text-gray-800">Manage Roles</h4>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                    setShowRoleModal(false);
+                                    resetRoleForm();
+                                }}
+                              >
+                                  <X size={18} className="text-gray-500 hover:text-red-500"/>
+                              </button>
+                          </div>
+                          <div className="flex gap-2 mb-4">
+                              <input
+                                  className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                  placeholder="Role name *"
+                                  value={roleForm.name}
+                                  onChange={e => setRoleForm({ ...roleForm, name: formatInputText(e.target.value) })}
+                              />
+                              <button
+                                  type="button"
+                                  onClick={handleSaveRole}
+                                  disabled={isRoleLoading || (!roleForm.id && !add) || (roleForm.id && !edit)}
+                                  className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700 transition flex items-center gap-2 disabled:opacity-60"
+                              >
+                                  {isRoleLoading ? <Loader className="animate-spin" size={16}/> : <Plus size={16}/>}
+                                  {roleForm.id ? 'Update' : 'Add'}
+                              </button>
+                              {roleForm.id && (
+                                  <button
+                                      type="button"
+                                      onClick={resetRoleForm}
+                                      className="p-2 border rounded text-gray-600 hover:bg-gray-100"
+                                      title="Cancel Edit"
+                                  >
+                                      <RotateCcw size={18}/>
+                                  </button>
+                              )}
+                          </div>
+                          <div className="border rounded divide-y max-h-64 overflow-y-auto">
+                              {employeeRoles.length > 0 ? employeeRoles.map(role => (
+                                  <div key={role._id} className="flex items-center justify-between gap-2 p-2">
+                                      <span className="text-sm font-medium text-gray-700">{role.name}</span>
+                                      <div className="flex items-center gap-1">
+                                          <button
+                                              type="button"
+                                              onClick={() => handleEditRole(role)}
+                                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                                              title="Edit Role"
+                                          >
+                                              <Edit size={16}/>
+                                          </button>
+                                          <button
+                                              type="button"
+                                              onClick={() => handleDeleteRole(role)}
+                                              className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                                              title="Delete Role"
+                                          >
+                                              <Trash2 size={16}/>
+                                          </button>
+                                      </div>
+                                  </div>
+                              )) : (
+                                  <div className="p-3 text-sm text-gray-500 text-center">No roles found</div>
+                              )}
+                          </div>
+                      </div>
+                  </div>
+                )}
                 <div className="bg-primary text-white p-4 flex justify-between items-center sticky top-0 z-10">
                     <h2 className="text-lg font-bold flex items-center gap-2">
                         {editMode ? <><Edit size={20}/> Update Employee</> : <><User size={20}/> Add New Employee</>}
@@ -726,10 +891,22 @@ const EmployeeMaster = () => {
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-700">Type (Role) <span className="text-red-500">*</span></label>
-                                <select {...register('type', {required: "Role is required"})} className="w-full border p-2 rounded text-sm mt-1">
-                                    <option value="">Select Role</option>
-                                    <option>Faculty</option><option>Manager</option><option>Marketing Person</option><option>Branch Director</option><option>Receptionist</option><option>Other</option>
-                                </select>
+                                <div className="flex gap-2 mt-1">
+                                    <select {...register('type', {required: "Role is required"})} className="w-full border p-2 rounded text-sm">
+                                        <option value="">Select Role</option>
+                                        {employeeRoles.map((role) => (
+                                            <option key={role._id} value={role.name}>{role.name}</option>
+                                        ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowRoleModal(true)}
+                                      className="p-2 bg-blue-50 text-blue-600 rounded border hover:bg-blue-100 flex-shrink-0"
+                                      title="Manage Roles"
+                                    >
+                                      <Plus size={20} />
+                                    </button>
+                                </div>
                                 {errors.type && <p className="text-red-500 text-xs mt-1">{errors.type.message}</p>}
                             </div>
                             <div>

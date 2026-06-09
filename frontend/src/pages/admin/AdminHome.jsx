@@ -766,7 +766,9 @@ const AdminHome = () => {
                                     <tr><td colSpan="9" className="text-center py-10"><RefreshCw className="animate-spin inline-block mr-2" /> Loading students...</td></tr>
                                 ) : examPendingStudents.length > 0 ? examPendingStudents.map((student, index) => {
                                     const daysDiff = Math.ceil((new Date(student.courseEndDate) - new Date()) / (1000 * 60 * 60 * 24));
+                                    const isOverdue = daysDiff < 0;
                                     const isVeryClose = daysDiff <= 7;
+                                    const pendingDaysLabel = isOverdue ? `${daysDiff} Days` : `${daysDiff} Days Remaining`;
 
                                     return (
                                         <tr key={student._id} className={`hover:bg-gray-50 transition-colors ${selectedStudents.includes(student._id) ? 'bg-blue-50/50' : ''}`}>
@@ -790,9 +792,9 @@ const AdminHome = () => {
                                                 {new Date(student.courseEndDate).toLocaleDateString('en-GB')}
                                             </td>
                                             <td className="px-6 py-4 text-center">
-                                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${isVeryClose ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'
+                                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${isOverdue ? 'bg-red-100 text-red-800 border border-red-200' : isVeryClose ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'
                                                     }`}>
-                                                    {daysDiff} Days Remaining
+                                                    {pendingDaysLabel}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-center">

@@ -68,6 +68,8 @@ const ReferenceIncentive = () => {
   }, [dispatch]);
 
   const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
+  const isBranchDirectorView = user?.role === 'Branch Director' || user?.role === 'Branch Admin';
+  const canViewReferenceOverview = isSuperAdmin || isBranchDirectorView;
   const formatMoney = (value) =>
     new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -104,7 +106,7 @@ const ReferenceIncentive = () => {
         page: detailPage,
         limit: STUDENTS_PAGE_LIMIT,
         ...(reference && { reference }),
-        ...(filters.branchId && { branchId: filters.branchId }),
+        ...(isSuperAdmin && filters.branchId && { branchId: filters.branchId }),
         ...(filters.period === 'custom' && filters.fromDate && { fromDate: filters.fromDate }),
         ...(filters.period === 'custom' && filters.toDate && { toDate: filters.toDate }),
         ...(reference && { studentPeriod: detailFilters.period }),
@@ -116,14 +118,14 @@ const ReferenceIncentive = () => {
       const { data } = await axios.get(API, { params, withCredentials: true });
       setRefData(data);
       
-      // Auto-select for non-super admins to show their own data immediately
-      if (!isSuperAdmin && data.selectedReference && !activeReference) {
+      // Auto-select only normal users to show their own referral data immediately.
+      if (!canViewReferenceOverview && data.selectedReference && !activeReference) {
         // Use the actual reference name from data if available, or the user's name
         const refName = data.filters?.reference || user?.name || 'My Referrals';
         setActiveReference(refName);
       }
 
-      if (!reference && isSuperAdmin) {
+      if (!reference && canViewReferenceOverview) {
         setActiveReference(null);
       }
     } catch (error) {
@@ -227,8 +229,8 @@ const ReferenceIncentive = () => {
           </div>
         </div>
 
-        {/* Super Admin employee/sidebar filters */}
-        {isSuperAdmin && (
+        {/* Admin employee/sidebar filters */}
+        {canViewReferenceOverview && (
           <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_auto] xl:items-end">
               <div className="space-y-4">
@@ -269,19 +271,21 @@ const ReferenceIncentive = () => {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Branch</label>
-                    <select
-                      value={filters.branchId}
-                      onChange={(e) => setFilters(prev => ({ ...prev, branchId: e.target.value }))}
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-primary"
-                    >
-                      <option value="">All Branches</option>
-                      {branches.map(branch => (
-                        <option key={branch._id} value={branch._id}>{branch.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                  {isSuperAdmin && (
+                    <div>
+                      <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Branch</label>
+                      <select
+                        value={filters.branchId}
+                        onChange={(e) => setFilters(prev => ({ ...prev, branchId: e.target.value }))}
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-primary"
+                      >
+                        <option value="">All Branches</option>
+                        {branches.map(branch => (
+                          <option key={branch._id} value={branch._id}>{branch.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {filters.period === 'custom' && (
                     <>
@@ -318,7 +322,7 @@ const ReferenceIncentive = () => {
         {/* Main Layout */}
         <div className="flex flex-col gap-5 lg:flex-row">
           {/* Sidebar */}
-          {isSuperAdmin && showSidebar && (
+          {canViewReferenceOverview && showSidebar && (
             <div className="w-full shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:w-72">
               <div className="border-b border-slate-200 bg-gradient-to-r from-indigo-600 to-purple-600 p-4 text-white">
                 <div className="flex items-center justify-between">
@@ -487,7 +491,7 @@ const ReferenceIncentive = () => {
                     Teacher <span className="text-indigo-600">Incentive</span> Dashboard
                   </h2>
                   <p className="mt-3 max-w-md text-sm font-semibold text-slate-500">
-                    {isSuperAdmin 
+                    {canViewReferenceOverview 
                       ? "Select a teacher from the sidebar to view their referral metrics, earned commissions, and student enrollment history."
                       : "You don't have any referrals recorded for the selected period."}
                   </p>

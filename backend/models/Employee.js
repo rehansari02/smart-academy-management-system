@@ -15,7 +15,7 @@ const employeeSchema = new mongoose.Schema({
     gender: { type: String, enum: ['Male', 'Female', 'Other'], required: true },
     type: { 
         type: String, 
-        enum: ['Manager', 'Faculty', 'Marketing Person', 'Branch Director', 'Receptionist', 'Other'],
+        trim: true,
         required: true
     },
     email: { type: String, required: true },

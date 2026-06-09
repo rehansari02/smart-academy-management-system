@@ -103,7 +103,20 @@ const ExamSchedule = () => {
   const { register, handleSubmit, reset, setValue, watch } = useForm();
   const selectedCourse = watch('course');
   const selectedExamName = watch('examName');
-  const selectedCourseObj = courses.find(c => c._id === selectedCourse);
+  const isFromExamRequestList = location.state?.fromRequest && location.state.selectedStudentIds?.length > 0;
+  const selectedRequestCourseOptions = React.useMemo(() => {
+    const courseMap = new Map();
+
+    (pendingRequests || []).forEach((student) => {
+      const course = student?.course;
+      if (course?._id) {
+        courseMap.set(String(course._id), course);
+      }
+    });
+
+    return [...courseMap.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [pendingRequests]);
+  const selectedCourseObj = courses.find(c => c._id === selectedCourse) || selectedRequestCourseOptions.find(c => c._id === selectedCourse);
   const selectedCourseName = selectedCourseObj ? selectedCourseObj.name : '';
   const availableExamOptions = React.useMemo(() => {
     const map = new Map();
@@ -126,8 +139,18 @@ const ExamSchedule = () => {
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [exams, examSchedules]);
   const availableCourseOptions = React.useMemo(() => {
-    const allCourses = [...(courses || [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const allCourses = isFromExamRequestList
+      ? selectedRequestCourseOptions
+      : [...(coursesWithRequests.length > 0 ? coursesWithRequests : courses || [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     const examNameKey = selectedExamName?.trim().toLowerCase();
+
+    if (isFromExamRequestList && !examNameKey) {
+      return [];
+    }
+
+    if (isFromExamRequestList) {
+      return allCourses;
+    }
 
     if (!examNameKey) {
       return allCourses;
@@ -143,7 +166,11 @@ const ExamSchedule = () => {
 
     const relatedCourses = allCourses.filter((course) => relatedCourseIds.has(String(course._id)));
     return relatedCourses.length > 0 ? relatedCourses : allCourses;
-  }, [courses, examSchedules, selectedExamName]);
+  }, [courses, coursesWithRequests, examSchedules, isFromExamRequestList, selectedExamName, selectedRequestCourseOptions]);
+  const visiblePendingRequests = React.useMemo(() => {
+    if (!selectedCourse) return [];
+    return (pendingRequests || []).filter((student) => String(student?.course?._id || student?.course) === String(selectedCourse));
+  }, [pendingRequests, selectedCourse]);
 
   useEffect(() => {
     if (!selectedCourse) return;
@@ -312,24 +339,29 @@ const ExamSchedule = () => {
   useEffect(() => {
     if (location.state?.fromRequest) {
         setShowForm(true);
-        setValue('course', location.state.courseId);
-        if (location.state.selectedStudentIds) {
-            setSelectedAttendees(location.state.selectedStudentIds);
-        }
+        setValue('course', '');
+        setSelectedAttendees([]);
     }
   }, [location.state, setValue]);
 
-  // Fetch Pending Requests for selected course
+  // Fetch Pending Requests for selected course. When opened from Exam Request List,
+  // keep all selected students visible even if they belong to different courses.
   useEffect(() => {
-    if (selectedCourse && showForm) {
+    const selectedFromRequest = location.state?.fromRequest && location.state.selectedStudentIds?.length > 0;
+
+    if (showForm && (selectedCourse || selectedFromRequest)) {
         setIsRequestsLoading(true);
-        axios.get(`${import.meta.env.VITE_API_URL}/master/exam-request?courseId=${selectedCourse}`, { withCredentials: true })
+        const requestUrl = selectedFromRequest
+            ? `${import.meta.env.VITE_API_URL}/master/exam-request`
+            : `${import.meta.env.VITE_API_URL}/master/exam-request?courseId=${selectedCourse}`;
+
+        axios.get(requestUrl, { withCredentials: true })
             .then(res => {
                 // Flatten the response to get student data
                 let requests = res.data.map(r => r.student).filter(s => s !== null);
                 
                 // If coming from bulk selection, show ONLY those selected students
-                if (location.state?.fromRequest && location.state.selectedStudentIds) {
+                if (selectedFromRequest) {
                     requests = requests.filter(s => location.state.selectedStudentIds.includes(s._id));
                 }
                 
@@ -351,7 +383,13 @@ const ExamSchedule = () => {
         setPendingRequests([]);
         setTimeTableData([]);
     }
-  }, [selectedCourse, showForm, courses, editMode]); // Removed timeTableData from deps to avoid loop
+  }, [selectedCourse, showForm, courses, editMode, location.state]); // Removed timeTableData from deps to avoid loop
+
+  useEffect(() => {
+    if (!isFromExamRequestList || !selectedCourse) return;
+
+    setSelectedAttendees(visiblePendingRequests.map(student => student._id));
+  }, [isFromExamRequestList, selectedCourse, visiblePendingRequests]);
 
   // Fetch Details when detailView changes
   useEffect(() => {
@@ -624,9 +662,9 @@ const ExamSchedule = () => {
                     
                     {isRequestsLoading ? (
                         <div className="text-center py-4 text-sm text-gray-500 italic">Fetching pending requests...</div>
-                    ) : pendingRequests.length > 0 ? (
+                    ) : visiblePendingRequests.length > 0 ? (
                         <div className="max-h-[300px] overflow-y-auto pr-2 grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {pendingRequests.map((student) => (
+                            {visiblePendingRequests.map((student) => (
                                 <div 
                                     key={student._id} 
                                     onClick={() => toggleAttendee(student._id)}
@@ -654,9 +692,11 @@ const ExamSchedule = () => {
                         </div>
                     ) : (
                         <div className="text-center py-8 text-sm text-gray-500 bg-white rounded border border-dashed border-gray-300">
-                            {selectedCourse 
-                                ? "No pending exam requests found for this course." 
-                                : "Please select a course to see pending requests."}
+                            {!selectedExamName
+                                ? "Please select an exam name first."
+                                : selectedCourse 
+                                    ? "No pending exam requests found for this course." 
+                                    : "Please select a course to see pending requests."}
                         </div>
                     )}
                 </div>

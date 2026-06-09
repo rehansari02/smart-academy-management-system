@@ -64,6 +64,8 @@ const addBranchScope = (query, field, branchObjectId) => {
     return query;
 };
 
+const escapeRegex = (value) => String(value || '').replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+
 const moneySum = async (match) => {
     const result = await FeeReceipt.aggregate([
         { $match: match },
@@ -227,12 +229,14 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
     const detailPage = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const detailLimit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 100);
     const detailSkip = (detailPage - 1) * detailLimit;
+    const isBranchDirectorView = ['Branch Director', 'Branch Admin'].includes(req.user.role);
+    const canViewReferenceOverview = req.user.role === 'Super Admin' || isBranchDirectorView;
 
-    // Relaxation: For Reference Incentive, we don't force branchId filter for non-admins 
-    // unless they explicitly selected one. Teachers might refer students to other branches.
-    // Security is already handled by 'referenceFilter' below.
-    if (req.user.role !== 'Super Admin' && !req.query.branchId) {
-        branchId = ''; // Ignore user.branchId auto-filter for incentives
+    if (isBranchDirectorView) {
+        branchId = req.user.branchId || '';
+    } else if (req.user.role !== 'Super Admin' && !req.query.branchId) {
+        // Teachers can see only their own reference records, even if referrals are in another branch.
+        branchId = '';
     }
 
     const branchObjectId = normalizeBranchId(branchId);
@@ -258,9 +262,8 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
     });
     const detailDateMatch = detailRange.start && detailRange.end ? { $gte: detailRange.start, $lte: detailRange.end } : null;
 
-    // Determine reference scope for non-super admins
-    let referenceFilter = { $exists: true, $ne: '', $ne: null, $ne: 'Direct' };
-    if (req.user.role !== 'Super Admin') {
+    let referenceFilter = { $exists: true, $nin: ['', null, 'Direct'] };
+    if (!canViewReferenceOverview) {
         // Only show this user's references
         // We match against full name, first name, or username for better compatibility
         const firstName = req.user.name ? req.user.name.split(' ')[0] : '';
@@ -269,7 +272,7 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
             firstName,
             req.user.username
         ].filter(t => t && t.trim().length > 0)
-         .map(t => `^\\s*${t.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\s*$`); // Escape, anchor and handle spaces
+         .map(t => `^\\s*${escapeRegex(t)}\\s*$`);
         
         referenceFilter = { $regex: searchTerms.join('|'), $options: 'i' };
     }
@@ -351,15 +354,15 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
     // For non-super admins, if they haven't selected a reference, 
     // we can auto-select their own reference to show them data immediately
     let selectedRef = reference;
-    if (req.user.role !== 'Super Admin' && !selectedRef) {
+    if (!canViewReferenceOverview && !selectedRef) {
         selectedRef = req.user.name;
     }
 
     if (selectedRef) {
         // If not super admin, ensure they can only see their own details
         let finalReferenceMatch;
-        if (req.user.role === 'Super Admin') {
-            finalReferenceMatch = { $regex: `^\\s*${selectedRef.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\s*$`, $options: 'i' };
+        if (canViewReferenceOverview) {
+            finalReferenceMatch = { $regex: `^\\s*${escapeRegex(selectedRef)}\\s*$`, $options: 'i' };
         } else {
             // Re-use the flexible referenceFilter for non-admins
             finalReferenceMatch = referenceFilter;
@@ -570,7 +573,7 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
             branchId: branchObjectId ? branchObjectId.toString() : '', 
             start, 
             end, 
-            reference: reference || (req.user.role !== 'Super Admin' ? req.user.name : ''),
+            reference: reference || (!canViewReferenceOverview ? req.user.name : ''),
             studentPeriod: studentPeriod || period,
             studentFromDate: studentFromDate || fromDate,
             studentToDate: studentToDate || toDate,
@@ -587,6 +590,7 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
 // @route   PUT /api/admin-dashboard/reference-incentive/update-status
 const updateIncentiveStatus = asyncHandler(async (req, res) => {
     const { studentIds, status } = req.body;
+    const isBranchDirectorView = ['Branch Director', 'Branch Admin'].includes(req.user.role);
 
     if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
         res.status(400);
@@ -604,12 +608,27 @@ const updateIncentiveStatus = asyncHandler(async (req, res) => {
         incentivePaidBy: status === 'Paid' ? (req.user.name || req.user.username) : null
     };
 
-    await Student.updateMany(
-        { _id: { $in: studentIds } },
+    const updateQuery = { _id: { $in: studentIds } };
+    if (isBranchDirectorView) {
+        const branchObjectId = normalizeBranchId(req.user.branchId);
+        if (!branchObjectId) {
+            res.status(403);
+            throw new Error('Branch access is not assigned to this user');
+        }
+        updateQuery.branchId = branchObjectId;
+    }
+
+    const result = await Student.updateMany(
+        updateQuery,
         { $set: updateData }
     );
 
-    res.json({ message: `Incentive status updated to ${status} for ${studentIds.length} students` });
+    if (result.matchedCount === 0) {
+        res.status(403);
+        throw new Error('No matching students found for your branch');
+    }
+
+    res.json({ message: `Incentive status updated to ${status} for ${result.modifiedCount} students` });
 });
 
 module.exports = { getAdminDashboard, getReferenceIncentive, updateIncentiveStatus };

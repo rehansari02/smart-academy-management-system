@@ -15,6 +15,30 @@ import { formatDate, getTodayDateISO } from '../../../utils/dateUtils';
 const TodaysVisitorsList = () => {
     const navigate = useNavigate();
     const { add, edit, delete: canDelete } = useUserRights('Visitors - Todays Visitors List');
+
+    const getPrintStatusClass = (status = 'Open') => {
+        if (status === 'Open') return 'status-open';
+        if (status === 'Recall') return 'status-recall';
+        if (status === 'Complete') return 'status-complete';
+        if (status === 'Close') return 'status-close';
+        return 'status-default';
+    };
+
+    const renderPrintStatus = (status) => {
+        const value = status || 'Open';
+        return `<span class="status-badge ${getPrintStatusClass(value)}">${value}</span>`;
+    };
+
+    const renderPrintContact = (items) => `
+        <div class="contact-grid">
+            ${items.map((item) => `
+                <div class="contact-row">
+                    <div class="contact-label">${item.label}</div>
+                    <div class="contact-value ${item.highlight ? 'contact-highlight' : ''}">${item.value || '-'}</div>
+                </div>
+            `).join('')}
+        </div>
+    `;
     
     const printHtml = (title, bodyHtml) => {
         const iframe = document.createElement('iframe');
@@ -39,6 +63,7 @@ const TodaysVisitorsList = () => {
                     <title>${title}</title>
                     <style>
                         @page { size: landscape; margin: 10mm; }
+                        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
                         body { font-family: Arial, sans-serif; margin: 0; color: #111827; }
                         .header { margin-bottom: 12px; }
                         .header h1 { margin: 0; font-size: 18px; }
@@ -46,9 +71,54 @@ const TodaysVisitorsList = () => {
                         table { width: 100%; border-collapse: collapse; font-size: 10px; }
                         th, td { border: 1px solid #d1d5db; padding: 6px; vertical-align: top; }
                         th { background: #2563eb; color: #fff; text-align: left; }
+                        tbody tr { border-bottom: 1px solid #f3f4f6; }
                         .text-center { text-align: center; }
                         .muted { color: #6b7280; }
-                        .status { font-weight: 700; }
+                        .sr { color: #9ca3af; font-weight: 600; }
+                        .name { color: #1f2937; font-weight: 700; }
+                        .muted-cell { color: #4b5563; }
+                        .time-in { color: #15803d; font-weight: 700; }
+                        .time-out { color: #ef4444; font-weight: 700; }
+                        .date-stack { display: flex; flex-direction: column; gap: 2px; }
+                        .byline { color: #2563eb; font-size: 9px; font-weight: 700; }
+                        .subtle { color: #6b7280; font-size: 9px; }
+                        .contact-cell { padding: 0; width: 110px; }
+                        .contact-grid { display: table; width: 100%; border-collapse: collapse; }
+                        .contact-row { display: table-row; }
+                        .contact-label,
+                        .contact-value {
+                            display: table-cell;
+                            border-bottom: 1px solid #e5e7eb;
+                            padding: 4px;
+                        }
+                        .contact-row:last-child .contact-label,
+                        .contact-row:last-child .contact-value { border-bottom: 0; }
+                        .contact-label {
+                            width: 18px;
+                            background: #f9fafb;
+                            color: #6b7280;
+                            border-right: 1px solid #e5e7eb;
+                            text-align: center;
+                            font-weight: 700;
+                        }
+                        .contact-value { color: #374151; font-weight: 600; }
+                        .contact-highlight { color: #2563eb; }
+                        .status-badge {
+                            display: inline-block;
+                            padding: 2px 6px;
+                            border-radius: 4px;
+                            font-size: 9px;
+                            line-height: 1.2;
+                            text-transform: uppercase;
+                            letter-spacing: .04em;
+                            font-weight: 700;
+                            border: 1px solid transparent;
+                        }
+                        .status-open { background: #dcfce7; color: #15803d; border-color: #bbf7d0; }
+                        .status-recall { background: #fef9c3; color: #854d0e; border-color: #fde68a; }
+                        .status-complete { background: #f3e8ff; color: #7e22ce; border-color: #e9d5ff; }
+                        .status-close { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+                        .status-default { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
                     </style>
                 </head>
                 <body>
@@ -88,22 +158,22 @@ const TodaysVisitorsList = () => {
         `;
         const rows = visitors.map((visitor, index) => `
             <tr>
-                <td class="text-center">${index + 1}</td>
+                <td class="text-center sr">${index + 1}</td>
                 <td>${visitor.latestFollowup?.scheduledDate ? formatDate(visitor.latestFollowup.scheduledDate) : (visitor.visitingDate ? formatDate(visitor.visitingDate) : '-')}</td>
-                ${user?.role === 'Super Admin' ? `<td>${visitor.branchId?.name || '-'}</td>` : ''}
-                <td>${visitor.studentName || '-'}</td>
-                <td>
-                    <div><strong>G</strong> ${visitor.contactParent || '-'}</div>
-                    <div><strong>H</strong> ${visitor.contactHome || '-'}</div>
-                    <div><strong>S</strong> ${visitor.mobileNumber || '-'}</div>
-                </td>
+                ${user?.role === 'Super Admin' ? `<td class="muted-cell">${visitor.branchId?.name || '-'}</td>` : ''}
+                <td class="name">${visitor.studentName || '-'}</td>
+                <td class="contact-cell">${renderPrintContact([
+                    { label: 'G', value: visitor.contactParent },
+                    { label: 'H', value: visitor.contactHome },
+                    { label: 'S', value: visitor.mobileNumber, highlight: true }
+                ])}</td>
                 <td>${visitor.reference || '-'}</td>
                 <td>${visitor.attendedBy?.name || visitor.attendedBy?.username || '-'}</td>
-                <td class="status">${visitor.status || 'Open'}</td>
-                <td>${visitor.inTime || '-'}</td>
-                <td>${visitor.outTime || '-'}</td>
+                <td class="text-center">${renderPrintStatus(visitor.status)}</td>
+                <td><span class="time-in">${visitor.inTime || '-'}</span></td>
+                <td>${visitor.outTime ? `<span class="time-out">${visitor.outTime}</span>` : '-'}</td>
                 <td>${visitor.remarks || '-'}</td>
-                <td>${visitor.createdAt ? `${formatDate(visitor.createdAt)} ${new Date(visitor.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}</td>
+                <td>${visitor.createdAt ? `<div class="date-stack"><span>${formatDate(visitor.createdAt)}</span><span class="subtle">${new Date(visitor.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span class="byline">by ${getCreatedByName(visitor)}</span></div>` : '-'}</td>
             </tr>
         `).join('');
 
@@ -172,8 +242,12 @@ const TodaysVisitorsList = () => {
                         <td>${filledBy}</td>
                         <td>${referenceByValue}</td>
                         <td>${(student.firstName || student.middleName || student.lastName) ? `${[student.firstName, student.middleName, student.lastName].filter(Boolean).join(' ')}` : (student.studentName || '-') }</td>
-                        <td>${contactHome} / ${contactStudent} / ${contactParent}</td>
-                        <td>${status}</td>
+                        <td class="contact-cell">${renderPrintContact([
+                            { label: 'H', value: contactHome },
+                            { label: 'S', value: contactStudent, highlight: true },
+                            { label: 'P', value: contactParent }
+                        ])}</td>
+                        <td class="text-center">${renderPrintStatus(status)}</td>
                         <td>${(item.scheduledDate || item.followUpDate) ? `${formatDate(item.scheduledDate || item.followUpDate)} ${new Date(item.scheduledDate || item.followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}</td>
                         <td>${followUpDetails}</td>
                         <td>${followUpByValue}</td>
