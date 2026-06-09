@@ -171,7 +171,9 @@ const StudentWiseOutstanding = () => {
     const getOutstandingTotal = (student) => {
         const summary = paymentSummaryMap[student._id];
         if (!summary) return 0;
-        return Number(summary.outstandingAmount || summary.dueAmount || 0);
+        // Priority: show current actionable outstandingAmount (e.g. 6k)
+        // If not available, fallback to total remaining balance dueAmount (e.g. 16k)
+        return Number(summary.outstandingAmount !== undefined ? summary.outstandingAmount : (summary.dueAmount || 0));
     };
 
     const sortedStudents = students && students.length > 0
@@ -192,7 +194,7 @@ const StudentWiseOutstanding = () => {
 
     const reportTotals = outstandingStudents.reduce((acc, student) => {
         const summary = paymentSummaryMap[student._id] || {};
-        const outstandingAmount = Number(summary.outstandingAmount || summary.dueAmount || 0);
+        const outstandingAmount = Number(summary.outstandingAmount !== undefined ? summary.outstandingAmount : (summary.dueAmount || 0));
         const dueAmount = Number(summary.dueAmount || 0);
         acc.totalStudents += 1;
         acc.totalOutstanding += outstandingAmount;
@@ -348,7 +350,7 @@ const StudentWiseOutstanding = () => {
                                     {/* Outstanding Amount: reg fees + upcoming EMI + admission pending - combined total */}
                                     <td className="border border-gray-300 px-2 py-1.5 text-right font-semibold text-red-600">
                                         {summaryLoading ? '...' : (() => {
-                                            const total = (summary?.outstandingAmount || summary?.dueAmount || 0);
+                                            const total = (summary?.outstandingAmount !== undefined ? summary.outstandingAmount : (summary?.dueAmount || 0));
                                             return total > 0 ? total.toLocaleString('en-IN') : '-';
                                         })()}
                                     </td>

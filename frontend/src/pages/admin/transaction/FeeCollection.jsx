@@ -86,6 +86,9 @@ const FeeCollection = () => {
     const [editingReceipt, setEditingReceipt] = useState(null);
     const [printingReceipt, setPrintingReceipt] = useState(null);
     
+    // Testing Date State
+    const [testDate, setTestDate] = useState(new Date().toISOString().split('T')[0]);
+    
     // Student-related states
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [paymentSummary, setPaymentSummary] = useState(null);
@@ -163,7 +166,10 @@ const FeeCollection = () => {
             // Fetch payment summary
             const { data: summary } = await axios.get(
                 `${import.meta.env.VITE_API_URL}/transaction/student/${studentId}/payment-summary`,
-                { withCredentials: true }
+                { 
+                    params: { testDate },
+                    withCredentials: true 
+                }
             );
             setPaymentSummary(summary);
 
@@ -181,6 +187,13 @@ const FeeCollection = () => {
             toast.error("Failed to load student payment information");
         }
     };
+
+    // Re-fetch when testDate changes
+    useEffect(() => {
+        if (selectedStudent) {
+            fetchStudentPaymentData(selectedStudent._id);
+        }
+    }, [testDate]);
 
     const handleStudentSelect = (id, student) => {
         setSelectedStudent(student);
@@ -347,6 +360,20 @@ const FeeCollection = () => {
                 
                 {/* === NEW RECEIPT FORM (Takes 3/5 cols) === */}
                 <div className={`bg-white p-6 rounded-xl shadow-sm border border-gray-100 ${selectedStudent ? '' : ''}`}>
+                    {/* Testing Date Picker - Only for testing outstanding logic */}
+                    {/* <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <Calendar className="text-yellow-600" size={16}/>
+                            <span className="text-xs font-bold text-yellow-700">TESTING DATE (Simulate Future Month):</span>
+                        </div>
+                        <input 
+                            type="date" 
+                            value={testDate}
+                            onChange={(e) => setTestDate(e.target.value)}
+                            className="text-xs border border-yellow-300 rounded p-1 bg-white outline-none focus:ring-1 focus:ring-yellow-400"
+                        />
+                    </div> */}
+
                     <h2 className="text-xl font-semibold text-gray-700 mb-4 flex items-center gap-2">
                         <Receipt className="text-indigo-600"/> {editingReceipt ? 'Edit Receipt' : 'New Receipt'}
                     </h2>
