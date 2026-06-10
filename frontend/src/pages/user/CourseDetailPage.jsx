@@ -45,14 +45,14 @@ const CourseDetailPage = () => {
   return (
     <div className="min-h-screen bg-gray-50 font-sans pb-20">
       {/* Hero Header */}
-      <div className="relative bg-gray-900 h-96">
+      <div className="relative bg-gray-900 h-auto min-h-[400px]">
          <div className="absolute inset-0">
              <img 
                 src={course.image || `https://placehold.co/1200x600/png?text=${encodeURIComponent(course.name)}`} 
                 alt={course.name} 
-                className="w-full h-full object-cover opacity-40"
+                className="w-full h-full object-cover"
              />
-             <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/60 to-transparent"></div>
+             <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/70 to-transparent"></div>
          </div>
          <div className="container mx-auto px-4 h-full flex flex-col justify-end pb-12 relative z-10">
             <Link to="/course" className="inline-flex items-center text-gray-300 hover:text-white mb-6 transition-colors gap-2">
@@ -156,14 +156,7 @@ const CourseDetailPage = () => {
             <div className="lg:col-span-1">
                 <Reveal>
                 <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 sticky top-24">
-                    <div className="mb-6">
-                        <span className="text-sm text-gray-500 font-semibold uppercase tracking-wider">Course Fee</span>
-                        <div className="flex items-baseline gap-1 mt-1">
-                            <span className="text-4xl font-bold text-primary">₹{course.courseFees}</span>
-                        </div>
-                    </div>
-
-                    <Link to={`/online-admission?courseId=${course._id}`} className="w-full bg-accent hover:bg-orange-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-orange-500/30 transition-all transform hover:-translate-y-1 mb-4 flex items-center justify-center gap-2">
+                    <Link to={`/online-admission?courseId=${course._id}`} className="w-full bg-accent hover:bg-orange-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-orange-500/30 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2">
                         Enroll Now <ArrowRightIcon size={20} />
                     </Link>
                     

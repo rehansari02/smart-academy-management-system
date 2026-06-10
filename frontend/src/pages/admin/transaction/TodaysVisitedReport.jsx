@@ -398,6 +398,163 @@ const TodaysVisitedReport = () => {
         handlePrintList();
     };
     
+    const handlePrintFollowupsAll = async () => {
+        setLoading(true);
+        const toastId = toast.loading("Preparing 6-category print report...");
+        
+        try {
+            const activeEmployeeId = getScopedEmployeeId(user, filters.employeeId);
+            const commonParams = {
+                fromDate: filters.fromDate,
+                toDate: filters.toDate,
+                branchId: filters.branchId,
+                employeeId: activeEmployeeId,
+                studentName: filters.studentName,
+                referenceBy: filters.referenceBy
+            };
+
+            // 1. Fetch all visitor follow-ups
+            const visitorFollowups = await visitorService.getVisitorFollowUps(commonParams);
+            
+            // 2. Fetch all inquiry follow-ups
+            const inquiryParams = {
+                startDate: filters.fromDate,
+                endDate: filters.toDate,
+                branchId: filters.branchId,
+                studentName: filters.studentName,
+                referenceBy: filters.referenceBy,
+                dateFilterType: 'followUpDate',
+                onlyFollowupActivity: 'true',
+                employeeId: activeEmployeeId,
+                includeClosed: 'true'
+            };
+            const inquiryRes = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry`, {
+                params: inquiryParams,
+                withCredentials: true
+            });
+            const allInquiryFollowups = Array.isArray(inquiryRes.data) ? inquiryRes.data : [];
+
+            // 3. Fetch Activity Visitors (Only with follow-ups)
+            const activityVisitors = await visitorService.getAllVisitors({
+                ...commonParams,
+                dateFilterType: 'followUpDate',
+                onlyWithFollowups: 'true'
+            });
+
+            // 4. Fetch Today's List (All Visitors)
+            const allVisitors = await visitorService.getAllVisitors(commonParams);
+
+            toast.update(toastId, { render: "Data fetched, generating report...", type: "success", isLoading: false, autoClose: 2000 });
+
+            // CATEGORIZE
+            const onlineInquiry = allInquiryFollowups.filter(f => f.source === 'Online');
+            const offlineInquiry = allInquiryFollowups.filter(f => f.source === 'Walk-in');
+            const dsrInquiry = allInquiryFollowups.filter(f => f.source === 'DSR');
+            
+            const sections = [
+                { title: '1. Online Inquiry Follow-ups', data: onlineInquiry, type: 'inquiry' },
+                { title: '2. Offline Inquiry Follow-ups', data: offlineInquiry, type: 'inquiry' },
+                { title: '3. DSR Inquiry Follow-ups', data: dsrInquiry, type: 'inquiry' },
+                { title: '4. Visitor Follow-ups', data: visitorFollowups, type: 'visitor-followup' },
+                { title: "5. Today's Activity Visitors", data: activityVisitors, type: 'visitor' },
+                { title: "6. Today's List (All Visitors)", data: allVisitors, type: 'visitor' }
+            ];
+
+            const employeeName = activeEmployeeId ? (employees.find(e => e._id === activeEmployeeId)?.name || 'Selected Employee') : 'All Employees';
+            let finalHtml = `<div style="margin-bottom: 20px; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
+                <h2 style="margin:0; color:#2563eb;">Employee Activity Summary: ${employeeName}</h2>
+                <p style="margin:5px 0; font-size:12px;">Period: ${formatDate(filters.fromDate)} to ${formatDate(filters.toDate)}</p>
+            </div>`;
+
+            sections.forEach(section => {
+                const headers = section.type === 'inquiry' ? `
+                    <tr>
+                        <th style="width:40px">Sr</th>
+                        <th style="width:80px">Date</th>
+                        <th>Student Name</th>
+                        <th style="width:100px">Mobile</th>
+                        <th style="width:80px">Status</th>
+                        <th>Follow-up Details</th>
+                        <th style="width:100px">Calling Date</th>
+                    </tr>
+                ` : section.type === 'visitor-followup' ? `
+                    <tr>
+                        <th style="width:40px">Sr</th>
+                        <th style="width:80px">Date</th>
+                        <th>Student Name</th>
+                        <th style="width:100px">Mobile</th>
+                        <th style="width:80px">Status</th>
+                        <th>Follow-up Details</th>
+                        <th style="width:100px">Follow-up By</th>
+                    </tr>
+                ` : `
+                    <tr>
+                        <th style="width:40px">Sr</th>
+                        <th style="width:80px">Visiting Date</th>
+                        <th>Student Name</th>
+                        <th style="width:100px">Mobile</th>
+                        <th style="width:80px">Status</th>
+                        <th>Remarks</th>
+                        <th style="width:80px">In/Out</th>
+                    </tr>
+                `;
+
+                const rows = section.data.length > 0 ? section.data.map((item, idx) => {
+                    if (section.type === 'inquiry') {
+                        const followupActivities = Array.isArray(item.followUpHistory) ? item.followUpHistory.filter(h => h.activityType === 'followup') : [];
+                        const last = item.latestFollowupActivity || (followupActivities.length ? followupActivities[followupActivities.length-1] : null);
+                        return `<tr>
+                            <td class="text-center">${idx + 1}</td>
+                            <td>${formatDate(item.inquiryDate)}</td>
+                            <td class="name">${getFullName(item)}</td>
+                            <td class="text-blue-600 font-bold">${item.contactStudent || '-'}</td>
+                            <td class="text-center">${renderPrintStatus(item.status)}</td>
+                            <td>${last?.remarks || item.followUpDetails || '-'}</td>
+                            <td>${last?.createdAt ? formatDate(last.createdAt) : '-'}</td>
+                        </tr>`;
+                    } else if (section.type === 'visitor-followup') {
+                        const visitor = item.visitorId || {};
+                        return `<tr>
+                            <td class="text-center">${idx + 1}</td>
+                            <td>${formatDate(item.scheduledDate)}</td>
+                            <td class="name">${visitor.studentName || '-'}</td>
+                            <td class="text-blue-600 font-bold">${visitor.mobileNumber || '-'}</td>
+                            <td class="text-center">${renderPrintStatus(item.status)}</td>
+                            <td>${item.remark || '-'}</td>
+                            <td>${item.followUpBy?.name || '-'}</td>
+                        </tr>`;
+                    } else {
+                        return `<tr>
+                            <td class="text-center">${idx + 1}</td>
+                            <td>${formatDate(item.visitingDate)}</td>
+                            <td class="name">${item.studentName || '-'}</td>
+                            <td class="text-blue-600 font-bold">${item.mobileNumber || '-'}</td>
+                            <td class="text-center">${renderPrintStatus(item.status)}</td>
+                            <td>${item.remarks || '-'}</td>
+                            <td>${item.inTime || '-'}/${item.outTime || '-'}</td>
+                        </tr>`;
+                    }
+                }).join('') : `<tr><td colspan="7" class="text-center muted">No records found</td></tr>`;
+
+                finalHtml += `
+                    <div style="margin-top: 25px; page-break-inside: avoid;">
+                        <h3 style="background:#f3f4f6; padding:8px; border-left:4px solid #2563eb; margin-bottom:10px;">${section.title} (${section.data.length})</h3>
+                        <table><thead>${headers}</thead><tbody>${rows}</tbody></table>
+                    </div>
+                `;
+            });
+
+            printHtml('6-Category Employee Activity Report', finalHtml);
+
+        } catch (error) {
+            console.error("6 Print Error:", error);
+            toast.error("Failed to generate 6-category report");
+            toast.dismiss(toastId);
+        } finally {
+            setLoading(false);
+        }
+    };
+    
     // State
     const [visitors, setVisitors] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -1056,6 +1213,12 @@ const TodaysVisitedReport = () => {
                             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 shadow-sm font-bold transition-all transform hover:scale-105"
                         >
                             <Printer size={16} /> Print List
+                        </button>
+                        <button 
+                            onClick={handlePrintFollowupsAll}
+                            className="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 shadow-sm font-bold transition-all transform hover:scale-105"
+                        >
+                            <Printer size={16} /> 6 Print
                         </button>
                         <div className="flex bg-gray-100 p-1 rounded-xl flex-grow md:flex-none">
                             <button 

@@ -69,7 +69,7 @@ const Carousel = ({ items }) => {
                <div className="flex justify-center items-center w-full">
                  <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center border-t-4 border-accent relative transform hover:scale-105 transition-transform duration-300">
                     <div className="absolute top-4 right-6 text-yellow-400 opacity-20"><Quote size={40} /></div>
-                    <div className="w-24 h-24 mx-auto mb-6 rounded-full overflow-hidden border-4 border-gray-50 shadow-inner">
+                    <div className="w-32 h-32 mx-auto mb-6 rounded-full overflow-hidden border-4 border-gray-50 shadow-inner">
                       <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
                     </div>
                     <h3 className="text-xl font-bold text-gray-800 mb-1">{item.name}</h3>
