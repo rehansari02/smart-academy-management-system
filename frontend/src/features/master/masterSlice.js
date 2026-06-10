@@ -296,6 +296,70 @@ export const deleteExam = createAsyncThunk('master/deleteExam', async (id, thunk
     } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
 });
 
+// --- Popular Course Thunks ---
+export const fetchPopularCourses = createAsyncThunk('master/fetchPopularCourses', async (_, thunkAPI) => {
+    try {
+        const response = await axios.get(API_URL + 'popular-courses');
+        return Array.isArray(response.data) ? response.data : [];
+    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+});
+
+export const fetchPublicPopularCourses = createAsyncThunk('master/fetchPublicPopularCourses', async (_, thunkAPI) => {
+    try {
+        const response = await axios.get(API_URL + 'popular-courses/public');
+        return Array.isArray(response.data) ? response.data : [];
+    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+});
+
+export const fetchPopularCategories = createAsyncThunk('master/fetchPopularCategories', async (_, thunkAPI) => {
+    try {
+        const response = await axios.get(API_URL + 'popular-categories');
+        return Array.isArray(response.data) ? response.data : [];
+    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+});
+
+export const createPopularCategory = createAsyncThunk('master/createPopularCategory', async (data, thunkAPI) => {
+    try {
+        const response = await axios.post(API_URL + 'popular-categories', data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const updatePopularCategory = createAsyncThunk('master/updatePopularCategory', async ({ id, data }, thunkAPI) => {
+    try {
+        const response = await axios.put(`${API_URL}popular-categories/${id}`, data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const deletePopularCategory = createAsyncThunk('master/deletePopularCategory', async (id, thunkAPI) => {
+    try {
+        const response = await axios.delete(`${API_URL}popular-categories/${id}`);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const createPopularCourse = createAsyncThunk('master/createPopularCourse', async (data, thunkAPI) => {
+    try {
+        const response = await axios.post(API_URL + 'popular-courses', data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const updatePopularCourse = createAsyncThunk('master/updatePopularCourse', async ({ id, data }, thunkAPI) => {
+    try {
+        const response = await axios.put(`${API_URL}popular-courses/${id}`, data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const deletePopularCourse = createAsyncThunk('master/deletePopularCourse', async (id, thunkAPI) => {
+    try {
+        const response = await axios.delete(`${API_URL}popular-courses/${id}`);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
 // --- Branch Thunks ---
 export const fetchBranches = createAsyncThunk('master/fetchBranches', async (_, thunkAPI) => {
     try {
@@ -453,6 +517,8 @@ const masterSlice = createSlice({
         cities: [],
         examRequestBranches: [],
         nextResultNumbers: { somNumber: '', csrNumber: '' },
+        popularCourses: [],
+        popularCategories: [],
         isLoading: false,
         isSuccess: false,
         message: ''
@@ -696,6 +762,55 @@ const masterSlice = createSlice({
                 state.exams = state.exams.filter(e => e._id !== action.payload.id);
                 state.isSuccess = true;
                 state.message = 'Exam Name Deleted Successfully';
+            })
+
+            // --- Popular Courses ---
+            .addCase(fetchPopularCourses.pending, (state) => { state.isLoading = true; })
+            .addCase(fetchPopularCourses.fulfilled, (state, action) => { 
+                state.isLoading = false; 
+                state.popularCourses = action.payload; 
+            })
+            .addCase(fetchPopularCourses.rejected, (state, action) => { 
+                state.isLoading = false; 
+                console.error(action.payload); 
+            })
+            .addCase(fetchPublicPopularCourses.fulfilled, (state, action) => { 
+                state.popularCourses = action.payload; 
+            })
+            .addCase(fetchPopularCategories.fulfilled, (state, action) => { 
+                state.popularCategories = action.payload; 
+            })
+            .addCase(createPopularCategory.fulfilled, (state, action) => {
+                state.popularCategories.push(action.payload);
+                state.isSuccess = true;
+                state.message = 'Category Added Successfully';
+            })
+            .addCase(updatePopularCategory.fulfilled, (state, action) => {
+                const index = state.popularCategories.findIndex(c => c._id === action.payload._id);
+                if (index !== -1) state.popularCategories[index] = action.payload;
+                state.isSuccess = true;
+                state.message = 'Category Updated Successfully';
+            })
+            .addCase(deletePopularCategory.fulfilled, (state, action) => {
+                state.popularCategories = state.popularCategories.filter(c => c._id !== action.payload.id);
+                state.isSuccess = true;
+                state.message = 'Category Deleted Successfully';
+            })
+            .addCase(createPopularCourse.fulfilled, (state, action) => { 
+                state.popularCourses.push(action.payload); 
+                state.isSuccess = true; 
+                state.message = 'Popular Course Added Successfully'; 
+            })
+            .addCase(updatePopularCourse.fulfilled, (state, action) => { 
+                const index = state.popularCourses.findIndex(c => c._id === action.payload._id);
+                if (index !== -1) state.popularCourses[index] = action.payload;
+                state.isSuccess = true; 
+                state.message = 'Popular Course Updated Successfully'; 
+            })
+            .addCase(deletePopularCourse.fulfilled, (state, action) => { 
+                state.popularCourses = state.popularCourses.filter(c => c._id !== action.payload.id);
+                state.isSuccess = true; 
+                state.message = 'Popular Course Deleted Successfully'; 
             })
             
             // --- Branches ---

@@ -61,6 +61,7 @@ const StudentProfile = lazy(() =>
   import("./pages/admin/master/StudentProfile")
 );
 const CourseMaster = lazy(() => import("./pages/admin/master/CourseMaster"));
+const PopularCourseMaster = lazy(() => import("./pages/admin/master/PopularCourseMaster"));
 const BatchMaster = lazy(() => import("./pages/admin/master/BatchMaster"));
 const EmployeeMaster = lazy(() =>
   import("./pages/admin/master/EmployeeMaster")
@@ -273,6 +274,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <CourseMaster />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/popular-courses"
+                element={
+                  <PrivateRoute>
+                    <PopularCourseMaster />
                   </PrivateRoute>
                 }
               />

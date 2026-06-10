@@ -7,6 +7,8 @@ const Reference = require('../models/Reference');
 const Education = require('../models/Education');
 const EmployeeRole = require('../models/EmployeeRole');
 const Exam = require('../models/Exam');
+const PopularCourse = require('../models/PopularCourse');
+const PopularCategory = require('../models/PopularCategory');
 const asyncHandler = require('express-async-handler');
 
 const DEFAULT_EMPLOYEE_ROLES = ['Faculty', 'Manager', 'Marketing Person', 'Branch Director', 'Receptionist', 'Other'];
@@ -26,8 +28,19 @@ const getCourses = asyncHandler(async (req, res) => {
             path: 'subjects.subject',
             select: 'name printedName theoryMarks practicalMarks totalMarks'
         })
-        .sort({ sorting: 1, createdAt: -1 });
-    res.json(courses);
+        .sort({ sorting: 1, createdAt: -1 })
+        .lean();
+
+    // Get all popular course IDs to mark them in the response
+    const popularCourseDocs = await PopularCourse.find({}).select('course').lean();
+    const popularCourseIds = new Set(popularCourseDocs.map(p => p.course.toString()));
+
+    const result = courses.map(course => ({
+        ...course,
+        isPopular: popularCourseIds.has(course._id.toString())
+    }));
+
+    res.json(result);
 });
 
 const createCourse = asyncHandler(async (req, res) => {
@@ -402,6 +415,107 @@ const deleteExam = asyncHandler(async (req, res) => {
     res.json({ id: req.params.id, message: 'Exam Name Deleted Successfully' });
 });
 
+// --- POPULAR CATEGORY CONTROLLERS ---
+const getPopularCategories = asyncHandler(async (req, res) => {
+    const categories = await PopularCategory.find().sort({ sortOrder: 1, name: 1 });
+    res.json(categories);
+});
+
+const createPopularCategory = asyncHandler(async (req, res) => {
+    const { name, sortOrder, isActive } = req.body;
+    const exists = await PopularCategory.findOne({ name });
+    if (exists) {
+        res.status(400);
+        throw new Error('Category already exists');
+    }
+    const category = await PopularCategory.create({ name, sortOrder, isActive });
+    res.status(201).json(category);
+});
+
+const updatePopularCategory = asyncHandler(async (req, res) => {
+    const category = await PopularCategory.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!category) {
+        res.status(404);
+        throw new Error('Category not found');
+    }
+    res.json(category);
+});
+
+const deletePopularCategory = asyncHandler(async (req, res) => {
+    // Check if category has courses
+    const hasCourses = await PopularCourse.findOne({ category: req.params.id });
+    if (hasCourses) {
+        res.status(400);
+        throw new Error('Cannot delete category with associated courses');
+    }
+    const category = await PopularCategory.findByIdAndDelete(req.params.id);
+    if (!category) {
+        res.status(404);
+        throw new Error('Category not found');
+    }
+    res.json({ id: req.params.id, message: 'Category removed' });
+});
+
+// --- POPULAR COURSE CONTROLLERS ---
+const getPopularCourses = asyncHandler(async (req, res) => {
+    const popularCourses = await PopularCourse.find()
+        .populate('course')
+        .populate('category')
+        .sort({ sortOrder: 1, createdAt: -1 });
+    res.json(popularCourses);
+});
+
+const getPublicPopularCourses = asyncHandler(async (req, res) => {
+    const popularCourses = await PopularCourse.find({ isActive: true, isHidden: false })
+        .populate('course')
+        .populate('category')
+        .sort({ sortOrder: 1, createdAt: -1 });
+    res.json(popularCourses);
+});
+
+const createPopularCourse = asyncHandler(async (req, res) => {
+    const { category, course, sortOrder, isActive, isHidden } = req.body;
+    
+    const exists = await PopularCourse.findOne({ category, course });
+    if (exists) {
+        res.status(400);
+        throw new Error('Course already exists in this category');
+    }
+    
+    const popularCourse = await PopularCourse.create({ 
+        category, 
+        course, 
+        sortOrder: sortOrder || 0, 
+        isActive: isActive !== undefined ? isActive : true,
+        isHidden: isHidden || false
+    });
+    
+    const populated = await PopularCourse.findById(popularCourse._id).populate('course').populate('category');
+    res.status(201).json(populated);
+});
+
+const updatePopularCourse = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const popularCourse = await PopularCourse.findById(id);
+    if (!popularCourse) {
+        res.status(404);
+        throw new Error('Popular course not found');
+    }
+    
+    const updated = await PopularCourse.findByIdAndUpdate(id, req.body, { new: true }).populate('course').populate('category');
+    res.json(updated);
+});
+
+const deletePopularCourse = asyncHandler(async (req, res) => {
+    const popularCourse = await PopularCourse.findByIdAndDelete(req.params.id);
+    if (popularCourse) {
+        res.json({ id: req.params.id, message: 'Popular course removed' });
+    } else {
+        res.status(404);
+        throw new Error('Popular course not found');
+    }
+});
+
 module.exports = { 
     getCourses, createCourse, updateCourse, deleteCourse, 
     getBatches, createBatch, updateBatch, deleteBatch,
@@ -411,5 +525,8 @@ module.exports = {
     getEducations, createEducation,
     getEmployeeRoles, createEmployeeRole, updateEmployeeRole, deleteEmployeeRole,
     getExams, createExam,
-    updateExam, deleteExam
+    updateExam, deleteExam,
+    getPopularCourses, getPublicPopularCourses,
+    createPopularCourse, updatePopularCourse, deletePopularCourse,
+    getPopularCategories, createPopularCategory, updatePopularCategory, deletePopularCategory
 };

@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchCourses } from '../features/master/masterSlice';
+import { 
+    fetchCourses,
+    fetchPublicPopularCourses,
+    fetchPopularCategories
+} from "../features/master/masterSlice";
 import { getPublicBranches } from '../features/master/branchSlice';
 import { createInquiry, createPublicInquiry } from '../features/transaction/transactionSlice';
 import { toast } from 'react-toastify';
@@ -98,7 +102,7 @@ const Carousel = ({ items }) => {
 const HomePage = () => {
     const dispatch = useDispatch();
     const navigate = useNavigate();
-    const { courses } = useSelector((state) => state.master);
+    const { courses, popularCourses, popularCategories } = useSelector((state) => state.master);
     const { branches } = useSelector((state) => state.branch);
     const [captcha, setCaptcha] = useState('');
     const [userCaptcha, setUserCaptcha] = useState('');
@@ -111,6 +115,7 @@ const HomePage = () => {
     const defaultHeroImages = [];
     const [heroImages, setHeroImages] = useState(defaultHeroImages);
     const [homeSections, setHomeSections] = useState({});
+    const [selectedCategory, setSelectedCategory] = useState('all');
   
     const [formData, setFormData] = useState({
       name: '',
@@ -135,6 +140,8 @@ const HomePage = () => {
     useEffect(() => {
       dispatch(fetchCourses());
       dispatch(getPublicBranches());
+      dispatch(fetchPublicPopularCourses());
+      dispatch(fetchPopularCategories());
       generateCaptcha();
       fetchLatestNews();
       fetchToppers();
@@ -247,6 +254,94 @@ const HomePage = () => {
       <div className="w-full">
         {/* 1. New Hero Carousel */}
         <HeroCarousel items={heroImages} />
+
+        {/* 2. Popular & Category Courses */}
+        <div className="py-20 bg-white">
+          <div className="container mx-auto px-4">
+            <Reveal>
+              <div className="text-center mb-12">
+                <h4 className="text-accent font-bold uppercase tracking-widest text-sm mb-3">Our Offerings</h4>
+                <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-4">Popular <span className="text-primary">Courses</span></h2>
+                <p className="text-gray-500 text-lg max-w-2xl mx-auto">Choose from our wide range of professional courses designed to boost your career.</p>
+              </div>
+            </Reveal>
+
+            {/* Category Filter */}
+            <Reveal delay={0.2}>
+              <div className="flex flex-wrap justify-center gap-3 mb-12">
+                <button
+                  onClick={() => setSelectedCategory('all')}
+                  className={`px-6 py-2 rounded-full font-medium text-sm transition-all ${
+                    selectedCategory === 'all' 
+                      ? 'bg-primary text-white shadow-lg shadow-primary/30' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Popular Courses
+                </button>
+                {popularCategories.filter(cat => cat.isActive).map((cat, i) => (
+                  <button
+                    key={cat._id || i}
+                    onClick={() => setSelectedCategory(cat._id)}
+                    className={`px-6 py-2 rounded-full font-medium text-sm transition-all ${
+                      selectedCategory === cat._id 
+                        ? 'bg-primary text-white shadow-lg shadow-primary/30' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            </Reveal>
+
+            {/* Courses Grid */}
+            <Reveal delay={0.4}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {(selectedCategory === 'all'
+                  ? popularCourses
+                  : popularCourses.filter(c => (c.category?._id || c.category) === selectedCategory)
+                ).map((popularCourse, index) => {
+                    const course = popularCourse.course;
+                    if (!course) return null;
+                    return (
+                      <div key={popularCourse._id || index} className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 transform hover:-translate-y-2 transition-all duration-300 group">
+                        <div className="relative h-48 overflow-hidden">
+                          <img 
+                            src={course.image || 'https://placehold.co/600x400/e5e7eb/374151?text=Course+Image'} 
+                            alt={course.name} 
+                            className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700"
+                          />
+                          <div className="absolute top-4 left-4 bg-accent text-white px-3 py-1 rounded-full text-xs font-bold uppercase shadow-md">
+                            Popular
+                          </div>
+                        </div>
+                        <div className="p-6">
+                          <div className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">{popularCourse.category?.name || 'Popular'}</div>
+                          <h3 className="text-lg font-black text-gray-900 mb-2 leading-tight">{course.name}</h3>
+                          {course.smallDescription && (
+                            <p className="text-sm text-gray-500 mb-4 line-clamp-2">{course.smallDescription}</p>
+                          )}
+                          <div className="flex items-center justify-between border-t pt-4 mt-2">
+                            <div>
+                              <div className="text-xs text-gray-400 uppercase font-semibold">Duration</div>
+                              <div className="text-lg font-bold text-gray-800">{course.duration} {course.durationType}</div>
+                            </div>
+                            <button
+                              onClick={() => navigate(`/course/${course._id}`)}
+                              className="bg-gradient-to-r from-primary to-blue-700 text-white px-5 py-2 rounded-xl font-bold text-sm hover:shadow-lg hover:shadow-primary/30 transition-all"
+                            >
+                              Enroll Now
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                })}
+              </div>
+            </Reveal>
+          </div>
+        </div>
 
         {/* 1.b Wide Hero Images Section - Zigzag Layout */}
         <div className="w-full bg-slate-50 py-16 space-y-16">

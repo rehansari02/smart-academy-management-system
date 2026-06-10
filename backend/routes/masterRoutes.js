@@ -11,7 +11,10 @@ const {
     getEducations, createEducation,
     getEmployeeRoles, createEmployeeRole, updateEmployeeRole, deleteEmployeeRole,
     getExams, createExam,
-    updateExam, deleteExam
+    updateExam, deleteExam,
+    getPopularCourses, getPublicPopularCourses,
+    createPopularCourse, updatePopularCourse, deletePopularCourse,
+    getPopularCategories, createPopularCategory, updatePopularCategory, deletePopularCategory
 } = require('../controllers/masterController');
 const { getExamRequests, getExamRequestBranches, cancelExamRequest, createExamRequest, getPendingExams } = require('../controllers/examController');
 const { getExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, getExamScheduleDetails, getMyExamSchedules } = require('../controllers/examScheduleController');
@@ -29,6 +32,26 @@ router.route('/course')
 router.route('/course/:id')
     .put(protect, checkPermission('Course', 'edit'), upload.single('image'), updateCourse)
     .delete(protect, checkPermission('Course', 'delete'), deleteCourse);
+
+// --- Popular Course Routes ---
+router.route('/popular-courses')
+    .get(getPopularCourses) // Admin access
+    .post(protect, checkPermission('Course', 'add'), createPopularCourse);
+    
+router.route('/popular-courses/public')
+    .get(getPublicPopularCourses); // Public access for homepage
+    
+router.route('/popular-categories')
+    .get(getPopularCategories)
+    .post(protect, checkPermission('Course', 'add'), createPopularCategory);
+
+router.route('/popular-categories/:id')
+    .put(protect, checkPermission('Course', 'edit'), updatePopularCategory)
+    .delete(protect, checkPermission('Course', 'delete'), deletePopularCategory);
+
+router.route('/popular-courses/:id')
+    .put(protect, checkPermission('Course', 'edit'), updatePopularCourse)
+    .delete(protect, checkPermission('Course', 'delete'), deletePopularCourse);
 
 // --- Batch Routes ---
 router.route('/batch')

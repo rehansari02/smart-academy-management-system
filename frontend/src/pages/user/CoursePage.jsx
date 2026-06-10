@@ -30,11 +30,11 @@ const CoursePage = () => {
   }, [filterType]);
   
   // Extract unique categories from actual data
-  const categories = ['All', ...[...new Set(courses.map(c => c.courseType))].filter(Boolean)];
+  const categories = ['All', ...[...new Set(courses.filter(c => c.isActive).map(c => c.courseType))].filter(Boolean)];
 
   const filteredCourses = selectedCategory === 'All' 
-    ? courses 
-    : courses.filter(course => course.courseType === selectedCategory);
+    ? courses.filter(c => c.isActive)
+    : courses.filter(course => course.isActive && course.courseType === selectedCategory);
 
   const handleCategoryChange = (category) => {
     setSelectedCategory(category);
@@ -138,10 +138,15 @@ const CoursePage = () => {
                           alt={course.name} 
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" 
                         />
-                        <div className="absolute top-0 right-0 p-4">
-                           <span className="bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-primary shadow-sm uppercase tracking-wider">
-                              {course.courseType}
-                           </span>
+                        <div className="absolute top-4 left-4 flex gap-2">
+                           {course.isPopular && (
+                            <span className="bg-accent text-white px-3 py-1 rounded-full text-xs font-bold uppercase shadow-sm">
+                              Popular
+                            </span>
+                          )}
+                          <span className="bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-primary shadow-sm uppercase tracking-wider">
+                            {course.courseType}
+                          </span>
                         </div>
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                           <Link to={`/course/${course._id}`} className="bg-accent text-white p-3 rounded-full hover:bg-orange-600 transition-colors">
