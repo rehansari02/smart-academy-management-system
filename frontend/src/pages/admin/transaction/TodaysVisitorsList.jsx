@@ -11,6 +11,7 @@ import SearchableDropdown from '../../../components/common/SearchableDropdown';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
 import { formatDate, getTodayDateISO } from '../../../utils/dateUtils';
+import { getEmployeeFilterOptions, getScopedEmployeeId } from '../../../utils/employeeFilterUtils';
 
 const TodaysVisitorsList = () => {
     const navigate = useNavigate();
@@ -192,7 +193,7 @@ const TodaysVisitorsList = () => {
                     fromDate,
                     toDate,
                     branchId: filterBranch,
-                    employeeId,
+                    employeeId: activeEmployeeId,
                     studentName,
                     referenceBy,
                     dateFilterType: 'callingDate'
@@ -292,6 +293,8 @@ const TodaysVisitorsList = () => {
     const [showViewModal, setShowViewModal] = useState(false);
     const [viewingVisitor, setViewingVisitor] = useState(null);
     const [followUpVisitor, setFollowUpVisitor] = useState(null);
+    const employeeOptions = getEmployeeFilterOptions(employees, user);
+    const activeEmployeeId = getScopedEmployeeId(user, employeeId);
     const activeStudentNames = [...new Set(visitors.map(v => v.studentName).filter(Boolean))].sort();
     const activeReferences = [...new Set(visitors.map(v => v.reference).filter(Boolean))].sort();
     const pendingBreakup = stats?.pendingByDate || [];
@@ -324,7 +327,7 @@ const TodaysVisitorsList = () => {
                     fromDate: override.fromDate || fromDate,
                     toDate: override.toDate || toDate,
                     branchId: override.branchId ?? filterBranch,
-                    employeeId: override.employeeId ?? employeeId,
+                    employeeId: user?.role === 'Super Admin' ? (override.employeeId ?? employeeId) : (user?._id || ''),
                     dateFilterType: 'followUpDate'
                 },
                 withCredentials: true,
@@ -341,7 +344,7 @@ const TodaysVisitorsList = () => {
         const nextReferenceBy = override.referenceBy ?? referenceBy;
         const nextBranch = override.branchId ?? filterBranch;
         const nextInquirySource = override.inquirySource ?? inquirySource;
-        const nextEmployee = override.employeeId ?? employeeId;
+        const nextEmployee = user?.role === 'Super Admin' ? (override.employeeId ?? employeeId) : (user?._id || '');
         const nextFromDate = override.fromDate ?? fromDate;
         const nextToDate = override.toDate ?? toDate;
         try {
@@ -561,7 +564,7 @@ const TodaysVisitorsList = () => {
                     </div>
                 </div>
 
-                {user?.role === 'Super Admin' && stats && (
+                {stats && (
                     <div className="bg-white border border-gray-200 rounded-lg shadow mb-4 p-4">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                             <div className="border rounded p-3">
@@ -576,7 +579,7 @@ const TodaysVisitorsList = () => {
                                         <span className="text-green-600">New: {stats.totalInquiries || 0}</span>
                                     </div>
                                 )}
-                                {employeeId && (
+                                {activeEmployeeId && (
                                     <button
                                         type="button"
                                         onClick={() => setShowPendingBreakup(true)}
@@ -595,7 +598,7 @@ const TodaysVisitorsList = () => {
                                 <button
                                     type="button"
                                     onClick={handlePrintFollowupsList}
-                                    disabled={!employeeId}
+                                    disabled={!activeEmployeeId}
                                     className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     <Printer size={12} /> Print Followups List
@@ -707,7 +710,7 @@ const TodaysVisitorsList = () => {
                                     className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                                 >
                                     <option value="">All Employees</option>
-                                    {employees.map(emp => (
+                                    {employeeOptions.map(emp => (
                                         <option key={emp._id} value={emp._id}>{emp.name}</option>
                                     ))}
                                 </select>

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, FileText, IndianRupee, Trash2, Edit, Calendar, FolderPlus, Tag, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
+import { Plus, Search, FileText, IndianRupee, Trash2, Edit, Calendar, FolderPlus, Tag, ChevronLeft, ChevronRight, Building2, Printer } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Swal from 'sweetalert2';
+import { useReactToPrint } from 'react-to-print';
 import expenseService from '../../../services/expenseService';
 import expenseCategoryService from '../../../services/expenseCategoryService';
 import Loading from '../../../components/Loading';
@@ -62,6 +63,7 @@ const Expenses = () => {
     });
     const [categoryName, setCategoryName] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const componentRef = useRef(null);
 
     useEffect(() => {
         dispatch(getBranches());
@@ -296,6 +298,19 @@ const Expenses = () => {
     const filteredExpenses = safeExpenses.filter(exp => 
         (exp.reason || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
+    const activeBranchName = isSuperAdmin
+        ? (branches.find(branch => branch._id === branchFilter)?.name || 'All Branches')
+        : userBranchName;
+    const activeDateLabel = dateFilter
+        ? dateFilter === 'custom'
+            ? `${customStartDate || 'Start'} to ${customEndDate || 'End'}`
+            : dateFilter
+        : 'All Time';
+
+    const handlePrint = useReactToPrint({
+        contentRef: componentRef,
+        documentTitle: `Expenses_${activeBranchName.replace(/\s+/g, '_')}_${activeDateLabel.replace(/\s+/g, '_')}`
+    });
 
     if (isLoading && safeExpenses.length === 0) return <Loading />;
 
@@ -308,7 +323,15 @@ const Expenses = () => {
                     <p className="text-gray-500 mt-1">Track and manage your institutional expenses and categories</p>
                 </div>
                 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 print:hidden">
+                     <button
+                        onClick={handlePrint}
+                        disabled={filteredExpenses.length === 0}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold transition-all shadow-sm hover:shadow-md flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Printer size={20} />
+                        <span className="hidden sm:inline">Print</span>
+                    </button>
                      <button 
                         onClick={() => setIsCategoryModalOpen(true)}
                         className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-5 py-2.5 rounded-xl font-semibold transition-all flex items-center gap-2 border border-indigo-200"
@@ -403,9 +426,9 @@ const Expenses = () => {
                 </div>
 
                 {/* Right Panel: Expenses Table */}
-                <div className="lg:w-3/4">
+                <div ref={componentRef} className="lg:w-3/4">
                     {/* Search Bar & Filter */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 mb-6">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 mb-6 print:hidden">
                         <div className="flex flex-col sm:flex-row gap-4 items-center">
                             <div className="flex-1 flex items-center w-full">
                                 <Search className="text-gray-400 ml-2 mr-3" size={20} />
@@ -491,6 +514,14 @@ const Expenses = () => {
 
                     {/* Table */}
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="hidden print:block px-6 pt-6 pb-3 border-b border-gray-200">
+                            <h2 className="text-2xl font-bold text-gray-900">Expense Report</h2>
+                            <div className="mt-2 text-sm text-gray-600 flex flex-wrap gap-x-6 gap-y-1">
+                                <span><strong>Branch:</strong> {activeBranchName}</span>
+                                <span><strong>Range:</strong> {activeDateLabel}</span>
+                                <span><strong>Records:</strong> {filteredExpenses.length}</span>
+                            </div>
+                        </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
                                 <thead>
@@ -501,7 +532,7 @@ const Expenses = () => {
                                         <th className="px-6 py-4 font-semibold">Reason</th>
                                         <th className="px-6 py-4 font-semibold">Mode</th>
                                         <th className="px-6 py-4 font-semibold text-right">Amount</th>
-                                        <th className="px-6 py-4 font-semibold text-center">Action</th>
+                                        <th className="px-6 py-4 font-semibold text-center print:hidden">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -528,7 +559,7 @@ const Expenses = () => {
                                                 <td className="px-6 py-4 whitespace-nowrap text-right font-bold text-primary">
                                                     ₹{expense.amount.toLocaleString()}
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                <td className="px-6 py-4 whitespace-nowrap text-center print:hidden">
                                                     <div className="flex items-center justify-center gap-2">
                                                         <button 
                                                             onClick={() => openEditExpense(expense)}
@@ -562,7 +593,7 @@ const Expenses = () => {
                         
                         {/* Pagination Controls */}
                         {totalPages > 1 && (
-                            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
+                            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50 print:hidden">
                                 <span className="text-sm text-gray-500">
                                     Showing page <span className="font-semibold text-gray-700">{currentPage}</span> of <span className="font-semibold text-gray-700">{totalPages}</span>
                                 </span>

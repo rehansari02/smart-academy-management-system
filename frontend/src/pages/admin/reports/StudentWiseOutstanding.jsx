@@ -9,9 +9,13 @@ import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
 import StudentSearch from '../../../components/StudentSearch';
-import { getDefaultReportDateRange } from '../../../utils/reportDateRange';
 
 const API_URL = import.meta.env.VITE_API_URL;
+
+const getOutstandingDefaultFilters = () => ({
+    startDate: '',
+    endDate: moment().format('YYYY-MM-DD'),
+});
 
 const StudentWiseOutstanding = () => {
     const dispatch = useDispatch();
@@ -22,7 +26,7 @@ const StudentWiseOutstanding = () => {
 
     // Filter State
     const [filters, setFilters] = useState({
-        ...getDefaultReportDateRange(),
+        ...getOutstandingDefaultFilters(),
         courseFilter: '',
         batch: '',
         branchId: '',
@@ -93,7 +97,7 @@ const StudentWiseOutstanding = () => {
 
     const handleReset = () => {
         const initial = {
-            ...getDefaultReportDateRange(),
+            ...getOutstandingDefaultFilters(),
             courseFilter: '',
             batch: '',
             branchId: '',
@@ -171,9 +175,15 @@ const StudentWiseOutstanding = () => {
     const getOutstandingTotal = (student) => {
         const summary = paymentSummaryMap[student._id];
         if (!summary) return 0;
-        // Priority: show current actionable outstandingAmount (e.g. 6k)
-        // If not available, fallback to total remaining balance dueAmount (e.g. 16k)
-        return Number(summary.outstandingAmount !== undefined ? summary.outstandingAmount : (summary.dueAmount || 0));
+        const dueAmount = Number(summary.dueAmount || 0);
+        const outstandingAmount = Number(summary.outstandingAmount !== undefined ? summary.outstandingAmount : dueAmount);
+        return Math.min(Math.max(0, outstandingAmount), dueAmount);
+    };
+
+    const getDueTotal = (student) => {
+        const summary = paymentSummaryMap[student._id];
+        if (!summary) return 0;
+        return Number(summary.dueAmount || 0);
     };
 
     const sortedStudents = students && students.length > 0
@@ -181,6 +191,10 @@ const StudentWiseOutstanding = () => {
             const dayA = a.admissionDate ? moment(a.admissionDate).date() : 32;
             const dayB = b.admissionDate ? moment(b.admissionDate).date() : 32;
             if (dayA !== dayB) return dayA - dayB;
+
+            const dateA = a.admissionDate ? new Date(a.admissionDate).getTime() : 0;
+            const dateB = b.admissionDate ? new Date(b.admissionDate).getTime() : 0;
+            if (dateA !== dateB) return dateB - dateA;
 
             const nameA = `${a.firstName || ''} ${a.middleName || ''} ${a.lastName || ''}`.trim();
             const nameB = `${b.firstName || ''} ${b.middleName || ''} ${b.lastName || ''}`.trim();
@@ -190,11 +204,11 @@ const StudentWiseOutstanding = () => {
 
     const outstandingStudents = summaryLoading
         ? []
-        : sortedStudents.filter((student) => getOutstandingTotal(student) > 0);
+        : sortedStudents.filter((student) => getDueTotal(student) > 0);
 
     const reportTotals = outstandingStudents.reduce((acc, student) => {
         const summary = paymentSummaryMap[student._id] || {};
-        const outstandingAmount = Number(summary.outstandingAmount !== undefined ? summary.outstandingAmount : (summary.dueAmount || 0));
+        const outstandingAmount = getOutstandingTotal(student);
         const dueAmount = Number(summary.dueAmount || 0);
         acc.totalStudents += 1;
         acc.totalOutstanding += outstandingAmount;
@@ -350,7 +364,7 @@ const StudentWiseOutstanding = () => {
                                     {/* Outstanding Amount: reg fees + upcoming EMI + admission pending - combined total */}
                                     <td className="border border-gray-300 px-2 py-1.5 text-right font-semibold text-red-600">
                                         {summaryLoading ? '...' : (() => {
-                                            const total = (summary?.outstandingAmount !== undefined ? summary.outstandingAmount : (summary?.dueAmount || 0));
+                                            const total = getOutstandingTotal(s);
                                             return total > 0 ? total.toLocaleString('en-IN') : '-';
                                         })()}
                                     </td>

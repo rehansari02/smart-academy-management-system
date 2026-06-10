@@ -251,8 +251,8 @@ const deleteExamResult = asyncHandler(async (req, res) => {
 // @route   GET /api/master/exam-result/:id
 const getExamResultById = asyncHandler(async (req, res) => {
     const result = await ExamResult.findById(req.params.id)
-        .populate('student', 'firstName middleName lastName regNo enrollmentNo mobileStudent studentPhoto dob aadharCard address city state pincode batch branchId branchName')
-        .populate('course', 'name duration durationType shortName')
+        .populate('student', 'firstName middleName lastName relationType gender regNo enrollmentNo mobileStudent studentPhoto dob aadharCard address city state pincode batch branchId branchName')
+        .populate('course', 'name duration durationType shortName centerName')
         .populate('subjectMarks.subject', 'name')
         .populate({
             path: 'exam',

@@ -205,7 +205,7 @@ const ReferenceIncentive = () => {
                 <p className="text-xs font-black uppercase tracking-wide text-blue-200">Smart Academy</p>
                 <h1 className="flex min-w-0 items-center gap-2 text-2xl font-black text-white sm:text-3xl">
                   <TrendingUp className="shrink-0 text-blue-300" />
-                  <span className="truncate">Teacher Incentives</span>
+                  <span className="truncate">Staff Incentives</span>
                 </h1>
                 <p className="mt-1 text-sm text-slate-300">Track and manage commissions for student referrals</p>
               </div>

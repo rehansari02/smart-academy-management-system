@@ -129,17 +129,10 @@ const DatewiseOutstandingReport = () => {
 
     const sortedStudents = students && students.length > 0
         ? [...students].sort((a, b) => {
-            const dateA = a.admissionDate ? new Date(a.admissionDate) : null;
-            const dateB = b.admissionDate ? new Date(b.admissionDate) : null;
-            if (!dateA && !dateB) return 0;
-            if (!dateA) return 1;
-            if (!dateB) return -1;
-            const dayA = dateA.getDate();
-            const dayB = dateB.getDate();
-            if (dayA !== dayB) return dayA - dayB;
-            const monthA = dateA.getMonth();
-            const monthB = dateB.getMonth();
-            return monthA - monthB;
+            const dateA = a.admissionDate ? new Date(a.admissionDate).getTime() : 0;
+            const dateB = b.admissionDate ? new Date(b.admissionDate).getTime() : 0;
+            if (dateA !== dateB) return dateB - dateA;
+            return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
         })
         : [];
 

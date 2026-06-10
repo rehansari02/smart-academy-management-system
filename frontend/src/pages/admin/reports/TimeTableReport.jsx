@@ -57,16 +57,26 @@ const TimeTableReport = () => {
 
     const availableCourses = useMemo(() => {
         const map = new Map();
-        baseSchedules.forEach((schedule) => {
+        const examName = filters.examName;
+        const source = (examSchedules || [])
+            .filter((schedule) => filters.branchId === 'All' || (schedule.attendees || []).some((student) => getBranchId(student) === filters.branchId))
+            .filter((schedule) => {
+                if (filters.status === 'all') return true;
+                if (filters.status === 'inactive') return schedule.isActive === false || schedule.isDeleted === true;
+                return schedule.isActive !== false && schedule.isDeleted !== true;
+            })
+            .filter((schedule) => examName === 'All' || schedule.examName === examName);
+
+        source.forEach((schedule) => {
             const courseId = getId(schedule.course);
             if (courseId) map.set(courseId, { _id: courseId, name: getCourseName(schedule) });
         });
         return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-    }, [baseSchedules]);
+    }, [examSchedules, filters.branchId, filters.examName, filters.status]);
 
     const examNames = useMemo(() => {
         const names = new Set((examSchedules || []).map((s) => s.examName).filter(Boolean));
-        return Array.from(names).sort((a, b) => a.localeCompare(b));
+        return Array.from(names);
     }, [examSchedules]);
 
     const availableBranches = useMemo(() => {
@@ -89,6 +99,14 @@ const TimeTableReport = () => {
                 return bDate - aDate;
             });
     }, [baseSchedules, filters.courseId]);
+
+    useEffect(() => {
+        if (filters.courseId === 'All') return;
+        const isValid = availableCourses.some((course) => course._id === filters.courseId);
+        if (!isValid) {
+            setFilters((prev) => ({ ...prev, courseId: 'All' }));
+        }
+    }, [availableCourses, filters.courseId]);
 
     const headerBranch = useMemo(() => {
         const branchId = getId(user?.branchId);

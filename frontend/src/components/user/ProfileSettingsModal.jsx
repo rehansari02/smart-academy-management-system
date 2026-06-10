@@ -7,6 +7,20 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import ProfileImageUploader from '../common/ProfileImageUploader';
 
+const formatBranchName = (user) => {
+    const branchName = String(user?.branchName || '').trim();
+
+    if (!branchName) {
+        return 'Main';
+    }
+
+    if (user?.role === 'Super Admin' || /^head office$/i.test(branchName)) {
+        return 'Head Office';
+    }
+
+    return branchName.endsWith(' Branch') ? branchName : `${branchName} Branch`;
+};
+
 const ProfileSettingsModal = ({ isOpen, onClose }) => {
     const dispatch = useDispatch();
     const { user, isLoading, isSuccess, isError, message } = useSelector((state) => state.auth);
@@ -21,7 +35,7 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
         gender: user?.gender || '',
         education: user?.education || '',
         address: user?.address || '',
-        branchName: user?.branchName ? (user.branchName.endsWith(' Branch') ? user.branchName : `${user.branchName} Branch`) : 'Main',        
+        branchName: formatBranchName(user),
         photo: null
     });
     const [previewImage, setPreviewImage] = useState(user?.photo || '');
@@ -71,7 +85,7 @@ const ProfileSettingsModal = ({ isOpen, onClose }) => {
                 gender: user.gender || '',
                 education: user.education || '',
                 address: user.address || '',
-                branchName: user.branchName ? (user.branchName.endsWith(' Branch') ? user.branchName : `${user.branchName} Branch`) : 'Main',
+                branchName: formatBranchName(user),
             });
             setPreviewImage(user.photo || '');
         }

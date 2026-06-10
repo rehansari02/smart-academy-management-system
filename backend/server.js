@@ -143,6 +143,7 @@ app.use("/api/student-portal", require("./routes/studentPortalRoutes")); // New 
 app.use("/api/blogs", require("./routes/blogRoutes")); // Blog Routes
 app.use("/api/banners", require("./routes/bannerRoutes")); // Banner Routes
 app.use("/api/home-sections", require("./routes/homeSectionRoutes")); // Home Sections
+app.use("/api/group-institutes", require("./routes/groupInstituteRoutes")); // Group Institute Links
 app.use("/api/galleries", require("./routes/galleryRoutes")); // Gallery Routes
 app.use("/api/feedback", require("./routes/feedbackRoutes")); // Feedback Routes
 app.use("/api/sms", require("./routes/smsRoutes")); // SMS Routes

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Camera, Trash2, Edit2, X, FlipHorizontal } from 'lucide-react';
+import { getMediaUrl } from '../../utils/mediaUrl';
 
 /**
  * ProfileImageUploader - A reusable circular avatar image uploader with camera support
@@ -37,7 +38,9 @@ const ProfileImageUploader = ({
             if (value instanceof File) {
                 setPreview(URL.createObjectURL(value));
             } else if (typeof value === 'string') {
-                setPreview(value);
+                setPreview(value.startsWith('http') || value.startsWith('blob:') || value.startsWith('data:')
+                    ? value
+                    : getMediaUrl(value));
             }
         } else {
             setPreview(null);

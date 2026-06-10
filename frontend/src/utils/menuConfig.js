@@ -8,6 +8,7 @@ export const MENU_CONFIG = [
       { title: 'Dashboard', path: '/dashboard' },
       { title: 'Banner Home', path: '/master/manage-banners' },
       { title: 'Home Sub-Sections', path: '/master/home-sections' },
+      { title: 'Group Of Institute Manage', path: '/master/group-institutes' },
       { title: 'Gallery Manage', path: '/master/gallery' }
     ]
   },

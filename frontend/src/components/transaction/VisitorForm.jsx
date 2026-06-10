@@ -245,6 +245,18 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                 delete submissionData.attendedBy;
             }
 
+            if (submissionData.inquiryId === '' || submissionData.inquiryId === null) {
+                delete submissionData.inquiryId;
+            }
+
+            if (submissionData.course === '' || submissionData.course === null) {
+                delete submissionData.course;
+            }
+
+            if (submissionData.branchId === '' || submissionData.branchId === null) {
+                delete submissionData.branchId;
+            }
+
             if (initialData?._id) {
                 // Update existing visitor
                 await visitorService.updateVisitor(initialData._id, submissionData);

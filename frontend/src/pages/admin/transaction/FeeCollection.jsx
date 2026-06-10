@@ -12,6 +12,7 @@ import ReceiptPrintTemplate from '../../../components/ReceiptPrintTemplate';
 import moment from 'moment';
 import EditReceiptModal from '../../../components/transaction/EditReceiptModal';
 import { useLocation } from 'react-router-dom';
+import { getMediaUrl } from '../../../utils/mediaUrl';
 
 const POPULAR_INDIAN_BANKS = [
     "State Bank of India",
@@ -424,7 +425,7 @@ const FeeCollection = () => {
                                         error={error?.message}
                                         onSelect={handleStudentSelect}
                                         placeholder="Search student..."
-                                        additionalFilters={{ isRegistered: 'true', hasPendingFees: 'true' }}
+                                        additionalFilters={{ isRegistered: 'true' }}
                                         onlyWithOutstanding
                                     />
                                 )}
@@ -494,7 +495,7 @@ const FeeCollection = () => {
                                         <span>₹{paymentSummary.outstandingAmount?.toLocaleString('en-IN')}</span>
                                     </div>
                                     <div className="flex justify-between font-bold text-red-600">
-                                        <span>Total Due (All):</span>
+                                        <span>Current Outstanding:</span>
                                         <span>Rs. {paymentSummary.dueAmount?.toLocaleString('en-IN')}</span>
                                     </div>
                                 </div>
@@ -719,9 +720,9 @@ const FeeCollection = () => {
                                 {/* Student Identity Card */}
                                 <div className="mb-4 relative">
                                     <img 
-                                        src={selectedStudent.studentPhoto ? (selectedStudent.studentPhoto.startsWith('http') ? selectedStudent.studentPhoto : `${import.meta.env.VITE_API_URL}/${selectedStudent.studentPhoto}`) : "https://via.placeholder.com/150"} 
+                                        src={getMediaUrl(selectedStudent.studentPhoto) || "https://via.placeholder.com/150"} 
                                         alt="Student" 
-                                        className="w-32 h-32 rounded-lg object-cover bg-gray-100 border-4 border-white shadow-md"
+                                        className="w-32 h-32 rounded-lg object-cover object-center bg-gray-100 border-4 border-white shadow-md"
                                     />
                                     <div className="absolute -bottom-2 -right-2 bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">
                                         {selectedStudent.enrollmentNo || 'NEW'}

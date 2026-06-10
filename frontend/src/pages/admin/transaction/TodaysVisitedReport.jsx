@@ -16,6 +16,7 @@ import SearchableDropdown from '../../../components/common/SearchableDropdown';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
 import Swal from 'sweetalert2';
+import { getEmployeeFilterOptions, getScopedEmployeeId } from '../../../utils/employeeFilterUtils';
 
 // --- SUB-COMPONENT: Follow Up Form ---
 const FollowUpForm = ({ inquiry, onClose, onSave }) => {
@@ -436,6 +437,8 @@ const TodaysVisitedReport = () => {
     const [followupBulkAssignee, setFollowupBulkAssignee] = useState('');
     const [followupTransferMode, setFollowupTransferMode] = useState(false);
     const canTransferRecords = ['Super Admin', 'Branch Director'].includes(user?.role);
+    const employeeOptions = getEmployeeFilterOptions(employees, user);
+    const activeEmployeeId = getScopedEmployeeId(user, filters.employeeId);
     const pendingBreakup = stats?.pendingByDate || [];
     const getFullName = (record = {}) => {
         const fullName = `${record.firstName || ''} ${record.middleName || ''} ${record.lastName || ''}`.trim().replace(/\s+/g, ' ');
@@ -503,7 +506,7 @@ const TodaysVisitedReport = () => {
                     fromDate: nextFilters.fromDate,
                     toDate: nextFilters.toDate,
                     branchId: nextFilters.branchId,
-                    employeeId: nextFilters.employeeId,
+                    employeeId: user?.role === 'Super Admin' ? nextFilters.employeeId : (user?._id || ''),
                     dateFilterType: 'followUpDate',
                 },
                 withCredentials: true,
@@ -527,6 +530,7 @@ const TodaysVisitedReport = () => {
             if (activeFilters.reportType === 'visited') {
                 const data = await visitorService.getAllVisitors({
                     ...activeFilters,
+                    employeeId: user?.role === 'Super Admin' ? activeFilters.employeeId : (user?._id || ''),
                     dateFilterType: 'followUpDate',
                     onlyWithFollowups: 'true' // Requirement: Don't show until followup exists
                 });
@@ -555,13 +559,16 @@ const TodaysVisitedReport = () => {
                     referenceBy: activeFilters.referenceBy,
                     dateFilterType: 'followUpDate',
                     onlyFollowupActivity: 'true',
-                    employeeId: activeFilters.employeeId,
+                    employeeId: user?.role === 'Super Admin' ? activeFilters.employeeId : (user?._id || ''),
                     includeClosed: 'true',
                     ...(sourceByListType[listType] ? { source: sourceByListType[listType] } : {})
                 };
 
                 const [visitorFollowups, inquiryRes] = await Promise.all([
-                    shouldFetchVisitorFollowups ? visitorService.getVisitorFollowUps(activeFilters) : Promise.resolve([]),
+                    shouldFetchVisitorFollowups ? visitorService.getVisitorFollowUps({
+                        ...activeFilters,
+                        employeeId: user?.role === 'Super Admin' ? activeFilters.employeeId : (user?._id || ''),
+                    }) : Promise.resolve([]),
                     shouldFetchInquiryFollowups
                         ? axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry`, {
                             params: inquiryParams,
@@ -625,6 +632,7 @@ const TodaysVisitedReport = () => {
             toDate: getTodayDateISO(),
             studentName: '',
             referenceBy: '',
+            employeeId: '',
             limit: 50,
             branchId: '',
             listType: 'all',
@@ -1125,7 +1133,7 @@ const TodaysVisitedReport = () => {
                 )}
 
                 {/* Stats Section (Super Admin only, similar to Inquiry) */}
-                {user?.role === 'Super Admin' && (
+                {activeReportStats && (
                     <div className="bg-white border border-gray-200 rounded-lg shadow mb-6 p-4 animate-fadeIn">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                             <div className="border rounded p-3">
@@ -1140,7 +1148,7 @@ const TodaysVisitedReport = () => {
                                         <span className="text-green-600">New: {activeReportStats.newCount}</span>
                                     </div>
                                 )}
-                                {filters.reportType === 'visited' && filters.employeeId && (
+                                {filters.reportType === 'visited' && activeEmployeeId && (
                                     <button
                                         type="button"
                                         onClick={() => setShowPendingBreakup(true)}
@@ -1160,7 +1168,7 @@ const TodaysVisitedReport = () => {
                                     <button
                                         type="button"
                                         onClick={handlePrintFollowupsList}
-                                        disabled={!filters.employeeId}
+                                        disabled={!activeEmployeeId}
                                         className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         <Printer size={12} /> Print Followups List
@@ -1335,7 +1343,7 @@ const TodaysVisitedReport = () => {
                                     className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                                 >
                                     <option value="">All Employees</option>
-                                    {employees.map(emp => (
+                                    {employeeOptions.map(emp => (
                                         <option key={emp._id} value={emp._id}>{emp.name}</option>
                                     ))}
                                 </select>

@@ -12,6 +12,14 @@ const generateToken = (res, userId) => {
     });
 };
 
+const getEffectiveBranchName = (user, fallback = 'Main Branch') => {
+    if (user?.role === 'Super Admin') {
+        return 'Head Office';
+    }
+
+    return user?.branchName || fallback;
+};
+
 // @desc Register (Seed Initial Admin)
 // @route POST /api/auth/register
 // @desc Register (Seed Initial Admin)
@@ -32,6 +40,10 @@ const registerUser = asyncHandler(async (req, res) => {
     // Remove undefined fields to prevent Mongoose from trying to set them to null/defaults if not intended
     Object.keys(userData).forEach(key => userData[key] === undefined && delete userData[key]);
 
+    if (role === 'Super Admin') {
+        userData.branchName = 'Head Office';
+    }
+
     // FIX: Generate a unique placeholder email if not provided to avoid "duplicate key: email: null" error
     // This happens if the 'email' index is unique but not treating 'null' as distinct/sparse correctly in the DB.
     if (!userData.email) {
@@ -50,7 +62,7 @@ const registerUser = asyncHandler(async (req, res) => {
             email: user.email,
             role: user.role,
             branchId: user.branchId,
-            branchName: user.branchName,
+            branchName: getEffectiveBranchName(user),
             mobile: user.mobile,
             gender: user.gender,
             education: user.education,
@@ -191,14 +203,19 @@ const loginUser = asyncHandler(async (req, res) => {
         const populatedUser = await User.findById(user._id).populate('branchId', 'name shortCode address phone mobile email city state');
 
         // Check if branch name needs sync (Self-Correction on Login)
-        let currentBranchName = user.branchName;
-        if (populatedUser.branchId) {
-             currentBranchName = populatedUser.branchId.name;
-             // Optional: Persist correction if mismatch found (Slows login slightly but ensures consistency)
-             if(user.branchName !== currentBranchName){
-                 user.branchName = currentBranchName;
-                 await user.save();
-             }
+        let currentBranchName = getEffectiveBranchName(user);
+        if (user.role === 'Super Admin') {
+            if (user.branchName !== 'Head Office') {
+                user.branchName = 'Head Office';
+                await user.save();
+            }
+        } else if (populatedUser.branchId) {
+            currentBranchName = populatedUser.branchId.name;
+            // Optional: Persist correction if mismatch found (Slows login slightly but ensures consistency)
+            if (user.branchName !== currentBranchName) {
+                user.branchName = currentBranchName;
+                await user.save();
+            }
         }
 
         // --- Self-Healing: Fix swapped Email/Username for Employees ---
@@ -309,8 +326,13 @@ const updateProfile = asyncHandler(async (req, res) => {
         user.gender = req.body.gender || user.gender;
         user.education = req.body.education || user.education;
         user.address = req.body.address || user.address;
-        user.branchName = req.body.branchName || user.branchName;
-        user.branchId = req.body.branchId || user.branchId;
+
+        if (user.role === 'Super Admin') {
+            user.branchName = 'Head Office';
+        } else {
+            user.branchName = req.body.branchName || user.branchName;
+            user.branchId = req.body.branchId || user.branchId;
+        }
 
         if (req.file) {
             user.photo = req.file.path.replace(/\\/g, "/");
@@ -348,7 +370,7 @@ const updateProfile = asyncHandler(async (req, res) => {
             gender: updatedUser.gender,
             education: updatedUser.education,
             address: updatedUser.address,
-            branchName: updatedUser.branchName,
+            branchName: getEffectiveBranchName(updatedUser),
             photo: updatedUser.photo,
         });
     } else {

@@ -12,6 +12,7 @@ const createSuperAdmin = async () => {
         email: 'jayeshpatil0244@gmail.com',
         password: '@Joy2804',
         role: 'Super Admin',
+        branchName: 'Head Office',
         isActive: true
     };
 
@@ -28,6 +29,7 @@ const createSuperAdmin = async () => {
         existing.email = account.email;
         existing.password = account.password;
         existing.role = account.role;
+        existing.branchName = account.branchName;
         existing.isActive = account.isActive;
         await existing.save();
         console.log('Super Admin updated:', existing.username);

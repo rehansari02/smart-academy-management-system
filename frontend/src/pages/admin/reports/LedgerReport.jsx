@@ -9,6 +9,53 @@ import { useReactToPrint } from 'react-to-print';
 import StudentSearch from '../../../components/StudentSearch';
 import logo from '../../../assets/logo2.png'; // Improved Logo Import
 
+const ledgerPrintPageStyle = `
+    @page {
+        size: A4 portrait;
+        margin: 8mm;
+    }
+
+    @media print {
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+        }
+
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        #printable-ledger {
+            width: 100% !important;
+            min-height: auto !important;
+            padding: 0 !important;
+            box-sizing: border-box !important;
+            color: #1e293b !important;
+        }
+
+        table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            page-break-inside: auto;
+        }
+
+        thead {
+            display: table-header-group;
+        }
+
+        tfoot {
+            display: table-footer-group;
+        }
+
+        tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+    }
+`;
+
 const LedgerReport = () => {
     const dispatch = useDispatch();
     const { ledgerData, isLoading } = useSelector((state) => state.transaction);
@@ -22,12 +69,20 @@ const LedgerReport = () => {
 
     const componentRef = useRef(null);
 
-    // useReactToPrint hook usage
-    const handlePrint = useReactToPrint({
-        content: () => componentRef.current || document.getElementById('printable-ledger'),
+    const printLedger = useReactToPrint({
+        contentRef: componentRef,
         documentTitle: `Statement of Account - ${ledgerData?.student?.firstName || 'Student'}`,
+        pageStyle: ledgerPrintPageStyle,
         onAfterPrint: () => toast.success("Printed Successfully"),
     });
+
+    const handlePrint = () => {
+        if (!componentRef.current) {
+            toast.error('Please show a ledger before printing.');
+            return;
+        }
+        printLedger();
+    };
 
     // Cleanup on unmount
     useEffect(() => {
@@ -172,14 +227,14 @@ const LedgerReport = () => {
                     </div>
 
                     {/* Printable Area - Updated Design */}
-                    <div ref={componentRef} id="printable-ledger" className="p-8 print:p-0 bg-white min-h-[10in] print:w-full text-slate-800">
+                    <div ref={componentRef} id="printable-ledger" className="p-8 print:p-0 bg-white min-h-[10in] print:min-h-0 print:w-full text-slate-800 print:text-[10px]">
                         {/* Header Section */}
-                        <div className="flex justify-between items-start mb-6 border-b-2 border-primary pb-4">
+                        <div className="flex justify-between items-start mb-6 print:mb-3 border-b-2 border-primary pb-4 print:pb-2">
                             <div className="flex items-center gap-4">
-                                <img src={logo} alt="Institute Logo" className="h-20 object-contain" />
+                                <img src={logo} alt="Institute Logo" className="h-20 print:h-14 object-contain" />
                             </div>
-                            <div className="text-right text-xs space-y-1">
-                                <h2 className="text-xl font-bold text-blue-600 mb-1">{branchInfo.name || 'Bhestan Branch'}</h2>
+                            <div className="text-right text-xs print:text-[9px] space-y-1 print:space-y-0.5">
+                                <h2 className="text-xl print:text-base font-bold text-blue-600 mb-1">{branchInfo.name || 'Bhestan Branch'}</h2>
                                 <div className="text-gray-600 max-w-xs ml-auto">
                                     {branchInfo.address}
                                 </div>
@@ -191,66 +246,66 @@ const LedgerReport = () => {
                         </div>
 
                         {/* Title */}
-                        <div className="text-center mb-6">
-                            <h2 className="text-xl font-bold text-blue-500 uppercase tracking-wide inline-block border-b border-blue-200 pb-1">Statement of Account</h2>
+                        <div className="text-center mb-6 print:mb-3">
+                            <h2 className="text-xl print:text-base font-bold text-blue-500 uppercase tracking-wide inline-block border-b border-blue-200 pb-1">Statement of Account</h2>
                         </div>
 
                         {/* Student Details Grid */}
-                        <div className="bg-gray-50/50 p-0 mb-6 text-xs">
-                            <div className="grid grid-cols-2 gap-x-8">
+                        <div className="bg-gray-50/50 p-0 mb-6 print:mb-3 text-xs print:text-[9px]">
+                            <div className="grid grid-cols-2 gap-x-8 print:gap-x-4">
                                 {/* Left Column */}
                                 <div className="space-y-0">
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Reg.No. :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.regNo}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Student Name :</span> <span className="col-span-2 font-bold text-gray-800 uppercase">{ledgerData.student.firstName} {ledgerData.student.middleName ? ledgerData.student.middleName + ' ' : ''}{ledgerData.student.lastName}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Date-of-Birth :</span> <span className="col-span-2 text-gray-800">{moment(ledgerData.student.dob).format('DD-MM-YYYY')}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Reference :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.reference}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Address :</span> <span className="col-span-2 text-gray-800 uppercase">{ledgerData.student.address}, {ledgerData.student.city}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Tel.No. :</span> <span className="col-span-2 text-gray-800">(H) {ledgerData.student.contactHome || '-'}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Mob. :(Stud)</span> <span className="col-span-2 text-gray-800">{ledgerData.student.mobileStudent}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Mob. :(Parent)</span> <span className="col-span-2 text-gray-800">{ledgerData.student.mobileParent}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Reg.No. :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.regNo}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Student Name :</span> <span className="col-span-2 font-bold text-gray-800 uppercase">{ledgerData.student.firstName} {ledgerData.student.middleName ? ledgerData.student.middleName + ' ' : ''}{ledgerData.student.lastName}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Date-of-Birth :</span> <span className="col-span-2 text-gray-800">{moment(ledgerData.student.dob).format('DD-MM-YYYY')}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Reference :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.reference}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Address :</span> <span className="col-span-2 text-gray-800 uppercase">{ledgerData.student.address}, {ledgerData.student.city}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Tel.No. :</span> <span className="col-span-2 text-gray-800">(H) {ledgerData.student.contactHome || '-'}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Mob. :(Stud)</span> <span className="col-span-2 text-gray-800">{ledgerData.student.mobileStudent}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Mob. :(Parent)</span> <span className="col-span-2 text-gray-800">{ledgerData.student.mobileParent}</span></div>
                                 </div>
 
                                 {/* Right Column */}
                                 <div className="space-y-0">
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Course Name :</span> <span className="col-span-2 font-bold text-gray-800 uppercase">{ledgerData.course.name}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Course Duration :</span> <span className="col-span-2 text-gray-800">{ledgerData.course.duration} {ledgerData.course.durationType}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Course Fees :</span> <span className="col-span-2 text-gray-800 font-semibold">{ledgerData.summary.totalCourseFees}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Batch Time :</span> <span className="col-span-2 text-gray-800">{ledgerData.batch ? `${ledgerData.batch.startTime} To ${ledgerData.batch.endTime}` : 'N/A'}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Batch Name :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.batch}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Selected Fees Method :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.paymentPlan}</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Admission Fees :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.admissionFeeAmount || ledgerData.course.admissionFees}.00</span></div>
-                                    <div className="grid grid-cols-3 py-1.5 border-b border-gray-100"><span className="font-bold text-gray-700">Monthly Fees :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.paymentPlan === 'Monthly' ? `${ledgerData.course.monthlyFees}.00` : 'N/A'}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Course Name :</span> <span className="col-span-2 font-bold text-gray-800 uppercase">{ledgerData.course.name}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Course Duration :</span> <span className="col-span-2 text-gray-800">{ledgerData.course.duration} {ledgerData.course.durationType}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Course Fees :</span> <span className="col-span-2 text-gray-800 font-semibold">{ledgerData.summary.totalCourseFees}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Batch Time :</span> <span className="col-span-2 text-gray-800">{ledgerData.batch ? `${ledgerData.batch.startTime} To ${ledgerData.batch.endTime}` : 'N/A'}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Batch Name :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.batch}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Selected Fees Method :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.paymentPlan}</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Admission Fees :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.admissionFeeAmount || ledgerData.course.admissionFees}.00</span></div>
+                                    <div className="grid grid-cols-3 py-1.5 print:py-0.5 border-b border-gray-100"><span className="font-bold text-gray-700">Monthly Fees :</span> <span className="col-span-2 text-gray-800">{ledgerData.student.paymentPlan === 'Monthly' ? `${ledgerData.course.monthlyFees}.00` : 'N/A'}</span></div>
                                 </div>
                             </div>
                         </div>
 
                         {/* Fees Details Title */}
-                        <div className="text-center mb-4">
-                            <h3 className="text-lg font-bold text-blue-500 uppercase">Fees Details</h3>
+                        <div className="text-center mb-4 print:mb-2">
+                            <h3 className="text-lg print:text-sm font-bold text-blue-500 uppercase">Fees Details</h3>
                         </div>
 
                         {/* Fees Table */}
-                        <div className="mb-6">
-                            <table className="w-full border-collapse border border-white text-xs">
+                        <div className="mb-6 print:mb-3">
+                            <table className="w-full border-collapse border border-white text-xs print:text-[9px]">
                                 <thead>
                                     <tr className="bg-[#3b82f6] text-white">
-                                        <th className="px-4 py-3 font-medium border-r border-blue-400 w-12 text-center">Sr</th>
-                                        <th className="px-4 py-3 font-medium border-r border-blue-400 text-center">Receipt Date</th>
-                                        <th className="px-4 py-3 font-medium border-r border-blue-400 text-center">Receipt No</th>
-                                        <th className="px-4 py-3 font-medium border-r border-blue-400 text-center">Receipt Type</th>
-                                        <th className="px-4 py-3 font-medium border-r border-blue-400 text-center">Particular</th>
-                                        <th className="px-4 py-3 font-medium text-center">Amount</th>
+                                        <th className="px-4 py-3 print:px-1 print:py-1 font-medium border-r border-blue-400 w-12 text-center">Sr</th>
+                                        <th className="px-4 py-3 print:px-1 print:py-1 font-medium border-r border-blue-400 text-center">Receipt Date</th>
+                                        <th className="px-4 py-3 print:px-1 print:py-1 font-medium border-r border-blue-400 text-center">Receipt No</th>
+                                        <th className="px-4 py-3 print:px-1 print:py-1 font-medium border-r border-blue-400 text-center">Receipt Type</th>
+                                        <th className="px-4 py-3 print:px-1 print:py-1 font-medium border-r border-blue-400 text-center">Particular</th>
+                                        <th className="px-4 py-3 print:px-1 print:py-1 font-medium text-center">Amount</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {ledgerData.receipts.length > 0 ? ledgerData.receipts.map((receipt, index) => (
                                         <tr key={receipt._id} className={`${index % 2 === 0 ? 'bg-gray-100' : 'bg-gray-50'} border-b border-white`}>
-                                            <td className="px-4 py-2 text-center border-r border-white">{index + 1}</td>
-                                            <td className="px-4 py-2 text-center border-r border-white">{moment(receipt.date).format('DD-MM-YYYY')}</td>
-                                            <td className="px-4 py-2 text-center border-r border-white font-semibold">{receipt.receiptNo}</td>
-                                            <td className="px-4 py-2 text-center border-r border-white">{receipt.paymentMode || 'Cash'}</td>
-                                            <td className="px-4 py-2 text-center border-r border-white capitalize">{receipt.remarks || 'Fees Payment'}</td>
-                                            <td className="px-4 py-2 text-center font-medium">{receipt.amountPaid}</td>
+                                            <td className="px-4 py-2 print:px-1 print:py-1 text-center border-r border-white">{index + 1}</td>
+                                            <td className="px-4 py-2 print:px-1 print:py-1 text-center border-r border-white">{moment(receipt.date).format('DD-MM-YYYY')}</td>
+                                            <td className="px-4 py-2 print:px-1 print:py-1 text-center border-r border-white font-semibold">{receipt.receiptNo}</td>
+                                            <td className="px-4 py-2 print:px-1 print:py-1 text-center border-r border-white">{receipt.paymentMode || 'Cash'}</td>
+                                            <td className="px-4 py-2 print:px-1 print:py-1 text-center border-r border-white capitalize">{receipt.remarks || 'Fees Payment'}</td>
+                                            <td className="px-4 py-2 print:px-1 print:py-1 text-center font-medium">{receipt.amountPaid}</td>
                                         </tr>
                                     )) : (
                                         <tr><td colSpan="6" className="py-4 text-center text-gray-400 bg-gray-50 italic">No payment history found.</td></tr>
@@ -258,16 +313,16 @@ const LedgerReport = () => {
                                 </tbody>
                                 <tfoot>
                                     <tr className="bg-white border-t border-gray-300">
-                                        <td colSpan="5" className="px-4 py-2 text-right font-bold text-gray-600">Total Received Amount ::</td>
-                                        <td className="px-4 py-2 text-center font-bold text-gray-800 border-b border-gray-300">{ledgerData.summary.totalPaid.toFixed(2)}</td>
+                                        <td colSpan="5" className="px-4 py-2 print:px-1 print:py-1 text-right font-bold text-gray-600">Total Received Amount ::</td>
+                                        <td className="px-4 py-2 print:px-1 print:py-1 text-center font-bold text-gray-800 border-b border-gray-300">{ledgerData.summary.totalPaid.toFixed(2)}</td>
                                     </tr>
                                     <tr className="bg-white">
-                                        <td colSpan="5" className="px-4 py-2 text-right font-bold text-gray-600">Total Course Fees :</td>
-                                        <td className="px-4 py-2 text-center font-bold text-gray-800 border-b border-gray-300">{ledgerData.summary.totalCourseFees.toFixed(2)}</td>
+                                        <td colSpan="5" className="px-4 py-2 print:px-1 print:py-1 text-right font-bold text-gray-600">Total Course Fees :</td>
+                                        <td className="px-4 py-2 print:px-1 print:py-1 text-center font-bold text-gray-800 border-b border-gray-300">{ledgerData.summary.totalCourseFees.toFixed(2)}</td>
                                     </tr>
                                     <tr className="bg-white">
-                                        <td colSpan="5" className="px-4 py-2 text-right font-bold text-blue-500">Due Amount :</td>
-                                        <td className="px-4 py-2 text-center font-bold text-blue-500">{ledgerData.summary.dueAmount.toFixed(2)}</td>
+                                        <td colSpan="5" className="px-4 py-2 print:px-1 print:py-1 text-right font-bold text-blue-500">Due Amount :</td>
+                                        <td className="px-4 py-2 print:px-1 print:py-1 text-center font-bold text-blue-500">{ledgerData.summary.dueAmount.toFixed(2)}</td>
                                     </tr>
                                 </tfoot>
                             </table>

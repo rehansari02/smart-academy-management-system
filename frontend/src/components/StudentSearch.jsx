@@ -28,6 +28,9 @@ const StudentSearch = ({
     
     const wrapperRef = useRef(null);
     const inputRef = useRef(null);
+    const isOutstandingMode = onlyWithOutstanding && mode === 'student';
+    const listPageSize = isOutstandingMode ? 10000 : 50;
+    const searchPageSize = isOutstandingMode ? 10000 : 10;
 
     // API URL Selection
     const API_URL = mode === 'inquiry' 
@@ -132,7 +135,7 @@ const StudentSearch = ({
         setLoading(true);
         try {
             const params = {
-                pageSize: 50, // Show more students initially
+                pageSize: listPageSize,
                 isCancelled: includeCancelled ? 'all' : 'false',
                 sortBy: '-admissionDate -createdAt',
                 ...additionalFilters
@@ -160,7 +163,7 @@ const StudentSearch = ({
             // Merge query with additional filters
             const params = {
                 studentName: query,
-                pageSize: query ? 10 : 50, // Show more when no search query
+                pageSize: query ? searchPageSize : listPageSize,
                 isCancelled: includeCancelled ? 'all' : 'false',
                 sortBy: '-admissionDate -createdAt',
                 ...additionalFilters

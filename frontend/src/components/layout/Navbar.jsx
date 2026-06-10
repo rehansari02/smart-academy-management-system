@@ -11,6 +11,20 @@ import ProfileSettingsModal from '../user/ProfileSettingsModal';
 import logoImage from '../../assets/logo2.png';
 import { toast } from 'react-toastify';
 
+const formatUserBranchName = (user) => {
+    const branchName = String(user?.branchName || '').trim();
+
+    if (!branchName) {
+        return 'Main';
+    }
+
+    if (user?.role === 'Super Admin' || /^head office$/i.test(branchName)) {
+        return 'Head Office';
+    }
+
+    return branchName.endsWith(' Branch') ? branchName : `${branchName} Branch`;
+};
+
 const Navbar = () => {
     const { user } = useSelector((state) => state.auth);
     const { myPermissions = [] } = useSelector((state) => state.userRights || {}); 
@@ -287,8 +301,8 @@ const Navbar = () => {
                           <span className="mt-1 inline-flex max-w-[140px] items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-primary xl:max-w-[170px] xl:px-2.5 xl:text-[11px]" title={user?.role || ''}>
                               {user?.role || 'User'}
                           </span>
-                          <span className="mt-1 max-w-[140px] truncate text-[10px] font-bold uppercase tracking-wide text-gray-500 xl:max-w-[170px] xl:text-[11px]" title={user?.branchName || 'Main'}>
-                              {user?.branchName ? (user.branchName.endsWith(' Branch') ? user.branchName : `${user.branchName} Branch`) : 'Main'}
+                          <span className="mt-1 max-w-[140px] truncate text-[10px] font-bold uppercase tracking-wide text-gray-500 xl:max-w-[170px] xl:text-[11px]" title={formatUserBranchName(user)}>
+                              {formatUserBranchName(user)}
                           </span>
                       </div>
                       {/* Profile image sized for the larger navbar */}
@@ -382,7 +396,7 @@ const Navbar = () => {
                             {user?.name}
                             <span className="text-[10px] font-normal text-gray-500 border border-gray-200 px-1.5 py-0.5 rounded bg-white">{user?.role}</span>
                           </div>
-                          <div className="text-xs font-bold text-primary uppercase mt-0.5">{user?.branchName ? (user.branchName.endsWith(' Branch') ? user.branchName : `${user.branchName} Branch`) : 'Main'}</div>
+                          <div className="text-xs font-bold text-primary uppercase mt-0.5">{formatUserBranchName(user)}</div>
                           {user?.role !== 'Student' && <div className="text-[10px] text-blue-600 font-medium mt-1">Tap to edit profile</div>}
                        </div>
                   </div>

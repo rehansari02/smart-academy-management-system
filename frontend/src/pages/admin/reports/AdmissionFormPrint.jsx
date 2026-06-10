@@ -7,6 +7,7 @@ import moment from 'moment';
 import { fetchBatches, fetchReferences } from '../../../features/master/masterSlice';
 import { getBranches } from '../../../features/master/branchSlice';
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
+import { getMediaUrl } from '../../../utils/mediaUrl';
 
 const AdmissionFormPrint = () => {
     const { id } = useParams();
@@ -209,9 +210,9 @@ const AdmissionFormPrint = () => {
                     <div className="absolute right-0 top-0 w-32 h-40 border-2 border-black flex items-center justify-center bg-gray-50 overflow-hidden">
                         {student.studentPhoto ? (
                             <img
-                                src={student.studentPhoto.startsWith('http') ? student.studentPhoto : `http://localhost:5000/${student.studentPhoto}`}
+                                src={getMediaUrl(student.studentPhoto)}
                                 alt="Student"
-                                className="w-full h-full object-cover"
+                                className="w-full h-full object-contain object-center bg-white p-1"
                                 onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
                             />
                         ) : null}

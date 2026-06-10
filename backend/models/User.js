@@ -8,10 +8,7 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true },
     role: { 
         type: String, 
-        enum: [
-            'Super Admin', 'Branch Admin', 'Teacher', 'Student', 
-            'Manager', 'Faculty', 'Marketing Person', 'Branch Director', 'Receptionist', 'Other'
-        ], 
+        trim: true,
         default: 'Student' 
     },
     // Added Profile Fields

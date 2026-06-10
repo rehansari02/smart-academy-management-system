@@ -78,6 +78,7 @@ const ManageToppers = lazy(() => import('./pages/admin/master/ManageToppers'));
 const ManageTerms = lazy(() => import("./pages/admin/master/ManageTerms"));
 const ManageBanners = lazy(() => import("./pages/admin/master/ManageBanners"));
 const ManageHomeSections = lazy(() => import("./pages/admin/master/ManageHomeSections"));
+const ManageGroupInstitutes = lazy(() => import("./pages/admin/master/ManageGroupInstitutes"));
 const ManageGallery = lazy(() => import("./pages/admin/master/ManageGallery"));
 const ManageFeedback = lazy(() => import("./pages/admin/master/ManageFeedback"));
 const BranchMaster = lazy(() => import("./pages/admin/master/BranchMaster"));
@@ -380,6 +381,7 @@ function App() {
                 }
               />
               <Route path="/master/home-sections" element={<PrivateRoute><ManageHomeSections /></PrivateRoute>} />
+              <Route path="/master/group-institutes" element={<PrivateRoute><ManageGroupInstitutes /></PrivateRoute>} />
               <Route path="/master/gallery" element={<PrivateRoute><ManageGallery /></PrivateRoute>} />
               <Route path="/master/feedback" element={<PrivateRoute><ManageFeedback /></PrivateRoute>} />
               <Route

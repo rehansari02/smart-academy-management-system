@@ -3,40 +3,113 @@ import { useDispatch, useSelector } from 'react-redux';
 import moment from 'moment';
 import { useReactToPrint } from 'react-to-print';
 import { fetchStudents } from '../../../features/student/studentSlice';
-import { fetchBatches, fetchBranches, fetchCourses } from '../../../features/master/masterSlice';
+import { fetchBatches, fetchBranches, fetchCourses, fetchExamSchedules } from '../../../features/master/masterSlice';
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
 import { Printer, Search, Loader2, RefreshCw, Users, CalendarDays, Clock3, Building2 } from 'lucide-react';
 import StudentSearch from '../../../components/StudentSearch';
 import logo from '../../../assets/logo2.png';
-import { getDefaultReportDateRange } from '../../../utils/reportDateRange';
+
+const getStudentStartDate = (student) => {
+    const date = moment(student?.batchStartDate || student?.admissionDate);
+    return date.isValid() ? date.startOf('day') : null;
+};
+
+const getCourseEndDate = (student) => {
+    const duration = Number(student?.course?.duration || 0);
+    const startDate = getStudentStartDate(student);
+    if (!duration || !startDate) return null;
+
+    const durationType = String(student?.course?.durationType || 'Month').toLowerCase();
+    const endDate = startDate.clone();
+
+    if (durationType.startsWith('year')) {
+        endDate.add(duration, 'years');
+    } else if (durationType.startsWith('day')) {
+        endDate.add(duration, 'days');
+    } else {
+        endDate.add(duration, 'months');
+    }
+
+    return endDate.endOf('day');
+};
 
 const BatchWiseRegister = () => {
     const dispatch = useDispatch();
     const componentRef = useRef();
     
     const { students, isLoading: studentsLoading } = useSelector((state) => state.students);
-    const { batches, branches, courses, isLoading: batchesLoading } = useSelector((state) => state.master);
+    const { batches, branches, courses, examSchedules, isLoading: batchesLoading } = useSelector((state) => state.master);
     const { employees } = useSelector((state) => state.employees);
     const { user } = useSelector((state) => state.auth);
     const userBranchId = typeof user?.branchId === 'object' ? user?.branchId?._id : user?.branchId;
 
     const [filters, setFilters] = useState({
-        ...getDefaultReportDateRange(),
+        startDate: '',
+        endDate: '',
         courseFilter: '',
         branchId: userBranchId || '',
         studentName: '',
         batch: 'All',
         reference: '',
-        isRegistered: 'all'
+        isRegistered: 'true'
     });
 
     const [showReport, setShowReport] = useState(true);
 
+    const reportPeriod = useMemo(() => ({
+        start: moment(filters.startDate || new Date()).startOf(filters.startDate ? 'day' : 'month'),
+        end: moment(filters.endDate || new Date()).endOf(filters.endDate ? 'day' : 'month')
+    }), [filters.startDate, filters.endDate]);
+
+    const firstExamDateByStudentId = useMemo(() => {
+        const map = {};
+
+        (examSchedules || []).forEach((schedule) => {
+            if (schedule?.isDeleted || schedule?.isActive === false) return;
+
+            const dates = (schedule.timeTable || [])
+                .map((item) => moment(item?.date).startOf('day'))
+                .filter((date) => date.isValid());
+
+            if (dates.length === 0) return;
+
+            const firstDate = moment.min(dates);
+            (schedule.attendees || []).forEach((attendee) => {
+                const studentId = typeof attendee === 'object' ? attendee?._id : attendee;
+                if (!studentId) return;
+
+                if (!map[studentId] || firstDate.isBefore(map[studentId], 'day')) {
+                    map[studentId] = firstDate.clone();
+                }
+            });
+        });
+
+        return map;
+    }, [examSchedules]);
+
+    const eligibleStudents = useMemo(() => {
+        if (!students?.length) return [];
+
+        return students.filter((student) => {
+            const studentStartDate = getStudentStartDate(student);
+            if (studentStartDate && studentStartDate.isAfter(reportPeriod.end, 'day')) return false;
+
+            const courseEndDate = getCourseEndDate(student);
+            const examDate = firstExamDateByStudentId[student._id];
+            const examCutoffDate = examDate ? examDate.clone().subtract(1, 'day').endOf('day') : null;
+            const eligibilityEndDate = [courseEndDate, examCutoffDate]
+                .filter(Boolean)
+                .reduce((earliest, date) => (!earliest || date.isBefore(earliest) ? date : earliest), null);
+
+            return !eligibilityEndDate || !eligibilityEndDate.isBefore(reportPeriod.start, 'day');
+        });
+    }, [students, firstExamDateByStudentId, reportPeriod]);
+
     const groupedData = useMemo(() => {
-        if (!students?.length) return {};
+        if (!eligibleStudents?.length) return {};
 
         const groups = {};
-        students.forEach(student => {
+        eligibleStudents.forEach(student => {
             const bName = student.batch || 'Unassigned';
             if (!groups[bName]) groups[bName] = [];
             groups[bName].push(student);
@@ -52,18 +125,26 @@ const BatchWiseRegister = () => {
         });
 
         return sortedGroups;
-    }, [students]);
+    }, [eligibleStudents]);
+
+    const getScheduleParams = useCallback((sourceFilters) => {
+        const normalizedBranchId = typeof sourceFilters.branchId === 'object'
+            ? sourceFilters.branchId?._id
+            : sourceFilters.branchId;
+
+        return {
+            branchId: normalizedBranchId || undefined
+        };
+    }, []);
 
     const getReportParams = useCallback((sourceFilters) => {
         const params = {
-            isActive: true,
+            isActive: 'true',
+            registrationPaidOrRegistered: 'true',
             pageSize: 3000,
             sortBy: 'batch'
         };
 
-        if (sourceFilters.isRegistered && sourceFilters.isRegistered !== 'all') {
-            params.isRegistered = sourceFilters.isRegistered;
-        }
         if (sourceFilters.startDate && sourceFilters.endDate) {
             params.startDate = sourceFilters.startDate;
             params.endDate = sourceFilters.endDate;
@@ -88,17 +169,19 @@ const BatchWiseRegister = () => {
         if (user?.role === 'Super Admin') {
             dispatch(fetchBranches());
         }
-        // Initial search to show all data
-        dispatch(fetchStudents(getReportParams({
-            ...getDefaultReportDateRange(),
+        const initialFilters = {
+            startDate: '',
+            endDate: '',
             courseFilter: '',
             branchId: user?.role === 'Super Admin' ? '' : userBranchId || '',
             studentName: '',
             batch: 'All',
             reference: '',
-            isRegistered: 'all'
-        })));
-    }, [dispatch, getReportParams, user?.role, userBranchId]);
+            isRegistered: 'true'
+        };
+        dispatch(fetchStudents(getReportParams(initialFilters)));
+        dispatch(fetchExamSchedules(getScheduleParams(initialFilters)));
+    }, [dispatch, getReportParams, getScheduleParams, user?.role, userBranchId]);
 
     const handleFilterChange = (e) => {
         setFilters({ ...filters, [e.target.name]: e.target.value });
@@ -110,21 +193,24 @@ const BatchWiseRegister = () => {
 
     const handleReset = () => {
         const resetFilters = {
-            ...getDefaultReportDateRange(),
+            startDate: '',
+            endDate: '',
             courseFilter: '',
             branchId: userBranchId || '',
             studentName: '',
             batch: 'All',
             reference: '',
-            isRegistered: 'all'
+            isRegistered: 'true'
         };
         setFilters(resetFilters);
         dispatch(fetchStudents(getReportParams(resetFilters)));
+        dispatch(fetchExamSchedules(getScheduleParams(resetFilters)));
         setShowReport(true);
     };
 
     const handleSearch = () => {
         dispatch(fetchStudents(getReportParams(filters)));
+        dispatch(fetchExamSchedules(getScheduleParams(filters)));
         setShowReport(true);
     };
 
@@ -236,11 +322,60 @@ const BatchWiseRegister = () => {
         return batchObj ? parseStartHour(batchObj.startTime) : parseStartHour(student.batch);
     };
 
+    const getFilteredBatchesForSlot = (slotIndex) => {
+        const slot = standardSlots[slotIndex];
+        if (!slot || !batches?.length) return [];
+        const slotStudents = getSlotStudents(slotIndex);
+        if (!slotStudents.length) return [];
+
+        return batches.filter((batchItem) => {
+            if (batchItem.isActive === false || batchItem.isDeleted) return false;
+            if (filters.batch && filters.batch !== 'All' && batchItem.name !== filters.batch) return false;
+
+            const normalizedBranchId = typeof filters.branchId === 'object' ? filters.branchId?._id : filters.branchId;
+            const batchBranchId = typeof batchItem.branchId === 'object' ? batchItem.branchId?._id : batchItem.branchId;
+            if (normalizedBranchId && batchBranchId && String(batchBranchId) !== String(normalizedBranchId)) return false;
+
+            if (filters.courseFilter) {
+                const mappedCourses = Array.isArray(batchItem.courses) ? batchItem.courses : [];
+                const hasCourse = mappedCourses.some((course) => {
+                    const courseId = typeof course === 'object' ? course?._id : course;
+                    return String(courseId) === String(filters.courseFilter);
+                });
+                const hasStudentForCourse = eligibleStudents.some((student) => {
+                    const studentCourseId = typeof student.course === 'object' ? student.course?._id : student.course;
+                    return String(studentCourseId) === String(filters.courseFilter)
+                        && normalizeTimeText(student.batch) === normalizeTimeText(batchItem.name);
+                });
+                if (!hasCourse && !hasStudentForCourse) return false;
+            }
+
+            const hasStudentInBatch = slotStudents.some((student) => {
+                const studentBatchObj = getStudentBatchObject(student);
+                if (studentBatchObj?._id && batchItem._id) {
+                    return String(studentBatchObj._id) === String(batchItem._id);
+                }
+                return normalizeTimeText(student.batch) === normalizeTimeText(batchItem.name);
+            });
+            if (!hasStudentInBatch) return false;
+
+            const startHour = parseStartHour(batchItem.startTime);
+            if (slotIndex === standardSlots.length - 1 && startHour === null) return true;
+            return startHour === slot.startHour;
+        });
+    };
+
+    const getSlotCapacity = (slotIndex) => {
+        const slotBatches = getFilteredBatchesForSlot(slotIndex);
+        const capacity = slotBatches.reduce((total, batchItem) => total + Number(batchItem.batchSize || 0), 0);
+        return Math.max(6, capacity);
+    };
+
     const getSlotStudents = (slotIndex) => {
         const slot = standardSlots[slotIndex];
-        if (!students || !slot) return [];
+        if (!eligibleStudents || !slot) return [];
         
-        return students.filter(student => {
+        return eligibleStudents.filter(student => {
             if (!student.batch) return false;
 
             const startHour = getStudentStartHour(student);
@@ -257,6 +392,11 @@ const BatchWiseRegister = () => {
     };
 
     const totalCount = standardSlots.reduce((acc, _, idx) => acc + getSlotStudents(idx).length, 0);
+    const visibleSlotIndexes = standardSlots
+        .map((_, idx) => idx)
+        .filter((idx) => getSlotStudents(idx).length > 0);
+    const leftSlotIndexes = visibleSlotIndexes.filter((_, idx) => idx % 2 === 0);
+    const rightSlotIndexes = visibleSlotIndexes.filter((_, idx) => idx % 2 === 1);
     const visibleBatchCount = Object.keys(groupedData || {}).length;
     const selectedCourseName = courses?.find(c => c._id === filters.courseFilter)?.name || 'All Courses';
     const selectedBranchName = branches?.find(b => b._id === filters.branchId)?.name || headerBranch.name || 'Current Branch';
@@ -273,7 +413,7 @@ const BatchWiseRegister = () => {
         });
         
         const rows = [];
-        const rowCount = Math.max(6, slotStudents.length);
+        const rowCount = Math.max(getSlotCapacity(slotIndex), slotStudents.length);
         for (let i = 0; i < rowCount; i++) {
             rows.push(slotStudents[i] || null);
         }
@@ -419,7 +559,8 @@ const BatchWiseRegister = () => {
                             displayField="name"
                             additionalFilters={{
                                 ...(filters.isRegistered !== 'all' ? { isRegistered: filters.isRegistered } : {}),
-                                branchId: filters.branchId
+                                branchId: filters.branchId,
+                                courseFilter: filters.courseFilter || undefined
                             }}
                         />
                     </div>
@@ -469,10 +610,10 @@ const BatchWiseRegister = () => {
             )}
 
             {showReport && totalCount > 0 && (
-                <div className="preview-scroll-wrapper border border-slate-200 rounded-xl p-4 bg-slate-50 overflow-auto flex justify-center mb-8 print:border-0 print:p-0 print:bg-white print:overflow-visible">
+                <div className="preview-scroll-wrapper border border-slate-200 rounded-xl p-4 bg-slate-50 overflow-x-auto overflow-y-visible flex justify-start lg:justify-center mb-8 print:border-0 print:p-0 print:bg-white print:overflow-visible">
                     <div 
                         ref={componentRef} 
-                        className="print-container bg-white"
+                        className="print-container bg-white shrink-0"
                         style={{ 
                             width: '210mm', 
                             height: '297mm', 
@@ -545,27 +686,16 @@ const BatchWiseRegister = () => {
 
                         {/* Double-Column Grid of Batch Tables */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3mm', width: '100%', boxSizing: 'border-box' }}>
-                            
-                            {/* Left Column (Slots 0, 2, 4, 6, 8, 10, 12) */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3mm' }}>
-                                {renderBatchTable(0)}
-                                {renderBatchTable(2)}
-                                {renderBatchTable(4)}
-                                {renderBatchTable(6)}
-                                {renderBatchTable(8)}
-                                {renderBatchTable(10)}
-                                {renderBatchTable(12)}
+                                {leftSlotIndexes.map((slotIndex) => (
+                                    <React.Fragment key={slotIndex}>{renderBatchTable(slotIndex)}</React.Fragment>
+                                ))}
                             </div>
 
-                            {/* Right Column (Slots 1, 3, 5, 7, 9, 11, 13) */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3mm' }}>
-                                {renderBatchTable(1)}
-                                {renderBatchTable(3)}
-                                {renderBatchTable(5)}
-                                {renderBatchTable(7)}
-                                {renderBatchTable(9)}
-                                {renderBatchTable(11)}
-                                {renderBatchTable(13)}
+                                {rightSlotIndexes.map((slotIndex) => (
+                                    <React.Fragment key={slotIndex}>{renderBatchTable(slotIndex)}</React.Fragment>
+                                ))}
                             </div>
                         </div>
 
@@ -576,8 +706,8 @@ const BatchWiseRegister = () => {
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', width: '100%' }}>
                                     {/* Left Column of Summary */}
                                     <div style={{ borderRight: '1px solid #000' }}>
-                                        {[0, 1, 2, 3, 4, 5, 6].map((idx) => (
-                                            <div key={idx} style={{ display: 'flex', height: '6.5mm', borderBottom: idx < 6 ? '1px solid #000' : 'none' }}>
+                                        {leftSlotIndexes.map((idx, summaryIdx) => (
+                                            <div key={idx} style={{ display: 'flex', height: '6.5mm', borderBottom: summaryIdx < leftSlotIndexes.length - 1 ? '1px solid #000' : 'none' }}>
                                                 <div style={{ width: '65%', backgroundColor: '#ec9b1c', color: '#000', fontSize: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', paddingLeft: '4px', borderRight: '1px solid #000' }}>
                                                     {moment().hour(standardSlots[idx].startHour).minute(0).format('h.mm A')}
                                                 </div>
@@ -589,8 +719,8 @@ const BatchWiseRegister = () => {
                                     </div>
                                     {/* Right Column of Summary */}
                                     <div>
-                                        {[7, 8, 9, 10, 11, 12, 13].map((idx) => (
-                                            <div key={idx} style={{ display: 'flex', height: '6.5mm', borderBottom: (idx - 7) < 6 ? '1px solid #000' : 'none' }}>
+                                        {rightSlotIndexes.map((idx, summaryIdx) => (
+                                            <div key={idx} style={{ display: 'flex', height: '6.5mm', borderBottom: summaryIdx < rightSlotIndexes.length - 1 ? '1px solid #000' : 'none' }}>
                                                 <div style={{ width: '65%', backgroundColor: '#ec9b1c', color: '#000', fontSize: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', paddingLeft: '4px', borderRight: '1px solid #000' }}>
                                                     {moment().hour(standardSlots[idx].startHour).minute(0).format('h.mm A')}
                                                 </div>

@@ -682,7 +682,7 @@ const masterSlice = createSlice({
             // --- Exams ---
             .addCase(fetchExams.fulfilled, (state, action) => { state.exams = action.payload; })
             .addCase(createExam.fulfilled, (state, action) => {
-                state.exams.push(action.payload);
+                state.exams.unshift(action.payload);
                 state.isSuccess = true;
                 state.message = 'Exam Name Added Successfully';
             })

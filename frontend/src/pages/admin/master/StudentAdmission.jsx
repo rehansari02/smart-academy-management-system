@@ -48,6 +48,7 @@ import {
 import ProfileImageUploader from "../../../components/common/ProfileImageUploader";
 import InquiryViewModal from "../../../components/transaction/InquiryViewModal";
 import { getTodayDateISO } from "../../../utils/dateUtils";
+import { getMediaUrl } from "../../../utils/mediaUrl";
 
 import { FormSkeleton } from "../../../components/common/SkeletonLoader"; // Corrected Import Location
 
@@ -213,7 +214,8 @@ const StudentAdmission = () => {
       setLockedReferenceValue(fetchedReference);
       
       if (inquiry.studentPhoto) {
-        setPreviewImage(inquiry.studentPhoto);
+        const photoUrl = getMediaUrl(inquiry.studentPhoto);
+        setPreviewImage(photoUrl);
         setValue("studentPhoto", inquiry.studentPhoto);
       }
 
@@ -331,10 +333,12 @@ const StudentAdmission = () => {
 
       // Photo
       if (currentStudent.studentPhoto) {
-        const photoUrl = currentStudent.studentPhoto.startsWith("http")
-          ? currentStudent.studentPhoto
-          : `${import.meta.env.VITE_API_URL}/${currentStudent.studentPhoto}`;
+        const photoUrl = getMediaUrl(currentStudent.studentPhoto);
         setPreviewImage(photoUrl);
+        setValue("studentPhoto", currentStudent.studentPhoto, { shouldValidate: true });
+      } else {
+        setPreviewImage(null);
+        setValue("studentPhoto", null, { shouldValidate: true });
       }
 
       // Set preview courses for display
@@ -680,9 +684,7 @@ const StudentAdmission = () => {
       }
 
       if (data.studentPhoto) {
-          const photoUrl = data.studentPhoto.startsWith("http")
-            ? data.studentPhoto
-            : `${import.meta.env.VITE_API_URL}/${data.studentPhoto}`;
+          const photoUrl = getMediaUrl(data.studentPhoto);
           setPreviewImage(photoUrl);
           setValue("studentPhoto", data.studentPhoto, { shouldValidate: true });
       }
@@ -2284,11 +2286,11 @@ const StudentAdmission = () => {
                   <div className="col-span-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4 flex items-center gap-6 mb-2">
                        <div className="p-1 bg-white rounded-lg shadow-sm border border-blue-100">
                            {(previewImage || (watch('studentPhoto') && typeof watch('studentPhoto') === 'string')) ? (
-                              <img 
-                                  src={previewImage || watch('studentPhoto')} 
-                                  alt="Student" 
-                                  className="w-24 h-24 rounded-md object-contain bg-white border border-gray-200"
-                              />
+                          <img 
+                              src={previewImage || watch('studentPhoto')} 
+                              alt="Student" 
+                              className="w-24 h-24 rounded-md object-cover object-center bg-white border border-gray-200"
+                          />
                            ) : (
                                <div className="w-24 h-24 bg-gray-200 rounded-md flex items-center justify-center text-gray-400 text-xs text-center p-2">
                                   No Photo

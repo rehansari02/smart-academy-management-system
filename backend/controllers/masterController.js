@@ -345,7 +345,7 @@ const deleteEmployeeRole = asyncHandler(async (req, res) => {
 
 // --- EXAM NAME MASTER CONTROLLERS ---
 const getExams = asyncHandler(async (req, res) => {
-    const exams = await Exam.find({ isDeleted: false }).sort({ name: 1 });
+    const exams = await Exam.find({ isDeleted: false }).sort({ createdAt: -1 });
     res.json(exams);
 });
 

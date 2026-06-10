@@ -23,6 +23,7 @@ import {
 import { toast } from 'react-toastify';
 import { formatDate } from '../../../utils/dateUtils';
 import Swal from 'sweetalert2';
+import { getEmployeeFilterOptions, getEmployeeNameById, getScopedEmployeeId } from '../../../utils/employeeFilterUtils';
 
 const getTodayDate = () => {
     const date = new Date();
@@ -211,6 +212,8 @@ const InquiryOffline = () => {
 
     // Filter defaults to Walk-in for Offline page
     const [filters, setFilters] = useState({ startDate: getTodayDate(), endDate: getTodayDate(), status: '', studentName: '', referenceBy: '', branchId: '', employeeId: '', source: 'Walk-in', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 });
+    const employeeOptions = getEmployeeFilterOptions(employees, user);
+    const activeEmployeeId = getScopedEmployeeId(user, filters.employeeId);
     const [modal, setModal] = useState({ type: null, data: null }); // type: 'form', 'followup', 'view'
     const [stats, setStats] = useState(null);
     const [showPendingBreakup, setShowPendingBreakup] = useState(false);
@@ -229,7 +232,6 @@ const InquiryOffline = () => {
     };
 
     const fetchStats = async (nextFilters = filters) => {
-        if (user?.role !== 'Super Admin') return;
         try {
             const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry/followup-stats`, {
                 params: {
@@ -237,7 +239,7 @@ const InquiryOffline = () => {
                     startDate: nextFilters.startDate,
                     endDate: nextFilters.endDate,
                     branchId: nextFilters.branchId,
-                    employeeId: nextFilters.employeeId,
+                    employeeId: user?.role === 'Super Admin' ? nextFilters.employeeId : (user?._id || ''),
                 },
                 withCredentials: true,
             });
@@ -249,11 +251,11 @@ const InquiryOffline = () => {
 
     const handlePrintFollowupsList = () => {
         const rows = stats?.followupDetails || [];
-        if (!filters.employeeId) {
+        if (!activeEmployeeId) {
             toast.error('Please select employee first');
             return;
         }
-        const employeeName = employees?.find((item) => item._id === filters.employeeId)?.name || 'Selected Employee';
+        const employeeName = getEmployeeNameById(employeeOptions, activeEmployeeId);
         const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
         const printFrame = document.createElement('iframe');
         printFrame.style.position = 'fixed';
@@ -352,8 +354,8 @@ const InquiryOffline = () => {
         dispatch(fetchReferences()); 
         if (user?.role === 'Super Admin') { 
             dispatch(getBranches()); 
-            fetchStats(filters); 
         } 
+        fetchStats(filters);
     }, [dispatch, user?.role, filters.employeeId, filters.startDate, filters.endDate, filters.branchId]);
 
     // Check for conversion data from Visitors page
@@ -593,7 +595,7 @@ const InquiryOffline = () => {
                     </span>
                 </div>
                 <div className="flex gap-2">
-                    {stats?.summary && filters.employeeId && (
+                    {stats?.summary && activeEmployeeId && (
                         <div className="flex items-center gap-4 mr-4 bg-white p-2 rounded-lg border border-gray-200 shadow-sm animate-fadeIn">
                             <div className="text-center px-3 border-r border-gray-100">
                                 <p className="text-[10px] font-bold text-gray-400 uppercase">Total</p>
@@ -672,7 +674,7 @@ const InquiryOffline = () => {
                 </div>
             )}
 
-            {user?.role === 'Super Admin' && stats && (
+            {stats && (
                 <div className="bg-white border border-gray-200 rounded-lg shadow mb-6 p-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="border rounded p-3">
@@ -687,7 +689,7 @@ const InquiryOffline = () => {
                                     <span className="text-green-600">New: {stats.totalInquiries || 0}</span>
                                 </div>
                             )}
-                            {filters.employeeId && (
+                            {activeEmployeeId && (
                                 <button
                                     type="button"
                                     onClick={() => setShowPendingBreakup(true)}
@@ -706,7 +708,7 @@ const InquiryOffline = () => {
                             <button
                                 type="button"
                                 onClick={handlePrintFollowupsList}
-                                disabled={!filters.employeeId}
+                                disabled={!activeEmployeeId}
                                 className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <Printer size={12} /> Print Followups List
@@ -802,7 +804,7 @@ const InquiryOffline = () => {
                                     if (!e.target.value) setTransferMode(false);
                                 }} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                                     <option value="">All Employees</option>
-                                    {employees?.map((employee) => (
+                                    {employeeOptions?.map((employee) => (
                                         <option key={employee._id} value={employee._id}>{employee.name}</option>
                                     ))}
                                 </select>

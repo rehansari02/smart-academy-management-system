@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchCourses } from '../../features/master/masterSlice';
+import groupInstituteService from '../../services/groupInstituteService';
 import {
   Phone, Mail, Facebook, Twitter, Instagram, Linkedin, Youtube,
   LogIn, UserPlus, ArrowRight, Menu, X, MapPin, ChevronDown, BookOpen
@@ -14,6 +15,7 @@ const PublicNavbar = () => {
   const [activeDropdown, setActiveDropdown] = useState(null); // For Mobile
   const [hoverDropdown, setHoverDropdown] = useState(null); // For Desktop
   const [activeCourseType, setActiveCourseType] = useState('');
+  const [groupInstitutes, setGroupInstitutes] = useState([]);
   const location = useLocation();
   const dispatch = useDispatch();
 
@@ -26,6 +28,19 @@ const PublicNavbar = () => {
       dispatch(fetchCourses());
     }
   }, [dispatch, courses.length, isLoading]);
+
+  useEffect(() => {
+    const loadGroupInstitutes = async () => {
+      try {
+        const data = await groupInstituteService.getPublicItems();
+        setGroupInstitutes(Array.isArray(data) ? data : []);
+      } catch (error) {
+        setGroupInstitutes([]);
+      }
+    };
+
+    loadGroupInstitutes();
+  }, []);
 
   // Extract unique Course Types and group courses
   const courseGroups = courses.reduce((acc, course) => {
@@ -77,7 +92,16 @@ const PublicNavbar = () => {
     { name: 'Franchise', path: '/franchise' },
     { name: 'Contact', path: '/contact' },
     { name: 'Blog', path: '/blog' },
-    { name: 'Feedback', path: '/feedback' }
+    {
+      name: 'Group Of Institute',
+      isDropdown: true,
+      subItems: groupInstitutes.map((item) => ({
+        name: item.name,
+        href: item.link,
+        external: true
+      }))
+    },
+    // { name: 'Feedback', path: '/feedback' }
   ];
 
   // Helper to determine if a path is active
@@ -89,6 +113,7 @@ const PublicNavbar = () => {
   const isDropdownActive = (subItems) => {
     if (!subItems) return false;
     return subItems.some(sub => {
+      if (!sub.path) return false;
       const cleanPath = sub.path.split('#')[0].split('?')[0];
       return location.pathname === cleanPath || (cleanPath !== '/' && location.pathname.startsWith(cleanPath));
     });
@@ -110,7 +135,7 @@ const PublicNavbar = () => {
           </button>
 
           {/* Desktop Menu - Centered */}
-          <div className="hidden md:flex items-center justify-center gap-1">
+          <div className="hidden md:flex items-center justify-center gap-2.5">
             {menuItems.map((item, index) => (
               <div key={index} className={`${item.isMegaMenu ? 'static' : 'relative'} group`}
                 onMouseEnter={() => setHoverDropdown(index)}
@@ -118,7 +143,7 @@ const PublicNavbar = () => {
               >
                 {item.isDropdown ? (
                   <div>
-                    <button className={`flex items-center gap-1 px-4 py-3 text-sm font-bold uppercase tracking-wider hover:text-yellow-300 transition-colors border-b-2 border-transparent hover:border-yellow-300 ${(item.subItems && isDropdownActive(item.subItems)) || (item.isMegaMenu && location.pathname.includes('/course')) ? 'text-yellow-300 border-yellow-300' : 'text-white'}`}>
+                    <button className={`flex items-center gap-1 whitespace-nowrap rounded-md px-3 py-3 text-[13px] font-bold uppercase tracking-wide leading-none hover:text-yellow-300 transition-colors border-b-2 border-transparent hover:border-yellow-300 ${(item.subItems && isDropdownActive(item.subItems)) || (item.isMegaMenu && location.pathname.includes('/course')) ? 'text-yellow-300 border-yellow-300' : 'text-white'}`}>
                       {item.name} <ChevronDown size={14} className={`transform transition-transform duration-200 ${hoverDropdown === index ? 'rotate-180' : ''}`} />
                     </button>
 
@@ -193,15 +218,31 @@ const PublicNavbar = () => {
                           ) : (
                             // STANDARD DROPDOWN
                             <div className="py-2">
-                              {item.subItems.map((sub, subIdx) => (
-                                <Link
-                                  key={subIdx}
-                                  to={sub.path}
-                                  className={`block px-6 py-3 text-sm font-semibold hover:bg-blue-50 hover:text-primary transition-colors ${location.pathname === sub.path.split('#')[0].split('?')[0] ? 'text-primary bg-blue-50' : 'text-gray-600'}`}
-                                >
-                                  {sub.name}
-                                </Link>
-                              ))}
+                              {item.subItems.length > 0 ? item.subItems.map((sub, subIdx) => (
+                                sub.external ? (
+                                  <a
+                                    key={subIdx}
+                                    href={sub.href}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block px-6 py-3 text-sm font-semibold text-gray-600 transition-colors hover:bg-primary hover:text-white"
+                                  >
+                                    {sub.name}
+                                  </a>
+                                ) : (
+                                  <Link
+                                    key={subIdx}
+                                    to={sub.path}
+                                    className={`block px-6 py-3 text-sm font-semibold transition-colors hover:bg-primary hover:text-white ${location.pathname === sub.path.split('#')[0].split('?')[0] ? 'bg-primary text-white' : 'text-gray-600'}`}
+                                  >
+                                    {sub.name}
+                                  </Link>
+                                )
+                              )) : (
+                                <div className="px-6 py-3 text-sm font-medium text-gray-400">
+                                  No institute links added
+                                </div>
+                              )}
                             </div>
                           )}
                         </motion.div>
@@ -210,7 +251,7 @@ const PublicNavbar = () => {
                   </div>
                 ) : (
                   <Link to={item.path}
-                    className={`flex items-center gap-1 px-4 py-3 text-sm font-bold uppercase tracking-wider hover:text-yellow-300 transition-colors border-b-2 border-transparent hover:border-yellow-300 ${isActive(item.path) ? 'text-yellow-300 border-yellow-300' : 'text-white'}`}
+                    className={`flex items-center gap-1 whitespace-nowrap rounded-md px-3 py-3 text-[13px] font-bold uppercase tracking-wide leading-none hover:text-yellow-300 transition-colors border-b-2 border-transparent hover:border-yellow-300 ${isActive(item.path) ? 'text-yellow-300 border-yellow-300' : 'text-white'}`}
                   >
                     {item.name}
                   </Link>
@@ -274,16 +315,33 @@ const PublicNavbar = () => {
                                 ))}
                               </div>
                             ) : (
-                              item.subItems.map((sub, subIdx) => (
-                                <Link
-                                  key={subIdx}
-                                  to={sub.path}
-                                  className="block py-3 text-sm font-medium text-gray-600 border-b border-gray-100 last:border-0"
-                                  onClick={() => setIsOpen(false)}
-                                >
-                                  {sub.name}
-                                </Link>
-                              ))
+                              item.subItems.length > 0 ? item.subItems.map((sub, subIdx) => (
+                                sub.external ? (
+                                  <a
+                                    key={subIdx}
+                                    href={sub.href}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block rounded-lg border-b border-gray-100 px-3 py-3 text-sm font-medium text-gray-600 transition-colors hover:bg-primary hover:text-white last:border-0"
+                                    onClick={() => setIsOpen(false)}
+                                  >
+                                    {sub.name}
+                                  </a>
+                                ) : (
+                                  <Link
+                                    key={subIdx}
+                                    to={sub.path}
+                                    className={`block rounded-lg border-b border-gray-100 px-3 py-3 text-sm font-medium transition-colors last:border-0 ${location.pathname === sub.path.split('#')[0].split('?')[0] ? 'bg-primary text-white' : 'text-gray-600 hover:bg-primary hover:text-white'}`}
+                                    onClick={() => setIsOpen(false)}
+                                  >
+                                    {sub.name}
+                                  </Link>
+                                )
+                              )) : (
+                                <div className="py-3 text-sm font-medium text-gray-400">
+                                  No institute links added
+                                </div>
+                              )
                             )}
                           </motion.div>
                         )}

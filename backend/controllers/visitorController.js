@@ -209,6 +209,14 @@ const appendVisitorFilters = (query, { search, searchField, studentName, referen
     }
 };
 
+const normalizeOptionalObjectId = (value) => {
+    if (value === '' || value === null || value === undefined || value === 'null' || value === 'undefined') {
+        return undefined;
+    }
+
+    return value;
+};
+
 // Create a new visitor
 exports.createVisitor = async (req, res) => {
     try {
@@ -236,6 +244,10 @@ exports.createVisitor = async (req, res) => {
         if (attendedBy === '' || attendedBy === null) {
             attendedBy = undefined;
         }
+
+        course = normalizeOptionalObjectId(course);
+        branchId = normalizeOptionalObjectId(branchId);
+        inquiryId = normalizeOptionalObjectId(inquiryId);
 
         if (inquiryId && !status) {
             const inquiry = await Inquiry.findById(inquiryId).select('status');
@@ -332,7 +344,7 @@ exports.getAllVisitors = async (req, res) => {
         if (targetEmployee) {
             const employeeUserId = await resolveAssignableUserId(targetEmployee);
             if (employeeUserId) {
-                query.allocatedTo = employeeUserId;
+                addVisitorOwnershipScope(query, employeeUserId);
             } else {
                 query._id = { $exists: false }; // No matches
             }
@@ -474,12 +486,16 @@ exports.getVisitorById = async (req, res) => {
 // Update visitor
 exports.updateVisitor = async (req, res) => {
     try {
-        let { visitingDate, studentName, mobileNumber, contactParent, contactHome, address, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId, isExternalRef } = req.body;
+        let { visitingDate, studentName, mobileNumber, contactParent, contactHome, address, reference, referenceContact, referenceAddress, course, inTime, outTime, status, attendedBy, remarks, branchId, inquiryId, isExternalRef, allocatedTo: assignedTo } = req.body;
         
         // Fix empty string attendedBy — convert to undefined to avoid BSON cast error
         if (attendedBy === '' || attendedBy === null) {
             attendedBy = undefined;
         }
+
+        course = normalizeOptionalObjectId(course);
+        branchId = normalizeOptionalObjectId(branchId);
+        inquiryId = normalizeOptionalObjectId(inquiryId);
 
         const visitor = await Visitor.findById(req.params.id);
         if (!visitor) {

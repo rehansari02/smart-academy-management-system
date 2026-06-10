@@ -136,12 +136,9 @@ const ExamSchedule = () => {
       }
     });
 
-    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return [...map.values()];
   }, [exams, examSchedules]);
   const availableCourseOptions = React.useMemo(() => {
-    const allCourses = isFromExamRequestList
-      ? selectedRequestCourseOptions
-      : [...(coursesWithRequests.length > 0 ? coursesWithRequests : courses || [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     const examNameKey = selectedExamName?.trim().toLowerCase();
 
     if (isFromExamRequestList && !examNameKey) {
@@ -149,24 +146,78 @@ const ExamSchedule = () => {
     }
 
     if (isFromExamRequestList) {
-      return allCourses;
+      return selectedRequestCourseOptions;
     }
 
     if (!examNameKey) {
-      return allCourses;
+      return [];
     }
 
-    const relatedCourseIds = new Set(
+    const courseMap = new Map();
+    (coursesWithRequests || []).forEach((course) => {
+      if (course?._id) {
+        courseMap.set(String(course._id), course);
+      }
+    });
+
+    if (editMode) {
+      const currentSchedule = (examSchedules || []).find((schedule) => String(schedule?._id) === String(editMode));
+      const currentCourseId = currentSchedule?.course?._id || currentSchedule?.course;
+      const currentCourse = currentSchedule?.course?._id
+        ? currentSchedule.course
+        : courses.find((course) => String(course._id) === String(currentCourseId));
+
+      if (currentCourse?._id) {
+        courseMap.set(String(currentCourse._id), currentCourse);
+      }
+    }
+
+    if (courseMap.size === 0) {
+      return [];
+    }
+
+    const pendingCourses = [...courseMap.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const alreadyScheduledCourseIds = new Set(
       (examSchedules || [])
-        .filter((schedule) => (schedule?.examName || '').trim().toLowerCase() === examNameKey)
+        .filter((schedule) => {
+          const sameExamName = (schedule?.examName || '').trim().toLowerCase() === examNameKey;
+          const isCurrentEditSchedule = editMode && String(schedule?._id) === String(editMode);
+          return sameExamName && !isCurrentEditSchedule;
+        })
         .map((schedule) => schedule?.course?._id || schedule?.course)
         .filter(Boolean)
         .map(String)
     );
 
-    const relatedCourses = allCourses.filter((course) => relatedCourseIds.has(String(course._id)));
-    return relatedCourses.length > 0 ? relatedCourses : allCourses;
-  }, [courses, coursesWithRequests, examSchedules, isFromExamRequestList, selectedExamName, selectedRequestCourseOptions]);
+    return pendingCourses.filter((course) => !alreadyScheduledCourseIds.has(String(course._id)));
+  }, [courses, coursesWithRequests, editMode, examSchedules, isFromExamRequestList, selectedExamName, selectedRequestCourseOptions]);
+  const filterCourseOptions = React.useMemo(() => {
+    const examNameKey = filters.examName?.trim().toLowerCase();
+
+    if (!examNameKey) {
+      return [...(courses || [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }
+
+    const courseMap = new Map();
+    (examSchedules || [])
+      .filter((schedule) => (schedule?.examName || '').trim().toLowerCase() === examNameKey)
+      .forEach((schedule) => {
+        const scheduleCourseId = schedule?.course?._id || schedule?.course;
+        if (!scheduleCourseId) return;
+
+        const course = schedule?.course?._id
+          ? schedule.course
+          : courses.find((item) => String(item._id) === String(scheduleCourseId));
+
+        if (course?._id) {
+          courseMap.set(String(course._id), course);
+        }
+      });
+
+    return [...courseMap.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [courses, examSchedules, filters.examName]);
+  const selectedFilterCourse = filterCourseOptions.find((course) => String(course._id) === String(filters.courseId))
+    || courses.find((course) => String(course._id) === String(filters.courseId));
   const visiblePendingRequests = React.useMemo(() => {
     if (!selectedCourse) return [];
     return (pendingRequests || []).filter((student) => String(student?.course?._id || student?.course) === String(selectedCourse));
@@ -181,6 +232,15 @@ const ExamSchedule = () => {
       setTimeTableData([]);
     }
   }, [availableCourseOptions, selectedCourse, setValue]);
+
+  useEffect(() => {
+    if (!filters.courseId) return;
+    const isValidCourse = filterCourseOptions.some((course) => String(course._id) === String(filters.courseId));
+    if (!isValidCourse) {
+      setFilters((prev) => ({ ...prev, courseId: '' }));
+      setFilterCourseSearch('');
+    }
+  }, [filterCourseOptions, filters.courseId]);
 
   const buildTimeTableFromCourse = (course, existingTimeTable = []) => {
     const existingBySubject = new Map(
@@ -634,7 +694,11 @@ const ExamSchedule = () => {
                                         ))
                                     ) : (
                                         <div className="p-3 text-xs text-gray-400 text-center">
-                                            No matching courses found.
+                                            {!selectedExamName
+                                                ? 'Please select an exam name first.'
+                                                : courseSearch
+                                                    ? 'No matching courses found.'
+                                                    : 'No pending courses found for this exam.'}
                                         </div>
                                     )}
                                 </div>
@@ -904,9 +968,10 @@ const ExamSchedule = () => {
                                     <button 
                                         type="button"
                                         onClick={() => {
-                                            setFilters({...filters, examName: ''});
+                                            setFilters({...filters, examName: '', courseId: ''});
                                             setIsFilterExamDropdownOpen(false);
                                             setFilterExamSearch('');
+                                            setFilterCourseSearch('');
                                         }}
                                         className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-red-600 font-bold shadow-sm hover:shadow transition-all"
                                     >
@@ -917,9 +982,10 @@ const ExamSchedule = () => {
                             <div className="divide-y divide-gray-100 max-h-[200px] overflow-y-auto">
                                 <div 
                                     onClick={() => {
-                                        setFilters({...filters, examName: ''});
+                                        setFilters({...filters, examName: '', courseId: ''});
                                         setIsFilterExamDropdownOpen(false);
                                         setFilterExamSearch('');
+                                        setFilterCourseSearch('');
                                     }}
                                     className="p-2.5 text-xs font-semibold hover:bg-blue-50 hover:text-blue-600 text-gray-400 cursor-pointer rounded-lg transition-all duration-150 italic border-b border-gray-100 mb-1"
                                 >
@@ -930,9 +996,10 @@ const ExamSchedule = () => {
                                         <div 
                                             key={`${exam.source}-${exam.exam?._id || exam.name}`}
                                             onClick={() => {
-                                                setFilters({...filters, examName: exam.name});
+                                                setFilters({...filters, examName: exam.name, courseId: ''});
                                                 setIsFilterExamDropdownOpen(false);
                                                 setFilterExamSearch('');
+                                                setFilterCourseSearch('');
                                             }}
                                             className="p-2.5 text-xs font-semibold hover:bg-blue-50 hover:text-blue-700 text-gray-700 cursor-pointer rounded-lg transition-all duration-150"
                                         >
@@ -958,7 +1025,7 @@ const ExamSchedule = () => {
                         className="border border-gray-300 p-2.5 rounded-lg w-full text-left bg-white flex justify-between items-center text-sm min-h-[42px] shadow-sm hover:border-blue-400 hover:shadow-md transition-all duration-200 focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
                     >
                         <span className={filters.courseId ? 'text-gray-900 font-medium' : 'text-gray-400'}>
-                            {courses.find(c => c._id === filters.courseId)?.name || '-- All Courses --'}
+                            {selectedFilterCourse?.name || '-- All Courses --'}
                         </span>
                         <span className="text-gray-500">▼</span>
                     </button>
@@ -998,8 +1065,8 @@ const ExamSchedule = () => {
                                 >
                                     -- All Courses --
                                 </div>
-                                {courses && courses.filter(c => c.name.toLowerCase().includes(filterCourseSearch.toLowerCase())).length > 0 ? (
-                                    courses.filter(c => c.name.toLowerCase().includes(filterCourseSearch.toLowerCase())).map(c => (
+                                {filterCourseOptions.filter(c => c.name.toLowerCase().includes(filterCourseSearch.toLowerCase())).length > 0 ? (
+                                    filterCourseOptions.filter(c => c.name.toLowerCase().includes(filterCourseSearch.toLowerCase())).map(c => (
                                         <div 
                                             key={c._id} 
                                             onClick={() => {
@@ -1014,7 +1081,11 @@ const ExamSchedule = () => {
                                     ))
                                 ) : (
                                     <div className="p-3 text-xs text-gray-400 text-center">
-                                        No matching courses found.
+                                        {filterCourseSearch
+                                            ? 'No matching courses found.'
+                                            : filters.examName
+                                                ? 'No courses found for this exam.'
+                                                : 'No courses found.'}
                                     </div>
                                 )}
                             </div>

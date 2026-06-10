@@ -203,6 +203,9 @@ const ExamResultPrint = () => {
     return text.replace(/\b([a-z])/g, (match) => match.toUpperCase());
   };
 
+  const toUpperText = (value) =>
+    String(value || "").trim().replace(/\s+/g, " ").toUpperCase();
+
   const getStudentFullName = () =>
     [student?.firstName, student?.lastName]
       .map(toTitleCase)
@@ -214,6 +217,9 @@ const ExamResultPrint = () => {
       .map(toTitleCase)
       .filter(Boolean)
       .join(" ");
+
+  const getUpperFullName = (...parts) =>
+    parts.map(toUpperText).filter(Boolean).join(" ");
 
   const getDaySuffix = (day) => {
     if (day > 3 && day < 21) return "th";
@@ -369,7 +375,7 @@ const ExamResultPrint = () => {
     if (branchName.toUpperCase().includes("BHESTAN")) return "BHESTAN, SURAT";
     if (branchName.toUpperCase().includes("GODADARA")) return "GODADARA, SURAT";
     if (branchName) return `${branchName.toUpperCase()}, SURAT`;
-    return course?.centerName || "GODADARA, SURAT";
+    return toUpperText(course?.centerName || "GODADARA, SURAT");
   };
 
   const issueDate = moment(result.issueDate || result.createdAt);
@@ -482,9 +488,34 @@ const ExamResultPrint = () => {
     dateIssueMarginTop = `${Math.max(2, 4 - overflow * 0.5)}mm`;
   }
 
-  const studentPrefix =
-    student?.gender?.toLowerCase() === "female" ? "MISS." : "Mr.";
+  const isFemaleStudent = student?.gender?.toLowerCase() === "female";
+  const isHusbandRelation = student?.relationType?.toLowerCase() === "husband";
+  const getStudentPrefix = (uppercase = false) => {
+    const prefix =
+      isFemaleStudent && isHusbandRelation
+        ? "Mrs."
+        : isFemaleStudent
+        ? "Miss."
+        : "Mr.";
+    return uppercase ? prefix.toUpperCase() : prefix;
+  };
+  const studentPrefix = getStudentPrefix();
+  const marksheetStudentPrefix = getStudentPrefix(true);
+  const parentRelationLabel = isHusbandRelation ? "HUSBAND NAME" : "FATHER NAME";
   const fatherPrefix = "SHRI";
+  const marksheetStudentName = getUpperFullName(
+    student?.firstName,
+    student?.lastName
+  );
+  const marksheetParentName = getUpperFullName(
+    student?.fatherName || student?.middleName,
+    student?.lastName
+  );
+  const marksheetCourseName = toUpperText(course?.name);
+  const marksheetDuration = toUpperText(
+    `${course?.duration || "12"} ${course?.durationType || "MONTH"}`
+  );
+  const displayResultGrade = toUpperText(result.grade || "DISTINCTION");
 
   return (
     <div className="bg-slate-500 min-h-screen py-10 print:py-0 print:bg-white flex flex-col items-center font-sans text-slate-900">
@@ -585,7 +616,7 @@ const ExamResultPrint = () => {
                           fontSize: "3.5mm",
                         }}
                       >
-                        : {studentPrefix} {getStudentFullName()}
+                        : {marksheetStudentPrefix} {marksheetStudentName}
                       </td>
                     </tr>
                     <tr style={{ height: "5.2mm" }}>
@@ -597,7 +628,7 @@ const ExamResultPrint = () => {
                           fontSize: "3.5mm",
                         }}
                       >
-                        FATHER NAME
+                        {parentRelationLabel}
                       </td>
                       <td
                         style={{
@@ -607,7 +638,7 @@ const ExamResultPrint = () => {
                           fontSize: "3.5mm",
                         }}
                       >
-                        : {fatherPrefix} {getParentFullName()}
+                        : {fatherPrefix} {marksheetParentName}
                       </td>
                     </tr>
                     <tr style={{ height: "5.2mm" }}>
@@ -629,7 +660,7 @@ const ExamResultPrint = () => {
                           fontSize: "3.5mm",
                         }}
                       >
-                        : {course?.name}
+                        : {marksheetCourseName}
                       </td>
                     </tr>
                     <tr style={{ height: "5.2mm" }}>
@@ -651,8 +682,7 @@ const ExamResultPrint = () => {
                           fontSize: "3.5mm",
                         }}
                       >
-                        : {course?.duration || "12"}{" "}
-                        {course?.durationType || "MONTH"}
+                        : {marksheetDuration}
                       </td>
                     </tr>
                     <tr style={{ height: "5.2mm" }}>
@@ -674,7 +704,7 @@ const ExamResultPrint = () => {
                           fontSize: "3.5mm",
                         }}
                       >
-                        : {getCenterName()}
+                        : {toUpperText(getCenterName())}
                       </td>
                     </tr>
                   </tbody>
@@ -1093,7 +1123,7 @@ const ExamResultPrint = () => {
                           fontSize: `${parseFloat(botTableFontSize) + 1}px`,
                         }}
                       >
-                        {result.grade || "DISTINCTION"}
+                        {displayResultGrade}
                       </td>
                     </tr>
                   </tbody>
@@ -1341,7 +1371,7 @@ const ExamResultPrint = () => {
               >
                 With{" "}
                 <span style={{ fontWeight: "bold" }}>
-                  {formatGrade(result.grade)}
+                  {displayResultGrade}
                 </span>{" "}
                 from our {getCenterName()}
               </p>

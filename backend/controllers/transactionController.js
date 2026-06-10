@@ -165,7 +165,7 @@ const getFeeCaps = (student, receipts = []) => {
   const course = student?.course || firstReceipt.course || {};
 
   return {
-    admissionFee: Number(course.admissionFees || 0),
+    admissionFee: Math.max(Number(course.admissionFees || 0), Number(student?.admissionFeeAmount || 0)),
     registrationFee: Number(course.registrationFees || 0)
   };
 };
@@ -322,6 +322,44 @@ const attachReceiptDisplayInfo = (receipts) => {
     });
 };
 
+const isCourseDurationCompleted = (student, customDate = null) => {
+  const course = student?.course || {};
+  // Default to 12 months if duration is missing or 0
+  const duration = Number(course.duration) || 12;
+  const durationType = String(course.durationType || "Month").toLowerCase();
+  const startDate = student?.batchStartDate || student?.admissionDate || student?.createdAt;
+
+  if (!startDate) return false;
+
+  const endDate = moment(startDate);
+  if (!endDate.isValid()) return false;
+
+  if (durationType.includes("year")) {
+    endDate.add(duration, "years");
+  } else if (durationType.includes("day")) {
+    endDate.add(duration, "days");
+  } else {
+    endDate.add(duration, "months");
+  }
+
+  // If the student joined more than 2 years ago, consider it completed anyway
+  const twoYearsAgo = moment(customDate || new Date()).subtract(2, 'years');
+  if (moment(startDate).isBefore(twoYearsAgo)) return true;
+
+  return endDate.endOf("day").isSameOrBefore(moment(customDate || new Date()));
+};
+
+const calculateLedgerFeeTotals = (student, receipts = []) => {
+  const course = student?.course || {};
+  const courseAdmissionFee = Number(course.admissionFees || 0);
+  const effectiveAdmissionFee = Math.max(courseAdmissionFee, Number(student?.admissionFeeAmount || 0));
+  const totalCourseFees = Number(student?.totalFees || 0) + effectiveAdmissionFee;
+  const totalPaid = receipts.reduce((acc, curr) => acc + Number(curr.amountPaid || 0), 0);
+  const dueAmount = Math.max(0, totalCourseFees - totalPaid);
+
+  return { effectiveAdmissionFee, totalCourseFees, totalPaid, dueAmount };
+};
+
 // --- INQUIRY ---
 
 // @desc Get Inquiries with Filters
@@ -425,7 +463,7 @@ const getInquiries = asyncHandler(async (req, res) => {
   if (employeeFilter) {
     const employeeUserId = await resolveAssignableUserId(employeeFilter);
     if (employeeUserId) {
-      query.allocatedTo = employeeUserId;
+      addInquiryOwnershipScope(query, employeeUserId);
     } else {
       query._id = { $exists: false };
     }
@@ -986,7 +1024,7 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
         }
       });
     }
-    inquiryQuery.allocatedTo = selectedEmployeeUserId;
+    addInquiryOwnershipScope(inquiryQuery, selectedEmployeeUserId);
   }
 
   const openStatuses = ["Open", "InProgress", "Recall"];
@@ -1023,6 +1061,9 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
       if (!actionDate) return;
       const actionTime = new Date(actionDate).getTime();
       if (actionTime < start.getTime() || actionTime > end.getTime()) return;
+
+      const historyFollowUpById = history.followUpBy?._id ? String(history.followUpBy._id) : "";
+      if (selectedEmployeeUserId && historyFollowUpById !== String(selectedEmployeeUserId)) return;
 
       const user = history.followUpBy || inquiry.allocatedTo || inquiry.createdBy || {};
       
@@ -1916,12 +1957,7 @@ const getStudentLedger = asyncHandler(async (req, res) => {
     date: 1,
   });
 
-  const courseAdmissionFee = student.course && student.course.admissionFees ? Number(student.course.admissionFees) : 0;
-  const effectiveAdmissionFee = Math.max(courseAdmissionFee, student.admissionFeeAmount || 0);
-
-  const totalCourseFees = (student.totalFees || 0) + effectiveAdmissionFee;
-  const totalPaid = receipts.reduce((acc, curr) => acc + curr.amountPaid, 0);
-  const dueAmount = Math.max(0, totalCourseFees - totalPaid);
+  const { totalCourseFees, totalPaid, dueAmount } = calculateLedgerFeeTotals(student, receipts);
 
   res.json({
     student,
@@ -1939,14 +1975,19 @@ const getStudentLedger = asyncHandler(async (req, res) => {
 //   - Remaining Course Fee divided into installments
 //   - Outstanding carries forward month to month
 const calculateStudentPaymentSummary = (student, receipts, customDate = null) => {
-  const totalReceived = receipts.reduce((acc, curr) => acc + Number(curr.amountPaid || 0), 0);
+  const {
+    effectiveAdmissionFee,
+    totalCourseFees,
+    totalPaid,
+    dueAmount,
+  } = calculateLedgerFeeTotals(student, receipts);
+  const totalReceived = totalPaid;
 
-  const course = student.course || {};
-  const admissionFee = Number(course.admissionFees || 0);
-  const registrationFee = Number(course.registrationFees || 0);
+  const { registrationFee } = getFeeCaps(student, receipts);
+  const admissionFee = effectiveAdmissionFee;
   const courseFee = Number(student.totalFees || 0);
   const remainingCourseFee = Math.max(0, courseFee - registrationFee);
-  const totalFees = admissionFee + courseFee;
+  const totalFees = totalCourseFees;
   const allocatedPayments = allocateReceiptPayments(student, receipts);
 
   const admissionPaid = allocatedPayments.admissionPaid;
@@ -1981,26 +2022,35 @@ const calculateStudentPaymentSummary = (student, receipts, customDate = null) =>
     const start = moment(startDate).startOf('month');
     const now = moment(customDate || new Date()).startOf('month');
 
-    if (monthlyInstallment > 0 && startDate) {
+    // Determine if installments are due
+    const isMonthly = feesMethod === "Monthly";
+    const hasEmiDetails = monthlyInstallment > 0 && months > 0;
+
+    if (startDate && (hasEmiDetails || isCourseDurationCompleted(student, customDate))) {
       // Calculate months elapsed using moment for accuracy
-      // .diff(start, 'months') gives 0 if same month, 1 if next month, etc.
-      // The first installment becomes due in the month AFTER admission.
       const monthsElapsed = Math.max(0, now.diff(start, 'months'));
 
-      // Total installments that should have been paid so far
-      const installmentsDue = Math.min(monthsElapsed, months);
+      // If course duration is completed OR months elapsed exceeds defined installments
+      const isDurationCompleted = isCourseDurationCompleted(student, customDate) || (months > 0 && monthsElapsed >= months);
 
-      // Total scheduled installment amount so far
-      const totalScheduledInstallmentDue = installmentsDue * monthlyInstallment;
+      if (isDurationCompleted) {
+        // Entire remaining course fee is now due
+        currentInstallmentDue = Math.max(0, remainingCourseFee - allocatedPayments.installmentPaid);
+        previousOutstanding = 0;
+        installmentPrepaid = 0;
+      } else if (hasEmiDetails) {
+        // Total installments that should have been paid so far
+        const installmentsDue = Math.min(monthsElapsed, months);
 
-      const totalInstallmentPaid = allocatedPayments.installmentPaid;
-      
-      // Previous outstanding = what was due in PRIOR months minus what was paid
-      const priorScheduled = Math.max(0, installmentsDue - 1) * monthlyInstallment;
+        const totalInstallmentPaid = allocatedPayments.installmentPaid;
+        
+        // Previous outstanding = what was due in PRIOR months minus what was paid
+        const priorScheduled = Math.max(0, installmentsDue - 1) * monthlyInstallment;
 
-      previousOutstanding = Math.max(0, priorScheduled - totalInstallmentPaid);
-      installmentPrepaid = Math.max(0, totalInstallmentPaid - priorScheduled);
-      currentInstallmentDue = installmentsDue > 0 ? monthlyInstallment : 0;
+        previousOutstanding = Math.max(0, priorScheduled - totalInstallmentPaid);
+        installmentPrepaid = Math.max(0, totalInstallmentPaid - priorScheduled);
+        currentInstallmentDue = installmentsDue > 0 ? monthlyInstallment : 0;
+      }
     }
   } else {
     const courseAmountPaid = allocatedPayments.installmentPaid;
@@ -2009,13 +2059,16 @@ const calculateStudentPaymentSummary = (student, receipts, customDate = null) =>
   }
 
   const totalDue = currentInstallmentDue + registrationOutstanding + admissionOutstanding + previousOutstanding;
-  const outstandingAmount = Math.max(0, totalDue - installmentPrepaid);
-  const dueAmount = Math.max(0, totalFees - totalReceived);
+  const courseCompleted = isCourseDurationCompleted(student, customDate);
+  const outstandingAmount = courseCompleted && dueAmount > 0
+    ? dueAmount
+    : Math.max(0, totalDue - installmentPrepaid);
 
   return {
     totalReceived,
     dueAmount,
     outstandingAmount,
+    courseCompleted,
     admissionFee,
     admissionPaid,
     admissionOutstanding,

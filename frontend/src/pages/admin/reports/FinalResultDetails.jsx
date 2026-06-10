@@ -46,7 +46,7 @@ const FinalResultDetails = () => {
 
     const examNames = useMemo(() => {
         const names = new Set((examResults || []).map((result) => result.exam?.examName).filter(Boolean));
-        return Array.from(names).sort((a, b) => a.localeCompare(b));
+        return Array.from(names);
     }, [examResults]);
 
     const baseResults = useMemo(() => {
@@ -76,12 +76,17 @@ const FinalResultDetails = () => {
 
     const availableCourses = useMemo(() => {
         const map = new Map();
-        baseResults.forEach((result) => {
+        const examName = filters.examName;
+        const source = (examResults || [])
+            .filter((result) => filters.branchId === 'All' || getBranchId(result) === filters.branchId)
+            .filter((result) => examName === 'All' || result.exam?.examName === examName);
+
+        source.forEach((result) => {
             const courseId = getId(result.course);
             if (courseId) map.set(courseId, { _id: courseId, name: result.course?.name || 'N/A' });
         });
         return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-    }, [baseResults]);
+    }, [examResults, filters.branchId, filters.examName]);
 
     const availableBranches = useMemo(() => {
         const map = new Map();
@@ -146,6 +151,14 @@ const FinalResultDetails = () => {
 
         return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
     }, [baseResults, filters.courseId]);
+
+    useEffect(() => {
+        if (filters.courseId === 'All') return;
+        const isValid = availableCourses.some((course) => course._id === filters.courseId);
+        if (!isValid) {
+            setFilters((prev) => ({ ...prev, courseId: 'All' }));
+        }
+    }, [availableCourses, filters.courseId]);
 
     const headerBranch = useMemo(() => {
         const branchId = getId(user?.branchId);

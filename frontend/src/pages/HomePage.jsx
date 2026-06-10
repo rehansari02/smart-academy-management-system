@@ -14,10 +14,6 @@ import { formatDate } from '../utils/dateUtils';
 import HeroCarousel from '../components/ui/HeroCarousel';
 import HeroImage1 from '../assets/6.jpg'
 import HeroImage2 from '../assets/5.jpg';
-import HeroImage3 from '../assets/Accounting_optimized.webp';
-import HeroImage4 from '../assets/textileDesign_optimized.webp';
-import HeroImage5 from '../assets/GraphicDesigning_optimized.webp';
-import HeroImage6 from '../assets/textileDesign_2_optimized.webp';
 import Reveal from '../components/Reveal';
 import FeedbackSection from '../components/ui/FeedbackSection';
 
@@ -112,12 +108,7 @@ const HomePage = () => {
     const [selectedNews, setSelectedNews] = useState(null);
     const [toppers, setToppers] = useState([]);
     const [toppersLoading, setToppersLoading] = useState(true);
-    const defaultHeroImages = [
-      { image: HeroImage3 },
-      { image: HeroImage4 },
-      { image: HeroImage5 },
-      { image: HeroImage6 }
-    ];
+    const defaultHeroImages = [];
     const [heroImages, setHeroImages] = useState(defaultHeroImages);
     const [homeSections, setHomeSections] = useState({});
   
