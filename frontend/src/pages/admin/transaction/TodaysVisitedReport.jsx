@@ -663,7 +663,7 @@ const TodaysVisitedReport = () => {
                     fromDate: nextFilters.fromDate,
                     toDate: nextFilters.toDate,
                     branchId: nextFilters.branchId,
-                    employeeId: user?.role === 'Super Admin' ? nextFilters.employeeId : (user?._id || ''),
+                    employeeId: nextFilters.employeeId,
                     dateFilterType: 'followUpDate',
                 },
                 withCredentials: true,
@@ -687,7 +687,7 @@ const TodaysVisitedReport = () => {
             if (activeFilters.reportType === 'visited') {
                 const data = await visitorService.getAllVisitors({
                     ...activeFilters,
-                    employeeId: user?.role === 'Super Admin' ? activeFilters.employeeId : (user?._id || ''),
+                    employeeId: activeFilters.employeeId,
                     dateFilterType: 'followUpDate',
                     onlyWithFollowups: 'true' // Requirement: Don't show until followup exists
                 });
@@ -716,7 +716,7 @@ const TodaysVisitedReport = () => {
                     referenceBy: activeFilters.referenceBy,
                     dateFilterType: 'followUpDate',
                     onlyFollowupActivity: 'true',
-                    employeeId: user?.role === 'Super Admin' ? activeFilters.employeeId : (user?._id || ''),
+                    employeeId: activeFilters.employeeId,
                     includeClosed: 'true',
                     ...(sourceByListType[listType] ? { source: sourceByListType[listType] } : {})
                 };
@@ -724,7 +724,7 @@ const TodaysVisitedReport = () => {
                 const [visitorFollowups, inquiryRes] = await Promise.all([
                     shouldFetchVisitorFollowups ? visitorService.getVisitorFollowUps({
                         ...activeFilters,
-                        employeeId: user?.role === 'Super Admin' ? activeFilters.employeeId : (user?._id || ''),
+                        employeeId: activeFilters.employeeId,
                     }) : Promise.resolve([]),
                     shouldFetchInquiryFollowups
                         ? axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry`, {

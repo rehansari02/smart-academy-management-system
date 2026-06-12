@@ -28,7 +28,7 @@ const InquiryViewModal = ({ inquiry, onClose }) => {
             createdAt: inquiry.createdAt || inquiry.inquiryDate || new Date()
           }] : []);
 
-    const followUpCount = inquiry.followUpCount || historyList.length || 0;
+    const followUpCount = inquiry.followUpCount ?? historyList.filter((item) => item.activityType === 'followup').length;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4 backdrop-blur-sm print:hidden">

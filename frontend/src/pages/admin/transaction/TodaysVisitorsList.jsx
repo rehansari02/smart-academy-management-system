@@ -327,7 +327,7 @@ const TodaysVisitorsList = () => {
                     fromDate: override.fromDate || fromDate,
                     toDate: override.toDate || toDate,
                     branchId: override.branchId ?? filterBranch,
-                    employeeId: user?.role === 'Super Admin' ? (override.employeeId ?? employeeId) : (user?._id || ''),
+                    employeeId: override.employeeId ?? employeeId,
                     dateFilterType: 'followUpDate'
                 },
                 withCredentials: true,
@@ -344,7 +344,7 @@ const TodaysVisitorsList = () => {
         const nextReferenceBy = override.referenceBy ?? referenceBy;
         const nextBranch = override.branchId ?? filterBranch;
         const nextInquirySource = override.inquirySource ?? inquirySource;
-        const nextEmployee = user?.role === 'Super Admin' ? (override.employeeId ?? employeeId) : (user?._id || '');
+        const nextEmployee = override.employeeId ?? employeeId;
         const nextFromDate = override.fromDate ?? fromDate;
         const nextToDate = override.toDate ?? toDate;
         try {

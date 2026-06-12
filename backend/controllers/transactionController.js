@@ -107,17 +107,19 @@ const resolveAssignableUserId = async (value) => {
 };
 
 const resolveInquiryOwner = async ({ referenceBy, requestedAllocatedTo, fallbackUserId, isExternalRef }) => {
-  // 1. Explicitly marked as external ref from frontend
-  if (isExternalRef) return fallbackUserId;
-
-  // 2. Direct/Self reference stays with creator
+  // 1. Direct/Self reference stays with creator
   if (isDirectReference(referenceBy)) return fallbackUserId;
 
   const referenceText = String(referenceBy || "").trim();
   if (!referenceText) return fallbackUserId;
 
-  // 3. Check if this name exists in the Reference master (External References)
-  // If it's a known external reference, it stays with the creator.
+  // 2. Internal employee/user references must win over Reference master entries.
+  const referenceOwner = await resolveAssignableUserId(referenceText);
+  if (referenceOwner) return referenceOwner;
+
+  // 3. Explicit or saved external references stay with creator.
+  if (isExternalRef) return fallbackUserId;
+
   const isSavedExternalRef = await Reference.findOne({ 
     name: { $regex: new RegExp(`^${escapeRegex(referenceText)}$`, "i") }, 
     isDeleted: false 
@@ -125,11 +127,7 @@ const resolveInquiryOwner = async ({ referenceBy, requestedAllocatedTo, fallback
   
   if (isSavedExternalRef) return fallbackUserId;
 
-  // 4. Try to resolve to a Staff/User account
-  const referenceOwner = await resolveAssignableUserId(referenceText);
-  if (referenceOwner) return referenceOwner;
-
-  // 5. Fallback to requested allocation or creator
+  // 4. Fallback to requested allocation or creator
   if (requestedAllocatedTo) return requestedAllocatedTo;
   return fallbackUserId;
 };
@@ -163,9 +161,14 @@ const getReceiptAmount = (receipt) => Number(receipt?.amountPaid || 0);
 const getFeeCaps = (student, receipts = []) => {
   const firstReceipt = receipts[0] || {};
   const course = student?.course || firstReceipt.course || {};
+  const storedAdmissionFee = Number(student?.admissionFeeAmount || 0);
+  const courseAdmissionFee = Number(course.admissionFees || 0);
+  const admissionFee = student?.isAdmissionFeesPaid && storedAdmissionFee > 0
+    ? storedAdmissionFee
+    : Math.max(courseAdmissionFee, storedAdmissionFee);
 
   return {
-    admissionFee: Math.max(Number(course.admissionFees || 0), Number(student?.admissionFeeAmount || 0)),
+    admissionFee,
     registrationFee: Number(course.registrationFees || 0)
   };
 };
@@ -459,8 +462,10 @@ const getInquiries = asyncHandler(async (req, res) => {
     query.referenceBy = { $regex: referenceBy, $options: "i" };
   }
 
+  const canViewBranchWideInquiries = req.user
+    && ["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role);
   const employeeFilter = req.query.employeeId || req.query.allocatedTo;
-  if (employeeFilter) {
+  if (employeeFilter && canViewBranchWideInquiries) {
     const employeeUserId = await resolveAssignableUserId(employeeFilter);
     if (employeeUserId) {
       addInquiryOwnershipScope(query, employeeUserId);
@@ -469,19 +474,13 @@ const getInquiries = asyncHandler(async (req, res) => {
     }
   }
 
-  // Determine if we should restrict to only "Owned" inquiries
-  // Super Admin, Branch Director, and Branch Admin see everything (scoped to branch if applicable)
-  const shouldApplyOwnerScope = req.user
-    && !["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role)
-    && !isAdmissionLookup;
-
-  if (shouldApplyOwnerScope) {
+  if (req.user && !canViewBranchWideInquiries && !isAdmissionLookup) {
     addInquiryOwnershipScope(query, req.user._id);
   }
 
   // --- External Reference Privacy ---
   // If not Super Admin/Director/Admin, inquiries marked as External Reference are only visible to the owner/creator
-  if (req.user && !["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role)) {
+  if (req.user && !canViewBranchWideInquiries) {
     const privacyQuery = {
       $or: [
         { isExternalRef: { $ne: true } }, // Show if not external ref
@@ -502,10 +501,15 @@ const getInquiries = asyncHandler(async (req, res) => {
     }
   }
 
-  if (req.user && req.user.role !== 'Super Admin' && req.user.branchId && !shouldApplyOwnerScope) {
+  if (
+    req.user &&
+    req.user.role !== 'Super Admin' &&
+    canViewBranchWideInquiries &&
+    req.user.branchId
+  ) {
       query.branchId = req.user.branchId;
   }
-  if (req.query.branchId) {
+  if (req.user?.role === 'Super Admin' && req.query.branchId) {
       query.branchId = req.query.branchId;
   }
 
@@ -567,11 +571,12 @@ const createInquiry = asyncHandler(async (req, res) => {
     // Also check if the reference name exists in the master Reference collection
     const refName = String(data.referenceBy || "").trim();
     if (refName) {
+        const internalReferenceUser = await resolveAssignableUserId(refName);
         const isSavedRef = await Reference.findOne({ 
             name: { $regex: new RegExp(`^${escapeRegex(refName)}$`, "i") }, 
             isDeleted: false 
         }).lean();
-        data.isExternalRef = !!isSavedRef;
+        data.isExternalRef = !internalReferenceUser && !!isSavedRef;
     } else {
         data.isExternalRef = false;
     }
@@ -639,7 +644,7 @@ const createInquiry = asyncHandler(async (req, res) => {
   // Handle first follow-up creation history & count
   if (data.followUpDate) {
     const fDate = new Date(data.followUpDate);
-    data.followUpCount = 1;
+    data.followUpCount = 0;
     if (req.user?._id) {
       data.followUpBy = req.user._id;
     }
@@ -914,7 +919,7 @@ const importInquiries = asyncHandler(async (req, res) => {
     }
 
     if (followUpDate) {
-      doc.followUpCount = 1;
+      doc.followUpCount = 0;
       doc.followUpBy = req.user?._id;
       doc.followUpHistory = [{
         date: followUpDate,
@@ -1001,12 +1006,19 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
 
   const inquiryQuery = { isDeleted: false };
   if (source) inquiryQuery.source = source;
-  if (branchId) inquiryQuery.branchId = branchId;
-  if (req.user?.role !== "Super Admin" && req.user?.branchId) inquiryQuery.branchId = req.user.branchId;
-  if (req.user?.role !== "Super Admin") addInquiryOwnershipScope(inquiryQuery, req.user._id);
+  const canViewBranchWideInquiries = req.user
+    && ["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role);
+  if (branchId && req.user?.role === "Super Admin") inquiryQuery.branchId = branchId;
+  if (
+    req.user?.role !== "Super Admin" &&
+    canViewBranchWideInquiries &&
+    req.user?.branchId
+  ) inquiryQuery.branchId = req.user.branchId;
 
   let selectedEmployeeUserId = null;
-  if (employeeId) {
+  const rangeInquiryQuery = { ...inquiryQuery };
+  const followupInquiryQuery = { ...inquiryQuery };
+  if (employeeId && canViewBranchWideInquiries) {
     selectedEmployeeUserId = await resolveAssignableUserId(employeeId);
     if (!selectedEmployeeUserId) {
       return res.json({
@@ -1015,6 +1027,8 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
         openCount: 0,
         totalFollowUps: 0,
         pendingFromBefore: 0,
+        pendingByDate: [],
+        followupDetails: [],
         employees: [],
         summary: {
           total: 0,
@@ -1024,7 +1038,11 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
         }
       });
     }
-    addInquiryOwnershipScope(inquiryQuery, selectedEmployeeUserId);
+    addInquiryOwnershipScope(rangeInquiryQuery, selectedEmployeeUserId);
+  } else if (req.user && !canViewBranchWideInquiries) {
+    selectedEmployeeUserId = req.user._id;
+    addInquiryOwnershipScope(rangeInquiryQuery, selectedEmployeeUserId);
+    addInquiryOwnershipScope(followupInquiryQuery, selectedEmployeeUserId);
   }
 
   const openStatuses = ["Open", "InProgress", "Recall"];
@@ -1032,13 +1050,13 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
 
   // Inquiries created within date range
   const inquiriesTodayQuery = {
-    ...inquiryQuery,
+    ...rangeInquiryQuery,
     inquiryDate: { $gte: start, $lte: end },
   };
 
   // Inquiries that had followup activity in date range
   const inquiries = await Inquiry.find({
-    ...inquiryQuery,
+    ...followupInquiryQuery,
     $or: [
       { "followUpHistory.createdAt": { $gte: start, $lte: end } },
       { "followUpHistory.date": { $gte: start, $lte: end } },
@@ -1084,29 +1102,28 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
       }
       employeeMap.set(key, current);
 
-      if (selectedEmployeeUserId) {
-        const nextRow = {
-          inquiryId: inquiry._id,
-          inquiryDate: inquiry.inquiryDate,
-          branchName: inquiry.branchId?.name || "",
-          filledBy: inquiry.createdBy?.name || inquiry.createdBy?.username || "",
-          referenceBy: inquiry.referenceBy || "Direct",
-          studentName: [inquiry.firstName, inquiry.middleName, inquiry.lastName].filter(Boolean).join(" "),
-          contactStudent: inquiry.contactStudent || "",
-          contactParent: inquiry.contactParent || "",
-          contactHome: inquiry.contactHome || "",
-          status: inquiry.status,
-          followUpDate: history.date || "",
-          followUpDetails: history.remarks || history.remark || "",
-          followUpBy: user.name || user.username || "Unassigned",
-          followUpAt: actionDate,
-          callingDate: history.createdAt || actionDate,
-          remarks: history.remarks || history.remark || "",
-        };
-        const existingRow = followupDetailsMap.get(inquiryId);
-        if (!existingRow || new Date(nextRow.followUpAt) > new Date(existingRow.followUpAt || 0)) {
-          followupDetailsMap.set(inquiryId, nextRow);
-        }
+      const nextRow = {
+        inquiryId: inquiry._id,
+        inquiryDate: inquiry.inquiryDate,
+        branchName: inquiry.branchId?.name || "",
+        filledBy: inquiry.createdBy?.name || inquiry.createdBy?.username || "",
+        referenceBy: inquiry.referenceBy || "Direct",
+        studentName: [inquiry.firstName, inquiry.middleName, inquiry.lastName].filter(Boolean).join(" "),
+        contactStudent: inquiry.contactStudent || "",
+        contactParent: inquiry.contactParent || "",
+        contactHome: inquiry.contactHome || "",
+        status: inquiry.status,
+        followUpDate: history.date || "",
+        followUpDetails: history.remarks || history.remark || "",
+        followUpBy: user.name || user.username || "Unassigned",
+        followUpAt: actionDate,
+        callingDate: history.createdAt || actionDate,
+        remarks: history.remarks || history.remark || "",
+      };
+      const detailKey = inquiryId;
+      const existingRow = followupDetailsMap.get(detailKey);
+      if (!existingRow || new Date(nextRow.followUpAt) > new Date(existingRow.followUpAt || 0)) {
+        followupDetailsMap.set(detailKey, nextRow);
       }
     });
   });
@@ -1115,7 +1132,7 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
   let summary = null;
   if (selectedEmployeeUserId) {
     const stats = await Inquiry.aggregate([
-      { $match: inquiryQuery },
+      { $match: rangeInquiryQuery },
       {
         $group: {
           _id: null,
@@ -1130,10 +1147,15 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
     summary.followUpsToday = followupDetailsMap.size;
   }
 
-  // Count open inquiries within date range
+  // Count open inquiries in the range that still need a followup.
+  // Main inquiry pages hide records once an actual followup is recorded,
+  // so this count must follow the same rule to keep Range/Remaining correct.
   const openInDateRange = await Inquiry.countDocuments({
     ...inquiriesTodayQuery,
-    status: { $in: openStatuses }
+    status: { $in: openStatuses },
+    followUpHistory: {
+      $not: { $elemMatch: { activityType: "followup" } }
+    }
   });
 
   // Count pending inquiries from BEFORE date range that are still open
@@ -1141,7 +1163,7 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
   let pendingByDate = [];
   if (selectedEmployeeUserId) {
     const pendingQuery = {
-      ...inquiryQuery,
+      ...rangeInquiryQuery,
       inquiryDate: { $lt: start },
       status: { $in: openStatuses }
     };
@@ -1458,7 +1480,7 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
         activityType: (req.body.recordFollowUpActivity === true || req.body.recordFollowUpActivity === "true") ? "followup" : "updated",
         createdAt: new Date()
       });
-      inquiry.followUpCount = inquiry.followUpHistory.length;
+      inquiry.followUpCount = inquiry.followUpHistory.filter((item) => item.activityType === "followup").length;
     }
 
     await inquiry.save();

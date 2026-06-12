@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
+const mongoose = require('mongoose');
 const User = require('../models/User');
 
 const protect = asyncHandler(async (req, res, next) => {
@@ -24,6 +25,13 @@ const protect = asyncHandler(async (req, res, next) => {
             next();
         } catch (error) {
             console.error(error);
+            if (
+                error instanceof mongoose.Error.MongooseServerSelectionError ||
+                error.name === 'MongoServerSelectionError'
+            ) {
+                res.status(503);
+                throw new Error('Database connection failed. Please check internet/DNS or MongoDB connection.');
+            }
             res.status(401);
             throw new Error('Not authorized, token failed');
         }

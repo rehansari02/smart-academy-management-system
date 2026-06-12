@@ -216,6 +216,7 @@ const InquiryOnline = () => {
     const [selectedInquiryIds, setSelectedInquiryIds] = useState(new Set());
     const [bulkAssignee, setBulkAssignee] = useState('');
     const [transferMode, setTransferMode] = useState(false);
+    const statsRemainingCount = Math.max(0, Number(stats?.totalInquiries || 0) - Number(stats?.totalFollowUps || 0));
 
     // Filter State
     const [filters, setFilters] = useState({
@@ -252,7 +253,7 @@ const InquiryOnline = () => {
                     startDate: nextFilters.startDate,
                     endDate: nextFilters.endDate,
                     branchId: nextFilters.branchId,
-                    employeeId: user?.role === 'Super Admin' ? nextFilters.employeeId : (user?._id || ''),
+                    employeeId: nextFilters.employeeId,
                 },
                 withCredentials: true,
             });
@@ -264,11 +265,7 @@ const InquiryOnline = () => {
 
     const handlePrintFollowupsList = () => {
         const rows = stats?.followupDetails || [];
-        if (!activeEmployeeId) {
-            toast.error('Please select employee first');
-            return;
-        }
-        const employeeName = getEmployeeNameById(employeeOptions, activeEmployeeId);
+        const employeeName = activeEmployeeId ? getEmployeeNameById(employeeOptions, activeEmployeeId) : 'All Employees';
         const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
         const printFrame = document.createElement('iframe');
         printFrame.style.position = 'fixed';
@@ -291,12 +288,25 @@ const InquiryOnline = () => {
             <head>
                 <title>Followups List - ${escapeHtml(employeeName)}</title>
                 <style>
-                    body { font-family: Arial, sans-serif; padding: 20px; color: #111827; }
-                    h1 { font-size: 20px; margin: 0 0 4px; color: #1d4ed8; }
-                    p { margin: 2px 0; font-size: 12px; color: #4b5563; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 10px; }
-                    th { background: #1d4ed8; color: white; padding: 6px; text-align: left; }
-                    td { border: 1px solid #e5e7eb; padding: 5px; vertical-align: top; }
+                    @page { size: A4 landscape; margin: 8mm; }
+                    body { font-family: Arial, sans-serif; padding: 0; color: #111827; }
+                    h1 { font-size: 18px; margin: 0 0 4px; color: #1d4ed8; }
+                    p { margin: 2px 0; font-size: 11px; color: #4b5563; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 9px; table-layout: fixed; }
+                    th { background: #1d4ed8; color: white; padding: 5px 4px; text-align: left; white-space: nowrap; }
+                    td { border: 1px solid #e5e7eb; padding: 4px; vertical-align: top; overflow-wrap: anywhere; word-break: normal; }
+                    th:nth-child(1), td:nth-child(1) { width: 4%; text-align: center; }
+                    th:nth-child(2), td:nth-child(2) { width: 8%; }
+                    th:nth-child(3), td:nth-child(3) { width: 9%; }
+                    th:nth-child(4), td:nth-child(4) { width: 9%; }
+                    th:nth-child(5), td:nth-child(5) { width: 9%; }
+                    th:nth-child(6), td:nth-child(6) { width: 13%; }
+                    th:nth-child(7), td:nth-child(7) { width: 10%; }
+                    th:nth-child(8), td:nth-child(8) { width: 6%; }
+                    th:nth-child(9), td:nth-child(9) { width: 9%; }
+                    th:nth-child(10), td:nth-child(10) { width: 11%; }
+                    th:nth-child(11), td:nth-child(11) { width: 7%; }
+                    th:nth-child(12), td:nth-child(12) { width: 9%; }
                     tr:nth-child(even) { background: #f9fafb; }
                 </style>
             </head>
@@ -344,7 +354,7 @@ const InquiryOnline = () => {
                             </tr>
                         `).join('') : `
                             <tr>
-                                <td colspan="12" style="text-align:center;padding:20px;color:#6b7280;">No followups found for the selected employee in this date range.</td>
+                                <td colspan="12" style="text-align:center;padding:20px;color:#6b7280;">No followups found in this date range.</td>
                             </tr>
                         `}
                     </tbody>
@@ -799,7 +809,7 @@ const InquiryOnline = () => {
                         <div className="border rounded p-3">
                             <div className="text-xs text-gray-500 font-bold uppercase">Range Inquiries</div>
                             <div className="text-2xl font-black text-blue-700">
-                                {stats.openCount || 0}<span className="text-lg font-bold text-gray-400">/{stats.totalInquiries || 0}</span>
+                                {statsRemainingCount}<span className="text-lg font-bold text-gray-400">/{stats.totalInquiries || 0}</span>
                             </div>
                             {stats.pendingFromBefore > 0 && (
                                 <div className="mt-1 text-[10px]">
@@ -822,13 +832,12 @@ const InquiryOnline = () => {
                             <div className="text-xs text-gray-500 font-bold uppercase">Followups Done</div>
                             <div className="text-2xl font-black text-purple-700">{stats.totalFollowUps || 0}</div>
                             <div className="mt-1 text-[10px] text-gray-400">
-                                {stats.openCount || 0} remaining
+                                {statsRemainingCount} remaining
                             </div>
                             <button
                                 type="button"
                                 onClick={handlePrintFollowupsList}
-                                disabled={!activeEmployeeId}
-                                className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200"
                             >
                                 <Printer size={12} /> Print Followups List
                             </button>
@@ -896,7 +905,7 @@ const InquiryOnline = () => {
                             <th className="p-2 border font-semibold w-36">Followup Details</th>
                             <th className="p-2 border font-semibold">Followup By</th>
                             <th className="p-2 border font-semibold">Calling Date</th>
-                            <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-32">Actions</th>
+                            <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-32 print:hidden">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -953,7 +962,7 @@ const InquiryOnline = () => {
                                 <td className="p-2 border text-gray-600 truncate max-w-xs" title={getLastFollowUpMessage(inquiry)}>{getLastFollowUpMessage(inquiry).length > 30 ? `${getLastFollowUpMessage(inquiry).substring(0, 30)}...` : getLastFollowUpMessage(inquiry)}</td>
                                 <td className="p-2 border text-gray-700">{getLastFollowUpByName(inquiry)}</td>
                                 <td className="p-2 border text-gray-700">{getLastFollowUpInfo(inquiry)}</td>
-                                <td className="p-2 border text-center sticky right-0 bg-white">
+                                <td className="p-2 border text-center sticky right-0 bg-white print:hidden">
                                     <div className="flex justify-center gap-1">
                                         <button onClick={() => setShowFollowUpModal(inquiry)} className="bg-purple-50 text-purple-600 border border-purple-200 p-1 rounded hover:bg-purple-100 transition" title="Follow Up">
                                             <CalendarClock size={14} />

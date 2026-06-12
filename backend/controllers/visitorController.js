@@ -350,14 +350,9 @@ exports.getAllVisitors = async (req, res) => {
             }
         }
 
-        // Determine if we should restrict to only "Owned" visitors
-        // Super Admin, Branch Director, and Branch Admin see everything (scoped to branch if applicable)
-        // Also bypass for admission lookups to allow matching across all employees
+        // Branch-scoped users can see branch visitors by default.
+        // Employee/allocated filters above still narrow the list when explicitly selected.
         const isRestrictedRole = !["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role);
-        
-        if (isRestrictedRole && !isAdmissionLookup) {
-            addVisitorOwnershipScope(query, req.user._id);
-        }
 
         // --- External Reference Privacy ---
         // If not Super Admin/Director/Admin, inquiries marked as External Reference are only visible to the owner/creator

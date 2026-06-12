@@ -298,7 +298,7 @@ const StudentFollowingReport = () => {
                                 </td>
 
                                 <td className="p-2 border text-gray-700">
-                                    {item.followUpCount || item.followUpHistory?.length || 0}
+                                    {item.followUpCount ?? item.followUpHistory?.filter((history) => history.activityType === 'followup').length ?? 0}
                                 </td>
 
                                 <td className="p-2 border whitespace-nowrap text-gray-700">

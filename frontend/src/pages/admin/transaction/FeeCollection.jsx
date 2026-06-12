@@ -495,7 +495,7 @@ const FeeCollection = () => {
                                         <span>₹{paymentSummary.outstandingAmount?.toLocaleString('en-IN')}</span>
                                     </div>
                                     <div className="flex justify-between font-bold text-red-600">
-                                        <span>Current Outstanding:</span>
+                                        <span>Total Due  Outstanding:</span>
                                         <span>Rs. {paymentSummary.dueAmount?.toLocaleString('en-IN')}</span>
                                     </div>
                                 </div>
