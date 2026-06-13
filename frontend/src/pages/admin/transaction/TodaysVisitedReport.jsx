@@ -174,6 +174,14 @@ const TodaysVisitedReport = () => {
         </div>
     `;
 
+    const escapePrintHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+
     const getLastFollowUpInfo = (visitor) => {
         const last = visitor.latestFollowup;
         if (!last) return '-';
@@ -395,7 +403,153 @@ const TodaysVisitedReport = () => {
         printHtml('Followups List', `<table><thead>${headers}</thead><tbody>${rows || `<tr><td colspan="${user?.role === 'Super Admin' ? 12 : 11}" class="text-center muted">No followups found for this period.</td></tr>`}</tbody></table>`);
     };
     const handlePrintFollowupsList = () => {
-        handlePrintList();
+        handlePrintDoneActivity();
+    };
+
+    const fetchDoneActivityData = async (activeFilters = filters) => {
+        const activeEmployeeId = getScopedEmployeeId(user, activeFilters.employeeId);
+        const listType = activeFilters.listType || 'all';
+        const sourceByListType = {
+            online: 'Online',
+            offline: 'Walk-in',
+            dsr: 'DSR'
+        };
+        const commonParams = {
+            fromDate: activeFilters.fromDate,
+            toDate: activeFilters.toDate,
+            branchId: activeFilters.branchId,
+            employeeId: activeEmployeeId,
+            studentName: activeFilters.studentName,
+            referenceBy: activeFilters.referenceBy
+        };
+
+        const shouldFetchVisitorDone = (activeFilters.reportType === 'visited' || listType === 'all' || listType === 'visitor') && visitorReportRights.view;
+        const visitorFollowups = shouldFetchVisitorDone
+            ? await visitorService.getVisitorFollowUps({
+                ...commonParams,
+                dateFilterType: 'callingDate',
+            })
+            : [];
+
+        const fetchInquiryFollowupStats = async (source) => {
+            const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry/followup-stats`, {
+                params: {
+                    source,
+                    startDate: activeFilters.fromDate,
+                    endDate: activeFilters.toDate,
+                    branchId: activeFilters.branchId,
+                    employeeId: activeEmployeeId,
+                },
+                withCredentials: true
+            });
+            return Array.isArray(data?.followupDetails) ? data.followupDetails : [];
+        };
+
+        const requestedSource = sourceByListType[listType];
+        const inquiryRequests = requestedSource
+            ? [getInquiryRights(requestedSource).view ? fetchInquiryFollowupStats(requestedSource) : Promise.resolve([])]
+            : [
+                onlineInquiryRights.view ? fetchInquiryFollowupStats('Online') : Promise.resolve([]),
+                offlineInquiryRights.view ? fetchInquiryFollowupStats('Walk-in') : Promise.resolve([]),
+                dsrInquiryRights.view ? fetchInquiryFollowupStats('DSR') : Promise.resolve([]),
+            ];
+        const inquiryFollowups = activeFilters.reportType === 'visited'
+            ? []
+            : (await Promise.all(inquiryRequests)).flat();
+
+        const doneVisitorFollowups = visitorFollowups.filter((item) => item?.isDone === true && item?.callingDate);
+        const doneInquiryFollowups = inquiryFollowups.filter((item) => {
+            const followupDate = item?.callingDate || item?.followUpAt || item?.followUpDate;
+            return Boolean(followupDate);
+        });
+
+        const activityVisitorMap = new Map();
+        doneVisitorFollowups.forEach((item) => {
+            const visitor = item.visitorId && typeof item.visitorId === 'object' ? item.visitorId : null;
+            if (!visitor?._id) return;
+            const existing = activityVisitorMap.get(String(visitor._id));
+            const currentDate = item.callingDate || item.updatedAt || item.createdAt || item.scheduledDate;
+            const existingDate = existing?.latestFollowup?.callingDate || existing?.latestFollowup?.updatedAt || existing?.latestFollowup?.createdAt || existing?.latestFollowup?.scheduledDate;
+            if (!existing || new Date(currentDate || 0) > new Date(existingDate || 0)) {
+                activityVisitorMap.set(String(visitor._id), {
+                    ...visitor,
+                    status: item.status || visitor.status,
+                    latestFollowup: item,
+                });
+            }
+        });
+
+        return {
+            activeEmployeeId,
+            visitorFollowups: doneVisitorFollowups,
+            inquiryFollowups: doneInquiryFollowups,
+            activityVisitors: [...activityVisitorMap.values()],
+            doneFollowupRows: [
+                ...doneVisitorFollowups.map((item) => ({ ...item, recordType: 'visitor', sortDate: item.callingDate || item.updatedAt || item.createdAt || item.scheduledDate })),
+                ...doneInquiryFollowups.map((item) => ({ ...item, recordType: 'inquiry', sortDate: item.callingDate || item.followUpAt || item.followUpDate }))
+            ].sort((a, b) => new Date(b.sortDate || 0) - new Date(a.sortDate || 0))
+        };
+    };
+
+    const renderDoneFollowupRows = (rows, escapeHtml = escapePrintHtml) => rows.map((item, idx) => {
+        const isVisitorFollowUp = item.recordType === 'visitor';
+        const visitor = isVisitorFollowUp ? (item.visitorId || {}) : {};
+        const followUpBy = isVisitorFollowUp
+            ? (item.followUpBy?.name || item.followUpBy?.username || '-')
+            : (item.followUpBy || '-');
+        const callingDate = item.callingDate || item.followUpAt;
+        return `<tr>
+            <td class="text-center">${idx + 1}</td>
+            <td>${escapeHtml(formatDate(isVisitorFollowUp ? (visitor.visitingDate || item.scheduledDate) : item.inquiryDate))}</td>
+            <td>${escapeHtml(isVisitorFollowUp ? (item.branchId?.name || visitor.branchId?.name || '-') : (item.branchName || '-'))}</td>
+            <td>${escapeHtml(isVisitorFollowUp ? getFilledBy(visitor) : (item.filledBy || '-'))}</td>
+            <td>${escapeHtml(isVisitorFollowUp ? getReferenceBy(visitor) : (item.referenceBy || '-'))}</td>
+            <td class="name">${escapeHtml(isVisitorFollowUp ? (visitor.studentName || '-') : (item.studentName || '-'))}</td>
+            <td class="contact-cell">${renderPrintContact([
+                { label: 'H', value: escapeHtml(isVisitorFollowUp ? visitor.contactHome : item.contactHome) },
+                { label: 'S', value: escapeHtml(isVisitorFollowUp ? visitor.mobileNumber : item.contactStudent), highlight: true },
+                { label: 'P', value: escapeHtml(isVisitorFollowUp ? visitor.contactParent : item.contactParent) }
+            ])}</td>
+            <td class="text-center">${renderPrintStatus(escapeHtml(item.status || 'Open'))}</td>
+            <td>${escapeHtml(item.followUpDate || item.scheduledDate ? `${formatDate(item.followUpDate || item.scheduledDate)} ${new Date(item.followUpDate || item.scheduledDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-')}</td>
+            <td>${escapeHtml(isVisitorFollowUp ? (item.remark || '-') : (item.followUpDetails || '-'))}</td>
+            <td>${escapeHtml(followUpBy)}</td>
+            <td>${callingDate ? `<div class="date-stack"><span class="date-main">${escapeHtml(`${formatDate(callingDate)} ${new Date(callingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`)}</span><span class="byline">by ${escapeHtml(followUpBy)}</span></div>` : '-'}</td>
+        </tr>`;
+    }).join('');
+
+    const renderActivityVisitorRows = (rows, escapeHtml = escapePrintHtml) => rows.map((item, idx) => `<tr>
+        <td class="text-center">${idx + 1}</td>
+        <td>${escapeHtml(formatDate(item.visitingDate))}</td>
+        <td class="name">${escapeHtml(item.studentName || '-')}</td>
+        <td class="text-blue-600 font-bold">${escapeHtml(item.mobileNumber || '-')}</td>
+        <td class="text-center">${renderPrintStatus(escapeHtml(item.status || 'Open'))}</td>
+        <td>${escapeHtml(item.latestFollowup?.remark || item.remarks || '-')}</td>
+        <td>${escapeHtml(item.inTime || '-')}/${escapeHtml(item.outTime || '-')}</td>
+    </tr>`).join('');
+
+    const handlePrintDoneActivity = async () => {
+        setLoading(true);
+        const toastId = toast.loading('Preparing followups done print...');
+        try {
+            const doneData = await fetchDoneActivityData(filters);
+            if (filters.reportType === 'visited') {
+                const headers = `<tr><th>Sr</th><th>Visiting Date</th><th>Student Name</th><th>Mobile</th><th>Status</th><th>Remarks</th><th>In/Out</th></tr>`;
+                const rows = renderActivityVisitorRows(doneData.activityVisitors);
+                printHtml('Activity Report Visitors', `<table><thead>${headers}</thead><tbody>${rows || '<tr><td colspan="7" class="text-center muted">No done visitors found.</td></tr>'}</tbody></table>`);
+            } else {
+                const headers = `<tr><th>Sr. No.</th><th>Date</th><th>Branch</th><th>Filled By</th><th>Reference By</th><th>Student Name</th><th>Contact (H/S/P)</th><th>Status</th><th>Followup</th><th>Followup Details</th><th>Followup By</th><th>Calling Date</th></tr>`;
+                const rows = renderDoneFollowupRows(doneData.doneFollowupRows);
+                printHtml('Activity Today Followups', `<table><thead>${headers}</thead><tbody>${rows || '<tr><td colspan="12" class="text-center muted">No done followups found.</td></tr>'}</tbody></table>`);
+            }
+            toast.update(toastId, { render: 'Print ready', type: 'success', isLoading: false, autoClose: 1500 });
+        } catch (error) {
+            console.error('Followups done print error:', error);
+            toast.error('Failed to print followups done');
+            toast.dismiss(toastId);
+        } finally {
+            setLoading(false);
+        }
     };
     
     const handlePrintFollowupsAll = async () => {
@@ -467,8 +621,8 @@ const TodaysVisitedReport = () => {
             });
             const activityVisitors = [...activityVisitorMap.values()];
 
-            // 4. Fetch Today's List (All Visitors)
-            const allVisitors = await visitorService.getAllVisitors(commonParams);
+            // 4. Fetch done activity sections for Followups Done print summary.
+            const doneActivity = await fetchDoneActivityData(filters);
 
             toast.update(toastId, { render: "Data fetched, generating report...", type: "success", isLoading: false, autoClose: 2000 });
 
@@ -478,7 +632,8 @@ const TodaysVisitedReport = () => {
                 { title: '3. DSR Inquiry Follow-ups', data: dsrInquiry, type: 'inquiry' },
                 { title: '4. Visitor Follow-ups', data: visitorFollowups, type: 'visitor-followup' },
                 { title: "5. Today's Activity Visitors", data: activityVisitors, type: 'visitor' },
-                { title: "6. Today's List (All Visitors)", data: allVisitors, type: 'visitor' }
+                { title: '6. Activity Today Followups', data: doneActivity.doneFollowupRows, type: 'done-followup' },
+                { title: '7. Activity Report Visitors', data: doneActivity.activityVisitors, type: 'activity-visitor' }
             ];
 
             const employeeName = getEmployeeNameById(employeeOptions, activeEmployeeId, 'All Employees');
@@ -488,10 +643,10 @@ const TodaysVisitedReport = () => {
             </div>`;
 
             sections.forEach(section => {
-                const headers = section.type === 'inquiry' ? `
+                const headers = section.type === 'inquiry' || section.type === 'done-followup' ? `
                     <tr>
                         <th style="width:4%">Sr. No.</th>
-                        <th style="width:8%">Inquiry Date</th>
+                        <th style="width:8%">${section.type === 'done-followup' ? 'Date' : 'Inquiry Date'}</th>
                         <th style="width:9%">Branch</th>
                         <th style="width:9%">Filled By</th>
                         <th style="width:9%">Reference By</th>
@@ -530,7 +685,12 @@ const TodaysVisitedReport = () => {
                     </tr>
                 `;
 
-                const rows = section.data.length > 0 ? section.data.map((item, idx) => {
+                const rows = section.data.length > 0 ? (
+                    section.type === 'done-followup'
+                        ? renderDoneFollowupRows(section.data, escapeHtml)
+                        : section.type === 'activity-visitor'
+                            ? renderActivityVisitorRows(section.data, escapeHtml)
+                            : section.data.map((item, idx) => {
                     if (section.type === 'inquiry') {
                         return `<tr>
                             <td class="text-center">${idx + 1}</td>
@@ -583,7 +743,7 @@ const TodaysVisitedReport = () => {
                             <td>${escapeHtml(item.inTime || '-')}/${escapeHtml(item.outTime || '-')}</td>
                         </tr>`;
                     }
-                }).join('') : `<tr><td colspan="${section.type === 'inquiry' || section.type === 'visitor-followup' ? 12 : 7}" class="text-center muted">No records found</td></tr>`;
+                }).join('')) : `<tr><td colspan="${section.type === 'inquiry' || section.type === 'visitor-followup' || section.type === 'done-followup' ? 12 : 7}" class="text-center muted">No records found</td></tr>`;
 
                 finalHtml += `
                     <div style="margin-top: 25px; page-break-inside: avoid;">
@@ -610,6 +770,7 @@ const TodaysVisitedReport = () => {
     const [branches, setBranches] = useState([]);
     const [employees, setEmployees] = useState([]);
     const [stats, setStats] = useState(null);
+    const [doneActivityStats, setDoneActivityStats] = useState({ followupsDone: 0, visitorsDone: 0 });
     const { user } = useSelector((state) => state.auth);
 
     // View Modal State
@@ -729,12 +890,19 @@ const TodaysVisitedReport = () => {
         setLoading(true);
         try {
             fetchStats(activeFilters);
+            const doneActivityForStats = await fetchDoneActivityData(activeFilters).catch(() => ({
+                doneFollowupRows: [],
+                activityVisitors: []
+            }));
+            setDoneActivityStats({
+                followupsDone: doneActivityForStats.doneFollowupRows.length,
+                visitorsDone: doneActivityForStats.activityVisitors.length
+            });
             if (activeFilters.reportType === 'visited') {
                 const data = await visitorService.getAllVisitors({
                     ...activeFilters,
                     employeeId: activeFilters.employeeId,
-                    dateFilterType: 'followUpDate',
-                    onlyWithFollowups: 'true' // Requirement: Don't show until followup exists
+                    excludeFollowedVisitors: 'true'
                 });
                 setVisitors(data);
                 setFollowups([]);
@@ -848,6 +1016,7 @@ const TodaysVisitedReport = () => {
         setSelectedFollowupKeys(new Set());
         setVisitorBulkAssignee('');
         setFollowupBulkAssignee('');
+        setDoneActivityStats({ followupsDone: 0, visitorsDone: 0 });
         setVisitorTransferMode(false);
         setFollowupTransferMode(false);
         fetchVisitors(resetState);
@@ -1129,15 +1298,16 @@ const TodaysVisitedReport = () => {
 
     const activeReportStats = (() => {
         if (filters.reportType === 'visited') {
-            const totalRangeVisitors = Number(stats?.totalInquiries ?? stats?.summary?.total ?? visitors.length ?? 0);
-            const followUpsDone = Number(stats?.totalFollowUps ?? stats?.followUpsDoneToday ?? stats?.summary?.followUpsDoneToday ?? 0);
-            const remaining = Math.max(totalRangeVisitors - followUpsDone, 0);
+            const visibleVisitorCount = Number(visitors.length || 0);
+            const followUpsDone = Number(doneActivityStats.visitorsDone ?? stats?.totalFollowUps ?? stats?.followUpsDoneToday ?? stats?.summary?.followUpsDoneToday ?? 0);
+            const totalRangeVisitors = Math.max(visibleVisitorCount + followUpsDone, visibleVisitorCount);
+            const remaining = visibleVisitorCount;
             const completed = Number(stats?.completedCount ?? stats?.summary?.completed ?? visitors.filter((visitor) => isCompletedStatus(visitor.status)).length);
             const employeeSummary = Array.isArray(stats?.employees) ? stats.employees : [];
             return {
                 total: totalRangeVisitors,
                 open: remaining,
-                rangeCount: totalRangeVisitors,
+                rangeCount: remaining,
                 completed,
                 followUpsToday: followUpsDone,
                 totalFollowUps: followUpsDone,
@@ -1150,14 +1320,14 @@ const TodaysVisitedReport = () => {
             };
         }
 
-        const followUpsDone = Number(stats?.totalFollowUps ?? stats?.followUpsDoneToday ?? stats?.summary?.followUpsDoneToday ?? 0);
+        const followUpsDone = Number(doneActivityStats.followupsDone ?? 0);
         const totalRangeFollowups = Math.max(followUpsDone + followups.length, followups.length);
         const remaining = Math.max(totalRangeFollowups - followUpsDone, 0);
         const employeeMap = Array.isArray(stats?.employees) ? stats.employees : [];
         return {
             total: totalRangeFollowups,
             open: remaining,
-            rangeCount: totalRangeFollowups,
+            rangeCount: remaining,
             completed: Number(stats?.completedCount ?? stats?.summary?.completed ?? 0),
             followUpsToday: followUpsDone,
             totalFollowUps: followUpsDone,
@@ -1346,16 +1516,13 @@ const TodaysVisitedReport = () => {
                                 <div className="mt-1 text-[10px] text-gray-400">
                                     {activeReportStats.remaining} remaining
                                 </div>
-                                {filters.reportType === 'followup' && (
-                                    <button
-                                        type="button"
-                                        onClick={handlePrintFollowupsList}
-                                        disabled={!activeEmployeeId}
-                                        className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                        <Printer size={12} /> Print Followups List
-                                    </button>
-                                )}
+                                <button
+                                    type="button"
+                                    onClick={handlePrintFollowupsList}
+                                    className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200"
+                                >
+                                    <Printer size={12} /> {filters.reportType === 'visited' ? 'Print Done Visitors' : 'Print Done Followups'}
+                                </button>
                             </div>
                             <div className="border rounded p-3">
                                 <div className="text-xs text-gray-500 font-bold uppercase">{activeReportStats.topLabel}</div>
