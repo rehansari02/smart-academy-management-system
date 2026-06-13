@@ -190,10 +190,18 @@ const transactionSlice = createSlice({
         state.isSuccess = true;
         state.message = "Inquiry Updated";
       })
+      .addCase(collectFees.pending, (state) => {
+        state.isLoading = true;
+      })
       .addCase(collectFees.fulfilled, (state, action) => {
+        state.isLoading = false;
         state.isSuccess = true;
         state.message = `Fee Receipt Generated: ${action.payload.receiptNo}`;
         state.receipts.unshift(action.payload);
+      })
+      .addCase(collectFees.rejected, (state, action) => {
+        state.isLoading = false;
+        state.message = action.payload || "Failed to generate fee receipt";
       })
       .addCase(fetchFeeReceipts.fulfilled, (state, action) => {
         if (Array.isArray(action.payload)) {
@@ -224,13 +232,21 @@ const transactionSlice = createSlice({
           };
         }
       })
+      .addCase(updateFeeReceipt.pending, (state) => {
+        state.isLoading = true;
+      })
       .addCase(updateFeeReceipt.fulfilled, (state, action) => {
+        state.isLoading = false;
         const index = state.receipts.findIndex(
           (r) => r._id === action.payload._id
         );
         if (index !== -1) state.receipts[index] = action.payload;
         state.isSuccess = true;
         state.message = "Receipt Updated Successfully";
+      })
+      .addCase(updateFeeReceipt.rejected, (state, action) => {
+        state.isLoading = false;
+        state.message = action.payload || "Failed to update receipt";
       })
       .addCase(deleteFeeReceipt.fulfilled, (state, action) => {
         state.receipts = state.receipts.filter((r) => r._id !== action.payload);

@@ -30,6 +30,7 @@ const VisitorFollowUpModal = ({ visitor, onClose, onSave }) => {
         try {
             await onSave(visitor._id, {
                 visitorId: visitor._id,
+                followUpId: latestFollowUp?._id,
                 scheduledDate,
                 status,
                 remark: newRemarks.trim()

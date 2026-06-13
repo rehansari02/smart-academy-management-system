@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const visitorSchema = new mongoose.Schema({
     visitingDate: { type: Date, required: true, default: Date.now },
     studentName: { type: String, required: true },
-    mobileNumber: { type: String, required: true },
+    mobileNumber: { type: String },
     contactParent: { type: String, required: true },
     contactHome: { type: String },
     address: { type: String },

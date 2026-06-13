@@ -28,6 +28,12 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
 
     // State/City Management
     const [filteredCities, setFilteredCities] = useState([]);
+    const externalReferenceValue = (id) => `ExternalRef:${id}`;
+    const getExternalReferenceFromValue = (value) => {
+        if (!value || !String(value).startsWith('ExternalRef:')) return null;
+        const id = String(value).replace('ExternalRef:', '');
+        return references.find((ref) => String(ref._id) === id) || null;
+    };
 
     useEffect(() => {
         dispatch(fetchEmployees());
@@ -189,6 +195,7 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
     const onSubmit = (data) => {
         setIsSubmitting(true);
         const formData = new FormData();
+        const selectedExternalReference = getExternalReferenceFromValue(data.referenceBy);
 
         if (data.followUpDate) {
             const time = data.followUpTime || '12:00';
@@ -204,6 +211,9 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                 // Skip this, we'll handle it below
             } else if (key === 'referenceBy' && data[key] === 'ManualExternal') {
                 formData.append('referenceBy', data.manualReferenceName || '');
+                formData.append('isExternalRef', 'true');
+            } else if (key === 'referenceBy' && selectedExternalReference) {
+                formData.append('referenceBy', selectedExternalReference.name || '');
                 formData.append('isExternalRef', 'true');
             } else if (key === 'referenceDetail' && typeof data[key] === 'object' && data[key] !== null) {
                 formData.append('referenceDetail', JSON.stringify(data[key]));
@@ -225,6 +235,10 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                 }
             }
         });
+
+        if (data.referenceBy !== 'ManualExternal' && !selectedExternalReference) {
+            formData.set('isExternalRef', 'false');
+        }
 
         // Handle specific logic
         if (initialData?._id && !initialData.isConversion) formData.append('_id', initialData._id);
@@ -476,7 +490,7 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                                                 {employees.map(e => <option key={e._id} value={e.name}>{e.name}</option>)}
                                             </optgroup>
                                             <optgroup label="External References (Saved)">
-                                                {references.map((r, i) => <option key={r._id || i} value={r.name}>{r.name}</option>)}
+                                                {references.map((r, i) => <option key={r._id || i} value={externalReferenceValue(r._id || i)}>{r.name}</option>)}
                                             </optgroup>
                                         </select>
                                         {!isReferenceLocked && watch('referenceBy') !== 'ManualExternal' && (
@@ -589,7 +603,7 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                                             dispatch(createReference(newRef)).then((res) => {
                                                 setIsRefLoading(false);
                                                 if (!res.error) {
-                                                    setValue('referenceBy', newRef.name);
+                                                    setValue('referenceBy', externalReferenceValue(res.payload?._id));
                                                     setShowRefModal(false);
                                                     setNewRef({ name: '', mobile: '', address: '' });
                                                 }

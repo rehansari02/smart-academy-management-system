@@ -299,143 +299,158 @@ const BatchWiseRegister = () => {
         });
     };
 
-    const standardSlots = [
-        { label: '1st', time: '8:00 to 09:00 am', startHour: 8 },
-        { label: '2nd', time: '9:00 to 10:00 am', startHour: 9 },
-        { label: '3rd', time: '10:00 to 11:00 am', startHour: 10 },
-        { label: '4th', time: '11:00 to 12:00 pm', startHour: 11 },
-        { label: '5th', time: '12:00 to 01:00 pm', startHour: 12 },
-        { label: '6th', time: '01:00 to 02:00 pm', startHour: 13 },
-        { label: '7th', time: '02:00 to 03:00 pm', startHour: 14 },
-        { label: '8th', time: '03:00 to 04:00 pm', startHour: 15 },
-        { label: '9th', time: '04:00 to 05:00 pm', startHour: 16 },
-        { label: '10th', time: '05:00 to 06:00 pm', startHour: 17 },
-        { label: '11th', time: '06:00 to 07:00 pm', startHour: 18 },
-        { label: '12th', time: '07:00 to 08:00 pm', startHour: 19 },
-        { label: '13th', time: '08:00 to 09:00 pm', startHour: 20 },
-        { label: '14th', time: '09:00 to 10:00 pm', startHour: 21 },
-    ];
+    const visibleBatches = useMemo(() => {
+        const normalizedBranchId = typeof filters.branchId === 'object' ? filters.branchId?._id : filters.branchId;
+        const selectedBatchName = filters.batch && filters.batch !== 'All' ? normalizeTimeText(filters.batch) : '';
 
-    const getStudentStartHour = (student) => {
-        if (!student?.batch) return null;
-        const batchObj = getStudentBatchObject(student);
-        return batchObj ? parseStartHour(batchObj.startTime) : parseStartHour(student.batch);
-    };
+        return (batches || [])
+            .filter((batchItem) => batchItem.isActive !== false && !batchItem.isDeleted)
+            .filter((batchItem) => {
+                if (normalizedBranchId) {
+                    const batchBranchId = typeof batchItem.branchId === 'object' ? batchItem.branchId?._id : batchItem.branchId;
+                    if (!batchBranchId || String(batchBranchId) !== String(normalizedBranchId)) return false;
+                }
 
-    const getFilteredBatchesForSlot = (slotIndex) => {
-        const slot = standardSlots[slotIndex];
-        if (!slot || !batches?.length) return [];
-        const slotStudents = getSlotStudents(slotIndex);
-        if (!slotStudents.length) return [];
+                if (selectedBatchName) {
+                    const batchName = normalizeTimeText(batchItem.name);
+                    const batchTime = normalizeTimeText(`${batchItem.startTime} ${batchItem.endTime}`);
+                    const batchDashTime = normalizeTimeText(`${batchItem.startTime} - ${batchItem.endTime}`);
+                    if (
+                        batchName !== selectedBatchName &&
+                        batchTime !== selectedBatchName &&
+                        batchDashTime !== selectedBatchName
+                    ) {
+                        return false;
+                    }
+                }
 
-        return batches.filter((batchItem) => {
-            if (batchItem.isActive === false || batchItem.isDeleted) return false;
-            if (filters.batch && filters.batch !== 'All' && batchItem.name !== filters.batch) return false;
+                if (filters.courseFilter) {
+                    const mappedCourses = Array.isArray(batchItem.courses) ? batchItem.courses : [];
+                    return mappedCourses.some((course) => {
+                        const courseId = typeof course === 'object' ? course?._id : course;
+                        return String(courseId) === String(filters.courseFilter);
+                    });
+                }
 
-            const normalizedBranchId = typeof filters.branchId === 'object' ? filters.branchId?._id : filters.branchId;
-            const batchBranchId = typeof batchItem.branchId === 'object' ? batchItem.branchId?._id : batchItem.branchId;
-            if (normalizedBranchId && batchBranchId && String(batchBranchId) !== String(normalizedBranchId)) return false;
+                return true;
+            })
+            .sort((a, b) => {
+                const aTime = parseStartHour(a.startTime) ?? 99;
+                const bTime = parseStartHour(b.startTime) ?? 99;
+                if (aTime !== bTime) return aTime - bTime;
+                return a.name.localeCompare(b.name);
+            });
+    }, [batches, filters.branchId, filters.batch, filters.courseFilter]);
 
-            if (filters.courseFilter) {
-                const mappedCourses = Array.isArray(batchItem.courses) ? batchItem.courses : [];
-                const hasCourse = mappedCourses.some((course) => {
-                    const courseId = typeof course === 'object' ? course?._id : course;
-                    return String(courseId) === String(filters.courseFilter);
+    const batchGroups = useMemo(() => {
+        if (!eligibleStudents?.length) return [];
+
+        const byKey = new Map();
+
+        eligibleStudents.forEach((student) => {
+            const batchObj = getStudentBatchObject(student);
+            const key = batchObj?._id || normalizeTimeText(student.batch || 'unassigned');
+            if (!byKey.has(key)) {
+                byKey.set(key, {
+                    id: key,
+                    batch: batchObj,
+                    name: batchObj?.name || student.batch || 'Unassigned',
+                    students: [],
+                    courseIds: new Set(),
+                    matchCount: 0,
                 });
-                const hasStudentForCourse = eligibleStudents.some((student) => {
-                    const studentCourseId = typeof student.course === 'object' ? student.course?._id : student.course;
-                    return String(studentCourseId) === String(filters.courseFilter)
-                        && normalizeTimeText(student.batch) === normalizeTimeText(batchItem.name);
-                });
-                if (!hasCourse && !hasStudentForCourse) return false;
             }
 
-            const hasStudentInBatch = slotStudents.some((student) => {
-                const studentBatchObj = getStudentBatchObject(student);
-                if (studentBatchObj?._id && batchItem._id) {
-                    return String(studentBatchObj._id) === String(batchItem._id);
-                }
-                return normalizeTimeText(student.batch) === normalizeTimeText(batchItem.name);
+            const group = byKey.get(key);
+            group.students.push(student);
+            group.matchCount += 1;
+            const studentCourseId = typeof student.course === 'object' ? student.course?._id : student.course;
+            if (studentCourseId) group.courseIds.add(String(studentCourseId));
+        });
+
+        const batchMap = new Map(visibleBatches.map((batchItem) => [String(batchItem._id), batchItem]));
+
+        visibleBatches.forEach((batchItem) => {
+            const key = String(batchItem._id);
+            if (!byKey.has(key)) {
+                byKey.set(key, {
+                    id: key,
+                    batch: batchItem,
+                    name: batchItem.name,
+                    students: [],
+                    courseIds: new Set((batchItem.courses || []).map((course) => String(typeof course === 'object' ? course?._id : course)).filter(Boolean)),
+                    matchCount: 0,
+                });
+            }
+        });
+
+        return Array.from(byKey.values())
+            .map((group) => {
+                const batchItem = group.batch || batchMap.get(String(group.id));
+                const courseList = batchItem?.courses || [];
+                const courseNames = courseList
+                    .map((course) => (typeof course === 'object' ? course?.name : course))
+                    .filter(Boolean);
+
+                return {
+                    ...group,
+                    batch: batchItem || group.batch,
+                    courseCount: courseList.length,
+                    courseNames,
+                    capacity: Number(batchItem?.batchSize || 0),
+                    timeText: batchItem ? `${batchItem.startTime || '-'} - ${batchItem.endTime || '-'}` : '-',
+                    students: [...group.students].sort((a, b) => {
+                        const regA = a.regNo || '';
+                        const regB = b.regNo || '';
+                        return regA.localeCompare(regB, undefined, { numeric: true }) || `${a.firstName || ''} ${a.lastName || ''}`.localeCompare(`${b.firstName || ''} ${b.lastName || ''}`);
+                    })
+                };
+            })
+            .sort((a, b) => {
+                const aTime = a.batch ? parseStartHour(a.batch.startTime) ?? 99 : 99;
+                const bTime = b.batch ? parseStartHour(b.batch.startTime) ?? 99 : 99;
+                if (a.batch && b.batch && aTime !== bTime) return aTime - bTime;
+                if (a.batch && !b.batch) return -1;
+                if (!a.batch && b.batch) return 1;
+                if (b.matchCount !== a.matchCount) return b.matchCount - a.matchCount;
+                return a.name.localeCompare(b.name);
             });
-            if (!hasStudentInBatch) return false;
-
-            const startHour = parseStartHour(batchItem.startTime);
-            if (slotIndex === standardSlots.length - 1 && startHour === null) return true;
-            return startHour === slot.startHour;
-        });
-    };
-
-    const getSlotCapacity = (slotIndex) => {
-        const slotBatches = getFilteredBatchesForSlot(slotIndex);
-        const capacity = slotBatches.reduce((total, batchItem) => total + Number(batchItem.batchSize || 0), 0);
-        return Math.max(6, capacity);
-    };
-
-    const getSlotStudents = (slotIndex) => {
-        const slot = standardSlots[slotIndex];
-        if (!eligibleStudents || !slot) return [];
-        
-        return eligibleStudents.filter(student => {
-            if (!student.batch) return false;
-
-            const startHour = getStudentStartHour(student);
-            const isKnownSlot = standardSlots.some(standardSlot => standardSlot.startHour === startHour);
-            if (slotIndex === standardSlots.length - 1 && !isKnownSlot) return true;
-            
-            return startHour === slot.startHour;
-        });
-    };
+    }, [eligibleStudents, visibleBatches]);
 
     const getHeaderDateString = () => {
         const dateVal = filters.startDate || filters.endDate || new Date();
         return moment(dateVal).format('MMMM - YYYY');
     };
 
-    const totalCount = standardSlots.reduce((acc, _, idx) => acc + getSlotStudents(idx).length, 0);
-    const visibleSlotIndexes = standardSlots
-        .map((_, idx) => idx)
-        .filter((idx) => getSlotStudents(idx).length > 0);
-    const leftSlotIndexes = visibleSlotIndexes.filter((_, idx) => idx % 2 === 0);
-    const rightSlotIndexes = visibleSlotIndexes.filter((_, idx) => idx % 2 === 1);
-    const visibleBatchCount = Object.keys(groupedData || {}).length;
+    const totalCount = batchGroups.reduce((acc, group) => acc + group.students.length, 0);
+    const visibleBatchCount = batchGroups.length;
     const selectedCourseName = courses?.find(c => c._id === filters.courseFilter)?.name || 'All Courses';
     const selectedBranchName = branches?.find(b => b._id === filters.branchId)?.name || headerBranch.name || 'Current Branch';
     const activeDateLabel = filters.startDate && filters.endDate
         ? `${moment(filters.startDate).format('DD-MMM-YYYY')} to ${moment(filters.endDate).format('DD-MMM-YYYY')}`
         : 'All admission dates';
 
-    const renderBatchTable = (slotIndex) => {
-        const slot = standardSlots[slotIndex];
-        const slotStudents = getSlotStudents(slotIndex).sort((a, b) => {
-            const regA = a.regNo || '';
-            const regB = b.regNo || '';
-            return regA.localeCompare(regB, undefined, { numeric: true }) || `${a.firstName || ''} ${a.lastName || ''}`.localeCompare(`${b.firstName || ''} ${b.lastName || ''}`);
-        });
-        
+    const renderBatchTable = (group) => {
         const rows = [];
-        const rowCount = Math.max(getSlotCapacity(slotIndex), slotStudents.length);
+        const rowCount = Math.max(group.capacity || 0, group.students.length);
         for (let i = 0; i < rowCount; i++) {
-            rows.push(slotStudents[i] || null);
-        }
-
-        // Determine center header text based on students or slot
-        let centerHeaderText = slot.time;
-        const hasGeneralBatch = slotStudents.some(s => s.batch?.toLowerCase().includes('general'));
-        const hasUnmatchedBatch = slotIndex === standardSlots.length - 1 && slotStudents.some(student => {
-            const startHour = getStudentStartHour(student);
-            return !standardSlots.some(standardSlot => standardSlot.startHour === startHour);
-        });
-        if (hasGeneralBatch || hasUnmatchedBatch || (slotIndex >= 12 && slotStudents.length === 0)) {
-            centerHeaderText = "GENERAL BATCH";
+            rows.push(group.students[i] || null);
         }
         
         return (
             <table style={{ width: '100%', borderCollapse: 'collapse', border: '1.2px solid #000', fontSize: '7.5px', fontFamily: 'Arial, sans-serif', color: '#000', tableLayout: 'fixed' }}>
                 <thead>
                     <tr style={{ backgroundColor: '#d2543e', color: '#fff', height: '6mm', borderBottom: '1.2px solid #000' }}>
-                        <th style={{ width: '8%', borderRight: '1px solid #000', fontWeight: 'bold', fontSize: '7.5px', textAlign: 'center', padding: 0 }}>{slot.label}</th>
+                        <th style={{ width: '8%', borderRight: '1px solid #000', fontWeight: 'bold', fontSize: '7.5px', textAlign: 'center', padding: 0 }}>Sr</th>
                         <th style={{ width: '12%', borderRight: '1px solid #000', fontWeight: 'bold', fontSize: '7.5px', textAlign: 'center', padding: 0 }}>Reg</th>
-                        <th style={{ width: '40%', borderRight: '1px solid #000', fontWeight: 'bold', fontSize: '7.5px', textAlign: 'center', padding: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>{centerHeaderText}</th>
+                        <th style={{ width: '40%', borderRight: '1px solid #000', fontWeight: 'bold', fontSize: '7.5px', textAlign: 'center', padding: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.1, padding: 0 }}>
+                                <span>{group.name}</span>
+                                <span style={{ fontSize: '6px', fontWeight: '700', opacity: 0.95, textTransform: 'none' }}>
+                                    {group.batch ? `${group.timeText}` : '-'}
+                                </span>
+                            </div>
+                        </th>
                         <th style={{ width: '23%', borderRight: '1px solid #000', fontWeight: 'bold', fontSize: '7.5px', textAlign: 'center', padding: 0 }}>MOBILE</th>
                         <th style={{ width: '17%', fontWeight: 'bold', fontSize: '7.5px', textAlign: 'center', padding: 0 }}>COURSES</th>
                     </tr>
@@ -501,7 +516,7 @@ const BatchWiseRegister = () => {
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">General Report</p>
                         <h1 className="mt-1 text-2xl font-bold text-slate-900">Batch Wise Register</h1>
-                        <p className="mt-1 text-sm text-slate-500">Filter registered students by branch, course, date, batch, or reference.</p>
+                        <p className="mt-1 text-sm text-slate-500">Batch master ke time, course count, aur us batch me registered students ka printable register.</p>
                     </div>
                     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
@@ -687,14 +702,14 @@ const BatchWiseRegister = () => {
                         {/* Double-Column Grid of Batch Tables */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3mm', width: '100%', boxSizing: 'border-box' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3mm' }}>
-                                {leftSlotIndexes.map((slotIndex) => (
-                                    <React.Fragment key={slotIndex}>{renderBatchTable(slotIndex)}</React.Fragment>
+                                {batchGroups.filter((_, idx) => idx % 2 === 0).map((group) => (
+                                    <React.Fragment key={group.id}>{renderBatchTable(group)}</React.Fragment>
                                 ))}
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3mm' }}>
-                                {rightSlotIndexes.map((slotIndex) => (
-                                    <React.Fragment key={slotIndex}>{renderBatchTable(slotIndex)}</React.Fragment>
+                                {batchGroups.filter((_, idx) => idx % 2 === 1).map((group) => (
+                                    <React.Fragment key={group.id}>{renderBatchTable(group)}</React.Fragment>
                                 ))}
                             </div>
                         </div>
@@ -706,26 +721,26 @@ const BatchWiseRegister = () => {
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', width: '100%' }}>
                                     {/* Left Column of Summary */}
                                     <div style={{ borderRight: '1px solid #000' }}>
-                                        {leftSlotIndexes.map((idx, summaryIdx) => (
-                                            <div key={idx} style={{ display: 'flex', height: '6.5mm', borderBottom: summaryIdx < leftSlotIndexes.length - 1 ? '1px solid #000' : 'none' }}>
+                                        {batchGroups.filter((_, idx) => idx % 2 === 0).map((group, summaryIdx, arr) => (
+                                            <div key={group.id} style={{ display: 'flex', height: '6.5mm', borderBottom: summaryIdx < arr.length - 1 ? '1px solid #000' : 'none' }}>
                                                 <div style={{ width: '65%', backgroundColor: '#ec9b1c', color: '#000', fontSize: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', paddingLeft: '4px', borderRight: '1px solid #000' }}>
-                                                    {moment().hour(standardSlots[idx].startHour).minute(0).format('h.mm A')}
+                                                    {group.batch ? `${group.batch.startTime} - ${group.batch.endTime}` : '-'}
                                                 </div>
                                                 <div style={{ width: '35%', backgroundColor: '#e5e7eb', color: '#000', fontSize: '9px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                    {getSlotStudents(idx).length}
+                                                    {group.students.length}
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                     {/* Right Column of Summary */}
                                     <div>
-                                        {rightSlotIndexes.map((idx, summaryIdx) => (
-                                            <div key={idx} style={{ display: 'flex', height: '6.5mm', borderBottom: summaryIdx < rightSlotIndexes.length - 1 ? '1px solid #000' : 'none' }}>
+                                        {batchGroups.filter((_, idx) => idx % 2 === 1).map((group, summaryIdx, arr) => (
+                                            <div key={group.id} style={{ display: 'flex', height: '6.5mm', borderBottom: summaryIdx < arr.length - 1 ? '1px solid #000' : 'none' }}>
                                                 <div style={{ width: '65%', backgroundColor: '#ec9b1c', color: '#000', fontSize: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', paddingLeft: '4px', borderRight: '1px solid #000' }}>
-                                                    {moment().hour(standardSlots[idx].startHour).minute(0).format('h.mm A')}
+                                                    {group.batch ? `${group.batch.startTime} - ${group.batch.endTime}` : '-'}
                                                 </div>
                                                 <div style={{ width: '35%', backgroundColor: '#e5e7eb', color: '#000', fontSize: '9px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                    {getSlotStudents(idx).length}
+                                                    {group.students.length}
                                                 </div>
                                             </div>
                                         ))}

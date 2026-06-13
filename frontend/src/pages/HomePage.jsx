@@ -305,16 +305,16 @@ const HomePage = () => {
                     const course = popularCourse.course;
                     if (!course) return null;
                     return (
-                      <div key={popularCourse._id || index} className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 transform hover:-translate-y-2 transition-all duration-300 group">
+                      <div key={popularCourse._id || index} className="bg-white rounded-2xl shadow-[0_18px_45px_rgba(15,23,42,0.16)] hover:shadow-[0_24px_60px_rgba(37,99,235,0.22)] overflow-hidden border border-gray-200 ring-1 ring-gray-100 transform hover:-translate-y-2 transition-all duration-300 group">
                         <div className="relative h-48 overflow-hidden">
                           <img 
                             src={course.image || 'https://placehold.co/600x400/e5e7eb/374151?text=Course+Image'} 
                             alt={course.name} 
                             className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700"
                           />
-                          <div className="absolute top-4 left-4 bg-accent text-white px-3 py-1 rounded-full text-xs font-bold uppercase shadow-md">
+                          {/* <div className="absolute top-4 left-4 bg-accent text-white px-3 py-1 rounded-full text-xs font-bold uppercase shadow-md">
                             Popular
-                          </div>
+                          </div> */}
                         </div>
                         <div className="p-6">
                           <div className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">{popularCourse.category?.name || 'Popular'}</div>

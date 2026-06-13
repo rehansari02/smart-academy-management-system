@@ -240,7 +240,7 @@ const FeeCollection = () => {
         }
     }, [isLoading]);
 
-    const onSubmit = (data) => {
+    const onSubmit = async (data) => {
         if (isSubmitting) return;
         
         if (!selectedStudent) {
@@ -295,10 +295,16 @@ const FeeCollection = () => {
             paymentDetails: data.onlinePaymentType === 'UPI' ? data.upiId : data.paymentDetails,
         };
 
-        if (editingReceipt) {
-            dispatch(updateFeeReceipt({ id: editingReceipt._id, data: payload }));
-        } else {
-            dispatch(collectFees(payload));
+        try {
+            if (editingReceipt) {
+                await dispatch(updateFeeReceipt({ id: editingReceipt._id, data: payload })).unwrap();
+            } else {
+                await dispatch(collectFees(payload)).unwrap();
+            }
+        } catch (error) {
+            toast.error(error?.message || 'Failed to save receipt');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 

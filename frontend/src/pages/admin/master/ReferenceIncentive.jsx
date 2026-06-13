@@ -544,6 +544,7 @@ function TeacherPerformanceDetail({
   const recentReceipts = data.recentReceipts || [];
   const monthlyTrend = data.monthlyTrend || [];
   const { edit } = useUserRights('Reference Incentive');
+  const totalReceived = Number(summary.totalReceived ?? summary.totalFees ?? 0);
 
   const getCommissionType = (course) => {
     const raw = String(course?.commissionType || '').trim().toLowerCase();
@@ -561,6 +562,26 @@ function TeacherPerformanceDetail({
     const type = getCommissionType(course);
     const value = Number(course?.commission || 0);
     return type === 'Percentage' ? `${value}% of total fees` : `${formatMoney(value)} per student`;
+  };
+
+  const getFeeStatus = (student, feeType) => {
+    const course = student?.course || {};
+    const required = feeType === 'admission'
+      ? Number(course?.admissionFees || 0)
+      : Number(course?.registrationFees || student?.emiDetails?.registrationFees || 0);
+    const paid = feeType === 'admission'
+      ? Number(student?.admissionFeeAmount || 0)
+      : Number(student?.registrationFeeAmount || 0);
+    const isPaid = feeType === 'admission'
+      ? (student?.isAdmissionFeesPaid || paid >= required)
+      : (student?.isRegistered || paid >= required);
+
+    return {
+      required,
+      paid,
+      isPaid,
+      label: isPaid ? 'Paid' : 'Pending'
+    };
   };
 
   // --- Incentive Status Management ---
@@ -677,10 +698,13 @@ function TeacherPerformanceDetail({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatBox label="Students" value={summary.studentCount} />
           <StatBox label="Admitted" value={summary.admissionCount} className="text-emerald-300" />
-          <StatBox label="Total Rev." value={formatMoney(summary.totalFees)} />
-          <StatBox label="Incentive" value={formatMoney(summary.totalIncentive)} className="text-amber-300" />
+          <StatBox label="Pending Admission" value={summary.pendingAdmissionCount || 0} className="text-rose-300" />
+          <StatBox label="Pending Registration" value={summary.pendingRegistrationCount || 0} className="text-amber-300" />
+          <StatBox label="Total Rev." value={formatMoney(totalReceived)} className="text-cyan-300" />
+        </div>
+        <div className="mt-2 text-xs font-semibold text-white/70">
+          Total referrals: {summary.studentCount || 0} | Incentive: {formatMoney(summary.totalIncentive || 0)}
         </div>
       </div>
 
@@ -882,7 +906,7 @@ function TeacherPerformanceDetail({
         </div>
 
         <div className="hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[950px] text-sm">
+          <table className="w-full min-w-[1200px] text-sm">
             <thead className="bg-white text-xs uppercase text-slate-500">
               <tr>
                 <th className="w-10 p-3 text-center font-black">
@@ -892,8 +916,10 @@ function TeacherPerformanceDetail({
                 </th>
                 <th className="w-10 p-3 text-center font-black">#</th>
                 <th className="p-3 text-left font-black">Student</th>
+                <th className="p-3 text-left font-black">Branch</th>
                 <th className="p-3 text-left font-black">Course</th>
-                <th className="p-3 text-left font-black">Commission</th>
+                <th className="p-3 text-center font-black">Admission Fee</th>
+                <th className="p-3 text-center font-black">Registration Fee</th>
                 <th className="p-3 text-right font-black">Incentive</th>
                 <th className="p-3 text-center font-black">Status</th>
                 <th className="w-24 p-3 text-center font-black">Action</th>
@@ -913,24 +939,43 @@ function TeacherPerformanceDetail({
                     <div className="text-[10px] font-semibold text-slate-400">ID: {s.regNo || s.enrollmentNo || 'N/A'}</div>
                   </td>
                   <td className="p-3">
+                    <div className="font-semibold text-slate-700">{s.branchId?.name || s.branchName || '-'}</div>
+                  </td>
+                  <td className="p-3">
                     <div className="font-semibold text-slate-700">{s.course?.name || '-'}</div>
                     {s.course?.duration && (
                       <div className="text-[10px] font-semibold text-slate-400">{s.course.duration} {s.course.durationType}</div>
                     )}
                   </td>
                   <td className="p-3">
-                    {getCommissionType(s.course) === 'Percentage' ? (
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-0.5 text-[11px] font-black text-indigo-700">
-                        {formatCommissionValue(s.course)}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-600">
-                        {formatCommissionValue(s.course)}
-                      </span>
-                    )}
-                    <div className="mt-0.5 text-[10px] font-semibold text-slate-400">
-                      {getCommissionNote(s.course)}
-                    </div>
+                    {(() => {
+                      const fee = getFeeStatus(s, 'admission');
+                      return (
+                        <div className="text-center">
+                          <span className={`inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-black ${fee.isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                            {fee.label}
+                          </span>
+                          <div className="mt-1 text-[10px] font-semibold text-slate-500">
+                            ₹{fee.paid.toLocaleString('en-IN')} / ₹{fee.required.toLocaleString('en-IN')}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </td>
+                  <td className="p-3">
+                    {(() => {
+                      const fee = getFeeStatus(s, 'registration');
+                      return (
+                        <div className="text-center">
+                          <span className={`inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-black ${fee.isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {fee.label}
+                          </span>
+                          <div className="mt-1 text-[10px] font-semibold text-slate-500">
+                            ₹{fee.paid.toLocaleString('en-IN')} / ₹{fee.required.toLocaleString('en-IN')}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="p-3 text-right">
                     <div className="font-black text-indigo-600">{formatMoney(s.incentive)}</div>
@@ -958,7 +1003,7 @@ function TeacherPerformanceDetail({
                   </td>
                 </tr>
               )) : (
-                <tr><td colSpan={8} className="p-8 text-center font-semibold text-slate-400">No students found.</td></tr>
+                <tr><td colSpan={10} className="p-8 text-center font-semibold text-slate-400">No students found.</td></tr>
               )}
             </tbody>
           </table>
@@ -980,6 +1025,9 @@ function TeacherPerformanceDetail({
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div><span className="font-semibold text-slate-500">Course:</span> <span className="text-slate-700">{s.course?.name || '-'}</span></div>
+                <div><span className="font-semibold text-slate-500">Branch:</span> <span className="text-slate-700">{s.branchId?.name || s.branchName || '-'}</span></div>
+                <div><span className="font-semibold text-slate-500">Admission:</span> <span className="text-slate-700">{getFeeStatus(s, 'admission').label}</span></div>
+                <div><span className="font-semibold text-slate-500">Registration:</span> <span className="text-slate-700">{getFeeStatus(s, 'registration').label}</span></div>
                 <div><span className="font-semibold text-slate-500">Incentive:</span> <span className="font-black text-indigo-600">{formatMoney(s.incentive)}</span></div>
                 <div className="text-right">
                   <button

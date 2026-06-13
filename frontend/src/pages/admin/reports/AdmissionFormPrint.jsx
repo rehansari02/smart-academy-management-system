@@ -207,12 +207,12 @@ const AdmissionFormPrint = () => {
                         </div>
                     </div>
 
-                    <div className="absolute right-0 top-0 w-32 h-40 border-2 border-black flex items-center justify-center bg-gray-50 overflow-hidden">
+                    <div className="absolute right-0 top-0 w-28 h-36 border-2 border-black flex items-center justify-center bg-gray-50 overflow-hidden">
                         {student.studentPhoto ? (
                             <img
                                 src={getMediaUrl(student.studentPhoto)}
                                 alt="Student"
-                                className="w-full h-full object-contain object-center bg-white p-1"
+                                className="w-full h-full object-contain object-center bg-white"
                                 onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
                             />
                         ) : null}

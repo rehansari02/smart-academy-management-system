@@ -107,19 +107,20 @@ const resolveAssignableUserId = async (value) => {
 };
 
 const resolveInquiryOwner = async ({ referenceBy, requestedAllocatedTo, fallbackUserId, isExternalRef }) => {
-  // 1. Direct/Self reference stays with creator
+  // 1. Explicitly selected external references stay with the creator.
+  if (isExternalRef) return fallbackUserId;
+
+  // 2. Direct/Self reference stays with creator
   if (isDirectReference(referenceBy)) return fallbackUserId;
 
   const referenceText = String(referenceBy || "").trim();
   if (!referenceText) return fallbackUserId;
 
-  // 2. Internal employee/user references must win over Reference master entries.
+  // 3. Internal employee/user references must win over Reference master entries.
   const referenceOwner = await resolveAssignableUserId(referenceText);
   if (referenceOwner) return referenceOwner;
 
-  // 3. Explicit or saved external references stay with creator.
-  if (isExternalRef) return fallbackUserId;
-
+  // 4. Saved external references stay with creator.
   const isSavedExternalRef = await Reference.findOne({ 
     name: { $regex: new RegExp(`^${escapeRegex(referenceText)}$`, "i") }, 
     isDeleted: false 
@@ -127,7 +128,7 @@ const resolveInquiryOwner = async ({ referenceBy, requestedAllocatedTo, fallback
   
   if (isSavedExternalRef) return fallbackUserId;
 
-  // 4. Fallback to requested allocation or creator
+  // 5. Fallback to requested allocation or creator
   if (requestedAllocatedTo) return requestedAllocatedTo;
   return fallbackUserId;
 };
@@ -433,6 +434,10 @@ const getInquiries = asyncHandler(async (req, res) => {
 
   // Source Filter
   if (source) query.source = source;
+  if (req.query.excludeAdmitted === "true") {
+    query.source = query.source || { $ne: "Converted" };
+    query.status = query.status || { $ne: "Converted" };
+  }
 
   // Student Name or Contact Search
   const searchTerm = studentName || req.query.search;

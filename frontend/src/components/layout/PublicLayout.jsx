@@ -144,7 +144,7 @@ const PublicNavbar = () => {
               >
                 {item.isDropdown ? (
                   <div>
-                    <button className={`flex items-center gap-1 whitespace-nowrap rounded-md px-3 py-3 text-[13px] font-bold uppercase tracking-wide leading-none hover:text-yellow-300 transition-colors border-b-2 border-transparent hover:border-yellow-300 ${(item.subItems && isDropdownActive(item.subItems)) || (item.isMegaMenu && location.pathname.includes('/course')) ? 'text-yellow-300 border-yellow-300' : 'text-white'}`}>
+                    <button className={`flex items-center gap-1 whitespace-nowrap rounded-md px-3 py-3 text-[13px] font-bold uppercase tracking-wide leading-none transition-all duration-300 ease-in-out border-b-2 border-transparent ${(item.subItems && isDropdownActive(item.subItems)) || (item.isMegaMenu && location.pathname.includes('/course')) ? 'bg-primary text-white border-primary shadow-sm' : 'text-white hover:bg-primary hover:text-white hover:border-primary hover:shadow-sm'}`}>
                       {item.name} <ChevronDown size={14} className={`transform transition-transform duration-200 ${hoverDropdown === index ? 'rotate-180' : ''}`} />
                     </button>
 
@@ -165,7 +165,7 @@ const PublicNavbar = () => {
                               <div className="border-r border-gray-100 bg-gray-50 p-3">
                                 <Link
                                   to="/course"
-                                  className="mb-2 flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-black text-primary hover:bg-white"
+                                  className="mb-2 flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-black text-primary transition-all duration-300 ease-in-out hover:bg-primary hover:text-white"
                                 >
                                   <BookOpen size={16} /> All Courses
                                 </Link>
@@ -178,7 +178,7 @@ const PublicNavbar = () => {
                                     className={`flex w-full items-center justify-between rounded-lg px-4 py-3 text-left text-sm font-black uppercase tracking-wide transition-colors ${
                                       selectedCourseType === type
                                         ? 'bg-primary text-white shadow-sm'
-                                        : 'text-gray-700 hover:bg-white hover:text-primary'
+                                        : 'text-gray-700 hover:bg-primary hover:text-white'
                                     }`}
                                   >
                                     <span className="line-clamp-2">{type}</span>
@@ -201,10 +201,10 @@ const PublicNavbar = () => {
                                         <Link
                                           key={course._id}
                                           to={`/course/${course._id}`}
-                                          className="group/card flex flex-col justify-between rounded-lg border border-gray-200 px-4 py-3 hover:border-primary hover:bg-blue-50 hover:shadow-md transition-all cursor-pointer"
+                                          className="group/card flex flex-col justify-between rounded-lg border border-gray-200 px-4 py-3 transition-all duration-300 ease-in-out cursor-pointer hover:border-primary hover:bg-primary hover:shadow-md"
                                         >
-                                          <span className="text-sm font-semibold text-gray-700 group-hover/card:text-primary transition-colors">{course.name}</span>
-                                          <span className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-primary">
+                                          <span className="text-sm font-semibold text-gray-700 transition-colors group-hover/card:text-white">{course.name}</span>
+                                          <span className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-primary transition-colors group-hover/card:text-white">
                                             View Details <ArrowRight size={11} />
                                           </span>
                                         </Link>

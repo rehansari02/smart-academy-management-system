@@ -233,7 +233,7 @@ const TodaysVisitorsList = () => {
                 const status = item.status || visitor.status || 'Open';
                 const followUpDetails = item.followUpDetails || item.remark || '-';
                 const followUpByValue = followUpBy?.name || followUpBy?.username || item.followUpBy || '-';
-                const callingDate = item.callingDate || item.createdAt || null;
+                const callingDate = item.callingDate || null;
                 return `
                     <tr>
                         <td class="text-center">${index + 1}</td>
@@ -327,8 +327,7 @@ const TodaysVisitorsList = () => {
                     fromDate: override.fromDate || fromDate,
                     toDate: override.toDate || toDate,
                     branchId: override.branchId ?? filterBranch,
-                    employeeId: override.employeeId ?? employeeId,
-                    dateFilterType: 'followUpDate'
+                    employeeId: override.employeeId ?? employeeId
                 },
                 withCredentials: true,
             });
@@ -356,7 +355,6 @@ const TodaysVisitorsList = () => {
                 branchId: nextBranch,
                 inquirySource: nextInquirySource,
                 employeeId: nextEmployee,
-                dateFilterType: 'followUpDate',
                 excludeFollowedVisitors: 'true'
             });
             setVisitors(data);
@@ -462,6 +460,7 @@ const TodaysVisitorsList = () => {
             await visitorService.createVisitorFollowUp(data);
             setFollowUpVisitor(null);
             fetchVisitors();
+            fetchStats();
         } catch (error) {
             console.error("Error saving visitor follow-up:", error);
         }
@@ -473,7 +472,23 @@ const TodaysVisitorsList = () => {
 
     const summary = stats?.summary || {};
     const employeeSummary = stats?.employees || [];
-    const followUpsDoneToday = stats?.followUpsDoneToday ?? summary.followUpsToday ?? 0;
+    const totalRangeVisitors = Number(stats?.totalInquiries ?? summary.total ?? visitors.length ?? 0);
+    const followUpsDoneToday = Number(stats?.totalFollowUps ?? stats?.followUpsDoneToday ?? summary.followUpsToday ?? 0);
+    const statsRemainingCount = Math.max(totalRangeVisitors - followUpsDoneToday, 0);
+    const tableColSpan = user?.role === 'Super Admin' ? 13 : 12;
+    const formatDateTime = (value) => {
+        if (!value) return '-';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '-';
+        return (
+            <div className="flex flex-col">
+                <span className="font-bold">{formatDate(value)}</span>
+                <span className="text-[10px] text-blue-600">
+                    {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+            </div>
+        );
+    };
 
     return (
         <div className="w-full p-2 animate-fadeIn">
@@ -560,7 +575,7 @@ const TodaysVisitorsList = () => {
                     </div>
                     <div className="flex items-center gap-2 px-3">
                         <p className="text-[10px] font-bold text-purple-400 uppercase">Remaining</p>
-                        <p className="text-sm font-black text-purple-600">{Math.max((summary.total || 0) - followUpsDoneToday, 0)}</p>
+                        <p className="text-sm font-black text-purple-600">{statsRemainingCount}</p>
                     </div>
                 </div>
 
@@ -570,7 +585,7 @@ const TodaysVisitorsList = () => {
                             <div className="border rounded p-3">
                                 <div className="text-xs text-gray-500 font-bold uppercase">Range Visitors</div>
                                 <div className="text-2xl font-black text-blue-700">
-                                    {stats.openCount || 0}<span className="text-lg font-bold text-gray-400">/{stats.totalInquiries || 0}</span>
+                                    {statsRemainingCount}<span className="text-lg font-bold text-gray-400">/{totalRangeVisitors}</span>
                                 </div>
                                 {stats.pendingFromBefore > 0 && (
                                     <div className="mt-1 text-[10px]">
@@ -591,15 +606,16 @@ const TodaysVisitorsList = () => {
                             </div>
                             <div className="border rounded p-3">
                                 <div className="text-xs text-gray-500 font-bold uppercase">Followups Done</div>
-                                <div className="text-2xl font-black text-purple-700">{followUpsDoneToday}</div>
+                                <div className="text-2xl font-black text-purple-700">
+                                    {followUpsDoneToday}<span className="text-lg font-bold text-gray-400">/{totalRangeVisitors}</span>
+                                </div>
                                 <div className="mt-1 text-[10px] text-gray-400">
-                                    {Math.max((summary.total || 0) - followUpsDoneToday, 0)} remaining
+                                    {statsRemainingCount} remaining
                                 </div>
                                 <button
                                     type="button"
                                     onClick={handlePrintFollowupsList}
-                                    disabled={!activeEmployeeId}
-                                    className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200"
                                 >
                                     <Printer size={12} /> Print Followups List
                                 </button>
@@ -773,91 +789,80 @@ const TodaysVisitorsList = () => {
                         <h1 className="text-2xl font-bold text-blue-800 uppercase tracking-wide">Visitors List</h1>
                         <p className="text-xs text-gray-500 mt-1">Generated on {new Date().toLocaleDateString('en-GB')} | Total Visitors: {visitors?.length || 0}</p>
                     </div>
-                    <table className="w-full border-collapse min-w-[1300px]">
+                    <table className="w-full border-collapse min-w-[1350px]">
                         <thead>
                             <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
-                                <th className="p-2 border font-semibold w-12">Sr No</th>
-                                <th className="p-2 border font-semibold">Visiting Date</th>
+                                <th className="p-2 border font-semibold w-12 text-center">Sr. No.</th>
+                                <th className="p-2 border font-semibold">Inquiry Date</th>
                                 {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
+                                <th className="p-2 border font-semibold">Filled By</th>
+                                <th className="p-2 border font-semibold">Reference By</th>
                                 <th className="p-2 border font-semibold">Student Name</th>
-                                <th className="p-2 border font-semibold text-center w-36">Contact</th>
-                                <th className="p-2 border font-semibold">Reference</th>
-                                <th className="p-2 border font-semibold">Attend By</th>
+                                <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                                 <th className="p-2 border font-semibold text-center">Status</th>
-                                <th className="p-2 border font-semibold">In Time</th>
-                                <th className="p-2 border font-semibold">Out Time</th>
-                                <th className="p-2 border font-semibold">Remarks</th>
-                                <th className="p-2 border font-semibold">Create Date</th>
+                                <th className="p-2 border font-semibold">Followup</th>
+                                <th className="p-2 border font-semibold w-36">Followup Details</th>
+                                <th className="p-2 border font-semibold">Followup By</th>
+                                <th className="p-2 border font-semibold">Calling Date</th>
                                 <th className="p-2 border font-semibold text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan="13" className="text-center p-4">Loading...</td></tr>
+                                <tr><td colSpan={tableColSpan} className="text-center p-4">Loading...</td></tr>
                             ) : visitors.length === 0 ? (
-                                <tr><td colSpan="13" className="text-center p-4 text-gray-500">No visitors found for this range.</td></tr>
+                                <tr><td colSpan={tableColSpan} className="text-center p-4 text-gray-500">No visitors found for this range.</td></tr>
                             ) : (
-                                visitors.map((visitor, index) => (
+                                visitors.map((visitor, index) => {
+                                    const latestFollowup = visitor.latestFollowup || {};
+                                    const inquiryDate = visitor.inquiryId?.inquiryDate || visitor.visitingDate;
+                                    const followupDate = latestFollowup.scheduledDate || latestFollowup.followUpDate;
+                                    const callingDate = latestFollowup.isDone ? (latestFollowup.callingDate || null) : null;
+                                    const followupBy = latestFollowup.followUpBy?.name || latestFollowup.followUpBy?.username || '-';
+                                    const status = latestFollowup.status || visitor.status || 'Open';
+                                    return (
                                     <tr key={visitor._id} className="hover:bg-blue-50 text-xs border-b border-gray-100 transition-colors">
                                         <td className="p-2 text-center">{index + 1}</td>
-                                        <td className="p-2">
-                                            {visitor.latestFollowup?.scheduledDate
-                                                ? new Date(visitor.latestFollowup.scheduledDate).toLocaleDateString('en-GB')
-                                                : (visitor.visitingDate ? new Date(visitor.visitingDate).toLocaleDateString('en-GB') : '-')}
-                                        </td>
+                                        <td className="p-2">{inquiryDate ? formatDate(inquiryDate) : '-'}</td>
                                         {user?.role === 'Super Admin' && <td className="p-2 text-gray-600">{visitor.branchId?.name || '-'}</td>}
-                                        <td className="p-2 font-bold text-gray-800">{visitor.studentName}</td>
+                                        <td className="p-2 text-gray-700 font-medium">{getCreatedByName(visitor)}</td>
+                                        <td className="p-2">{visitor.reference || '-'}</td>
+                                        <td className="p-2 font-bold text-gray-800">{visitor.studentName || '-'}</td>
                                         <td className="p-0 border align-top w-36">
-                                            <div className="flex border-b border-gray-200 last:border-b-0">
-                                                <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">G</div>
-                                                <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
-                                                    {visitor.contactParent || '-'}
-                                                </div>
-                                            </div>
                                             <div className="flex border-b border-gray-200 last:border-b-0">
                                                 <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">H</div>
                                                 <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
                                                     {visitor.contactHome || '-'}
                                                 </div>
                                             </div>
-                                            <div className="flex">
+                                            <div className="flex border-b border-gray-200 last:border-b-0">
                                                 <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">S</div>
                                                 <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start text-blue-600">
                                                     {visitor.mobileNumber || '-'}
                                                 </div>
                                             </div>
+                                            <div className="flex">
+                                                <div className="w-6 border-r border-gray-200 p-1 font-bold text-gray-500 bg-gray-50 flex items-center justify-center">P</div>
+                                                <div className="p-1 flex-1 text-gray-700 font-medium text-left px-2 flex items-center justify-start">
+                                                    {visitor.contactParent || '-'}
+                                                </div>
+                                            </div>
                                         </td>
-                                        <td className="p-2">{visitor.reference || '-'}</td>
-                                        <td className="p-2">{visitor.attendedBy?.name || visitor.attendedBy?.username || '-'}</td>
                                         <td className="p-2 text-center">
                                             <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${
-                                                visitor.status === 'Open' ? 'bg-green-100 text-green-700 border-green-200' :
-                                                visitor.status === 'Recall' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-                                                visitor.status === 'Complete' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                                                visitor.status === 'Close' ? 'bg-red-100 text-red-700 border-red-200' :
+                                                status === 'Open' ? 'bg-green-100 text-green-700 border-green-200' :
+                                                status === 'Recall' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                                                status === 'Complete' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                                status === 'Close' ? 'bg-red-100 text-red-700 border-red-200' :
                                                 'bg-gray-100 text-gray-600 border-gray-200'
                                             }`}>
-                                                {visitor.status || 'Open'}
+                                                {status}
                                             </span>
                                         </td>
-                                        <td className="p-2">
-                                            <span className="text-green-700 font-semibold">{visitor.inTime}</span>
-                                        </td>
-                                        <td className="p-2">
-                                            {visitor.outTime && <span className="text-red-500 font-semibold"> {visitor.outTime}</span>}
-                                        </td>
-                                        <td className="p-2 truncate max-w-xs" title={visitor.remarks}>{visitor.remarks || '-'}</td>
-                                        <td className="p-2 text-xs">
-                                            {visitor.createdAt ? (
-                                                <div className="flex flex-col">
-                                                    <span>{new Date(visitor.createdAt).toLocaleDateString('en-GB')}</span>
-                                                    <span className="text-gray-500">{new Date(visitor.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
-                                                    <span className="text-[10px] text-blue-600 font-semibold truncate" title={getCreatedByName(visitor)}>
-                                                        by {getCreatedByName(visitor)}
-                                                    </span>
-                                                </div>
-                                            ) : '-'}
-                                        </td>
+                                        <td className="p-2 text-gray-700 font-medium">{formatDateTime(followupDate)}</td>
+                                        <td className="p-2 text-gray-600 truncate max-w-xs" title={latestFollowup.remark || visitor.remarks || ''}>{latestFollowup.remark || visitor.remarks || '-'}</td>
+                                        <td className="p-2 text-gray-700">{followupBy}</td>
+                                        <td className="p-2 text-center">{formatDateTime(callingDate)}</td>
                                         <td className="p-2 text-center print:hidden">
                                             <div className="flex gap-2 justify-center">
                                                 <button onClick={() => handleOpenFollowUp(visitor)} className="bg-purple-50 text-purple-600 hover:bg-purple-100 p-1.5 rounded border border-purple-200 transition" title="Visitor Follow-up">
@@ -878,7 +883,8 @@ const TodaysVisitorsList = () => {
                                             </div>
                                         </td>
                                     </tr>
-                                ))
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>

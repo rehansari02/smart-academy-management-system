@@ -49,6 +49,12 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
     const dispatch = useDispatch();
     const { references } = useSelector((state) => state.master);
     const { user } = useSelector((state) => state.auth);
+    const externalReferenceValue = (id) => `ExternalRef:${id}`;
+    const getExternalReferenceFromValue = (value) => {
+        if (!value || !String(value).startsWith('ExternalRef:')) return null;
+        const id = String(value).replace('ExternalRef:', '');
+        return references.find((ref) => String(ref._id) === id) || null;
+    };
     
     // State
     const [formData, setFormData] = useState({
@@ -110,6 +116,9 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
     // Handle initial data for edit mode
     useEffect(() => {
         if (initialData) {
+            const initialExternalRef = initialData.isExternalRef
+                ? references.find((ref) => String(ref.name || '').toLowerCase() === String(initialData.reference || '').toLowerCase())
+                : null;
             setIsReferenceLocked(user?.role !== 'Super Admin' && Boolean(initialData.reference));
             setFormData({
                 visitingDate: initialData.visitingDate ? initialData.visitingDate.split('T')[0] : '',
@@ -118,7 +127,11 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                 contactParent: initialData.contactParent || '',
                 contactHome: initialData.contactHome || '',
                 address: initialData.address || '',
-                reference: initialData.reference || '',
+                reference: initialExternalRef?._id
+                    ? externalReferenceValue(initialExternalRef._id)
+                    : initialData.isExternalRef
+                        ? 'ManualExternal'
+                        : (initialData.reference || ''),
                 referenceContact: initialData.referenceContact || '',
                 referenceAddress: initialData.referenceAddress || '',
                 course: initialData.course?._id || initialData.course || '',
@@ -130,12 +143,14 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                 nextVisitingDate: initialData.nextVisitingDate || '',
                 followUpDetails: initialData.followUpDetails || '',
                 branchId: initialData.branchId?._id || initialData.branchId || user?.branchId || '',
-                inquiryId: initialData.inquiryId?._id || initialData.inquiryId || ''
+                inquiryId: initialData.inquiryId?._id || initialData.inquiryId || '',
+                isExternalRef: initialData.isExternalRef || false,
+                manualReferenceName: initialData.isExternalRef && !initialExternalRef ? initialData.reference || '' : ''
             });
         } else {
             setIsReferenceLocked(false);
         }
-    }, [initialData, user]);
+    }, [initialData, user, references]);
 
     const fetchDropdowns = async () => {
         try {
@@ -230,14 +245,21 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
         e.preventDefault();
         setIsSubmitting(true);
         try {
+            const selectedExternalReference = getExternalReferenceFromValue(formData.reference);
             // Convert time fields to 12-hour format before submitting to DB
             const submissionData = {
                 ...formData,
                 inTime: convertTo12Hour(formData.inTime),
                 outTime: convertTo12Hour(formData.outTime),
                 // Handle external reference
-                reference: formData.reference === 'ManualExternal' ? formData.manualReferenceName : formData.reference,
-                isExternalRef: formData.reference === 'ManualExternal'
+                reference: formData.reference === 'ManualExternal'
+                    ? formData.manualReferenceName
+                    : selectedExternalReference
+                        ? selectedExternalReference.name
+                        : formData.reference,
+                referenceContact: selectedExternalReference?.mobile || formData.referenceContact,
+                referenceAddress: selectedExternalReference?.address || formData.referenceAddress,
+                isExternalRef: formData.reference === 'ManualExternal' || Boolean(selectedExternalReference)
             };
 
             // Remove empty attendedBy to prevent BSON cast error
@@ -282,6 +304,12 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
 
     // Debounced Search Effect
     useEffect(() => {
+        if (formData.inquiryId) {
+            setSearchResults([]);
+            setIsSearching(false);
+            return;
+        }
+
         const timer = setTimeout(async () => {
             const name = (formData.studentName || '').trim();
             const mobile = (formData.mobileNumber || '').trim();
@@ -294,7 +322,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                 try {
                     // Use scope=admission to allow global matching across all inquiries
                     const res = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/inquiry`, { 
-                        params: { search: searchTerm, scope: 'admission' },
+                        params: { search: searchTerm, scope: 'admission', excludeAdmitted: 'true' },
                         withCredentials: true 
                     });
                     setSearchResults(res.data);
@@ -309,7 +337,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [formData.studentName, formData.mobileNumber]);
+    }, [formData.studentName, formData.mobileNumber, formData.inquiryId]);
 
     const handleFillDetails = (inquiry) => {
         const fullName = [inquiry.firstName, inquiry.middleName, inquiry.lastName].filter(Boolean).join(' ');
@@ -319,13 +347,19 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
         let referenceValue = inquiry.referenceBy || 'Direct';
         let manualName = '';
         let isExternal = inquiry.isExternalRef || false;
+        let matchedReference = null;
 
         if (isExternal) {
-            manualName = inquiry.referenceBy;
-            referenceValue = 'ManualExternal';
+            matchedReference = references.find(r => String(r.name || '').toLowerCase() === String(inquiry.referenceBy || '').toLowerCase());
+            if (matchedReference?._id) {
+                referenceValue = externalReferenceValue(matchedReference._id);
+            } else {
+                manualName = inquiry.referenceBy;
+                referenceValue = 'ManualExternal';
+            }
+        } else {
+            matchedReference = references.find(r => r.name === referenceValue);
         }
-
-        const matchedReference = references.find(r => r.name === referenceValue);
 
         setFormData(prev => ({
             ...prev,
@@ -423,13 +457,12 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Student Contact *</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Student Contact</label>
                                 <input 
                                     type="tel"
                                     name="mobileNumber"
                                     value={formData.mobileNumber}
                                     onChange={handleInputChange}
-                                    required
                                     className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500"
                                     placeholder="Student mobile"
                                 />
@@ -468,17 +501,24 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                                             value={formData.reference}
                                             onChange={(e) => {
                                                 const val = e.target.value;
-                                                const extRef = references.find(r => r.name === val);
+                                                const extRef = getExternalReferenceFromValue(val);
                                                 if(extRef) {
                                                     setFormData(prev => ({ 
                                                         ...prev, 
                                                         reference: val,
                                                         referenceContact: extRef.mobile || '',
                                                         referenceAddress: extRef.address || '',
-                                                        isExternalRef: false
+                                                        isExternalRef: true
                                                     }));
                                                 } else {
-                                                    handleInputChange(e);
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        reference: val,
+                                                        isExternalRef: val === 'ManualExternal',
+                                                        referenceContact: '',
+                                                        referenceAddress: '',
+                                                        manualReferenceName: val === 'ManualExternal' ? prev.manualReferenceName : ''
+                                                    }));
                                                 }
                                             }}
                                             disabled={effectiveReferenceLocked}
@@ -497,7 +537,7 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                                             </optgroup>
                                             <optgroup label="External References">
                                                 {references.map((r, i) => (
-                                                    <option key={r._id || i} value={r.name}>{r.name}</option>
+                                                    <option key={r._id || i} value={externalReferenceValue(r._id || i)}>{r.name}</option>
                                                 ))}
                                             </optgroup>
                                         </select>
@@ -764,9 +804,10 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
                                         if(!res.error) {
                                             setFormData(prev => ({ 
                                                 ...prev, 
-                                                reference: newRef.name,
+                                                reference: externalReferenceValue(res.payload?._id),
                                                 referenceContact: newRef.mobile,
-                                                referenceAddress: newRef.address
+                                                referenceAddress: newRef.address,
+                                                isExternalRef: true
                                             }));
                                             setShowRefModal(false);
                                             setNewRef({ name: '', mobile: '', address: '' });

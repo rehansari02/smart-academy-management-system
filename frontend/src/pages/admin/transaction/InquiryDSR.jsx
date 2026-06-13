@@ -271,11 +271,12 @@ const InquiryDSR = () => {
                 <title>Followups List - ${escapeHtml(employeeName)}</title>
                 <style>
                     @page { size: A4 landscape; margin: 8mm; }
+                    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
                     body { font-family: Arial, sans-serif; padding: 0; color: #111827; }
                     h1 { font-size: 18px; margin: 0 0 4px; color: #1d4ed8; }
                     p { margin: 2px 0; font-size: 11px; color: #4b5563; }
                     table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 9px; table-layout: fixed; }
-                    th { background: #1d4ed8; color: white; padding: 5px 4px; text-align: left; white-space: nowrap; }
+                    th { background: #2563eb !important; color: #ffffff !important; padding: 5px 4px; text-align: left; white-space: nowrap; }
                     td { border: 1px solid #e5e7eb; padding: 4px; vertical-align: top; overflow-wrap: anywhere; word-break: normal; }
                     th:nth-child(1), td:nth-child(1) { width: 4%; text-align: center; }
                     th:nth-child(2), td:nth-child(2) { width: 8%; }

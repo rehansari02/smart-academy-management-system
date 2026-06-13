@@ -174,7 +174,7 @@ const Navbar = () => {
             transition={{ duration: 0.2 }} 
             className="absolute left-0 top-full pt-0 w-64 z-50" 
           >
-            <div className="bg-white text-gray-800 shadow-xl rounded-md overflow-hidden border border-gray-200 ring-1 ring-black/5">
+            <div className="bg-white text-gray-800 shadow-xl rounded-md overflow-visible border border-gray-200 ring-1 ring-black/5">
               <div className="h-1 bg-primary w-full"></div>
               {item.subItems.map((sub, idx) => (
                 <div key={idx} className="border-b border-gray-100 last:border-0">
@@ -190,14 +190,19 @@ const Navbar = () => {
                       </button>
                       
                        {/* Nested Submenu Display */}
-                        <div className="bg-gray-50 border-t border-gray-100 hidden group-hover/item:block">
-                           {(sub.filteredSubItems || sub.subItems).map((nested, nestedIdx) => (
-                              <Link key={nestedIdx} to={nested.path} 
-                                onClick={() => setHoveredMenu(null)}
-                                className="block px-6 py-2 text-xs font-semibold text-gray-600 hover:text-primary hover:bg-blue-50">
-                                {nested.title}
-                              </Link>
-                            ))}
+                        <div className="absolute left-full top-0 z-50 ml-1 hidden min-w-56 overflow-hidden rounded-md border border-gray-200 bg-white shadow-xl group-hover/item:block">
+                           <div className="border-t-4 border-primary bg-white">
+                              {(sub.filteredSubItems || sub.subItems).map((nested, nestedIdx) => (
+                                <Link
+                                  key={nestedIdx}
+                                  to={nested.path}
+                                  onClick={() => setHoveredMenu(null)}
+                                  className="block px-5 py-3 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-primary transition-colors whitespace-nowrap"
+                                >
+                                  {nested.title}
+                                </Link>
+                              ))}
+                           </div>
                         </div>
                     </div>
                   ) : (

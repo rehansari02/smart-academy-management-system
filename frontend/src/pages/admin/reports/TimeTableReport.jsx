@@ -16,6 +16,34 @@ const getCourseName = (schedule) => schedule?.course?.name || schedule?.courseNa
 const getSubjectName = (item) => item?.subject?.name || item?.subjectName || 'N/A';
 const getBranchId = (student) => getId(student?.branchId);
 const getBranchName = (student) => student?.branchId?.name || student?.branchName || 'Main Branch';
+const getScheduleLatestDate = (schedule) => {
+    return (schedule?.timeTable || []).reduce((maxDate, item) => {
+        const current = item?.date ? new Date(item.date).getTime() : 0;
+        return Math.max(maxDate, current);
+    }, 0);
+};
+
+const getScheduleYear = (schedule) => {
+    const sources = [
+        schedule?.examYear,
+        schedule?.year,
+        schedule?.examName,
+        schedule?.remarks,
+        schedule?.course?.name,
+    ].filter(Boolean).map((value) => String(value));
+
+    for (const source of sources) {
+        const match = source.match(/(20\d{2})/);
+        if (match) return Number(match[1]);
+    }
+
+    const latestDate = getScheduleLatestDate(schedule);
+    if (latestDate) {
+        return new Date(latestDate).getFullYear();
+    }
+
+    return 0;
+};
 
 const TimeTableReport = () => {
     const dispatch = useDispatch();
@@ -94,8 +122,11 @@ const TimeTableReport = () => {
         return baseSchedules
             .filter((schedule) => filters.courseId === 'All' || getId(schedule.course) === filters.courseId)
             .sort((a, b) => {
-                const aDate = a.timeTable?.[0]?.date ? new Date(a.timeTable[0].date).getTime() : 0;
-                const bDate = b.timeTable?.[0]?.date ? new Date(b.timeTable[0].date).getTime() : 0;
+                const aYear = getScheduleYear(a);
+                const bYear = getScheduleYear(b);
+                if (bYear !== aYear) return bYear - aYear;
+                const aDate = getScheduleLatestDate(a);
+                const bDate = getScheduleLatestDate(b);
                 return bDate - aDate;
             });
     }, [baseSchedules, filters.courseId]);
@@ -135,17 +166,39 @@ const TimeTableReport = () => {
         filteredSchedules.forEach(schedule => {
             const courseId = getId(schedule.course);
             const courseName = getCourseName(schedule);
+            const latestDate = getScheduleLatestDate(schedule);
+            const year = getScheduleYear(schedule);
             if (!groups[courseId]) {
                 groups[courseId] = {
                     id: courseId,
                     name: courseName,
                     shortName: schedule.course?.shortName || '',
-                    schedules: []
+                    schedules: [],
+                    latestDate: 0,
+                    latestYear: 0
                 };
             }
             groups[courseId].schedules.push(schedule);
+            groups[courseId].latestDate = Math.max(groups[courseId].latestDate, latestDate);
+            groups[courseId].latestYear = Math.max(groups[courseId].latestYear, year);
         });
-        return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
+        return Object.values(groups)
+            .map((group) => ({
+                ...group,
+                schedules: [...group.schedules].sort((a, b) => {
+                    const aYear = getScheduleYear(a);
+                    const bYear = getScheduleYear(b);
+                    if (bYear !== aYear) return bYear - aYear;
+                    const aDate = getScheduleLatestDate(a);
+                    const bDate = getScheduleLatestDate(b);
+                    return bDate - aDate;
+                })
+            }))
+            .sort((a, b) => {
+                if (b.latestYear !== a.latestYear) return b.latestYear - a.latestYear;
+                if (b.latestDate !== a.latestDate) return b.latestDate - a.latestDate;
+                return a.name.localeCompare(b.name);
+            });
     }, [filteredSchedules]);
 
     const summary = useMemo(() => {
