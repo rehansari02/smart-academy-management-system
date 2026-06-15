@@ -79,8 +79,6 @@ const ManageAttendance = () => {
         switch (type) {
             case 'Holiday':
                 return 'bg-red-50 text-red-700 border-red-200';
-            case 'Sunday':
-                return 'bg-red-100 text-red-800 border-red-200';
             case 'Vacation':
                 return 'bg-orange-50 text-orange-700 border-orange-200';
             default:
@@ -152,7 +150,7 @@ const ManageAttendance = () => {
                     <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
                         <CalendarDays className="text-primary" /> Manage Attendance
                     </h2>
-                    <p className="text-sm text-gray-500">Manage holidays, Sundays, and vacation dates for attendance.</p>
+                    <p className="text-sm text-gray-500">Manage holidays and vacation dates for attendance.</p>
                 </div>
             </div>
 
@@ -172,7 +170,6 @@ const ManageAttendance = () => {
                                 className="w-full border rounded-lg px-3 py-2"
                             >
                                 <option value="Holiday">Holiday</option>
-                                <option value="Sunday">Sunday</option>
                                 <option value="Vacation">Vacation</option>
                             </select>
                         </div>
@@ -251,7 +248,6 @@ const ManageAttendance = () => {
                             <select value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })} className="border rounded px-3 py-2 text-sm">
                                 <option value="">All</option>
                                 <option value="Holiday">Holiday</option>
-                                <option value="Sunday">Sunday</option>
                                 <option value="Vacation">Vacation</option>
                             </select>
                         </div>

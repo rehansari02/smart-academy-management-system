@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Plus, Search, Edit, Trash2, X, AlertCircle } from 'lucide-react';
+import { FileText, Plus, Search, Edit, Trash2, X, AlertCircle, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import newsService from '../../../services/newsService';
 import { toast } from 'react-toastify';
 import { formatDate } from '../../../utils/dateUtils';
@@ -30,10 +30,14 @@ const ManageNews = () => {
         title: '',
         smallDetail: '',
         description: '',
+        linkUrl: '',
+        linkLabel: '',
         releaseDate: new Date().toISOString().split('T')[0],
         isBreaking: false,
         isActive: true
     });
+    const [imageFile, setImageFile] = useState(null);
+    const [imagePreview, setImagePreview] = useState('');
 
     // --- Effects ---
     useEffect(() => {
@@ -83,16 +87,44 @@ const ManageNews = () => {
         }));
     };
 
+    const handleImageChange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            toast.error('Please upload a valid image file');
+            e.target.value = '';
+            return;
+        }
+        setImageFile(file);
+        setImagePreview(URL.createObjectURL(file));
+        e.target.value = '';
+    };
+
+    const buildPayload = () => {
+        const data = new FormData();
+        Object.entries(formData).forEach(([key, value]) => {
+            data.append(key, value);
+        });
+        if (imageFile) {
+            data.append('image', imageFile);
+        }
+        return data;
+    };
+
     const handleAddNew = () => {
         setEditMode(false);
         setFormData({
             title: '',
             smallDetail: '',
             description: '',
+            linkUrl: '',
+            linkLabel: '',
             releaseDate: new Date().toISOString().split('T')[0],
             isBreaking: false,
             isActive: true
         });
+        setImageFile(null);
+        setImagePreview('');
         setShowModal(true);
     };
 
@@ -104,10 +136,14 @@ const ManageNews = () => {
             title: news.title,
             smallDetail: news.smallDetail || '',
             description: news.description || '',
+            linkUrl: news.linkUrl || '',
+            linkLabel: news.linkLabel || '',
             releaseDate: news.releaseDate ? new Date(news.releaseDate).toISOString().split('T')[0] : '',
             isBreaking: news.isBreaking,
             isActive: news.isActive
         });
+        setImageFile(null);
+        setImagePreview(news.image || '');
         setShowModal(true);
     };
 
@@ -137,14 +173,14 @@ const ManageNews = () => {
                     showPermissionDenied("You don't have authority to edit news.");
                     return;
                 }
-                await newsService.updateNews(currentId, formData);
+                await newsService.updateNews(currentId, buildPayload());
                 toast.success("News updated successfully");
             } else {
                 if (!add) {
                     showPermissionDenied("You don't have authority to add news.");
                     return;
                 }
-                await newsService.createNews(formData);
+                await newsService.createNews(buildPayload());
                 toast.success("News created successfully");
             }
             setShowModal(false);
@@ -259,7 +295,9 @@ const ManageNews = () => {
                         <thead>
                             <tr className="bg-gray-100 text-left text-sm text-gray-600 uppercase tracking-wider">
                                 <th className="p-3 border-b">Sr No.</th>
+                                <th className="p-3 border-b">Image</th>
                                 <th className="p-3 border-b">News Title</th>
+                                <th className="p-3 border-b">Link</th>
                                 <th className="p-3 border-b">Release Date</th>
                                 <th className="p-3 border-b">Breaking News</th>
                                 <th className="p-3 border-b">Status</th>
@@ -268,14 +306,30 @@ const ManageNews = () => {
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan="6" className="text-center p-8 text-gray-500">Loading news...</td></tr>
+                                <tr><td colSpan="8" className="text-center p-8 text-gray-500">Loading news...</td></tr>
                             ) : newsList.length === 0 ? (
-                                <tr><td colSpan="6" className="text-center p-8 text-gray-500">No news found.</td></tr>
+                                <tr><td colSpan="8" className="text-center p-8 text-gray-500">No news found.</td></tr>
                             ) : (
                                 newsList.map((news, index) => (
                                     <tr key={news._id} className="hover:bg-gray-50 text-sm border-b transition-colors">
                                         <td className="p-3 font-medium text-gray-500">{index + 1}</td>
+                                        <td className="p-3">
+                                            {news.image ? (
+                                                <img src={news.image} alt={news.title} className="w-16 h-12 rounded object-cover border" />
+                                            ) : (
+                                                <span className="text-gray-400">-</span>
+                                            )}
+                                        </td>
                                         <td className="p-3 font-semibold text-gray-800">{news.title}</td>
+                                        <td className="p-3">
+                                            {news.linkUrl ? (
+                                                <a href={news.linkUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 inline-flex items-center gap-1">
+                                                    {news.linkLabel || 'Open Link'} <ExternalLink size={12} />
+                                                </a>
+                                            ) : (
+                                                <span className="text-gray-400">-</span>
+                                            )}
+                                        </td>
                                         <td className="p-3 text-sm text-gray-600">{formatDate(news.releaseDate)}</td>
                                         <td className="p-3">
                                             {news.isBreaking ? (
@@ -381,6 +435,57 @@ const ManageNews = () => {
                                             />
                                             <span className="text-sm font-medium text-gray-700">Is Active?</span>
                                         </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">News Image</label>
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-24 h-16 rounded-lg overflow-hidden border bg-gray-100 flex items-center justify-center">
+                                            {imagePreview ? (
+                                                <img src={imagePreview} alt="News preview" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <ImageIcon size={24} className="text-gray-400" />
+                                            )}
+                                        </div>
+                                        <label className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
+                                            Choose Image
+                                            <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                                        </label>
+                                        {imageFile && (
+                                            <button
+                                                type="button"
+                                                onClick={() => { setImageFile(null); setImagePreview(''); }}
+                                                className="text-sm text-red-600 hover:text-red-700"
+                                            >
+                                                Remove
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Link Label</label>
+                                        <input
+                                            type="text"
+                                            name="linkLabel"
+                                            value={formData.linkLabel}
+                                            onChange={handleInputChange}
+                                            className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                            placeholder="e.g. Apply Now"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Link URL</label>
+                                        <input
+                                            type="url"
+                                            name="linkUrl"
+                                            value={formData.linkUrl}
+                                            onChange={handleInputChange}
+                                            className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                            placeholder="https://example.com"
+                                        />
                                     </div>
                                 </div>
 

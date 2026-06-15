@@ -3,11 +3,14 @@ const News = require('../models/News');
 // Create News
 exports.createNews = async (req, res) => {
     try {
-        const { title, smallDetail, description, releaseDate, isBreaking, isActive } = req.body;
+        const { title, smallDetail, description, releaseDate, isBreaking, isActive, linkUrl, linkLabel } = req.body;
         const news = new News({
             title,
             smallDetail,
             description,
+            image: req.file ? req.file.path : '',
+            linkUrl,
+            linkLabel,
             releaseDate,
             isBreaking,
             isActive
@@ -67,10 +70,15 @@ exports.getAllNews = async (req, res) => {
 // Update News
 exports.updateNews = async (req, res) => {
     try {
-        const { title, smallDetail, description, releaseDate, isBreaking, isActive } = req.body;
+        const { title, smallDetail, description, releaseDate, isBreaking, isActive, linkUrl, linkLabel } = req.body;
+        const updateData = { title, smallDetail, description, releaseDate, isBreaking, isActive, linkUrl, linkLabel };
+        if (req.file) {
+            updateData.image = req.file.path;
+        }
+
         const updatedNews = await News.findByIdAndUpdate(
             req.params.id,
-            { title, smallDetail, description, releaseDate, isBreaking, isActive },
+            updateData,
             { new: true }
         );
         if (!updatedNews) return res.status(404).json({ message: 'News not found' });

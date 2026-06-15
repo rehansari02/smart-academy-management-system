@@ -51,6 +51,16 @@ const HeroCarousel = ({ items }) => {
                  className="w-full h-full object-contain md:object-cover opacity-95" 
                />               {/* Optional overlay for better text contrast if needed later */}
                <div className="absolute inset-0 bg-black/5 md:bg-black/10"></div>
+               {item.linkUrl && (
+                 <a
+                   href={item.linkUrl}
+                   target="_blank"
+                   rel="noreferrer"
+                   className="absolute left-1/2 bottom-5 md:bottom-10 -translate-x-1/2 bg-white text-gray-900 px-5 py-2.5 rounded-lg font-bold text-sm md:text-base shadow-lg hover:bg-gray-900 hover:text-white transition-colors"
+                 >
+                   {item.linkLabel || 'Learn More'}
+                 </a>
+               )}
              </div>
           </SwiperSlide>
         ))}

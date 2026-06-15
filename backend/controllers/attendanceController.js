@@ -133,7 +133,6 @@ const getAttendanceClosureForDate = async (dateValue, user) => {
 exports.getAttendanceCalendar = async (req, res) => {
     try {
         const { fromDate, toDate, type } = req.query;
-        await ensureSundayCalendarEntries(getCalendarYears(fromDate, toDate), req.user);
 
         const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
         const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 100);
@@ -141,6 +140,7 @@ exports.getAttendanceCalendar = async (req, res) => {
         const query = {};
 
         if (type) query.type = type;
+        else query.type = { $ne: 'Sunday' };
 
         if (fromDate || toDate) {
             const start = fromDate ? normalizeDateRange(fromDate).start : new Date('1970-01-01');

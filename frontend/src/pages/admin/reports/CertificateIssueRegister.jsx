@@ -11,6 +11,53 @@ const studentName = (student) => [student?.firstName, student?.middleName, stude
 const studentFullName = (student) => studentName(student);
 const getBranchId = (result) => getId(result?.student?.branchId);
 const getBranchName = (result) => result?.student?.branchId?.name || result?.student?.branchName || 'Main Branch';
+const formatSomNumber = (value) => {
+    const number = String(value || '').trim();
+    if (!number) return '-';
+    return `SOM-${number.replace(/^(SOM-)+/i, '')}`;
+};
+
+const formatCsrNumber = (result) => {
+    const rawCsr = String(result?.csrNumber || result?.certificateNumber || '').trim();
+    const shouldDeriveFromSom = !rawCsr || rawCsr.startsWith('SOM-') || /^CSR-LEGACY-/i.test(rawCsr) || /^CERT-LEGACY-/i.test(rawCsr);
+
+    if (shouldDeriveFromSom) {
+        const som = formatSomNumber(result?.somNumber);
+        return som === '-' ? '-' : som.replace(/^SOM-/i, 'CSR-');
+    }
+
+    return `CSR-${rawCsr.replace(/^(CSR-|SOM-)+/i, '')}`;
+};
+
+const getResultSortTime = (result) => {
+    const createdAt = result?.createdAt ? new Date(result.createdAt).getTime() : 0;
+    const updatedAt = result?.updatedAt ? new Date(result.updatedAt).getTime() : 0;
+    const issueDate = result?.issueDate ? new Date(result.issueDate).getTime() : 0;
+    return createdAt || updatedAt || issueDate;
+};
+
+const getLatestExamName = (results = []) => {
+    const sorted = [...results]
+        .filter((result) => result?.exam?.examName && result.isDeleted !== true)
+        .sort((a, b) => getResultSortTime(b) - getResultSortTime(a));
+
+    return sorted[0]?.exam?.examName || 'All';
+};
+
+const getExamNamesByLatest = (results = []) => {
+    const names = new Map();
+
+    [...results]
+        .filter((result) => result?.exam?.examName)
+        .sort((a, b) => getResultSortTime(b) - getResultSortTime(a))
+        .forEach((result) => {
+            if (!names.has(result.exam.examName)) {
+                names.set(result.exam.examName, result.exam.examName);
+            }
+        });
+
+    return Array.from(names.values());
+};
 
 const CertificateIssueRegister = () => {
     const dispatch = useDispatch();
@@ -26,10 +73,16 @@ const CertificateIssueRegister = () => {
         dispatch(fetchBranches());
     }, [dispatch]);
 
-    const examNames = useMemo(() => {
-        const names = new Set((examResults || []).map((result) => result.exam?.examName).filter(Boolean));
-        return Array.from(names);
-    }, [examResults]);
+    const examNames = useMemo(() => getExamNamesByLatest(examResults || []), [examResults]);
+    const latestExamName = useMemo(() => getLatestExamName(examResults || []), [examResults]);
+
+    useEffect(() => {
+        if (latestExamName === 'All') return;
+        setFilters((prev) => {
+            if (prev.examName !== 'All' && examNames.includes(prev.examName)) return prev;
+            return { ...prev, examName: latestExamName, courseId: 'All' };
+        });
+    }, [examNames, latestExamName]);
 
     const baseResults = useMemo(() => {
         const results = Array.isArray(examResults) ? examResults : [];
@@ -195,7 +248,6 @@ const CertificateIssueRegister = () => {
                         </div>
                         <div className="relative">
                             <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.examName} onChange={(e) => setFilters((prev) => ({ ...prev, examName: e.target.value, courseId: 'All' }))}>
-                                <option value="All">All Exams</option>
                                 {examNames.map((name) => <option key={name} value={name}>{name}</option>)}
                             </select>
                             <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
@@ -216,7 +268,7 @@ const CertificateIssueRegister = () => {
                             <Building2 className="absolute left-3 top-3 text-slate-400" size={18} />
                             <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
                         </div>
-                        <button onClick={() => setFilters({ courseId: 'All', branchId: 'All', examName: 'All', search: '' })} className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><RefreshCw size={16} /> Reset</button>
+                        <button onClick={() => setFilters({ courseId: 'All', branchId: 'All', examName: latestExamName, search: '' })} className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><RefreshCw size={16} /> Reset</button>
                         <button onClick={handlePrint} className="flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700"><Printer size={18} /> Print Register</button>
                     </div>
                 </div>
@@ -240,7 +292,7 @@ const CertificateIssueRegister = () => {
                     </div>
 
                     <div className="mb-6 text-center">
-                        <h3 className="text-xl font-black text-slate-900 mb-1">Final Examination {filters.examName === 'All' ? moment().format('MMM - YYYY') : filters.examName}</h3>
+                        <h3 className="text-xl font-black text-slate-900 mb-1">{filters.examName === 'All' ? moment().format('MMM - YYYY') : filters.examName}</h3>
 
                     </div>
 
@@ -252,7 +304,7 @@ const CertificateIssueRegister = () => {
                                 {/* Course Header */}
                                 <div className="flex justify-between items-center border border-slate-900 bg-slate-100 p-1.5 mb-0">
                                     <h4 className="text-sm font-black text-blue-800 uppercase">
-                                        {group.name} {group.shortName ? `(${group.shortName})` : ''}
+                                        {group.name}
                                     </h4>
                                     <div className="text-[10px] font-bold text-slate-700">
                                         Total Students: {group.results.length}
@@ -267,7 +319,7 @@ const CertificateIssueRegister = () => {
                                                 <th className="w-24 border border-slate-900 p-1 text-center">REG.NO.</th>
                                                 <th className="border border-slate-900 p-1 text-left min-w-[150px]">STUDENTS NAME</th>
                                                 <th className="w-20 border border-slate-900 p-1 text-center">COURSE</th>
-                                                <th className="w-28 border border-slate-900 p-1 text-center">SR.NO. OF ST.O.M</th>
+                                                <th className="w-28 border border-slate-900 p-1 text-center">SR.NO. OF S.O.M</th>
                                                 <th className="w-28 border border-slate-900 p-1 text-center">SR.NO. OF CERT.</th>
                                                 <th className="w-44 border border-slate-900 p-1 text-center">STUDENT / GARDIUN SIGN.</th>
                                             </tr>
@@ -279,8 +331,8 @@ const CertificateIssueRegister = () => {
                                                     <td className="border border-slate-900 p-1 text-center font-mono">{result.student?.regNo || '-'}</td>
                                                     <td className="border border-slate-900 p-1 text-left uppercase whitespace-nowrap">{studentFullName(result.student)}</td>
                                                     <td className="border border-slate-900 p-1 text-center uppercase">{result.course?.shortName || result.course?.name || '-'}</td>
-                                                    <td className="border border-slate-900 p-1 text-center uppercase">{result.somNumber || '-'}</td>
-                                                    <td className="border border-slate-900 p-1 text-center uppercase">{result.csrNumber || result.certificateNumber || '-'}</td>
+                                                    <td className="border border-slate-900 p-1 text-center uppercase">{formatSomNumber(result.somNumber)}</td>
+                                                    <td className="border border-slate-900 p-1 text-center uppercase">{formatCsrNumber(result)}</td>
                                                     <td className="border border-slate-900 p-1">
                                                         {/* Space for signature */}
                                                     </td>

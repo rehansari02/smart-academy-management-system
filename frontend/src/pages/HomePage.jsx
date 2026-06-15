@@ -13,7 +13,7 @@ import newsService from '../services/newsService';
 import topperService from '../services/topperService';
 import bannerService from '../services/bannerService';
 import homeSectionService from '../services/homeSectionService';
-import { ArrowRight, X,Trophy, Calendar, ChevronLeft, ChevronRight, Phone, Mail, MapPin, AlertCircle, Quote, Star, Users, BookOpen, ChevronDown } from 'lucide-react';
+import { ArrowRight, X,Trophy, Calendar, ChevronLeft, ChevronRight, Phone, Mail, MapPin, AlertCircle, Quote, Star, Users, BookOpen, ChevronDown, ExternalLink } from 'lucide-react';
 import { formatDate } from '../utils/dateUtils';
 import HeroCarousel from '../components/ui/HeroCarousel';
 import HeroImage1 from '../assets/6.jpg'
@@ -718,6 +718,11 @@ const HomePage = () => {
                           className="bg-white rounded-2xl shadow-sm hover:shadow-xl hover:shadow-blue-900/10 transition-all duration-300 hover:-translate-y-1 h-full flex flex-col overflow-hidden border border-gray-100 group cursor-pointer w-full"
                         >
                           <div className="h-1.5 bg-gradient-to-r from-primary to-blue-400 relative"></div>
+                          {item.image && (
+                            <div className="h-44 overflow-hidden bg-gray-100">
+                              <img src={item.image} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                            </div>
+                          )}
                           <div className="p-8 flex-1 flex flex-col">
                             <div className="flex justify-between items-start mb-4">
                               <div className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50 px-3 py-1 rounded-full">
@@ -739,9 +744,22 @@ const HomePage = () => {
                               {item.smallDetail || item.description?.substring(0, 80) + '...'}
                             </p>
                             
-                            <button className="text-sm font-bold text-gray-900 flex items-center gap-2 group/btn self-start">
-                              Read More <ChevronRight size={16} className="text-accent group-hover/btn:translate-x-1 transition-transform" />
-                            </button>
+                            <div className="flex flex-wrap items-center gap-4">
+                              <button className="text-sm font-bold text-gray-900 flex items-center gap-2 group/btn self-start">
+                                Read More <ChevronRight size={16} className="text-accent group-hover/btn:translate-x-1 transition-transform" />
+                              </button>
+                              {item.linkUrl && (
+                                <a
+                                  href={item.linkUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-sm font-bold text-primary flex items-center gap-1 hover:text-blue-700"
+                                >
+                                  {item.linkLabel || 'Open Link'} <ExternalLink size={14} />
+                                </a>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </SwiperSlide>
@@ -800,6 +818,9 @@ const HomePage = () => {
               
               {/* Modal Body */}
               <div className="p-6 md:p-8 overflow-y-auto max-h-[calc(90vh-200px)]">
+                {selectedNews.image && (
+                  <img src={selectedNews.image} alt={selectedNews.title} className="w-full max-h-80 object-cover rounded-2xl mb-6 border border-gray-100" />
+                )}
                 {selectedNews.smallDetail && (
                   <p className="text-lg font-semibold text-gray-700 mb-4 pb-4 border-b border-gray-200">
                     {selectedNews.smallDetail}
@@ -811,7 +832,17 @@ const HomePage = () => {
               </div>
               
               {/* Modal Footer */}
-              <div className="bg-gray-50 px-6 md:px-8 py-4 flex justify-end border-t border-gray-200">
+              <div className="bg-gray-50 px-6 md:px-8 py-4 flex flex-wrap justify-end gap-3 border-t border-gray-200">
+                {selectedNews.linkUrl && (
+                  <a
+                    href={selectedNews.linkUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-6 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-blue-700 transition-colors inline-flex items-center gap-2"
+                  >
+                    {selectedNews.linkLabel || 'Open Link'} <ExternalLink size={16} />
+                  </a>
+                )}
                 <button 
                   onClick={() => setSelectedNews(null)}
                   className="px-6 py-2.5 bg-gray-900 text-white font-bold rounded-xl hover:bg-primary transition-colors"

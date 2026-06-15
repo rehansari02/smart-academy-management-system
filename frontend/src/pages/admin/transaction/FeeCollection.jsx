@@ -336,10 +336,11 @@ const FeeCollection = () => {
 
     // --- Filter & Report Handlers Removed (Moved to AllReceipts) ---
 
-    // --- Printing ---
+    // === Printing ===
     const handlePrintReceipt = useReactToPrint({
         contentRef: receiptRef,
-        onAfterPrint: () => setPrintingReceipt(null)
+        onAfterPrint: () => setPrintingReceipt(null),
+        documentTitle: `Receipt-${printingReceipt?.receiptNo || 'print'}`
     });
 
     const triggerPrintReceipt = (receipt) => {
@@ -913,10 +914,10 @@ const FeeCollection = () => {
                 )}
             </div>
 
-            {/* === HIDDEN PRINT TEMPLATES - Use off-screen instead of display:none for mobile print support */}
+            {/* === HIDDEN PRINT TEMPLATES */}
             <div style={{
-                position: 'fixed',
-                left: '-9999px',
+                position: 'absolute',
+                left: 0,
                 top: 0,
                 width: '210mm',
                 height: '297mm',
@@ -924,7 +925,8 @@ const FeeCollection = () => {
                 backgroundColor: 'white',
                 zIndex: -1,
                 opacity: 0,
-                pointerEvents: 'none'
+                pointerEvents: 'none',
+                visibility: 'hidden'
             }}>
                 <ReceiptPrintTemplate ref={receiptRef} receipt={printingReceipt} />
             </div>

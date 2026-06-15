@@ -66,6 +66,66 @@ const addBranchScope = (query, field, branchObjectId) => {
 
 const escapeRegex = (value) => String(value || '').replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
 
+const referenceFeeAddFields = (getFeeStatusExpr) => ({
+    admissionRequired: { $ifNull: ['$courseInfo.admissionFees', 0] },
+    registrationRequired: {
+        $ifNull: [
+            '$courseInfo.registrationFees',
+            { $ifNull: ['$emiDetails.registrationFees', 0] }
+        ]
+    },
+    admissionPaidAmount: { $ifNull: ['$admissionFeeAmount', 0] },
+    registrationPaidAmount: { $ifNull: ['$registrationFeeAmount', 0] },
+    isAdmissionPaidCalc: getFeeStatusExpr(
+        { $ifNull: ['$courseInfo.admissionFees', 0] },
+        { $ifNull: ['$admissionFeeAmount', 0] },
+        { $gt: [{ $ifNull: ['$admissionFeeAmount', 0] }, 0] }
+    ),
+    isRegistrationPaidCalc: getFeeStatusExpr(
+        {
+            $ifNull: [
+                '$courseInfo.registrationFees',
+                { $ifNull: ['$emiDetails.registrationFees', 0] }
+            ]
+        },
+        { $ifNull: ['$registrationFeeAmount', 0] },
+        { $eq: ['$isRegistered', true] }
+    )
+});
+
+const referenceStageGroupFields = {
+    admissionCount: {
+        $sum: {
+            $cond: [
+                { $and: ['$isAdmissionPaidCalc', '$isRegistrationPaidCalc'] },
+                1,
+                0
+            ]
+        }
+    },
+    registrationCount: {
+        $sum: {
+            $cond: [
+                { $and: ['$isAdmissionPaidCalc', { $not: ['$isRegistrationPaidCalc'] }] },
+                1,
+                0
+            ]
+        }
+    },
+    pendingAdmissionCount: {
+        $sum: { $cond: ['$isAdmissionPaidCalc', 0, 1] }
+    },
+    pendingRegistrationCount: {
+        $sum: {
+            $cond: [
+                { $and: ['$isAdmissionPaidCalc', { $not: ['$isRegistrationPaidCalc'] }] },
+                1,
+                0
+            ]
+        }
+    }
+};
+
 const moneySum = async (match) => {
     const result = await FeeReceipt.aggregate([
         { $match: match },
@@ -330,48 +390,14 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
                         { $ifNull: ['$courseInfo.commission', 0] }
                     ]
                 },
-                admissionRequired: { $ifNull: ['$courseInfo.admissionFees', 0] },
-                registrationRequired: {
-                    $ifNull: [
-                        '$courseInfo.registrationFees',
-                        { $ifNull: ['$emiDetails.registrationFees', 0] }
-                    ]
-                },
-                admissionPaidAmount: { $ifNull: ['$admissionFeeAmount', 0] },
-                registrationPaidAmount: { $ifNull: ['$registrationFeeAmount', 0] },
-                isAdmissionPaidCalc: getFeeStatusExpr(
-                    { $ifNull: ['$courseInfo.admissionFees', 0] },
-                    { $ifNull: ['$admissionFeeAmount', 0] },
-                    { $gt: [{ $ifNull: ['$admissionFeeAmount', 0] }, 0] }
-                ),
-                isRegistrationPaidCalc: getFeeStatusExpr(
-                    {
-                        $ifNull: [
-                            '$courseInfo.registrationFees',
-                            { $ifNull: ['$emiDetails.registrationFees', 0] }
-                        ]
-                    },
-                    { $ifNull: ['$registrationFeeAmount', 0] },
-                    { $eq: ['$isRegistered', true] }
-                )
+                ...referenceFeeAddFields(getFeeStatusExpr)
             }
         },
         {
             $group: {
                 _id: '$reference',
                 studentCount: { $sum: 1 },
-                admissionCount: {
-                    $sum: { $cond: ['$isAdmissionPaidCalc', 1, 0] }
-                },
-                registrationCount: {
-                    $sum: { $cond: ['$isRegistrationPaidCalc', 1, 0] }
-                },
-                pendingAdmissionCount: {
-                    $sum: { $cond: ['$isAdmissionPaidCalc', 0, 1] }
-                },
-                pendingRegistrationCount: {
-                    $sum: { $cond: ['$isRegistrationPaidCalc', 0, 1] }
-                },
+                ...referenceStageGroupFields,
                 totalFees: { $sum: '$totalFees' },
                 pendingFees: { $sum: '$pendingFees' },
                 totalIncentive: { $sum: '$calculatedIncentive' },
@@ -421,7 +447,7 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
         ] = await Promise.all([
             Student.countDocuments(studentQuery),
             Student.find(studentQuery)
-                .populate('course', 'name duration durationType shortName commission commissionType')
+                .populate('course', 'name duration durationType shortName commission commissionType admissionFees registrationFees')
                 .populate('branchId', 'name')
                 .sort({ admissionDate: -1, createdAt: -1 })
                 .skip(detailSkip)
@@ -458,20 +484,18 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
                                 { $multiply: [{ $divide: [{ $ifNull: ['$courseInfo.commission', 0] }, 100] }, '$totalFees'] },
                                 { $ifNull: ['$courseInfo.commission', 0] }
                             ]
-                        }
+                        },
+                        ...referenceFeeAddFields(getFeeStatusExpr)
                     }
                 },
                 {
                     $group: {
                         _id: null,
-                studentCount: { $sum: 1 },
-                admissionCount: { $sum: { $cond: ['$isAdmissionPaidCalc', 1, 0] } },
-                registrationCount: { $sum: { $cond: ['$isRegistrationPaidCalc', 1, 0] } },
-                pendingAdmissionCount: { $sum: { $cond: ['$isAdmissionPaidCalc', 0, 1] } },
-                pendingRegistrationCount: { $sum: { $cond: ['$isRegistrationPaidCalc', 0, 1] } },
-                totalFees: { $sum: '$totalFees' },
-                pendingFees: { $sum: '$pendingFees' },
-                totalIncentive: { $sum: '$calculatedIncentive' },
+                        studentCount: { $sum: 1 },
+                        ...referenceStageGroupFields,
+                        totalFees: { $sum: '$totalFees' },
+                        pendingFees: { $sum: '$pendingFees' },
+                        totalIncentive: { $sum: '$calculatedIncentive' },
                         pendingIncentive: {
                             $sum: { $cond: [{ $eq: ['$incentiveStatus', 'Paid'] }, 0, '$calculatedIncentive'] }
                         },

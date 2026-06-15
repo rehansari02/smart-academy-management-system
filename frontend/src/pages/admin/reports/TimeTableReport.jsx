@@ -23,6 +23,35 @@ const getScheduleLatestDate = (schedule) => {
     }, 0);
 };
 
+const getScheduleSortTime = (schedule) => {
+    const createdAt = schedule?.createdAt ? new Date(schedule.createdAt).getTime() : 0;
+    const updatedAt = schedule?.updatedAt ? new Date(schedule.updatedAt).getTime() : 0;
+    return createdAt || updatedAt || getScheduleLatestDate(schedule);
+};
+
+const getLatestExamName = (schedules = []) => {
+    const sorted = [...schedules]
+        .filter((schedule) => schedule?.examName && schedule.isActive !== false && schedule.isDeleted !== true)
+        .sort((a, b) => getScheduleSortTime(b) - getScheduleSortTime(a));
+
+    return sorted[0]?.examName || 'All';
+};
+
+const getExamNamesByLatest = (schedules = []) => {
+    const names = new Map();
+
+    [...schedules]
+        .filter((schedule) => schedule?.examName)
+        .sort((a, b) => getScheduleSortTime(b) - getScheduleSortTime(a))
+        .forEach((schedule) => {
+            if (!names.has(schedule.examName)) {
+                names.set(schedule.examName, schedule.examName);
+            }
+        });
+
+    return Array.from(names.values());
+};
+
 const getScheduleYear = (schedule) => {
     const sources = [
         schedule?.examYear,
@@ -102,10 +131,16 @@ const TimeTableReport = () => {
         return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
     }, [examSchedules, filters.branchId, filters.examName, filters.status]);
 
-    const examNames = useMemo(() => {
-        const names = new Set((examSchedules || []).map((s) => s.examName).filter(Boolean));
-        return Array.from(names);
-    }, [examSchedules]);
+    const examNames = useMemo(() => getExamNamesByLatest(examSchedules || []), [examSchedules]);
+    const latestExamName = useMemo(() => getLatestExamName(examSchedules || []), [examSchedules]);
+
+    useEffect(() => {
+        if (latestExamName === 'All') return;
+        setFilters((prev) => {
+            if (prev.examName !== 'All' && examNames.includes(prev.examName)) return prev;
+            return { ...prev, examName: latestExamName, courseId: 'All' };
+        });
+    }, [examNames, latestExamName]);
 
     const availableBranches = useMemo(() => {
         const map = new Map();
@@ -140,6 +175,21 @@ const TimeTableReport = () => {
     }, [availableCourses, filters.courseId]);
 
     const headerBranch = useMemo(() => {
+        if (filters.branchId !== 'All') {
+            const selectedBranch = branches?.find((branch) => branch._id === filters.branchId)
+                || availableBranches.find((branch) => branch._id === filters.branchId);
+
+            if (selectedBranch) {
+                return {
+                    name: selectedBranch.name,
+                    address: selectedBranch.address || `${selectedBranch.city || ''}, ${selectedBranch.state?.name || ''}`,
+                    phone: selectedBranch.phone || selectedBranch.mobile || '96017-49300',
+                    mobile: selectedBranch.mobile || '',
+                    email: selectedBranch.email || 'smartinstitutes@gmail.com'
+                };
+            }
+        }
+
         const branchId = getId(user?.branchId);
 
         if (user?.role === 'Super Admin') {
@@ -149,7 +199,7 @@ const TimeTableReport = () => {
 
         const found = branches?.find((branch) => branch._id === branchId);
         return found || { name: user?.branchName || 'Main Branch', address: 'Smart Institute', phone: '96017-49300', mobile: '98988-30409', email: 'smartinstitutes@gmail.com' };
-    }, [branches, user]);
+    }, [availableBranches, branches, filters.branchId, user]);
 
     const printReport = useReactToPrint({
         contentRef: componentRef,
@@ -267,7 +317,6 @@ const TimeTableReport = () => {
                         </div>
                         <div className="relative">
                             <select className="w-full appearance-none rounded-lg border border-slate-300 bg-white py-2.5 pl-4 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={filters.examName} onChange={(e) => setFilters((prev) => ({ ...prev, examName: e.target.value, courseId: 'All' }))}>
-                                <option value="All">All Exams</option>
                                 {examNames.map((name) => <option key={name} value={name}>{name}</option>)}
                             </select>
                             <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
@@ -296,7 +345,7 @@ const TimeTableReport = () => {
                             </select>
                             <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-400" size={18} />
                         </div>
-                        <button onClick={() => setFilters({ courseId: 'All', branchId: 'All', examName: 'All', status: 'active', search: '' })} className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                        <button onClick={() => setFilters({ courseId: 'All', branchId: 'All', examName: latestExamName, status: 'active', search: '' })} className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                             <RefreshCw size={16} /> Reset
                         </button>
                         <button onClick={handlePrint} className="flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700">

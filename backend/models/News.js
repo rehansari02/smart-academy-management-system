@@ -4,6 +4,9 @@ const newsSchema = new mongoose.Schema({
     title: { type: String, required: true },
     smallDetail: { type: String }, // Short summary for list views
     description: { type: String }, // Full content
+    image: { type: String, default: '' },
+    linkUrl: { type: String, trim: true, default: '' },
+    linkLabel: { type: String, trim: true, default: '' },
     releaseDate: { type: Date, required: true, default: Date.now },
     isBreaking: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },

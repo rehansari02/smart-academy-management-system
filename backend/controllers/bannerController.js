@@ -4,14 +4,14 @@ const Banner = require('../models/Banner');
 exports.createBanner = async (req, res) => {
     try {
         console.log('Creating banner:', req.body);
-        const { title, isActive } = req.body;
+        const { title, isActive, linkUrl, linkLabel } = req.body;
         const image = req.file ? req.file.path : ''; // Cloudinary URL from multer
 
         if (!image) {
             return res.status(400).json({ message: 'Banner image is required.' });
         }
 
-        const banner = new Banner({ title, image, isActive });
+        const banner = new Banner({ title, image, linkUrl, linkLabel, isActive });
         await banner.save();
         console.log('Banner saved successfully:', banner._id);
         res.status(201).json({ message: 'Banner created successfully', banner });
@@ -48,8 +48,8 @@ exports.getPublicBanners = async (req, res) => {
 // Update Banner
 exports.updateBanner = async (req, res) => {
     try {
-        const { title, isActive } = req.body;
-        const updateData = { title, isActive };
+        const { title, isActive, linkUrl, linkLabel } = req.body;
+        const updateData = { title, linkUrl, linkLabel, isActive };
         if (req.file) {
             updateData.image = req.file.path; // New Cloudinary URL
         }

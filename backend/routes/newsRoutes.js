@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middlewares/authMiddleware');
+const bannerUpload = require('../middlewares/bannerUploadMiddleware');
 // const { checkPermission } = require('../middlewares/permissionMiddleware'); // Add if needed
 
 const { createNews, getAllNews, updateNews, deleteNews } = require('../controllers/newsController');
@@ -11,10 +12,10 @@ router.get('/public', getAllNews); // For homepage, maybe force isActive=true in
 
 router.route('/')
     .get(protect, getAllNews)
-    .post(protect, createNews);
+    .post(protect, bannerUpload.single('image'), createNews);
 
 router.route('/:id')
-    .put(protect, updateNews)
+    .put(protect, bannerUpload.single('image'), updateNews)
     .delete(protect, deleteNews);
 
 module.exports = router;

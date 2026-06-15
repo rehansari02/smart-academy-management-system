@@ -22,6 +22,8 @@ const ManageBanners = () => {
     const [currentId, setCurrentId] = useState(null);
     const [formData, setFormData] = useState({
         title: '',
+        linkUrl: '',
+        linkLabel: '',
         isActive: true
     });
     const [imageFile, setImageFile] = useState(null);
@@ -107,6 +109,8 @@ const ManageBanners = () => {
         setEditMode(false);
         setFormData({
             title: '',
+            linkUrl: '',
+            linkLabel: '',
             isActive: true
         });
         setImageFile(null);
@@ -125,6 +129,8 @@ const ManageBanners = () => {
         setCurrentId(banner._id);
         setFormData({
             title: banner.title || '',
+            linkUrl: banner.linkUrl || '',
+            linkLabel: banner.linkLabel || '',
             isActive: banner.isActive
         });
         setImagePreview(banner.image);
@@ -140,6 +146,8 @@ const ManageBanners = () => {
         try {
             const data = new FormData();
             data.append('title', banner.title || '');
+            data.append('linkUrl', banner.linkUrl || '');
+            data.append('linkLabel', banner.linkLabel || '');
             data.append('isActive', !banner.isActive);
             await bannerService.updateBanner(banner._id, data);
             toast.success(`Banner ${!banner.isActive ? 'activated' : 'deactivated'} successfully`);
@@ -192,6 +200,8 @@ const ManageBanners = () => {
 
         const data = new FormData();
         data.append('title', formData.title);
+        data.append('linkUrl', formData.linkUrl);
+        data.append('linkLabel', formData.linkLabel);
         data.append('isActive', formData.isActive);
         if (imageFile) {
             data.append('image', imageFile);
@@ -216,7 +226,7 @@ const ManageBanners = () => {
     };
 
     const filteredBanners = bannersList.filter(b => 
-        (b.title || '').toLowerCase().includes(searchTerm.toLowerCase())
+        `${b.title || ''} ${b.linkLabel || ''} ${b.linkUrl || ''}`.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
@@ -261,15 +271,16 @@ const ManageBanners = () => {
                             <tr className="bg-gray-100 text-left text-sm text-gray-600 uppercase tracking-wider">
                                 <th className="p-3 border-b">Banner Image</th>
                                 <th className="p-3 border-b">Title (Optional)</th>
+                                <th className="p-3 border-b">Link</th>
                                 <th className="p-3 border-b">Status</th>
                                 <th className="p-3 border-b text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan="4" className="text-center p-8 text-gray-500">Loading banners...</td></tr>
+                                <tr><td colSpan="5" className="text-center p-8 text-gray-500">Loading banners...</td></tr>
                             ) : filteredBanners.length === 0 ? (
-                                <tr><td colSpan="4" className="text-center p-8 text-gray-500">No banners found.</td></tr>
+                                <tr><td colSpan="5" className="text-center p-8 text-gray-500">No banners found.</td></tr>
                             ) : (
                                 filteredBanners.map((banner) => (
                                     <tr key={banner._id} className="hover:bg-gray-50 text-sm border-b transition-colors">
@@ -279,6 +290,15 @@ const ManageBanners = () => {
                                             </div>
                                         </td>
                                         <td className="p-3 font-semibold text-gray-800">{banner.title || '-'}</td>
+                                        <td className="p-3">
+                                            {banner.linkUrl ? (
+                                                <a href={banner.linkUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800">
+                                                    {banner.linkLabel || banner.linkUrl}
+                                                </a>
+                                            ) : (
+                                                <span className="text-gray-400">-</span>
+                                            )}
+                                        </td>
                                         <td className="p-3">
                                             <span className={`px-2 py-1 rounded text-xs font-bold ${banner.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                                 {banner.isActive ? 'Active' : 'Inactive'}
@@ -380,6 +400,31 @@ const ManageBanners = () => {
                                         className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
                                         placeholder="e.g. Summer Admissions"
                                     />
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Link Label</label>
+                                        <input
+                                            type="text"
+                                            name="linkLabel"
+                                            value={formData.linkLabel}
+                                            onChange={handleInputChange}
+                                            className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                                            placeholder="e.g. Apply Now"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Link URL</label>
+                                        <input
+                                            type="url"
+                                            name="linkUrl"
+                                            value={formData.linkUrl}
+                                            onChange={handleInputChange}
+                                            className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                                            placeholder="https://example.com"
+                                        />
+                                    </div>
                                 </div>
                                 
                                 <div className="flex items-center pt-2">

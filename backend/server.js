@@ -1,6 +1,7 @@
 console.log("SERVER STARTING...");
 const dotenv = require("dotenv");
-dotenv.config();
+const path = require("path");
+dotenv.config({ path: path.join(__dirname, ".env") });
 console.log("Env loaded:", process.env.MONGO_URI ? "YES" : "NO");
 
 console.log("Loading express...");
@@ -14,11 +15,11 @@ const connectDB = require("./config/db");
 console.log("Loading errorMiddleware...");
 const { errorHandler } = require("./middlewares/errorMiddleware");
 console.log("Loading path...");
-const path = require("path");
 console.log("Loading helmet...");
 const helmet = require("helmet");
 console.log("Loading express-rate-limit...");
-const rateLimit = require("express-rate-limit");
+const rateLimitModule = require("express-rate-limit");
+const rateLimit = rateLimitModule.rateLimit || rateLimitModule.default || rateLimitModule;
 console.log("Loading morgan...");
 const morgan = require("morgan");
 console.log("Loading logger...");

@@ -566,15 +566,17 @@ function TeacherPerformanceDetail({
 
   const getFeeStatus = (student, feeType) => {
     const course = student?.course || {};
-    const required = feeType === 'admission'
-      ? Number(course?.admissionFees || 0)
-      : Number(course?.registrationFees || student?.emiDetails?.registrationFees || 0);
-    const paid = feeType === 'admission'
+    const storedPaid = feeType === 'admission'
       ? Number(student?.admissionFeeAmount || 0)
       : Number(student?.registrationFeeAmount || 0);
+    const configuredRequired = feeType === 'admission'
+      ? Number(course?.admissionFees || 0)
+      : Number(course?.registrationFees || student?.emiDetails?.registrationFees || 0);
+    const required = configuredRequired > 0 ? configuredRequired : storedPaid;
+    const paid = required > 0 ? Math.min(storedPaid, required) : storedPaid;
     const isPaid = feeType === 'admission'
-      ? (student?.isAdmissionFeesPaid || paid >= required)
-      : (student?.isRegistered || paid >= required);
+      ? (required > 0 ? storedPaid >= required : Boolean(student?.isAdmissionFeesPaid))
+      : (required > 0 ? storedPaid >= required : Boolean(student?.isRegistered));
 
     return {
       required,

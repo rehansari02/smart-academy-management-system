@@ -7,7 +7,10 @@ const API_URL = `${import.meta.env.VITE_API_URL}/news`;
 // const API_URL = '/api/news';
 
 const createNews = async (newsData) => {
-    const response = await axios.post(API_URL, newsData, { withCredentials: true });
+    const response = await axios.post(API_URL, newsData, {
+        headers: newsData instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : undefined,
+        withCredentials: true
+    });
     return response.data;
 };
 
@@ -18,7 +21,10 @@ const getAllNews = async (filters) => {
 };
 
 const updateNews = async (id, newsData) => {
-    const response = await axios.put(`${API_URL}/${id}`, newsData, { withCredentials: true });
+    const response = await axios.put(`${API_URL}/${id}`, newsData, {
+        headers: newsData instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : undefined,
+        withCredentials: true
+    });
     return response.data;
 };
 

@@ -241,12 +241,23 @@ const StudentAttendanceReport = () => {
             });
 
             const monthStart = moment(filters.month, 'YYYY-MM').startOf('month');
+            const monthSummary = daysInMonth.reduce((summary, day) => {
+                const closureType = closureMap[day.fullDate];
+
+                if (day.isSunday) {
+                    summary.sundays++;
+                } else if (closureType && closureType !== 'Sunday') {
+                    summary.closures++;
+                } else {
+                    summary.workingDays++;
+                }
+
+                return summary;
+            }, { workingDays: 0, sundays: 0, closures: 0 });
+
             const processedData = students.map(student => {
                 let presentCount = 0;
                 let absentCount = 0;
-                let sundayCount = 0;
-                let closureCount = 0;
-                let workingDayCount = 0;
                 let daysData = {};
                 let hasEligibleDay = false;
                 const studentStartDate = getStudentStartDate(student);
@@ -260,7 +271,7 @@ const StudentAttendanceReport = () => {
                 daysInMonth.forEach(day => {
                     const reportDay = moment(day.fullDate, 'YYYY-MM-DD').startOf('day');
                     const closureType = closureMap[day.fullDate];
-                    const closedStatus = closureType === 'Vacation' ? 'V' : (day.isSunday || closureType === 'Sunday') ? 'S' : closureType ? 'H' : null;
+                    const closedStatus = day.isSunday ? 'S' : closureType === 'Vacation' ? 'V' : closureType && closureType !== 'Sunday' ? 'H' : null;
                     const isBeforeStart = studentStartDate && reportDay.isBefore(studentStartDate, 'day');
                     const isAfterEnd = eligibilityEndDate && reportDay.isAfter(eligibilityEndDate, 'day');
 
@@ -272,12 +283,9 @@ const StudentAttendanceReport = () => {
                     hasEligibleDay = true;
                     if (closedStatus === 'S') {
                         daysData[day.date] = closedStatus;
-                        sundayCount++;
                     } else if (closedStatus) {
                         daysData[day.date] = closedStatus;
-                        closureCount++;
                     } else {
-                        workingDayCount++;
                         const status = attendanceMap[day.fullDate]?.[student._id];
                         if (status) {
                             daysData[day.date] = status;
@@ -293,7 +301,7 @@ const StudentAttendanceReport = () => {
                     return null;
                 }
 
-                const percentage = workingDayCount > 0 ? ((presentCount / workingDayCount) * 100).toFixed(2) : 0;
+                const percentage = monthSummary.workingDays > 0 ? ((presentCount / monthSummary.workingDays) * 100).toFixed(2) : 0;
 
                 return {
                     ...student,
@@ -301,9 +309,9 @@ const StudentAttendanceReport = () => {
                     stats: {
                         present: presentCount,
                         absent: absentCount,
-                        wd: workingDayCount,
-                        sundays: sundayCount,
-                        festival: closureCount,
+                        wd: monthSummary.workingDays,
+                        sundays: monthSummary.sundays,
+                        festival: monthSummary.closures,
                         rank: percentage
                     }
                 };
