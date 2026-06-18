@@ -230,6 +230,7 @@ const InquiryOnline = () => {
         studentName: '',
         referenceBy: '',
         followUpDetails: '',
+        excludeFollowupActivity: 'true',
         branchId: '',
         employeeId: '',
         followUpById: '',
@@ -416,7 +417,7 @@ const InquiryOnline = () => {
         const today = getTodayDate();
         const resetState = {
             startDate: today, endDate: today, status: '', studentName: '', referenceBy: '', followUpDetails: '',
-            branchId: '', employeeId: '', followUpById: '', dateFilterType: 'inquiryDate', source: 'Online', page: 1, pageSize: 10
+            branchId: '', employeeId: '', followUpById: '', dateFilterType: 'inquiryDate', excludeFollowupActivity: 'true', source: 'Online', page: 1, pageSize: 10
         };
         setFilters(resetState);
         dispatch(fetchInquiries(resetState));

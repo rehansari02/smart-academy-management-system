@@ -207,7 +207,7 @@ const InquiryDSR = () => {
     )].sort();
 
     // Filter defaults to DSR
-    const [filters, setFilters] = useState({ startDate: getTodayDate(), endDate: getTodayDate(), status: '', studentName: '', referenceBy: '', followUpDetails: '', branchId: '', employeeId: '', followUpById: '', source: 'DSR', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 });
+    const [filters, setFilters] = useState({ startDate: getTodayDate(), endDate: getTodayDate(), status: '', studentName: '', referenceBy: '', followUpDetails: '', branchId: '', employeeId: '', followUpById: '', source: 'DSR', dateFilterType: 'inquiryDate', excludeFollowupActivity: 'true', page: 1, pageSize: 10 });
     const employeeOptions = getEmployeeFilterOptions(employees, user);
     const activeEmployeeId = getScopedEmployeeId(user, filters.employeeId);
     const [modal, setModal] = useState({ type: null, data: null });
@@ -827,7 +827,7 @@ const InquiryDSR = () => {
                         <button
                             onClick={() => {
                                 const today = getTodayDate();
-                                const resetState = { startDate: today, endDate: today, status: '', studentName: '', referenceBy: '', followUpDetails: '', branchId: '', employeeId: '', followUpById: '', source: 'DSR', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 };
+                                const resetState = { startDate: today, endDate: today, status: '', studentName: '', referenceBy: '', followUpDetails: '', branchId: '', employeeId: '', followUpById: '', source: 'DSR', dateFilterType: 'inquiryDate', excludeFollowupActivity: 'true', page: 1, pageSize: 10 };
                                 setFilters(resetState);
                                 setSelectedInquiryIds(new Set());
                                 setTransferMode(false);

@@ -467,7 +467,7 @@ const TodaysVisitedReport = () => {
             ? []
             : (await Promise.all(inquiryRequests)).flat();
 
-        const doneVisitorFollowups = visitorFollowups.filter((item) => item?.isDone === true && item?.callingDate);
+        const doneVisitorFollowups = visitorFollowups.filter((item) => item?.callingDate);
         const doneInquiryFollowups = inquiryFollowups.filter((item) => {
             const followupDate = item?.callingDate || item?.followUpAt || item?.followUpDate;
             return Boolean(followupDate);
@@ -478,8 +478,8 @@ const TodaysVisitedReport = () => {
             const visitor = item.visitorId && typeof item.visitorId === 'object' ? item.visitorId : null;
             if (!visitor?._id) return;
             const existing = activityVisitorMap.get(String(visitor._id));
-            const currentDate = item.callingDate || item.updatedAt || item.createdAt || item.scheduledDate;
-            const existingDate = existing?.latestFollowup?.callingDate || existing?.latestFollowup?.updatedAt || existing?.latestFollowup?.createdAt || existing?.latestFollowup?.scheduledDate;
+            const currentDate = item.callingDate || item.updatedAt || item.createdAt;
+            const existingDate = existing?.latestFollowup?.callingDate || existing?.latestFollowup?.updatedAt || existing?.latestFollowup?.createdAt;
             if (!existing || new Date(currentDate || 0) > new Date(existingDate || 0)) {
                 activityVisitorMap.set(String(visitor._id), {
                     ...visitor,
@@ -494,10 +494,10 @@ const TodaysVisitedReport = () => {
             visitorFollowups: doneVisitorFollowups,
             inquiryFollowups: doneInquiryFollowups,
             activityVisitors: [...activityVisitorMap.values()],
-            doneVisitorRows: doneVisitorFollowups.map((item) => ({ ...item, recordType: 'visitor', sortDate: item.callingDate || item.updatedAt || item.createdAt || item.scheduledDate })),
+            doneVisitorRows: doneVisitorFollowups.map((item) => ({ ...item, recordType: 'visitor', sortDate: item.callingDate || item.updatedAt || item.createdAt })),
             doneInquiryRows: doneInquiryFollowups.map((item) => ({ ...item, recordType: 'inquiry', sortDate: item.callingDate || item.followUpAt || item.followUpDate })),
             doneFollowupRows: [
-                ...doneVisitorFollowups.map((item) => ({ ...item, recordType: 'visitor', sortDate: item.callingDate || item.updatedAt || item.createdAt || item.scheduledDate })),
+                ...doneVisitorFollowups.map((item) => ({ ...item, recordType: 'visitor', sortDate: item.callingDate || item.updatedAt || item.createdAt })),
                 ...doneInquiryFollowups.map((item) => ({ ...item, recordType: 'inquiry', sortDate: item.callingDate || item.followUpAt || item.followUpDate }))
             ].sort((a, b) => new Date(b.sortDate || 0) - new Date(a.sortDate || 0))
         };
@@ -621,8 +621,8 @@ const TodaysVisitedReport = () => {
                 const visitor = item.visitorId && typeof item.visitorId === 'object' ? item.visitorId : null;
                 if (!visitor?._id) return;
                 const existing = activityVisitorMap.get(String(visitor._id));
-                const currentDate = item.scheduledDate || item.callingDate || item.createdAt || item.updatedAt;
-                const existingDate = existing?.latestFollowup?.scheduledDate || existing?.latestFollowup?.callingDate || existing?.latestFollowup?.createdAt || existing?.latestFollowup?.updatedAt;
+                const currentDate = item.callingDate || item.createdAt || item.updatedAt;
+                const existingDate = existing?.latestFollowup?.callingDate || existing?.latestFollowup?.createdAt || existing?.latestFollowup?.updatedAt;
                 if (!existing || new Date(currentDate || 0) > new Date(existingDate || 0)) {
                     activityVisitorMap.set(String(visitor._id), {
                         ...visitor,
@@ -638,14 +638,18 @@ const TodaysVisitedReport = () => {
 
             toast.update(toastId, { render: "Data fetched, generating report...", type: "success", isLoading: false, autoClose: 2000 });
 
-            const sections = [
-                { title: '1. Online Inquiry Follow-ups', data: onlineInquiry, type: 'inquiry' },
-                { title: '2. Offline Inquiry Follow-ups', data: offlineInquiry, type: 'inquiry' },
-                { title: '3. DSR Inquiry Follow-ups', data: dsrInquiry, type: 'inquiry' },
-                { title: '4. Visitor Follow-ups', data: visitorFollowups, type: 'visitor-followup' },
-                { title: '5. Activity Today Followups', data: doneActivity.doneVisitorRows || [], type: 'done-followup' },
-                { title: '6. Activity Report Visitors', data: doneActivity.activityVisitors, type: 'activity-visitor' }
-            ];
+            const sections = activeFilters.reportType === 'visited'
+                ? [
+                    { title: '1. Visitor Follow-ups', data: visitorFollowups, type: 'visitor-followup' },
+                    { title: '2. Activity Today Followups', data: doneActivity.doneVisitorRows || [], type: 'done-followup' },
+                    { title: '3. Activity Report Visitors', data: doneActivity.activityVisitors, type: 'activity-visitor' }
+                ]
+                : [
+                    { title: '1. Online Inquiry Follow-ups', data: onlineInquiry, type: 'inquiry' },
+                    { title: '2. Offline Inquiry Follow-ups', data: offlineInquiry, type: 'inquiry' },
+                    { title: '3. DSR Inquiry Follow-ups', data: dsrInquiry, type: 'inquiry' },
+                    { title: '4. Activity Today Followups', data: doneActivity.doneVisitorRows || [], type: 'done-followup' }
+                ];
 
             const employeeName = getEmployeeNameById(employeeOptions, activeEmployeeId, 'All Employees');
             let finalHtml = `<div style="margin-bottom: 20px; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">

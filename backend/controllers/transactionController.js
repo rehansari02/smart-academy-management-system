@@ -424,12 +424,16 @@ const getInquiries = asyncHandler(async (req, res) => {
     }
     query.followUpHistory = { $elemMatch: activityMatch };
   } else if (
-    !isAdmissionLookup &&
-    req.query.includeFollowupActivity !== "true" &&
-    !isCallingDateFilter &&
-    !completedInquiryStatuses.includes(status) &&
-    source &&
-    ["Online", "Walk-in", "DSR"].includes(source)
+    req.query.excludeFollowupActivity === "true" ||
+    (
+      !isAdmissionLookup &&
+      req.query.includeFollowupActivity !== "true" &&
+      !isCallingDateFilter &&
+      dateFilterType !== "followUpDate" &&
+      !completedInquiryStatuses.includes(status) &&
+      source &&
+      ["Online", "Walk-in", "DSR"].includes(source)
+    )
   ) {
     query.followUpHistory = {
       $not: { $elemMatch: { activityType: "followup" } }

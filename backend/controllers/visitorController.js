@@ -709,6 +709,7 @@ exports.createVisitorFollowUp = async (req, res) => {
             await VisitorFollowUp.create({
                 visitorId,
                 scheduledDate,
+                callingDate: new Date(),
                 status: status || visitor.status || 'Open',
                 remark,
                 attendedBy: visitor.attendedBy,
@@ -732,6 +733,7 @@ exports.createVisitorFollowUp = async (req, res) => {
             followUp = await VisitorFollowUp.create({
                 visitorId,
                 scheduledDate,
+                callingDate: new Date(),
                 status: status || visitor.status || 'Open',
                 remark,
                 attendedBy: visitor.attendedBy,
@@ -793,10 +795,8 @@ exports.getVisitorFollowUps = async (req, res) => {
         const dateRange = buildDateRange(fromDate, toDate);
         if (dateRange) {
             if (dateFilterType === 'callingDate') {
-                query.isDone = true;
                 query.callingDate = dateRange;
             } else {
-                query.isDone = { $ne: true };
                 query.scheduledDate = dateRange;
             }
         }
@@ -847,7 +847,6 @@ exports.getVisitorFollowUps = async (req, res) => {
         const followUps = await queryExec;
         const followUpsWithCallingDate = followUps.map((followUp) => {
             const item = followUp.toObject ? followUp.toObject() : { ...followUp };
-            item.callingDate = item.isDone ? (item.callingDate || null) : null;
             return item;
         });
         res.status(200).json(followUpsWithCallingDate);
@@ -955,7 +954,6 @@ exports.getVisitorFollowUpStats = async (req, res) => {
         const visibleFollowupVisitorIds = visibleFollowupVisitors.map((visitor) => visitor._id);
         const followUpsDoneQuery = {
             isDeleted: false,
-            isDone: true,
             ...(baseQuery.branchId ? { branchId: baseQuery.branchId } : {}),
             ...(visibleFollowupVisitorIds.length ? { visitorId: { $in: visibleFollowupVisitorIds } } : {}),
             callingDate: { $gte: start, $lte: end },
