@@ -467,10 +467,22 @@ const TodaysVisitedReport = () => {
             ? []
             : (await Promise.all(inquiryRequests)).flat();
 
-        const doneVisitorFollowups = visitorFollowups.filter((item) => item?.callingDate);
+        const doneVisitorFollowups = visitorFollowups.filter((item) => {
+            if (!item?.callingDate) return false;
+            const schedDate = item.scheduledDate;
+            const isToday = schedDate && isWithinSelectedRange(schedDate);
+            const isOpen = ['Open', 'Recall'].includes(item.status || 'Open');
+            if (isToday && isOpen) return false;
+            return true;
+        });
         const doneInquiryFollowups = inquiryFollowups.filter((item) => {
             const followupDate = item?.callingDate || item?.followUpAt || item?.followUpDate;
-            return Boolean(followupDate);
+            if (!followupDate) return false;
+            const nextSchedDate = item.followUpDate;
+            const isToday = nextSchedDate && isWithinSelectedRange(nextSchedDate);
+            const isOpen = ['Open', 'Recall'].includes(item.status || 'Open');
+            if (isToday && isOpen) return false;
+            return true;
         });
 
         const activityVisitorMap = new Map();
@@ -551,7 +563,7 @@ const TodaysVisitedReport = () => {
                 printHtml('Activity Report Visitors', `<table><thead>${headers}</thead><tbody>${rows || '<tr><td colspan="7" class="text-center muted">No done visitors found.</td></tr>'}</tbody></table>`);
             } else {
                 const headers = `<tr><th>Sr. No.</th><th>Date</th><th>Branch</th><th>Filled By</th><th>Reference By</th><th>Student Name</th><th>Contact (H/S/P)</th><th>Status</th><th>Followup</th><th>Followup Details</th><th>Followup By</th><th>Calling Date</th></tr>`;
-                const rows = renderDoneFollowupRows(doneData.doneVisitorRows || []);
+                const rows = renderDoneFollowupRows(doneData.doneFollowupRows || []);
                 printHtml('Activity Today Followups', `<table><thead>${headers}</thead><tbody>${rows || '<tr><td colspan="12" class="text-center muted">No done followups found.</td></tr>'}</tbody></table>`);
             }
             toast.update(toastId, { render: 'Print ready', type: 'success', isLoading: false, autoClose: 1500 });
@@ -916,8 +928,11 @@ const TodaysVisitedReport = () => {
                 : Array.isArray(doneActivityForStats.doneFollowupRows)
                     ? doneActivityForStats.doneFollowupRows.filter((item) => item?.recordType === 'visitor').length
                     : 0;
+            const doneTotalFollowupCount = Array.isArray(doneActivityForStats.doneFollowupRows)
+                ? doneActivityForStats.doneFollowupRows.length
+                : 0;
             setDoneActivityStats({
-                followupsDone: doneVisitorFollowupCount,
+                followupsDone: doneTotalFollowupCount,
                 visitorsDone: doneVisitorFollowupCount
             });
             if (activeFilters.reportType === 'visited') {
@@ -1345,13 +1360,13 @@ const TodaysVisitedReport = () => {
 
         const followUpsDone = Number(doneActivityStats.followupsDone ?? 0);
         const totalRangeFollowups = Number(followups.length || 0);
-        const doneTotal = Math.max(totalRangeFollowups, followUpsDone);
-        const remaining = Math.max(totalRangeFollowups - followUpsDone, 0);
+        const doneTotal = totalRangeFollowups + followUpsDone;
+        const remaining = totalRangeFollowups;
         const employeeMap = Array.isArray(stats?.employees) ? stats.employees : [];
         return {
-            total: totalRangeFollowups,
+            total: doneTotal,
             open: remaining,
-            rangeCount: totalRangeFollowups,
+            rangeCount: remaining,
             completed: followUpsDone,
             followUpsToday: followUpsDone,
             totalFollowUps: followUpsDone,
@@ -1361,7 +1376,7 @@ const TodaysVisitedReport = () => {
             topLabel: 'Top Followup',
             employees: employeeMap,
             pendingFromBefore: stats?.pendingFromBefore || 0,
-            newCount: totalRangeFollowups
+            newCount: doneTotal
         };
     })();
 
