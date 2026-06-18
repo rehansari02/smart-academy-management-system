@@ -368,8 +368,9 @@ const calculateLedgerFeeTotals = (student, receipts = []) => {
 
 // @desc Get Inquiries with Filters
 const getInquiries = asyncHandler(async (req, res) => {
-  const { startDate, endDate, status, studentName, referenceBy, source, dateFilterType } =
+  const { startDate, endDate, status, studentName, referenceBy, source, dateFilterType, followUpDetails, followUpById } =
     req.query;
+  const completedInquiryStatuses = ["Close", "Complete"];
   const isAdmissionLookup = req.query.scope === "admission" || req.query.forAdmission === "true";
   const shouldPaginate = req.query.page !== undefined || req.query.limit !== undefined || req.query.pageSize !== undefined;
   const page = Math.max(1, Number(req.query.page || 1));
@@ -379,7 +380,8 @@ const getInquiries = asyncHandler(async (req, res) => {
   let query = { isDeleted: false };
 
   // Date Filters
-  const dateField = dateFilterType || "inquiryDate";
+  const isCallingDateFilter = dateFilterType === "callingDate" || dateFilterType === "followUpHistory.createdAt";
+  const dateField = isCallingDateFilter ? "followUpHistory.createdAt" : (dateFilterType || "inquiryDate");
   const skipDefaultDate = req.query.skipDefaultDate === "true";
   const shouldDefaultToday = source && ["Online", "Walk-in", "DSR"].includes(source) && !startDate && !endDate && !skipDefaultDate;
   // If no dates provided, use today's range in local time to avoid timezone shifts
@@ -402,7 +404,16 @@ const getInquiries = asyncHandler(async (req, res) => {
     }
 
     dateRange = { $gte: start, $lte: end };
-    query[dateField] = dateRange;
+    if (isCallingDateFilter) {
+      query.followUpHistory = {
+        $elemMatch: {
+          activityType: "followup",
+          createdAt: dateRange,
+        },
+      };
+    } else {
+      query[dateField] = dateRange;
+    }
   }
 
   if (req.query.onlyFollowupActivity === "true") {
@@ -415,6 +426,8 @@ const getInquiries = asyncHandler(async (req, res) => {
   } else if (
     !isAdmissionLookup &&
     req.query.includeFollowupActivity !== "true" &&
+    !isCallingDateFilter &&
+    !completedInquiryStatuses.includes(status) &&
     source &&
     ["Online", "Walk-in", "DSR"].includes(source)
   ) {
@@ -456,6 +469,7 @@ const getInquiries = asyncHandler(async (req, res) => {
       { firstName: searchRegex },
       { middleName: searchRegex },
       { lastName: searchRegex },
+      { contactHome: searchRegex },
       { contactStudent: searchRegex },
       { contactParent: searchRegex },
       ...(nameTermFilters.length > 1 ? [{ $and: nameTermFilters }] : []),
@@ -465,6 +479,25 @@ const getInquiries = asyncHandler(async (req, res) => {
   // Reference By Filter
   if (referenceBy) {
     query.referenceBy = { $regex: referenceBy, $options: "i" };
+  }
+
+  if (followUpDetails) {
+    const detailsRegex = { $regex: followUpDetails, $options: "i" };
+    const detailsCondition = {
+      $or: [
+        { followUpDetails: detailsRegex },
+        { "followUpHistory.remarks": detailsRegex },
+        { "followUpHistory.remark": detailsRegex },
+      ],
+    };
+
+    if (query.$or) {
+      const existingOr = query.$or;
+      delete query.$or;
+      query.$and = [...(query.$and || []), { $or: existingOr }, detailsCondition];
+    } else {
+      query.$and = [...(query.$and || []), detailsCondition];
+    }
   }
 
   const canViewBranchWideInquiries = req.user
@@ -481,6 +514,21 @@ const getInquiries = asyncHandler(async (req, res) => {
 
   if (req.user && !canViewBranchWideInquiries && !isAdmissionLookup) {
     addInquiryOwnershipScope(query, req.user._id);
+  }
+
+  if (followUpById) {
+    const followUpByUserId = await resolveAssignableUserId(followUpById);
+    if (followUpByUserId) {
+      const followUpByCondition = {
+        $or: [
+          { followUpBy: followUpByUserId },
+          { followUpHistory: { $elemMatch: { followUpBy: followUpByUserId } } },
+        ],
+      };
+      query.$and = [...(query.$and || []), followUpByCondition];
+    } else {
+      query._id = { $exists: false };
+    }
   }
 
   // --- External Reference Privacy ---
@@ -520,7 +568,7 @@ const getInquiries = asyncHandler(async (req, res) => {
 
   const sort = dateFilterType === "followUpDate"
     ? { followUpDate: 1, createdAt: -1, _id: 1 }
-    : dateFilterType === "followUpHistory.createdAt"
+    : isCallingDateFilter
       ? { "followUpHistory.createdAt": -1, createdAt: -1, _id: 1 }
     : { createdAt: -1, _id: 1 };
 
@@ -1003,7 +1051,7 @@ const getInquiryImportHistory = asyncHandler(async (req, res) => {
 });
 
 const getInquiryFollowupStats = asyncHandler(async (req, res) => {
-  const { source, branchId, employeeId } = req.query;
+  const { source, branchId, employeeId, studentName, referenceBy, status, dateFilterType, followUpDetails, followUpById } = req.query;
   const start = req.query.startDate ? new Date(req.query.startDate) : new Date();
   const end = req.query.endDate ? new Date(req.query.endDate) : new Date(start);
   start.setHours(0, 0, 0, 0);
@@ -1011,6 +1059,49 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
 
   const inquiryQuery = { isDeleted: false };
   if (source) inquiryQuery.source = source;
+  if (status) inquiryQuery.status = status;
+  if (studentName) {
+    const searchRegex = { $regex: studentName, $options: "i" };
+    const nameTerms = String(studentName).trim().split(/\s+/).filter(Boolean);
+    const nameTermFilters = nameTerms.map((term) => ({
+      $or: [
+        { firstName: { $regex: term, $options: "i" } },
+        { middleName: { $regex: term, $options: "i" } },
+        { lastName: { $regex: term, $options: "i" } },
+      ],
+    }));
+
+    inquiryQuery.$or = [
+      { firstName: searchRegex },
+      { middleName: searchRegex },
+      { lastName: searchRegex },
+      { contactHome: searchRegex },
+      { contactStudent: searchRegex },
+      { contactParent: searchRegex },
+      ...(nameTermFilters.length > 1 ? [{ $and: nameTermFilters }] : []),
+    ];
+  }
+  if (referenceBy) {
+    inquiryQuery.referenceBy = { $regex: referenceBy, $options: "i" };
+  }
+  if (followUpDetails) {
+    const detailsRegex = { $regex: followUpDetails, $options: "i" };
+    const detailsCondition = {
+      $or: [
+        { followUpDetails: detailsRegex },
+        { "followUpHistory.remarks": detailsRegex },
+        { "followUpHistory.remark": detailsRegex },
+      ],
+    };
+
+    if (inquiryQuery.$or) {
+      const existingOr = inquiryQuery.$or;
+      delete inquiryQuery.$or;
+      inquiryQuery.$and = [...(inquiryQuery.$and || []), { $or: existingOr }, detailsCondition];
+    } else {
+      inquiryQuery.$and = [...(inquiryQuery.$and || []), detailsCondition];
+    }
+  }
   const canViewBranchWideInquiries = req.user
     && ["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role);
   if (branchId && req.user?.role === "Super Admin") inquiryQuery.branchId = branchId;
@@ -1021,6 +1112,7 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
   ) inquiryQuery.branchId = req.user.branchId;
 
   let selectedEmployeeUserId = null;
+  let selectedFollowUpByUserId = null;
   const rangeInquiryQuery = { ...inquiryQuery };
   const followupInquiryQuery = { ...inquiryQuery };
   if (employeeId && canViewBranchWideInquiries) {
@@ -1050,14 +1142,57 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
     addInquiryOwnershipScope(followupInquiryQuery, selectedEmployeeUserId);
   }
 
+  if (followUpById) {
+    selectedFollowUpByUserId = await resolveAssignableUserId(followUpById);
+    if (!selectedFollowUpByUserId) {
+      return res.json({
+        range: { startDate: start, endDate: end },
+        totalInquiries: 0,
+        openCount: 0,
+        totalFollowUps: 0,
+        pendingFromBefore: 0,
+        pendingByDate: [],
+        followupDetails: [],
+        employees: [],
+        summary: selectedEmployeeUserId ? {
+          total: 0,
+          open: 0,
+          completed: 0,
+          followUpsToday: 0
+        } : null
+      });
+    }
+
+    const followUpByCondition = {
+      $or: [
+        { followUpBy: selectedFollowUpByUserId },
+        { followUpHistory: { $elemMatch: { followUpBy: selectedFollowUpByUserId } } },
+      ],
+    };
+    rangeInquiryQuery.$and = [...(rangeInquiryQuery.$and || []), followUpByCondition];
+    followupInquiryQuery.$and = [...(followupInquiryQuery.$and || []), followUpByCondition];
+  }
+
   const openStatuses = ["Open", "InProgress", "Recall"];
   const completedStatuses = ["Close", "Complete"];
+  const isCallingDateFilter = dateFilterType === "callingDate" || dateFilterType === "followUpHistory.createdAt";
+  const rangeDateField = dateFilterType === "followUpDate" ? "followUpDate" : "inquiryDate";
 
-  // Inquiries created within date range
-  const inquiriesTodayQuery = {
-    ...rangeInquiryQuery,
-    inquiryDate: { $gte: start, $lte: end },
-  };
+  // Inquiries in the selected date range
+  const inquiriesTodayQuery = isCallingDateFilter
+    ? {
+      ...rangeInquiryQuery,
+      followUpHistory: {
+        $elemMatch: {
+          activityType: "followup",
+          createdAt: { $gte: start, $lte: end },
+        },
+      },
+    }
+    : {
+      ...rangeInquiryQuery,
+      [rangeDateField]: { $gte: start, $lte: end },
+    };
 
   // Inquiries that had followup activity in date range
   const inquiries = await Inquiry.find({
@@ -1080,13 +1215,15 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
 
   inquiries.forEach((inquiry) => {
     (inquiry.followUpHistory || []).forEach((history) => {
+      if (history.activityType && history.activityType !== 'followup') return;
       const actionDate = history.createdAt || history.date;
       if (!actionDate) return;
       const actionTime = new Date(actionDate).getTime();
       if (actionTime < start.getTime() || actionTime > end.getTime()) return;
 
       const historyFollowUpById = history.followUpBy?._id ? String(history.followUpBy._id) : "";
-      if (selectedEmployeeUserId && historyFollowUpById !== String(selectedEmployeeUserId)) return;
+      const actorFilterUserId = selectedFollowUpByUserId || selectedEmployeeUserId;
+      if (actorFilterUserId && historyFollowUpById !== String(actorFilterUserId)) return;
 
       const user = history.followUpBy || inquiry.allocatedTo || inquiry.createdBy || {};
       
@@ -1133,44 +1270,48 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
     });
   });
 
-  // Calculate detailed summary if employeeId is provided
-  let summary = null;
-  if (selectedEmployeeUserId) {
-    const stats = await Inquiry.aggregate([
-      { $match: rangeInquiryQuery },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: 1 },
-          open: { $sum: { $cond: [{ $in: ["$status", openStatuses] }, 1, 0] } },
-          completed: { $sum: { $cond: [{ $in: ["$status", completedStatuses] }, 1, 0] } }
-        }
-      }
-    ]);
-    
-    summary = stats[0] || { total: 0, open: 0, completed: 0 };
-    summary.followUpsToday = followupDetailsMap.size;
-  }
+  const statusAllowsOpenCounts = !status || openStatuses.includes(status);
+  const statusAllowsCompletedCounts = !status || completedStatuses.includes(status);
+  const rangeTotalInquiries = await Inquiry.countDocuments(inquiriesTodayQuery);
 
   // Count open inquiries in the range that still need a followup.
   // Main inquiry pages hide records once an actual followup is recorded,
   // so this count must follow the same rule to keep Range/Remaining correct.
-  const openInDateRange = await Inquiry.countDocuments({
-    ...inquiriesTodayQuery,
-    status: { $in: openStatuses },
-    followUpHistory: {
-      $not: { $elemMatch: { activityType: "followup" } }
-    }
-  });
+  const openInDateRange = statusAllowsOpenCounts
+    ? await Inquiry.countDocuments({
+      ...inquiriesTodayQuery,
+      status: status || { $in: openStatuses },
+      followUpHistory: {
+        $not: { $elemMatch: { activityType: "followup" } }
+      }
+    })
+    : 0;
+
+  const completedInDateRange = statusAllowsCompletedCounts
+    ? await Inquiry.countDocuments({
+      ...inquiriesTodayQuery,
+      status: status || { $in: completedStatuses }
+    })
+    : 0;
+
+  const summary = selectedEmployeeUserId ? {
+    total: openInDateRange + completedInDateRange,
+    open: openInDateRange,
+    completed: completedInDateRange,
+    followUpsToday: followupDetailsMap.size
+  } : null;
 
   // Count pending inquiries from BEFORE date range that are still open
   let pendingFromBefore = 0;
   let pendingByDate = [];
-  if (selectedEmployeeUserId) {
+  if (selectedEmployeeUserId && statusAllowsOpenCounts && !isCallingDateFilter) {
     const pendingQuery = {
       ...rangeInquiryQuery,
       inquiryDate: { $lt: start },
-      status: { $in: openStatuses }
+      status: status || { $in: openStatuses },
+      followUpHistory: {
+        $not: { $elemMatch: { activityType: "followup" } }
+      }
     };
     const [pendingCount, pendingGroups] = await Promise.all([
       Inquiry.countDocuments(pendingQuery),
@@ -1198,9 +1339,7 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
     }));
   }
 
-  const [totalInquiries] = await Promise.all([
-    Inquiry.countDocuments(inquiriesTodayQuery),
-  ]);
+  const totalInquiries = openInDateRange + completedInDateRange;
 
   const employees = [...employeeMap.values()]
     .map((item) => {
@@ -1215,6 +1354,7 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
   res.json({
     range: { startDate: start, endDate: end },
     totalInquiries,
+    rangeTotalInquiries,
     openCount: openInDateRange,
     totalFollowUps: uniqueFollowupInquiryIds.size,
     pendingFromBefore,

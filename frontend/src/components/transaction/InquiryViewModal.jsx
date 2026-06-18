@@ -72,7 +72,7 @@ const InquiryViewModal = ({ inquiry, onClose }) => {
                                                 src={inquiry.studentPhoto.startsWith('http') ? inquiry.studentPhoto : `${import.meta.env.VITE_API_URL}/${inquiry.studentPhoto}`}
                                                 onError={(e) => { e.target.onerror = null; e.target.src = "https://via.placeholder.com/150?text=No+Image"; }}
                                                 alt="Student"
-                                                className="w-32 h-32 rounded-lg object-cover border-2 border-gray-300 shadow-md"
+                                                className="w-32 h-32 rounded-lg object-cover object-top border-2 border-gray-300 shadow-md"
                                             />
                                         </div>
                                     ) : (

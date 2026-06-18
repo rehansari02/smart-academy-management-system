@@ -296,6 +296,8 @@ exports.createVisitor = async (req, res) => {
             await Inquiry.findByIdAndUpdate(inquiryId, { isDeleted: true, visitorId: newVisitor._id });
         }
 
+
+
         res.status(201).json({ message: 'Visitor created successfully', visitor: newVisitor });
     } catch (error) {
         console.error("Error creating visitor:", error);
@@ -319,7 +321,7 @@ exports.getAllVisitors = async (req, res) => {
         }
 
         // Date Range Filter
-        if (dateFilterType !== 'followUpDate' && dateFilterType !== 'callingDate') {
+        if (dateFilterType !== 'followUpDate' && dateFilterType !== 'callingDate' && dateFilterType !== 'visitingOrFollowUpDate') {
             if (fromDate && toDate) {
                 query.visitingDate = dateRange;
             } else if (fromDate) {
@@ -339,16 +341,27 @@ exports.getAllVisitors = async (req, res) => {
             query.status = { $nin: ["Close", "Complete"] };
         }
 
+
+        appendVisitorFilters(query, { search, searchField, studentName, referenceBy });
+
+        // Status Filter: By default hide Close/Complete visitors
+        // User must explicitly pass status=Close or status=Complete to see them
+        if (status) {
+            query.status = status;
+        } else if (!isAdmissionLookup) {
+            query.status = { $nin: ["Close", "Complete"] };
+        }
+
         if (inquirySource) {
             const inquiries = await Inquiry.find({ source: inquirySource }).select('_id');
             query.inquiryId = { $in: inquiries.map(inquiry => inquiry._id) };
         }
 
         const isRestrictedRole = !["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role);
-
+        
         // Employee/Allocation Filter
         const targetEmployee = isRestrictedRole && !isAdmissionLookup ? req.user._id : (employeeId || allocatedTo);
-        if (targetEmployee) {
+        if (targetEmployee && dateFilterType !== 'visitingOrFollowUpDate') {
             const employeeUserId = await resolveAssignableUserId(targetEmployee);
             if (employeeUserId) {
                 addVisitorOwnershipScope(query, employeeUserId);
@@ -357,8 +370,58 @@ exports.getAllVisitors = async (req, res) => {
             }
         }
 
-        if (req.user && isRestrictedRole && !targetEmployee && !isAdmissionLookup) {
+        if (req.user && isRestrictedRole && !targetEmployee && !isAdmissionLookup && dateFilterType !== 'visitingOrFollowUpDate') {
             addVisitorOwnershipScope(query, req.user._id);
+        }
+
+        // Handle fetching visitors by visiting date OR follow-up schedule date
+        if (dateFilterType === 'visitingOrFollowUpDate' && dateRange) {
+            const followupQuery = { isDeleted: false, scheduledDate: dateRange };
+
+            if (branchId && req.user.role === 'Super Admin') {
+                followupQuery.branchId = branchId;
+            } else if (req.user.role !== 'Super Admin') {
+                followupQuery.branchId = req.user.branchId;
+            }
+
+            let employeeUserIdForFollowup = null;
+            let targetEmployeeResolved = true;
+            if (targetEmployee) {
+                employeeUserIdForFollowup = await resolveAssignableUserId(targetEmployee);
+                if (employeeUserIdForFollowup) {
+                    followupQuery.followUpBy = employeeUserIdForFollowup;
+                } else {
+                    targetEmployeeResolved = false;
+                }
+            }
+
+            if (!targetEmployeeResolved) {
+                query._id = { $exists: false };
+            } else {
+                const followups = await VisitorFollowUp.find(followupQuery).select('visitorId').lean();
+                const visitorIdsWithFollowups = [...new Set(followups.map(f => f.visitorId.toString()))];
+
+                let ownershipCondition = {};
+                if (targetEmployee && employeeUserIdForFollowup) {
+                    ownershipCondition = {
+                        $or: [
+                            { allocatedTo: employeeUserIdForFollowup },
+                            { allocatedTo: { $exists: false }, createdBy: employeeUserIdForFollowup },
+                            { allocatedTo: null, createdBy: employeeUserIdForFollowup },
+                        ]
+                    };
+                }
+
+                query.$or = [
+                    {
+                        $and: [
+                            { visitingDate: dateRange },
+                            ...(targetEmployee && employeeUserIdForFollowup ? [ownershipCondition] : [])
+                        ]
+                    },
+                    { _id: { $in: visitorIdsWithFollowups } }
+                ];
+            }
         }
 
         // --- External Reference Privacy ---
@@ -452,12 +515,23 @@ exports.getAllVisitors = async (req, res) => {
         });
 
         const shouldExcludeFollowedVisitors = excludeFollowedVisitors === 'true';
-        const filteredVisitors = shouldExcludeFollowedVisitors
-            ? visitorsWithLatestFollowup.filter((visitor) => {
-                const hasFollowup = Boolean(visitor.latestFollowup);
-                return !hasFollowup;
-            })
-            : visitorsWithLatestFollowup;
+        let filteredVisitors = visitorsWithLatestFollowup;
+
+        if (shouldExcludeFollowedVisitors && dateFilterType === 'visitingOrFollowUpDate' && dateRange) {
+            const startTime = dateRange.$gte ? new Date(dateRange.$gte).getTime() : null;
+            const endTime = dateRange.$lte ? new Date(dateRange.$lte).getTime() : null;
+            filteredVisitors = visitorsWithLatestFollowup.filter((visitor) => {
+                const effectiveDate = visitor.latestFollowup?.scheduledDate || visitor.visitingDate;
+                if (!effectiveDate) return false;
+                const effectiveTime = new Date(effectiveDate).getTime();
+                if (Number.isNaN(effectiveTime)) return false;
+                if (startTime !== null && effectiveTime < startTime) return false;
+                if (endTime !== null && effectiveTime > endTime) return false;
+                return true;
+            });
+        } else if (shouldExcludeFollowedVisitors) {
+            filteredVisitors = visitorsWithLatestFollowup.filter((visitor) => !visitor.latestFollowup);
+        }
 
         res.status(200).json(filteredVisitors);
     } catch (error) {
@@ -592,7 +666,7 @@ exports.updateVisitor = async (req, res) => {
 // Create a separate visitor follow-up record
 exports.createVisitorFollowUp = async (req, res) => {
     try {
-        const { visitorId, scheduledDate, status, remark, followUpId } = req.body;
+        const { visitorId, scheduledDate, status, remark, followUpId, completeCurrentVisit } = req.body;
 
         if (!visitorId || !scheduledDate) {
             return res.status(400).json({ message: 'Visitor and next visit date are required' });
@@ -641,6 +715,18 @@ exports.createVisitorFollowUp = async (req, res) => {
                 followUpBy: req.user?._id,
                 branchId: visitor.branchId || req.user.branchId,
                 isDone: false
+            });
+        } else if (completeCurrentVisit) {
+            followUp = await VisitorFollowUp.create({
+                visitorId,
+                scheduledDate,
+                callingDate: new Date(),
+                status: status || visitor.status || 'Open',
+                remark,
+                attendedBy: visitor.attendedBy,
+                followUpBy: req.user?._id,
+                branchId: visitor.branchId || req.user.branchId,
+                isDone: true
             });
         } else {
             followUp = await VisitorFollowUp.create({
@@ -858,7 +944,10 @@ exports.getVisitorFollowUpStats = async (req, res) => {
         };
 
         const [rangeVisitors, completedVisitors, visibleFollowupVisitors] = await Promise.all([
-            Visitor.find(rangeVisitorsQuery).select('_id status visitingDate').lean(),
+            Visitor.find(rangeVisitorsQuery)
+                .select('_id status visitingDate studentName mobileNumber contactParent contactHome reference branchId')
+                .populate('branchId', 'name')
+                .lean(),
             Visitor.find({ ...rangeVisitorsQuery, status: { $in: completedStatuses } }).select('_id').lean(),
             Visitor.find(followupVisitorQuery).select('_id').lean()
         ]);
@@ -907,6 +996,19 @@ exports.getVisitorFollowUpStats = async (req, res) => {
         const totalFollowUpsCount = latestFollowupByVisitor.size;
         const openCount = Math.max(totalInquiries - totalFollowUpsCount, 0);
         const completedCount = completedVisitors.length;
+        const remainingVisitors = rangeVisitors
+            .filter((visitor) => !latestFollowupByVisitor.has(visitor._id.toString()))
+            .map((visitor) => ({
+                _id: visitor._id,
+                studentName: visitor.studentName,
+                mobileNumber: visitor.mobileNumber,
+                contactParent: visitor.contactParent,
+                contactHome: visitor.contactHome,
+                reference: visitor.reference,
+                status: visitor.status,
+                visitingDate: visitor.visitingDate,
+                branchName: visitor.branchId?.name || '-'
+            }));
 
         const pendingVisitorDocs = employeeUserId
             ? await Visitor.find({
@@ -973,6 +1075,7 @@ exports.getVisitorFollowUpStats = async (req, res) => {
             openCount,
             completedCount,
             totalFollowUps: totalFollowUpsCount,
+            remainingVisitors,
             pendingFromBefore,
             pendingByDate,
             followUpsDoneToday: totalFollowUpsCount,

@@ -293,11 +293,13 @@ const TodaysVisitorsList = () => {
     const [showViewModal, setShowViewModal] = useState(false);
     const [viewingVisitor, setViewingVisitor] = useState(null);
     const [followUpVisitor, setFollowUpVisitor] = useState(null);
+    const [showRemainingVisitors, setShowRemainingVisitors] = useState(false);
     const employeeOptions = getEmployeeFilterOptions(employees, user);
     const activeEmployeeId = getScopedEmployeeId(user, employeeId);
     const activeStudentNames = [...new Set(visitors.map(v => v.studentName).filter(Boolean))].sort();
     const activeReferences = [...new Set(visitors.map(v => v.reference).filter(Boolean))].sort();
     const pendingBreakup = stats?.pendingByDate || [];
+    const remainingVisitors = stats?.remainingVisitors || [];
 
     useEffect(() => {
         fetchVisitors();
@@ -457,7 +459,10 @@ const TodaysVisitorsList = () => {
             return;
         }
         try {
-            await visitorService.createVisitorFollowUp(data);
+            await visitorService.createVisitorFollowUp({
+                ...data,
+                completeCurrentVisit: true
+            });
             setFollowUpVisitor(null);
             fetchVisitors();
             fetchStats();
@@ -474,7 +479,8 @@ const TodaysVisitorsList = () => {
     const employeeSummary = stats?.employees || [];
     const totalRangeVisitors = Number(stats?.totalInquiries ?? summary.total ?? visitors.length ?? 0);
     const followUpsDoneToday = Number(stats?.totalFollowUps ?? stats?.followUpsDoneToday ?? summary.followUpsToday ?? 0);
-    const statsRemainingCount = Math.max(totalRangeVisitors - followUpsDoneToday, 0);
+    const statsRemainingCount = Number(stats?.remainingVisitors?.length ?? Math.max(totalRangeVisitors - followUpsDoneToday, 0));
+    const tableVisitors = visitors.length ? visitors : (stats?.remainingVisitors || []);
     const tableColSpan = user?.role === 'Super Admin' ? 13 : 12;
     const formatDateTime = (value) => {
         if (!value) return '-';
@@ -587,6 +593,13 @@ const TodaysVisitorsList = () => {
                                 <div className="text-2xl font-black text-blue-700">
                                     {statsRemainingCount}<span className="text-lg font-bold text-gray-400">/{totalRangeVisitors}</span>
                                 </div>
+                                {/* <button
+                                    type="button"
+                                    onClick={() => setShowRemainingVisitors(true)}
+                                    className="mt-2 rounded bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-200"
+                                >
+                                    View Remaining List
+                                </button> */}
                                 {stats.pendingFromBefore > 0 && (
                                     <div className="mt-1 text-[10px]">
                                         <span className="text-orange-500 font-bold">Prev Pending: {stats.pendingFromBefore}</span>
@@ -671,6 +684,46 @@ const TodaysVisitorsList = () => {
                                     </table>
                                 ) : (
                                     <div className="text-center text-gray-400 py-8">No previous pending visitors.</div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showRemainingVisitors && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] overflow-hidden">
+                            <div className="flex items-center justify-between border-b px-4 py-3">
+                                <div>
+                                    <h3 className="font-bold text-gray-800">Remaining Visitors</h3>
+                                    <p className="text-xs text-gray-500">Total remaining: {remainingVisitors.length || 0}</p>
+                                </div>
+                                <button onClick={() => setShowRemainingVisitors(false)} className="p-1 rounded hover:bg-gray-100">
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div className="p-4 overflow-y-auto max-h-[65vh]">
+                                {remainingVisitors.length ? (
+                                    <div className="space-y-2">
+                                        {remainingVisitors.map((visitor, index) => (
+                                            <div key={visitor._id} className="rounded border border-gray-200 p-3 bg-gray-50">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <div className="font-bold text-gray-800">{index + 1}. {visitor.studentName || '-'}</div>
+                                                        <div className="text-xs text-gray-500 mt-1">
+                                                            {visitor.mobileNumber || visitor.contactParent || visitor.contactHome || '-'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right text-[10px] text-gray-500">
+                                                        <div>{visitor.branchName || '-'}</div>
+                                                        <div>{visitor.status || 'Open'}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center text-gray-400 py-8">No remaining visitors in this range.</div>
                                 )}
                             </div>
                         </div>
@@ -810,10 +863,10 @@ const TodaysVisitorsList = () => {
                         <tbody>
                             {loading ? (
                                 <tr><td colSpan={tableColSpan} className="text-center p-4">Loading...</td></tr>
-                            ) : visitors.length === 0 ? (
+                            ) : tableVisitors.length === 0 ? (
                                 <tr><td colSpan={tableColSpan} className="text-center p-4 text-gray-500">No visitors found for this range.</td></tr>
                             ) : (
-                                visitors.map((visitor, index) => {
+                                tableVisitors.map((visitor, index) => {
                                     const latestFollowup = visitor.latestFollowup || {};
                                     const inquiryDate = visitor.inquiryId?.inquiryDate || visitor.visitingDate;
                                     const followupDate = latestFollowup.scheduledDate || latestFollowup.followUpDate;

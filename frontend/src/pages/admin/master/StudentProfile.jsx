@@ -89,7 +89,7 @@ const StudentProfile = () => {
                      {/* Image */}
                      <div className="w-32 h-32 md:w-40 md:h-40 bg-white rounded-lg overflow-hidden border-4 border-white shadow flex-shrink-0">
                         {student.studentPhoto ? (
-                            <img src={getStudentPhotoUrl(student.studentPhoto)} alt="Student" className="w-full h-full object-contain" />
+                            <img src={getStudentPhotoUrl(student.studentPhoto)} alt="Student" className="w-full h-full object-cover object-top" />
                         ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-400">
                                 <User size={48} />

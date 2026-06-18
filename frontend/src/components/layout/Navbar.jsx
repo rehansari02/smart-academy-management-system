@@ -186,7 +186,7 @@ const Navbar = () => {
                         className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors"
                       >
                         <span>{sub.title}</span>
-                        <ChevronDown size={14}/> 
+                        <ChevronRight size={14} className="text-gray-400 transition-transform duration-200 group-hover/item:translate-x-0.5 group-hover/item:text-primary" />
                       </button>
                       
                        {/* Nested Submenu Display */}

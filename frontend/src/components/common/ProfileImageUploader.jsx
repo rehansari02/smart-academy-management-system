@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Camera, Trash2, Edit2, X, FlipHorizontal, Crop } from 'lucide-react';
+import Cropper from 'react-easy-crop';
 import { getMediaUrl } from '../../utils/mediaUrl';
+import { getCroppedImg } from '../../utils/cropUtils';
 
 /**
  * ProfileImageUploader - A reusable circular avatar image uploader with camera support
@@ -31,25 +33,42 @@ const ProfileImageUploader = ({
     const [showHover, setShowHover] = useState(false);
     const [cameraError, setCameraError] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false); // Track processing state
+    const [crop, setCrop] = useState({ x: 0, y: 0 });
     const [cropZoom, setCropZoom] = useState(1);
-    const [cropX, setCropX] = useState(0);
-    const [cropY, setCropY] = useState(0);
-    const [imageLoaded, setImageLoaded] = useState(false);
+    const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
     
     const videoRef = useRef(null);
     const fileInputRef = useRef(null);
     const canvasRef = useRef(null);
-    const imageRef = useRef(null);
+    const localObjectUrlRef = useRef(null);
+
+    const clearLocalObjectUrl = () => {
+        if (localObjectUrlRef.current) {
+            URL.revokeObjectURL(localObjectUrlRef.current);
+            localObjectUrlRef.current = null;
+        }
+    };
+
+    const setLocalFilePreview = (file) => {
+        clearLocalObjectUrl();
+        const url = URL.createObjectURL(file);
+        localObjectUrlRef.current = url;
+        setPreview(url);
+        setSourcePreview(url);
+    };
 
     // Update preview when value changes
     useEffect(() => {
         if (value instanceof File) {
+            clearLocalObjectUrl();
             const url = URL.createObjectURL(value);
+            localObjectUrlRef.current = url;
             setPreview(url);
             setSourcePreview(url);
-            return () => URL.revokeObjectURL(url);
+            return;
         }
 
+        clearLocalObjectUrl();
         if (value) {
             if (typeof value === 'string') {
                 setPreview(value.startsWith('http') || value.startsWith('blob:') || value.startsWith('data:')
@@ -74,6 +93,10 @@ const ProfileImageUploader = ({
         };
     }, [cameraStream]);
 
+    useEffect(() => {
+        return () => clearLocalObjectUrl();
+    }, []);
+
     // Handle file selection
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -85,70 +108,55 @@ const ProfileImageUploader = ({
             }
             setIsProcessing(true);
             if (onProcessingChange) onProcessingChange(true);
-            
-            // Simulate brief processing delay for file validation
-            setTimeout(() => {
-                onChange(file);
-                if (enableAdjustments) {
-                    setCropZoom(1);
-                    setCropX(0);
-                    setCropY(0);
-                    setShowAdjustModal(true);
-                }
-                setIsProcessing(false);
-                if (onProcessingChange) onProcessingChange(false);
-            }, 100);
+
+            setLocalFilePreview(file);
+            onChange(file);
+            if (enableAdjustments) {
+                resetCrop();
+                setShowAdjustModal(true);
+            }
+            setIsProcessing(false);
+            if (onProcessingChange) onProcessingChange(false);
         }
+        e.target.value = '';
     };
 
     const applyCropAdjustments = async () => {
-        const img = imageRef.current;
-        if (!img) return;
+        if (!sourcePreview || !croppedAreaPixels) return;
 
         setIsProcessing(true);
         if (onProcessingChange) onProcessingChange(true);
 
-        const targetWidth = 600;
-        const targetHeight = 800;
-        const canvas = document.createElement('canvas');
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
-        const ctx = canvas.getContext('2d');
-
-        const scale = Math.max(targetWidth / img.naturalWidth, targetHeight / img.naturalHeight) * cropZoom;
-        const visibleWidth = targetWidth / scale;
-        const visibleHeight = targetHeight / scale;
-        const maxOffsetX = Math.max(0, img.naturalWidth - visibleWidth);
-        const maxOffsetY = Math.max(0, img.naturalHeight - visibleHeight);
-        const offsetX = (cropX / 100) * (maxOffsetX / 2);
-        const offsetY = (cropY / 100) * (maxOffsetY / 2);
-
-        const sx = Math.max(0, (img.naturalWidth - visibleWidth) / 2 + offsetX);
-        const sy = Math.max(0, (img.naturalHeight - visibleHeight) / 2 + offsetY);
-        const sw = Math.min(img.naturalWidth - sx, visibleWidth);
-        const sh = Math.min(img.naturalHeight - sy, visibleHeight);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, targetWidth, targetHeight);
-        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetWidth, targetHeight);
-
-        canvas.toBlob((blob) => {
-            if (!blob) {
-                setIsProcessing(false);
-                if (onProcessingChange) onProcessingChange(false);
-                return;
-            }
-
-            const file = new File([blob], `photo-${Date.now()}.jpg`, {
-                type: 'image/jpeg',
-                lastModified: Date.now()
+        try {
+            const result = await getCroppedImg(sourcePreview, croppedAreaPixels, {
+                outputWidth: 600,
+                outputHeight: 800,
+                fileName: `student-photo-${Date.now()}.jpg`,
             });
 
-            onChange(file);
+            if (result?.file) {
+                setLocalFilePreview(result.file);
+                onChange(result.file);
+            }
             setShowAdjustModal(false);
+        } catch (error) {
+            console.error('Failed to crop image:', error);
+            alert('Could not adjust this image. Please try another photo.');
+        } finally {
             setIsProcessing(false);
             if (onProcessingChange) onProcessingChange(false);
-        }, 'image/jpeg', 0.95);
+        }
+    };
+
+    const resetCrop = () => {
+        setCrop({ x: 0, y: 0 });
+        setCropZoom(1);
+        setCroppedAreaPixels(null);
+    };
+
+    const openAdjustModal = () => {
+        resetCrop();
+        setShowAdjustModal(true);
     };
 
     // Open camera modal
@@ -250,8 +258,13 @@ const ProfileImageUploader = ({
                     type: 'image/jpeg',
                     lastModified: Date.now()
                 });
+                setLocalFilePreview(file);
                 onChange(file);
                 closeCamera();
+                if (enableAdjustments) {
+                    resetCrop();
+                    setShowAdjustModal(true);
+                }
                 setIsProcessing(false);
                 if (onProcessingChange) onProcessingChange(false);
             }
@@ -273,26 +286,31 @@ const ProfileImageUploader = ({
         fileInputRef.current?.click();
     };
 
+    const previewFrameClass = enableAdjustments ? "h-36 w-28 rounded-lg" : `${size} rounded-full`;
+    const previewImageClass = enableAdjustments ? "object-cover object-center" : "object-cover object-top";
+    const hoverFrameClass = enableAdjustments ? "rounded-lg" : "rounded-full";
+
     return (
         <>
             <div className="flex flex-col items-center gap-2">
                 {/* Avatar Container */}
                 <div 
-                    className={`${size} rounded-full relative group cursor-pointer`}
+                    className={`${previewFrameClass} relative group cursor-pointer`}
                     onMouseEnter={() => setShowHover(true)}
                     onMouseLeave={() => setShowHover(false)}
                 >
                     {/* Image or Empty State */}
-                    <div className={`${size} rounded-full overflow-hidden bg-white border-2 border-gray-300 flex items-center justify-center`}>
+                    <div className={`${previewFrameClass} overflow-hidden bg-white border-2 border-gray-300 flex items-center justify-center shadow-sm`}>
                         {preview ? (
                             <img 
                                 src={preview} 
                                 alt="Profile" 
-                                className="w-full h-full object-contain"
+                                className={`h-full w-full ${previewImageClass}`}
                             />
                         ) : (
-                            <div className="text-gray-400 flex items-center justify-center">
-                                <Upload size={32} />
+                            <div className="flex flex-col items-center justify-center gap-1 text-gray-400">
+                                <Upload size={enableAdjustments ? 24 : 32} />
+                                {enableAdjustments && <span className="text-[10px] font-semibold">600 x 800</span>}
                             </div>
                         )}
                     </div>
@@ -321,7 +339,7 @@ const ProfileImageUploader = ({
 
                     {/* Filled State: Delete and Change Buttons (visible on hover) */}
                     {preview && showHover && (
-                        <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center gap-2 transition-opacity">
+                        <div className={`absolute inset-0 ${hoverFrameClass} bg-black/40 flex items-center justify-center gap-2 transition-opacity`}>
                             <button
                                 type="button"
                                 onClick={handleDelete}
@@ -341,12 +359,7 @@ const ProfileImageUploader = ({
                             {enableAdjustments && preview && (
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        setCropZoom(1);
-                                        setCropX(0);
-                                        setCropY(0);
-                                        setShowAdjustModal(true);
-                                    }}
+                                    onClick={openAdjustModal}
                                     className="w-8 h-8 rounded-full bg-amber-600 text-white flex items-center justify-center shadow-lg hover:bg-amber-700 transition-colors"
                                     title="Adjust Image"
                                 >
@@ -443,7 +456,7 @@ const ProfileImageUploader = ({
                 </div>
             )}
 
-            {showAdjustModal && preview && enableAdjustments && (
+            {showAdjustModal && (sourcePreview || preview) && enableAdjustments && (
                 <div className="fixed inset-0 z-[9998] bg-black/80 flex items-center justify-center p-4">
                     <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
                         <div className="flex items-center justify-between border-b bg-gray-50 p-4">
@@ -457,22 +470,24 @@ const ProfileImageUploader = ({
                         </div>
 
                         <div className="grid gap-4 p-4 lg:grid-cols-[1fr_280px]">
-                            <div className="flex items-center justify-center rounded-xl bg-gray-100 p-4">
-                                <div className="relative h-[360px] w-[270px] overflow-hidden rounded-lg border-2 border-gray-300 bg-white">
-                                    {preview && (
-                                        <img
-                                            ref={imageRef}
-                                            src={sourcePreview || preview}
-                                            alt="Adjust preview"
-                                            className="h-full w-full select-none object-contain"
-                                            style={{
-                                                transform: `translate(${cropX}%, ${cropY}%) scale(${cropZoom})`,
-                                                transformOrigin: 'center center'
-                                            }}
-                                            onLoad={() => setImageLoaded(true)}
-                                        />
-                                    )}
+                            <div className="rounded-xl bg-gray-100 p-4">
+                                <div className="relative mx-auto h-[420px] w-full max-w-[315px] overflow-hidden rounded-lg border-2 border-gray-300 bg-black">
+                                    <Cropper
+                                        image={sourcePreview || preview}
+                                        crop={crop}
+                                        zoom={cropZoom}
+                                        aspect={3 / 4}
+                                        cropShape="rect"
+                                        showGrid
+                                        objectFit="contain"
+                                        onCropChange={setCrop}
+                                        onZoomChange={setCropZoom}
+                                        onCropComplete={(_, croppedPixels) => setCroppedAreaPixels(croppedPixels)}
+                                    />
                                 </div>
+                                <p className="mt-2 text-center text-xs font-semibold text-gray-600">
+                                    Final size: 600 x 800 px
+                                </p>
                             </div>
 
                             <div className="space-y-4">
@@ -488,39 +503,14 @@ const ProfileImageUploader = ({
                                         className="w-full"
                                     />
                                 </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-semibold text-gray-700">Move Left / Right</label>
-                                    <input
-                                        type="range"
-                                        min="-100"
-                                        max="100"
-                                        step="1"
-                                        value={cropX}
-                                        onChange={(e) => setCropX(Number(e.target.value))}
-                                        className="w-full"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-semibold text-gray-700">Move Up / Down</label>
-                                    <input
-                                        type="range"
-                                        min="-100"
-                                        max="100"
-                                        step="1"
-                                        value={cropY}
-                                        onChange={(e) => setCropY(Number(e.target.value))}
-                                        className="w-full"
-                                    />
+                                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs font-medium text-blue-800">
+                                    Photo ko drag karke face/frame set karein. Box ke andar jitna part dikhega, wahi exact save hoga.
                                 </div>
 
                                 <div className="flex gap-2 pt-2">
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            setCropZoom(1);
-                                            setCropX(0);
-                                            setCropY(0);
-                                        }}
+                                        onClick={resetCrop}
                                         className="flex-1 rounded-lg bg-gray-200 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-300"
                                     >
                                         Reset
@@ -528,10 +518,10 @@ const ProfileImageUploader = ({
                                     <button
                                         type="button"
                                         onClick={applyCropAdjustments}
-                                        disabled={!imageLoaded || isProcessing}
+                                        disabled={!croppedAreaPixels || isProcessing}
                                         className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
                                     >
-                                        Apply
+                                        {isProcessing ? 'Applying...' : 'Apply'}
                                     </button>
                                 </div>
                             </div>

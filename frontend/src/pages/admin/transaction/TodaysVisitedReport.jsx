@@ -199,6 +199,16 @@ const TodaysVisitedReport = () => {
         );
     };
 
+    const isVisibleVisitorFollowup = (visitor) => {
+        if (!visitor.latestFollowup?.scheduledDate) return false;
+        const date = new Date(visitor.latestFollowup.scheduledDate);
+        const from = new Date(filters.fromDate);
+        from.setHours(0, 0, 0, 0);
+        const to = new Date(filters.toDate);
+        to.setHours(23, 59, 59, 999);
+        return date >= from && date <= to;
+    };
+
     const printHtml = (title, bodyHtml) => {
         const iframe = document.createElement('iframe');
         iframe.style.position = 'fixed';
@@ -423,7 +433,7 @@ const TodaysVisitedReport = () => {
             referenceBy: activeFilters.referenceBy
         };
 
-        const shouldFetchVisitorDone = (activeFilters.reportType === 'visited' || listType === 'all' || listType === 'visitor') && visitorReportRights.view;
+        const shouldFetchVisitorDone = activeFilters.reportType === 'visited' && visitorReportRights.view;
         const visitorFollowups = shouldFetchVisitorDone
             ? await visitorService.getVisitorFollowUps({
                 ...commonParams,
@@ -484,6 +494,8 @@ const TodaysVisitedReport = () => {
             visitorFollowups: doneVisitorFollowups,
             inquiryFollowups: doneInquiryFollowups,
             activityVisitors: [...activityVisitorMap.values()],
+            doneVisitorRows: doneVisitorFollowups.map((item) => ({ ...item, recordType: 'visitor', sortDate: item.callingDate || item.updatedAt || item.createdAt || item.scheduledDate })),
+            doneInquiryRows: doneInquiryFollowups.map((item) => ({ ...item, recordType: 'inquiry', sortDate: item.callingDate || item.followUpAt || item.followUpDate })),
             doneFollowupRows: [
                 ...doneVisitorFollowups.map((item) => ({ ...item, recordType: 'visitor', sortDate: item.callingDate || item.updatedAt || item.createdAt || item.scheduledDate })),
                 ...doneInquiryFollowups.map((item) => ({ ...item, recordType: 'inquiry', sortDate: item.callingDate || item.followUpAt || item.followUpDate }))
@@ -539,7 +551,7 @@ const TodaysVisitedReport = () => {
                 printHtml('Activity Report Visitors', `<table><thead>${headers}</thead><tbody>${rows || '<tr><td colspan="7" class="text-center muted">No done visitors found.</td></tr>'}</tbody></table>`);
             } else {
                 const headers = `<tr><th>Sr. No.</th><th>Date</th><th>Branch</th><th>Filled By</th><th>Reference By</th><th>Student Name</th><th>Contact (H/S/P)</th><th>Status</th><th>Followup</th><th>Followup Details</th><th>Followup By</th><th>Calling Date</th></tr>`;
-                const rows = renderDoneFollowupRows(doneData.doneFollowupRows);
+                const rows = renderDoneFollowupRows(doneData.doneVisitorRows || []);
                 printHtml('Activity Today Followups', `<table><thead>${headers}</thead><tbody>${rows || '<tr><td colspan="12" class="text-center muted">No done followups found.</td></tr>'}</tbody></table>`);
             }
             toast.update(toastId, { render: 'Print ready', type: 'success', isLoading: false, autoClose: 1500 });
@@ -571,10 +583,10 @@ const TodaysVisitedReport = () => {
                 referenceBy: filters.referenceBy
             };
 
-            // 1. Fetch visitor follow-ups done in this period, matching inquiry Followups Done print.
+            // 1. Fetch visitor follow-ups by next-visit date for the visitor sections.
             const visitorFollowups = await visitorService.getVisitorFollowUps({
                 ...commonParams,
-                dateFilterType: 'callingDate',
+                dateFilterType: 'followUpDate',
             });
             
             // 2. Fetch inquiry follow-ups in the same row shape used by each page's Followups Done print.
@@ -631,9 +643,8 @@ const TodaysVisitedReport = () => {
                 { title: '2. Offline Inquiry Follow-ups', data: offlineInquiry, type: 'inquiry' },
                 { title: '3. DSR Inquiry Follow-ups', data: dsrInquiry, type: 'inquiry' },
                 { title: '4. Visitor Follow-ups', data: visitorFollowups, type: 'visitor-followup' },
-                { title: "5. Today's Activity Visitors", data: activityVisitors, type: 'visitor' },
-                { title: '6. Activity Today Followups', data: doneActivity.doneFollowupRows, type: 'done-followup' },
-                { title: '7. Activity Report Visitors', data: doneActivity.activityVisitors, type: 'activity-visitor' }
+                { title: '5. Activity Today Followups', data: doneActivity.doneVisitorRows || [], type: 'done-followup' },
+                { title: '6. Activity Report Visitors', data: doneActivity.activityVisitors, type: 'activity-visitor' }
             ];
 
             const employeeName = getEmployeeNameById(employeeOptions, activeEmployeeId, 'All Employees');
@@ -892,16 +903,24 @@ const TodaysVisitedReport = () => {
             fetchStats(activeFilters);
             const doneActivityForStats = await fetchDoneActivityData(activeFilters).catch(() => ({
                 doneFollowupRows: [],
-                activityVisitors: []
+                activityVisitors: [],
+                doneVisitorRows: [],
+                doneInquiryRows: []
             }));
+            const doneVisitorFollowupCount = Array.isArray(doneActivityForStats.doneVisitorRows)
+                ? doneActivityForStats.doneVisitorRows.length
+                : Array.isArray(doneActivityForStats.doneFollowupRows)
+                    ? doneActivityForStats.doneFollowupRows.filter((item) => item?.recordType === 'visitor').length
+                    : 0;
             setDoneActivityStats({
-                followupsDone: doneActivityForStats.doneFollowupRows.length,
-                visitorsDone: doneActivityForStats.activityVisitors.length
+                followupsDone: doneVisitorFollowupCount,
+                visitorsDone: doneVisitorFollowupCount
             });
             if (activeFilters.reportType === 'visited') {
                 const data = await visitorService.getAllVisitors({
                     ...activeFilters,
                     employeeId: activeFilters.employeeId,
+                    dateFilterType: 'visitingOrFollowUpDate',
                     excludeFollowedVisitors: 'true'
                 });
                 setVisitors(data);
@@ -918,7 +937,7 @@ const TodaysVisitedReport = () => {
                     dsr: 'DSR'
                 };
                 const canViewInquirySource = (source) => getInquiryRights(source).view;
-                const shouldFetchVisitorFollowups = (listType === 'all' || listType === 'visitor') && visitorReportRights.view;
+                const shouldFetchVisitorFollowups = listType === 'visitor' && visitorReportRights.view;
                 const shouldFetchInquiryFollowups = (listType === 'all' || ['online', 'offline', 'dsr'].includes(listType)) &&
                     (sourceByListType[listType] ? canViewInquirySource(sourceByListType[listType]) : [onlineInquiryRights, offlineInquiryRights, dsrInquiryRights].some(rights => rights.view));
                 const inquiryParams = {
@@ -1321,16 +1340,18 @@ const TodaysVisitedReport = () => {
         }
 
         const followUpsDone = Number(doneActivityStats.followupsDone ?? 0);
-        const totalRangeFollowups = Math.max(followUpsDone + followups.length, followups.length);
+        const totalRangeFollowups = Number(followups.length || 0);
+        const doneTotal = Math.max(totalRangeFollowups, followUpsDone);
         const remaining = Math.max(totalRangeFollowups - followUpsDone, 0);
         const employeeMap = Array.isArray(stats?.employees) ? stats.employees : [];
         return {
             total: totalRangeFollowups,
             open: remaining,
-            rangeCount: remaining,
-            completed: Number(stats?.completedCount ?? stats?.summary?.completed ?? 0),
+            rangeCount: totalRangeFollowups,
+            completed: followUpsDone,
             followUpsToday: followUpsDone,
             totalFollowUps: followUpsDone,
+            doneTotal,
             remaining,
             rangeLabel: 'Range Followups',
             topLabel: 'Top Followup',
@@ -1511,7 +1532,7 @@ const TodaysVisitedReport = () => {
                             <div className="border rounded p-3">
                                 <div className="text-xs text-gray-500 font-bold uppercase">Followups Done</div>
                                 <div className="text-2xl font-black text-purple-700">
-                                    {activeReportStats.totalFollowUps}<span className="text-lg font-bold text-gray-400">/{activeReportStats.total}</span>
+                                    {activeReportStats.totalFollowUps}<span className="text-lg font-bold text-gray-400">/{activeReportStats.doneTotal ?? activeReportStats.total}</span>
                                 </div>
                                 <div className="mt-1 text-[10px] text-gray-400">
                                     {activeReportStats.remaining} remaining
@@ -1676,7 +1697,6 @@ const TodaysVisitedReport = () => {
                                         className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                                     >
                                         <option value="all">All Lists</option>
-                                        <option value="visitor">Visitors</option>
                                         <option value="online">Online Inquiry</option>
                                         <option value="offline">Offline Inquiry</option>
                                         <option value="dsr">DSR Inquiry</option>
@@ -1858,7 +1878,7 @@ const TodaysVisitedReport = () => {
                                             <td className="p-2 border text-center text-gray-400 font-medium">{index + 1}</td>
                                             <td className="p-2 border font-semibold text-gray-700">{formatDate(visitor.inquiryId?.inquiryDate || visitor.visitingDate)}</td>
                                             <td className="p-2 border font-semibold text-gray-700">
-                                                {visitor.latestFollowup?.scheduledDate ? formatDate(visitor.latestFollowup.scheduledDate) : formatDate(visitor.visitingDate)}
+                                                {formatDate(visitor.visitingDate)}
                                             </td>
                                             {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{visitor.branchId?.name || '-'}</td>}
                                             <td className="p-2 border text-gray-600 font-medium">{getFilledBy(visitor)}</td>
@@ -1896,7 +1916,7 @@ const TodaysVisitedReport = () => {
                                                 </span>
                                             </td>
                                             <td className="p-2 border text-gray-700 font-medium">
-                                                {visitor.latestFollowup?.scheduledDate ? (
+                                                {isVisibleVisitorFollowup(visitor) ? (
                                                     <div className="flex flex-col">
                                                         <span className="font-bold">{formatDate(visitor.latestFollowup.scheduledDate)}</span>
                                                         <span className="text-[10px] text-blue-600">
@@ -1905,14 +1925,18 @@ const TodaysVisitedReport = () => {
                                                     </div>
                                                 ) : '-'}
                                             </td>
-                                            <td className="p-2 border text-gray-600 truncate max-w-xs" title={visitor.latestFollowup?.remark || visitor.remarks}>
-                                                {visitor.latestFollowup?.remark ? (visitor.latestFollowup.remark.length > 20 ? `${visitor.latestFollowup.remark.substring(0, 20)}...` : visitor.latestFollowup.remark) : (visitor.remarks ? (visitor.remarks.length > 20 ? `${visitor.remarks.substring(0, 20)}...` : visitor.remarks) : '-')}
+                                            <td className="p-2 border text-gray-600 truncate max-w-xs" title={isVisibleVisitorFollowup(visitor) ? (visitor.latestFollowup?.remark || visitor.remarks) : visitor.remarks}>
+                                                {isVisibleVisitorFollowup(visitor) ? (
+                                                    visitor.latestFollowup?.remark ? (visitor.latestFollowup.remark.length > 20 ? `${visitor.latestFollowup.remark.substring(0, 20)}...` : visitor.latestFollowup.remark) : (visitor.remarks ? (visitor.remarks.length > 20 ? `${visitor.remarks.substring(0, 20)}...` : visitor.remarks) : '-')
+                                                ) : (
+                                                    visitor.remarks ? (visitor.remarks.length > 20 ? `${visitor.remarks.substring(0, 20)}...` : visitor.remarks) : '-'
+                                                )}
                                             </td>
                                             <td className="p-2 border text-gray-700 font-medium">
-                                                {visitor.latestFollowup?.followUpBy?.name || '-'}
+                                                {isVisibleVisitorFollowup(visitor) ? (visitor.latestFollowup?.followUpBy?.name || '-') : '-'}
                                             </td>
                                             <td className="p-2 border text-center">
-                                                {getLastFollowUpInfo(visitor)}
+                                                {isVisibleVisitorFollowup(visitor) ? getLastFollowUpInfo(visitor) : '-'}
                                             </td>
                                             <td className="p-2 border text-center sticky right-0 bg-white print:hidden">
                                                 <div className="flex justify-center gap-1">

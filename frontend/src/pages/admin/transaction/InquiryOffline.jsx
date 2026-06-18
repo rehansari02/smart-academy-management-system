@@ -73,6 +73,7 @@ const FollowUpModal = ({ inquiry, onClose, onSave }) => {
             status: data.status,
             followUpDetails: finalDetails,
             followUpDate: fDate,
+            nextVisitingDate: fDate,
             newRemarks: data.newRemarks,
             recordFollowUpActivity: true,
         };
@@ -165,17 +166,17 @@ const InquiryOffline = () => {
     const { branches } = useSelector((state) => state.branch);
     const { add, edit, delete: canDelete } = useUserRights('Inquiry - Offline');
     const getLastFollowUpByName = (inquiry) => {
-        const by = inquiry.followUpBy;
-        if (by?.name || by?.username) return by.name || by.username;
         const last = inquiry.followUpHistory?.[inquiry.followUpHistory.length - 1];
         const lastBy = last?.followUpBy;
         if (lastBy?.name || lastBy?.username) return lastBy.name || lastBy.username;
+        const by = inquiry.followUpBy;
+        if (by?.name || by?.username) return by.name || by.username;
         return '-';
     };
 
     const getLastFollowUpMessage = (inquiry) => {
         const last = inquiry.followUpHistory?.[inquiry.followUpHistory.length - 1];
-        return last?.remarks || '-';
+        return last?.remarks || last?.remark || inquiry.followUpDetails || '-';
     };
 
     const getLastFollowUpInfo = (inquiry) => {
@@ -183,7 +184,7 @@ const InquiryOffline = () => {
         if (!history || history.length === 0) return '-';
         const last = history[history.length - 1];
         if (!last) return '-';
-        const callingDate = last.createdAt || inquiry.updatedAt || last.date;
+        const callingDate = last.callingDate || last.createdAt || inquiry.updatedAt || last.date;
         const dateStr = callingDate
             ? `${formatDate(callingDate)} ${new Date(callingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
             : '';
@@ -211,7 +212,7 @@ const InquiryOffline = () => {
     )].sort();
 
     // Filter defaults to Walk-in for Offline page
-    const [filters, setFilters] = useState({ startDate: getTodayDate(), endDate: getTodayDate(), status: '', studentName: '', referenceBy: '', branchId: '', employeeId: '', source: 'Walk-in', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 });
+    const [filters, setFilters] = useState({ startDate: getTodayDate(), endDate: getTodayDate(), status: '', studentName: '', referenceBy: '', followUpDetails: '', branchId: '', employeeId: '', followUpById: '', source: 'Walk-in', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 });
     const employeeOptions = getEmployeeFilterOptions(employees, user);
     const activeEmployeeId = getScopedEmployeeId(user, filters.employeeId);
     const [modal, setModal] = useState({ type: null, data: null }); // type: 'form', 'followup', 'view'
@@ -220,7 +221,11 @@ const InquiryOffline = () => {
     const [selectedInquiryIds, setSelectedInquiryIds] = useState(new Set());
     const [bulkAssignee, setBulkAssignee] = useState('');
     const [transferMode, setTransferMode] = useState(false);
-    const statsRemainingCount = Math.max(0, Number(stats?.totalInquiries || 0) - Number(stats?.totalFollowUps || 0));
+    const statsHeaderOpen = Number(stats?.openCount ?? stats?.summary?.open ?? 0);
+    const statsHeaderCompleted = Number(stats?.summary?.completed || 0);
+    const statsHeaderTotal = statsHeaderOpen + statsHeaderCompleted;
+    const statsRangeTotal = Number(stats?.rangeTotalInquiries ?? stats?.totalInquiries ?? statsHeaderTotal ?? 0);
+    const statsRemainingCount = Number(stats?.openCount ?? stats?.summary?.open ?? 0);
 
     const handlePrintList = () => {
         window.print();
@@ -241,6 +246,12 @@ const InquiryOffline = () => {
                     endDate: nextFilters.endDate,
                     branchId: nextFilters.branchId,
                     employeeId: nextFilters.employeeId,
+                    followUpById: nextFilters.followUpById,
+                    dateFilterType: nextFilters.dateFilterType,
+                    status: nextFilters.status,
+                    studentName: nextFilters.studentName,
+                    referenceBy: nextFilters.referenceBy,
+                    followUpDetails: nextFilters.followUpDetails,
                 },
                 withCredentials: true,
             });
@@ -517,9 +528,9 @@ const InquiryOffline = () => {
         {
             header: 'Next Follow Up', render: r => (
                 <div className="text-xs">
-                    <div className="font-bold text-blue-600">{r.nextVisitingDate ? formatDate(r.nextVisitingDate) : '-'}</div>
+                    <div className="font-bold text-blue-600">{(r.nextVisitingDate || r.followUpDate) ? formatDate(r.nextVisitingDate || r.followUpDate) : '-'}</div>
                     <div className="text-gray-500 font-medium">
-                        {r.nextVisitingDate && new Date(r.nextVisitingDate).toTimeString() !== '00:00:00 GMT+0530 (India Standard Time)' && new Date(r.nextVisitingDate).toTimeString() !== '00:00:00 GMT+0000 (Coordinated Universal Time)' ? new Date(r.nextVisitingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                        {(r.nextVisitingDate || r.followUpDate) && new Date(r.nextVisitingDate || r.followUpDate).toTimeString() !== '00:00:00 GMT+0530 (India Standard Time)' && new Date(r.nextVisitingDate || r.followUpDate).toTimeString() !== '00:00:00 GMT+0000 (Coordinated Universal Time)' ? new Date(r.nextVisitingDate || r.followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                     </div>
                 </div>
             )
@@ -610,19 +621,19 @@ const InquiryOffline = () => {
                         <div className="flex items-center gap-4 mr-4 bg-white p-2 rounded-lg border border-gray-200 shadow-sm animate-fadeIn">
                             <div className="text-center px-3 border-r border-gray-100">
                                 <p className="text-[10px] font-bold text-gray-400 uppercase">Total</p>
-                                <p className="text-sm font-black text-gray-800">{stats.summary.total}</p>
+                                <p className="text-sm font-black text-gray-800">{statsHeaderTotal}</p>
                             </div>
                             <div className="text-center px-3 border-r border-gray-100">
                                 <p className="text-[10px] font-bold text-orange-400 uppercase">Open</p>
-                                <p className="text-sm font-black text-orange-600">{stats.summary.open || 0}</p>
+                                <p className="text-sm font-black text-orange-600">{statsHeaderOpen}</p>
                             </div>
                             <div className="text-center px-3 border-r border-gray-100">
                                 <p className="text-[10px] font-bold text-green-400 uppercase">Completed</p>
-                                <p className="text-sm font-black text-green-600">{stats.summary.completed || 0}</p>
+                                <p className="text-sm font-black text-green-600">{statsHeaderCompleted}</p>
                             </div>
                             <div className="text-center px-3">
                                 <p className="text-[10px] font-bold text-blue-400 uppercase">Follow-ups Today</p>
-                                <p className="text-sm font-black text-blue-600">{stats.summary.followUpsToday || 0}</p>
+                                <p className="text-sm font-black text-blue-600">{stats.totalFollowUps || stats.summary.followUpsToday || 0}</p>
                             </div>
                         </div>
                     )}
@@ -691,13 +702,13 @@ const InquiryOffline = () => {
                         <div className="border rounded p-3">
                             <div className="text-xs text-gray-500 font-bold uppercase">Range Inquiries</div>
                             <div className="text-2xl font-black text-blue-700">
-                                {statsRemainingCount}<span className="text-lg font-bold text-gray-400">/{stats.totalInquiries || 0}</span>
+                                {statsRemainingCount}<span className="text-lg font-bold text-gray-400">/{statsRangeTotal}</span>
                             </div>
                             {stats.pendingFromBefore > 0 && (
                                 <div className="mt-1 text-[10px]">
                                     <span className="text-orange-500 font-bold">Prev Pending: {stats.pendingFromBefore}</span>
                                     <span className="text-gray-400 mx-1">|</span>
-                                    <span className="text-green-600">New: {stats.totalInquiries || 0}</span>
+                                    <span className="text-green-600">New: {statsRangeTotal}</span>
                                 </div>
                             )}
                             {activeEmployeeId && (
@@ -742,6 +753,7 @@ const InquiryOffline = () => {
                             <select value={filters.dateFilterType} onChange={e => setFilters({ ...filters, dateFilterType: e.target.value, page: 1 })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                                 <option value="inquiryDate">Inquiry Date</option>
                                 <option value="followUpDate">Follow-up Date</option>
+                                <option value="callingDate">Calling Date</option>
                             </select>
                         </div>
                         <div>
@@ -769,10 +781,11 @@ const InquiryOffline = () => {
                     <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-4' : 'md:grid-cols-2'} gap-4`}>
                         <div className="relative z-20">
                             <StudentSearch
-                                label="Search Student"
+                                label="Search Student / Contact (H/S/P)"
                                 mode="inquiry"
                                 selectedValue={filters.studentName}
                                 additionalFilters={{ source: 'Walk-in', skipDefaultDate: 'true', includeClosed: 'true' }}
+                                onQueryChange={(query) => setFilters({ ...filters, studentName: query, page: 1 })}
                                 onSelect={(id, student) => {
                                     if (student) {
                                         const fullName = [student.firstName, student.middleName, student.lastName].filter(Boolean).join(' ');
@@ -781,7 +794,7 @@ const InquiryOffline = () => {
                                         setFilters({ ...filters, studentName: '', page: 1 });
                                     }
                                 }}
-                                placeholder="Search by Name for Offline Inquiries..."
+                                placeholder="Search name or H/S/P mobile..."
                                 className="w-full text-sm"
                             />
                         </div>
@@ -820,6 +833,25 @@ const InquiryOffline = () => {
                                 </select>
                             </div>
                         )}
+                        <div>
+                            <label className="text-xs text-gray-500 font-semibold mb-1 block">Followup By</label>
+                            <select value={filters.followUpById} onChange={e => setFilters({ ...filters, followUpById: e.target.value, page: 1 })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                                <option value="">All Followup By</option>
+                                {employeeOptions?.map((employee) => (
+                                    <option key={employee._id} value={employee._id}>{employee.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-xs text-gray-500 font-semibold mb-1 block">Followup Details</label>
+                            <input
+                                type="text"
+                                value={filters.followUpDetails}
+                                onChange={e => setFilters({ ...filters, followUpDetails: e.target.value, page: 1 })}
+                                placeholder="Search remarks..."
+                                className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
                     </div>
 
                     {/* Row 3: Buttons */}
@@ -827,7 +859,7 @@ const InquiryOffline = () => {
                         <button
                             onClick={() => {
                                 const today = getTodayDate();
-                                const resetState = { startDate: today, endDate: today, status: '', studentName: '', referenceBy: '', branchId: '', employeeId: '', source: 'Walk-in', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 };
+                                const resetState = { startDate: today, endDate: today, status: '', studentName: '', referenceBy: '', followUpDetails: '', branchId: '', employeeId: '', followUpById: '', source: 'Walk-in', dateFilterType: 'inquiryDate', page: 1, pageSize: 10 };
                                 setFilters(resetState);
                                 setSelectedInquiryIds(new Set());
                                 setTransferMode(false);

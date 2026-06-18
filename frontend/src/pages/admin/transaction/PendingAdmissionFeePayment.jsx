@@ -213,7 +213,7 @@ const PendingAdmissionFeePayment = () => {
                         <img
                             src={student.studentPhoto.startsWith('http') ? student.studentPhoto : `${import.meta.env.VITE_API_URL}/${student.studentPhoto}`}
                             alt="Student"
-                            className="w-32 h-32 rounded-lg object-cover bg-gray-50"
+                            className="w-32 h-32 rounded-lg object-cover object-top bg-gray-50"
                         />
                     </div>
                 ) : (

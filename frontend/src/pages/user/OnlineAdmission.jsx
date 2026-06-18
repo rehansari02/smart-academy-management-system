@@ -248,6 +248,7 @@ const OnlineAdmission = () => {
                         onProcessingChange={(processing) => setIsImageProcessing(processing)}
                         size="w-20 h-20"
                         name="studentPhoto"
+                        enableAdjustments
                     />
                 </div>
             </div>

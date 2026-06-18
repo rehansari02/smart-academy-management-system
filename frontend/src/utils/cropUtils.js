@@ -1,5 +1,12 @@
 // A helper function to create a canvas and extract the cropped image
-export const getCroppedImg = async (imageSrc, pixelCrop) => {
+export const getCroppedImg = async (imageSrc, pixelCrop, options = {}) => {
+    const {
+        outputWidth = pixelCrop.width,
+        outputHeight = pixelCrop.height,
+        fileName = 'cropped_image.jpg',
+        quality = 0.95,
+    } = options;
+
     const image = await new Promise((resolve, reject) => {
         const img = new Image();
         img.addEventListener('load', () => resolve(img));
@@ -15,9 +22,11 @@ export const getCroppedImg = async (imageSrc, pixelCrop) => {
         return null;
     }
 
-    canvas.width = pixelCrop.width;
-    canvas.height = pixelCrop.height;
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
 
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, outputWidth, outputHeight);
     ctx.drawImage(
         image,
         pixelCrop.x,
@@ -26,8 +35,8 @@ export const getCroppedImg = async (imageSrc, pixelCrop) => {
         pixelCrop.height,
         0,
         0,
-        pixelCrop.width,
-        pixelCrop.height
+        outputWidth,
+        outputHeight
     );
 
     return new Promise((resolve, reject) => {
@@ -36,8 +45,7 @@ export const getCroppedImg = async (imageSrc, pixelCrop) => {
                 reject(new Error('Canvas is empty'));
                 return;
             }
-            // Generate a filename
-            blob.name = 'cropped_banner.jpg';
+            blob.name = fileName;
             
             // Create a File object
             const file = new File([blob], blob.name, {
@@ -46,6 +54,6 @@ export const getCroppedImg = async (imageSrc, pixelCrop) => {
             });
             
             resolve({ file, url: URL.createObjectURL(blob) });
-        }, 'image/jpeg', 0.95);
+        }, 'image/jpeg', quality);
     });
 };

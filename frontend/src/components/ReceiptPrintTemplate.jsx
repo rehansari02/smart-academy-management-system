@@ -85,7 +85,8 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
       boxSizing: 'border-box',
       position: 'relative',
       WebkitPrintColorAdjust: 'exact',
-      printColorAdjust: 'exact'
+      printColorAdjust: 'exact',
+      colorAdjust: 'exact'
     }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
@@ -324,9 +325,10 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
               margin: 0 !important;
               padding: 0 !important;
               background: #fff !important;
-              width: 100% !important;
-              height: 100% !important;
+              width: 210mm !important;
+              height: 297mm !important;
               overflow: visible !important;
+              position: relative !important;
             }
             /* Hide EVERYTHING by default during print */
             body > *:not(.print-only-container) {
@@ -343,8 +345,9 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
               background: white !important;
               margin: 0 !important;
               padding: 0 !important;
-              z-index: 999999999 !important;
+              z-index: 999999999999 !important;
               visibility: visible !important;
+              overflow: hidden !important;
             }
             .print-only-container * {
               visibility: visible !important;
@@ -363,7 +366,10 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
         height: '297mm',
         margin: '0',
         padding: '0',
-        backgroundColor: 'white'
+        backgroundColor: 'white',
+        WebkitPrintColorAdjust: 'exact',
+        printColorAdjust: 'exact',
+        colorAdjust: 'exact'
       }}>
         {/* First Copy */}
         {renderSingleReceipt()}

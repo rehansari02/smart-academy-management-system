@@ -339,7 +339,15 @@ const FeeCollection = () => {
     // === Printing ===
     const handlePrintReceipt = useReactToPrint({
         contentRef: receiptRef,
-        onAfterPrint: () => setPrintingReceipt(null),
+        onBeforePrint: async () => {
+            // Ensure the receipt is set before printing
+            return new Promise((resolve) => {
+                setTimeout(resolve, 500);
+            });
+        },
+        onAfterPrint: () => {
+            setPrintingReceipt(null);
+        },
         documentTitle: `Receipt-${printingReceipt?.receiptNo || 'print'}`
     });
 
@@ -347,19 +355,13 @@ const FeeCollection = () => {
         setPrintingReceipt(receipt);
         // Add a small delay to ensure the template has rendered with the new receipt data
         setTimeout(() => {
-            const printBtn = document.getElementById('hidden-print-trigger');
-            if (printBtn) {
-                printBtn.click();
-            } else {
-                handlePrintReceipt();
-            }
-        }, 300);
+            handlePrintReceipt();
+        }, 500);
     };
 
     return (
         <div className="container mx-auto p-4 md:p-6 bg-gray-50 min-h-screen">
-            {/* Hidden button to trigger print-to-react properly on mobile */}
-            <button id="hidden-print-trigger" onClick={handlePrintReceipt} className="hidden" />
+
             <h1 className="text-3xl font-bold text-gray-800 mb-6 flex items-center gap-2">
                 <FileText className="text-blue-600"/> Fees Receipt Management
             </h1>
@@ -916,17 +918,14 @@ const FeeCollection = () => {
 
             {/* === HIDDEN PRINT TEMPLATES */}
             <div style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
+                position: 'fixed',
+                left: '-99999px',
+                top: '-99999px',
                 width: '210mm',
                 height: '297mm',
                 overflow: 'hidden',
                 backgroundColor: 'white',
-                zIndex: -1,
-                opacity: 0,
-                pointerEvents: 'none',
-                visibility: 'hidden'
+                zIndex: -99999
             }}>
                 <ReceiptPrintTemplate ref={receiptRef} receipt={printingReceipt} />
             </div>

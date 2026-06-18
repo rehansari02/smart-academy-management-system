@@ -314,7 +314,7 @@ const StudentRegistrationProcess = () => {
                     <img 
                         src={getStudentPhotoUrl(student.studentPhoto)} 
                         alt="Student" 
-                        className="h-24 w-24 object-cover rounded border"
+                        className="h-24 w-24 object-cover object-top rounded border"
                     />
                 ) : (
                     <span className="text-gray-400 italic">No Photo Available</span>

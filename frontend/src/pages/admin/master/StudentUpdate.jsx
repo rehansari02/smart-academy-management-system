@@ -171,7 +171,7 @@ const StudentUpdate = () => {
                           ? currentStudent.studentPhoto
                           : `${import.meta.env.VITE_API_URL}/${currentStudent.studentPhoto}`)
                       }
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover object-top"
                       onError={(e) => {
                         e.target.src = "https://via.placeholder.com/150";
                       }}

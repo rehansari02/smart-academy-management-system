@@ -12,7 +12,13 @@ const formatDate = (value) => {
     return date.isValid() ? date.format('DD/MM/YYYY') : '';
 };
 
-const buildExamScheduleMessage = (schedule, courseName) => {
+const getStudentName = (student) => [
+    student.firstName,
+    student.middleName,
+    student.lastName
+].filter(Boolean).join(' ').trim() || 'Student';
+
+const getExamDateRange = (schedule) => {
     const dates = (schedule.timeTable || [])
         .map(item => item.date)
         .filter(Boolean)
@@ -20,13 +26,18 @@ const buildExamScheduleMessage = (schedule, courseName) => {
         .filter(date => !Number.isNaN(date.getTime()))
         .sort((a, b) => a.getTime() - b.getTime());
 
-    const fromDate = formatDate(dates[0]);
-    const toDate = formatDate(dates[dates.length - 1]);
-    const dateText = fromDate && toDate
-        ? `${fromDate} to ${toDate}`
-        : fromDate || toDate || 'the scheduled dates';
+    const fromDate = formatDate(dates[0]) || 'scheduled date';
+    const toDate = formatDate(dates[dates.length - 1]) || fromDate;
 
-    return `Exam schedule for ${courseName || 'your course'} (${schedule.examName || 'Exam'}) will be conducted from ${dateText}. Please check your exam timetable.`;
+    return { fromDate, toDate };
+};
+
+const buildExamScheduleMessage = (student, schedule) => {
+    const { fromDate, toDate } = getExamDateRange(schedule);
+    const studentName = getStudentName(student);
+    const branchName = (student.branchId?.name || student.branchName || 'Smart Institute').replace(/\s*Branch$/i, '');
+
+    return `Dear, ${studentName}. Your exam has been scheduled from ${fromDate} to ${toDate}, for any other details contact your ${branchName} Branch. Regards, Smart Institute`;
 };
 
 const queueExamScheduleSms = (scheduleId) => {
@@ -36,7 +47,8 @@ const queueExamScheduleSms = (scheduleId) => {
                 .populate('course', 'name')
                 .populate({
                     path: 'attendees',
-                    select: 'firstName lastName mobileStudent mobileParent course isDeleted isCancelled isRegistered'
+                    select: 'firstName middleName lastName mobileStudent mobileParent course branchId branchName isDeleted isCancelled isRegistered',
+                    populate: { path: 'branchId', select: 'name' }
                 });
 
             if (!schedule) return;
@@ -52,24 +64,28 @@ const queueExamScheduleSms = (scheduleId) => {
                     _id: { $in: attendeeIds },
                     isDeleted: { $ne: true },
                     isCancelled: { $ne: true }
-                }).select('firstName lastName mobileStudent mobileParent');
+                })
+                    .select('firstName middleName lastName mobileStudent mobileParent branchId branchName')
+                    .populate('branchId', 'name');
             } else if (schedule.course) {
                 students = await Student.find({
                     course: schedule.course._id,
                     isDeleted: { $ne: true },
                     isCancelled: { $ne: true },
                     isRegistered: true
-                }).select('firstName lastName mobileStudent mobileParent');
+                })
+                    .select('firstName middleName lastName mobileStudent mobileParent branchId branchName')
+                    .populate('branchId', 'name');
             }
 
             if (!students.length) return;
 
-            const message = buildExamScheduleMessage(schedule, schedule.course?.name);
-            for (const student of students) {
+            await Promise.allSettled(students.map(async (student) => {
                 const mobile = student.mobileStudent || student.mobileParent;
-                if (!mobile) continue;
+                if (!mobile) return;
+                const message = buildExamScheduleMessage(student, schedule);
                 await sendSMS(mobile, message, 'General');
-            }
+            }));
         } catch (error) {
             console.error('Exam schedule SMS failed:', error.message);
         }
@@ -156,7 +172,6 @@ const updateExamSchedule = asyncHandler(async (req, res) => {
         }
 
         const populated = await ExamSchedule.findById(updated._id).populate('course', 'name');
-        queueExamScheduleSms(updated._id);
         res.json(populated);
     } else {
         res.status(404); throw new Error('Schedule not found');

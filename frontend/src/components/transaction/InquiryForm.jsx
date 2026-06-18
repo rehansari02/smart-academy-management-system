@@ -283,6 +283,7 @@ const InquiryForm = ({ mode, initialData, onClose, onSave }) => {
                                         }}
                                         size="w-32 h-32"
                                         name="studentPhoto"
+                                        enableAdjustments
                                     />
 
                                     {/* Inquiry Date Below Photo */}
