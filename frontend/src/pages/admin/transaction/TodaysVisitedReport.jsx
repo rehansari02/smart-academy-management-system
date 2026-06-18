@@ -433,7 +433,7 @@ const TodaysVisitedReport = () => {
             referenceBy: activeFilters.referenceBy
         };
 
-        const shouldFetchVisitorDone = activeFilters.reportType === 'visited' && visitorReportRights.view;
+        const shouldFetchVisitorDone = (activeFilters.reportType === 'visited' || activeFilters.isPrintAll) && visitorReportRights.view;
         const visitorFollowups = shouldFetchVisitorDone
             ? await visitorService.getVisitorFollowUps({
                 ...commonParams,
@@ -463,7 +463,7 @@ const TodaysVisitedReport = () => {
                 offlineInquiryRights.view ? fetchInquiryFollowupStats('Walk-in') : Promise.resolve([]),
                 dsrInquiryRights.view ? fetchInquiryFollowupStats('DSR') : Promise.resolve([]),
             ];
-        const inquiryFollowups = activeFilters.reportType === 'visited'
+        const inquiryFollowups = (activeFilters.reportType === 'visited' && !activeFilters.isPrintAll)
             ? []
             : (await Promise.all(inquiryRequests)).flat();
 
@@ -646,21 +646,21 @@ const TodaysVisitedReport = () => {
             const activityVisitors = [...activityVisitorMap.values()];
 
             // 4. Fetch done activity sections for Followups Done print summary.
-            const doneActivity = await fetchDoneActivityData(filters);
+            const doneActivity = await fetchDoneActivityData({ ...filters, isPrintAll: true });
 
             toast.update(toastId, { render: "Data fetched, generating report...", type: "success", isLoading: false, autoClose: 2000 });
 
-            const sections = activeFilters.reportType === 'visited'
+            const sections = filters.reportType === 'visited'
                 ? [
                     { title: '1. Visitor Follow-ups', data: visitorFollowups, type: 'visitor-followup' },
                     { title: '2. Activity Today Followups', data: doneActivity.doneVisitorRows || [], type: 'done-followup' },
                     { title: '3. Activity Report Visitors', data: doneActivity.activityVisitors, type: 'activity-visitor' }
                 ]
                 : [
-                    { title: '1. Online Inquiry Follow-ups', data: onlineInquiry, type: 'inquiry' },
-                    { title: '2. Offline Inquiry Follow-ups', data: offlineInquiry, type: 'inquiry' },
-                    { title: '3. DSR Inquiry Follow-ups', data: dsrInquiry, type: 'inquiry' },
-                    { title: '4. Activity Today Followups', data: doneActivity.doneVisitorRows || [], type: 'done-followup' }
+                    { title: '1. Online Inquiry Done Followups', data: (doneActivity.doneInquiryRows || []).filter(f => f.source === 'Online'), type: 'done-followup' },
+                    { title: '2. Offline Inquiry Done Followups', data: (doneActivity.doneInquiryRows || []).filter(f => f.source === 'Walk-in'), type: 'done-followup' },
+                    { title: '3. DSR Inquiry Done Followups', data: (doneActivity.doneInquiryRows || []).filter(f => f.source === 'DSR'), type: 'done-followup' },
+                    { title: '4. Visitor Done Followups', data: doneActivity.doneVisitorRows || [], type: 'done-followup' }
                 ];
 
             const employeeName = getEmployeeNameById(employeeOptions, activeEmployeeId, 'All Employees');
