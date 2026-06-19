@@ -28,6 +28,7 @@ const OnlineAdmission = () => {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsContent, setTermsContent] = useState('');
   const [termsLoading, setTermsLoading] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
   
   // Local state for "Add New" inputs
   const [newRef, setNewRef] = useState({ name: '', mobile: '', address: '' });
@@ -134,8 +135,11 @@ const OnlineAdmission = () => {
 
     dispatch(createPublicInquiry(formData)).then((res) => {
         if(!res.error) {
-            toast.success("Registration Successful!");
-            navigate('/'); // Redirect to home or success page
+            setShowCelebration(true);
+            toast.success("Your enrollment form submission is completed.");
+            setTimeout(() => {
+              navigate('/');
+            }, 3200);
         }
     });
   };
@@ -168,6 +172,85 @@ const OnlineAdmission = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+      <style>{`
+        @keyframes firework-burst {
+          0% {
+            transform: translate(-50%, -50%) scale(0.2);
+            opacity: 1;
+            box-shadow:
+              0 0 #f97316,
+              0 0 #facc15,
+              0 0 #22c55e,
+              0 0 #38bdf8,
+              0 0 #ec4899,
+              0 0 #a855f7,
+              0 0 #ef4444,
+              0 0 #14b8a6;
+          }
+          75% {
+            opacity: 1;
+            box-shadow:
+              0 -72px #f97316,
+              50px -50px #facc15,
+              72px 0 #22c55e,
+              50px 50px #38bdf8,
+              0 72px #ec4899,
+              -50px 50px #a855f7,
+              -72px 0 #ef4444,
+              -50px -50px #14b8a6;
+          }
+          100% {
+            transform: translate(-50%, -50%) scale(1.05);
+            opacity: 0;
+            box-shadow:
+              0 -92px transparent,
+              64px -64px transparent,
+              92px 0 transparent,
+              64px 64px transparent,
+              0 92px transparent,
+              -64px 64px transparent,
+              -92px 0 transparent,
+              -64px -64px transparent;
+          }
+        }
+        @keyframes float-spark {
+          0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.75; }
+          50% { transform: translateY(-18px) rotate(8deg); opacity: 1; }
+        }
+        .firework-dot {
+          position: absolute;
+          width: 8px;
+          height: 8px;
+          border-radius: 9999px;
+          animation: firework-burst 1.3s ease-out infinite;
+        }
+        .firework-dot:nth-child(2) { animation-delay: 0.25s; }
+        .firework-dot:nth-child(3) { animation-delay: 0.5s; }
+        .firework-dot:nth-child(4) { animation-delay: 0.75s; }
+        .floating-spark {
+          animation: float-spark 1.7s ease-in-out infinite;
+        }
+      `}</style>
+      {showCelebration && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-slate-950/90 px-4 text-white">
+          <div className="firework-dot left-[18%] top-[26%] bg-orange-400" />
+          <div className="firework-dot left-[78%] top-[30%] bg-yellow-300" />
+          <div className="firework-dot left-[28%] top-[72%] bg-pink-400" />
+          <div className="firework-dot left-[74%] top-[70%] bg-cyan-300" />
+          <div className="relative z-10 w-full max-w-lg rounded-3xl border border-white/15 bg-white/10 p-8 text-center shadow-2xl backdrop-blur-md">
+            <div className="floating-spark mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-400 text-white shadow-lg shadow-emerald-500/30">
+              <CheckCircle size={44} />
+            </div>
+            <p className="mb-2 text-sm font-bold uppercase tracking-[0.28em] text-yellow-200">Enrollment Complete</p>
+            <h1 className="text-3xl font-black leading-tight md:text-4xl">
+              Your enrollment form submission is completed.
+            </h1>
+            <p className="mt-4 text-sm text-slate-200">
+              Thank you for applying to Smart Institute. Our team will contact you soon.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
         <div className="bg-gradient-to-r from-primary to-blue-800 px-8 py-6 text-white text-center">
           <h2 className="text-3xl font-extrabold tracking-tight">Online Admission Form</h2>

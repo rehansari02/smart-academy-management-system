@@ -196,7 +196,8 @@ const TodaysVisitorsList = () => {
                     employeeId: activeEmployeeId,
                     studentName,
                     referenceBy,
-                    dateFilterType: 'callingDate'
+                    dateFilterType: 'callingDate',
+                    excludeVisitorReportActivity: 'true'
                 });
 
             const headers = `
@@ -329,7 +330,8 @@ const TodaysVisitorsList = () => {
                     fromDate: override.fromDate || fromDate,
                     toDate: override.toDate || toDate,
                     branchId: override.branchId ?? filterBranch,
-                    employeeId: override.employeeId ?? employeeId
+                    employeeId: override.employeeId ?? employeeId,
+                    excludeVisitorReportActivity: 'true'
                 },
                 withCredentials: true,
             });

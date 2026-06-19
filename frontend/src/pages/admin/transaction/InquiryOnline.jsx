@@ -267,6 +267,7 @@ const InquiryOnline = () => {
                     studentName: nextFilters.studentName,
                     referenceBy: nextFilters.referenceBy,
                     followUpDetails: nextFilters.followUpDetails,
+                    excludeVisitorReportActivity: 'true',
                 },
                 withCredentials: true,
             });

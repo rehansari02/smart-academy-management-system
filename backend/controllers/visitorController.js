@@ -165,6 +165,13 @@ const buildDateRange = (fromDate, toDate) => {
     return range;
 };
 
+const getIndiaDateKey = (value) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    const indiaDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    return indiaDate.toISOString().slice(0, 10);
+};
+
 const visitorSearchFields = {
     all: ['studentName', 'mobileNumber', 'contactParent', 'contactHome', 'reference'],
     name: ['studentName'],
@@ -667,6 +674,7 @@ exports.updateVisitor = async (req, res) => {
 exports.createVisitorFollowUp = async (req, res) => {
     try {
         const { visitorId, scheduledDate, status, remark, followUpId, completeCurrentVisit } = req.body;
+        const origin = req.body.followUpOrigin || req.body.origin || undefined;
 
         if (!visitorId || !scheduledDate) {
             return res.status(400).json({ message: 'Visitor and next visit date are required' });
@@ -697,6 +705,7 @@ exports.createVisitorFollowUp = async (req, res) => {
                     attendedBy: visitor.attendedBy,
                     followUpBy: req.user?._id,
                     branchId: visitor.branchId || req.user.branchId,
+                    origin,
                     isDone: true
                 },
                 { new: true }
@@ -715,6 +724,7 @@ exports.createVisitorFollowUp = async (req, res) => {
                 attendedBy: visitor.attendedBy,
                 followUpBy: req.user?._id,
                 branchId: visitor.branchId || req.user.branchId,
+                origin,
                 isDone: false
             });
         } else if (completeCurrentVisit) {
@@ -727,6 +737,7 @@ exports.createVisitorFollowUp = async (req, res) => {
                 attendedBy: visitor.attendedBy,
                 followUpBy: req.user?._id,
                 branchId: visitor.branchId || req.user.branchId,
+                origin,
                 isDone: true
             });
         } else {
@@ -739,6 +750,7 @@ exports.createVisitorFollowUp = async (req, res) => {
                 attendedBy: visitor.attendedBy,
                 followUpBy: req.user?._id,
                 branchId: visitor.branchId || req.user.branchId,
+                origin,
                 isDone: false
             });
         }
@@ -776,8 +788,18 @@ exports.createVisitorFollowUp = async (req, res) => {
 // Get visitor follow-ups with filters
 exports.getVisitorFollowUps = async (req, res) => {
     try {
-        const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, branchId, visitorId, employeeId, dateFilterType } = req.query;
+        const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, branchId, visitorId, employeeId, dateFilterType, isDone } = req.query;
         const query = { isDeleted: false };
+
+        if (isDone === 'true') {
+            query.isDone = true;
+        } else if (isDone === 'false') {
+            query.isDone = { $ne: true };
+        }
+
+        if (req.query.excludeVisitorReportActivity === 'true') {
+            query.origin = { $ne: 'visitorReport' };
+        }
 
         if (visitorId) {
             query.visitorId = visitorId;
@@ -886,6 +908,7 @@ exports.deleteVisitorFollowUp = async (req, res) => {
 exports.getVisitorFollowUpStats = async (req, res) => {
     try {
         const { fromDate, toDate, branchId, employeeId } = req.query;
+        const excludeVisitorReportActivity = req.query.excludeVisitorReportActivity === 'true';
 
         // Date Range for "New" visitors and followups performed
         const start = fromDate ? new Date(fromDate) : new Date();
@@ -957,7 +980,8 @@ exports.getVisitorFollowUpStats = async (req, res) => {
             ...(baseQuery.branchId ? { branchId: baseQuery.branchId } : {}),
             ...(visibleFollowupVisitorIds.length ? { visitorId: { $in: visibleFollowupVisitorIds } } : {}),
             callingDate: { $gte: start, $lte: end },
-            ...(employeeUserId ? { followUpBy: employeeUserId } : {})
+            ...(employeeUserId ? { followUpBy: employeeUserId } : {}),
+            ...(excludeVisitorReportActivity ? { origin: { $ne: 'visitorReport' } } : {})
         };
 
         if (!visibleFollowupVisitorIds.length) {
@@ -1008,20 +1032,25 @@ exports.getVisitorFollowUpStats = async (req, res) => {
                 branchName: visitor.branchId?.name || '-'
             }));
 
-        const pendingVisitorDocs = employeeUserId
-            ? await Visitor.find({
-                ...rangeVisitorQuery,
-                visitingDate: { $lt: start },
-                status: { $in: openStatuses }
-            }).select('_id status visitingDate').lean()
-            : [];
-        const pendingFromBefore = pendingVisitorDocs.length;
+        const pendingFollowupQuery = {
+            isDeleted: false,
+            isDone: { $ne: true },
+            scheduledDate: { $lt: start },
+            ...(baseQuery.branchId ? { branchId: baseQuery.branchId } : {}),
+            ...(employeeUserId ? { followUpBy: employeeUserId } : {}),
+            ...(excludeVisitorReportActivity ? { origin: { $ne: 'visitorReport' } } : {})
+        };
+
+        const pendingFollowupDocs = await VisitorFollowUp.find(pendingFollowupQuery)
+            .select('_id scheduledDate visitorId status')
+            .lean();
         const pendingByDateMap = new Map();
-        for (const visitor of pendingVisitorDocs) {
-            const baseDate = visitor.visitingDate;
-            const key = new Date(baseDate).toISOString().slice(0, 10);
+        for (const followup of pendingFollowupDocs) {
+            const key = getIndiaDateKey(followup.scheduledDate);
+            if (!key || (fromDate && key >= fromDate)) continue;
             pendingByDateMap.set(key, (pendingByDateMap.get(key) || 0) + 1);
         }
+        const pendingFromBefore = [...pendingByDateMap.values()].reduce((sum, count) => sum + count, 0);
         const pendingByDate = [...pendingByDateMap.entries()]
             .map(([date, count]) => ({ date, count }))
             .sort((a, b) => new Date(a.date) - new Date(b.date));

@@ -66,6 +66,8 @@ const getVisitorFollowUps = async (filters = {}) => {
     if (filters.visitorId) params.append('visitorId', filters.visitorId);
     if (filters.employeeId) params.append('employeeId', filters.employeeId);
     if (filters.dateFilterType) params.append('dateFilterType', filters.dateFilterType);
+    if (filters.isDone !== undefined) params.append('isDone', String(filters.isDone));
+    if (filters.excludeVisitorReportActivity) params.append('excludeVisitorReportActivity', filters.excludeVisitorReportActivity);
 
     const response = await axios.get(`${API_URL}/followups?${params.toString()}`);
     return response.data;

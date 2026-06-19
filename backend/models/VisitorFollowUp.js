@@ -13,6 +13,7 @@ const visitorFollowUpSchema = new mongoose.Schema({
     attendedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
     followUpBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
+    origin: { type: String },
     isDone: { type: Boolean, default: false },
     isDeleted: { type: Boolean, default: false }
 }, { timestamps: true });

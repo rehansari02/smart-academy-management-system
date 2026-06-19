@@ -1056,6 +1056,7 @@ const getInquiryImportHistory = asyncHandler(async (req, res) => {
 
 const getInquiryFollowupStats = asyncHandler(async (req, res) => {
   const { source, branchId, employeeId, studentName, referenceBy, status, dateFilterType, followUpDetails, followUpById } = req.query;
+  const excludeVisitorReportActivity = req.query.excludeVisitorReportActivity === "true";
   const start = req.query.startDate ? new Date(req.query.startDate) : new Date();
   const end = req.query.endDate ? new Date(req.query.endDate) : new Date(start);
   start.setHours(0, 0, 0, 0);
@@ -1220,6 +1221,7 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
   inquiries.forEach((inquiry) => {
     (inquiry.followUpHistory || []).forEach((history) => {
       if (history.activityType && history.activityType !== 'followup') return;
+      if (excludeVisitorReportActivity && history.origin === "visitorReport") return;
       const actionDate = history.createdAt || history.date;
       if (!actionDate) return;
       const actionTime = new Date(actionDate).getTime();
@@ -1627,6 +1629,7 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
         status: req.body.status || inquiry.status || "Open",
         followUpBy: req.user?._id,
         activityType: (req.body.recordFollowUpActivity === true || req.body.recordFollowUpActivity === "true") ? "followup" : "updated",
+        origin: req.body.followUpOrigin || req.body.origin || undefined,
         createdAt: new Date()
       });
       inquiry.followUpCount = inquiry.followUpHistory.filter((item) => item.activityType === "followup").length;
