@@ -4,6 +4,9 @@ const { protect } = require('../middlewares/authMiddleware');
 const documentUpload = require('../middlewares/documentUploadMiddleware');
 const { 
     getMaterials, 
+    previewMaterial,
+    getMaterialPreviewMeta,
+    getRawMaterial,
     downloadMaterial,
     createMaterial, 
     updateMaterial, 
@@ -14,6 +17,9 @@ router.route('/')
     .get(getMaterials)
     .post(protect, documentUpload.single('document'), createMaterial);
 
+router.get('/preview-meta/:id', getMaterialPreviewMeta);
+router.get('/raw/:id', getRawMaterial);
+router.get('/preview/:id', previewMaterial);
 router.get('/download/:id', downloadMaterial);
 
 router.route('/:id')

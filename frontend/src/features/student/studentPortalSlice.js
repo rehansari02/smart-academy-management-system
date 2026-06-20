@@ -46,9 +46,9 @@ export const submitCourseFeedback = createAsyncThunk(
 // Study Material Thunks
 export const fetchStudyMaterials = createAsyncThunk(
     'studentPortal/fetchStudyMaterials',
-    async (_, thunkAPI) => {
+    async (filters = {}, thunkAPI) => {
         try {
-            const response = await axios.get(`${API_URL}materials`);
+            const response = await axios.get(`${API_URL}materials`, { params: filters });
             return response.data;
         } catch (error) {
             return thunkAPI.rejectWithValue(error.response?.data?.message || error.message);

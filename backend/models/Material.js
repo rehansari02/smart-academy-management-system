@@ -22,6 +22,10 @@ const materialSchema = mongoose.Schema({
     description: {
         type: String
     },
+    showDownloadButton: {
+        type: Boolean,
+        default: true
+    },
     isActive: {
         type: Boolean,
         default: true

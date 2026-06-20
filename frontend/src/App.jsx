@@ -44,6 +44,7 @@ const StudentHome = lazy(() => import("./pages/student/StudentHome"));
 const StudentCourseDetail = lazy(() => import("./pages/student/CourseDetail"));
 const StudentCourseFeedback = lazy(() => import("./pages/student/CourseFeedback"));
 const StudentFreeStudyMaterial = lazy(() => import("./pages/student/FreeStudyMaterial"));
+const MaterialPreview = lazy(() => import("./pages/MaterialPreview"));
 const StudentFreeLearning = lazy(() => import("./pages/student/FreeLearning"));
 const StudentFreeLearningReport = lazy(() => import("./pages/student/FreeLearningReport"));
 const StudentFees = lazy(() => import("./pages/student/StudentFees"));
@@ -843,6 +844,8 @@ function App() {
                   user ? <Navigate to={getHomeRoute()} replace /> : <RegisterPage />
                 }
               />
+
+              <Route path="/material-preview/:id" element={<MaterialPreview />} />
 
               <Route element={<PublicLayout />}>
                 <Route

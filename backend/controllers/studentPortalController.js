@@ -174,8 +174,64 @@ const submitFeedback = async (req, res) => {
 // @access  Private (Student)
 const getStudyMaterials = async (req, res) => {
     try {
-        const StudyMaterial = require('../models/StudyMaterial');
-        const materials = await StudyMaterial.find({ isFree: true }).sort({ createdAt: -1 });
+        const Student = require('../models/Student');
+        const Material = require('../models/Material');
+
+        const { fromDate, toDate, searchBy, value } = req.query;
+        const student = await Student.findOne({ userId: req.user._id, isDeleted: false })
+            .populate({
+                path: 'course',
+                select: 'name shortName subjects',
+                populate: {
+                    path: 'subjects.subject',
+                    select: 'name'
+                }
+            })
+            .lean();
+
+        if (!student) {
+            return res.status(404).json({ message: 'Student not found' });
+        }
+
+        const subjectIds = (student.course?.subjects || [])
+            .map((item) => item?.subject?._id || item?.subject)
+            .filter(Boolean);
+
+        if (!subjectIds.length) {
+            return res.json([]);
+        }
+
+        const query = {
+            isActive: true,
+            type: { $in: ['Public', 'Student only', 'Student and Faculty only'] },
+            subject: { $in: subjectIds }
+        };
+
+        if (fromDate || toDate) {
+            query.createdAt = {};
+            if (fromDate) query.createdAt.$gte = new Date(fromDate);
+            if (toDate) {
+                const endOfDay = new Date(toDate);
+                endOfDay.setHours(23, 59, 59, 999);
+                query.createdAt.$lte = endOfDay;
+            }
+        }
+
+        if (searchBy === 'title' && value) {
+            query.title = { $regex: value, $options: 'i' };
+        }
+
+        let materials = await Material.find(query)
+            .populate('subject', 'name')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        if (searchBy === 'subject' && value) {
+            materials = materials.filter((material) =>
+                material.subject?.name?.toLowerCase().includes(String(value).toLowerCase())
+            );
+        }
+
         res.json(materials);
     } catch (error) {
         console.error(error);

@@ -45,4 +45,20 @@
   .animate-fadeInDropdown {
     animation: fadeInDropdown 0.2s ease-out;
   }
+
+  .docx-render .docx-wrapper {
+    background: #f3f4f6 !important;
+    padding: 0 !important;
+    align-items: center;
+  }
+
+  .docx-render section.docx {
+    background: #fff !important;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08) !important;
+    margin: 0 auto 24px !important;
+  }
+
+  .docx-render .docx-wrapper > section.docx:last-child {
+    margin-bottom: 0 !important;
+  }
 }

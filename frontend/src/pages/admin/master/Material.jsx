@@ -4,7 +4,7 @@ import { fetchMaterials, createMaterial, updateMaterial, deleteMaterial, resetSt
 import { fetchSubjects } from '../../../features/master/masterSlice';
 import { toast } from 'react-toastify';
 import moment from 'moment';
-import { Search, Save, RefreshCw, Trash2, Edit, FileText, Plus, X, Download } from 'lucide-react';
+import { Search, Save, RefreshCw, Trash2, Edit, Eye, FileText, Plus, X, Download } from 'lucide-react';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
 
@@ -32,6 +32,7 @@ const Material = () => {
         type: 'Student only',
         document: null,
         description: '',
+        showDownloadButton: true,
         isActive: true
     };
     const [formData, setFormData] = useState(initialForm);
@@ -75,6 +76,9 @@ const Material = () => {
         setFormData({ ...formData, document: e.target.files[0] });
     };
 
+    const getDownloadUrl = (id) => `${import.meta.env.VITE_API_URL}/materials/download/${id}`;
+    const getPreviewPageUrl = (id) => `/material-preview/${id}`;
+
     const handleSubmit = (e) => {
         e.preventDefault();
         if (!formData.subject) return toast.error('Please select a subject');
@@ -85,6 +89,7 @@ const Material = () => {
         fd.append('title', formData.title);
         fd.append('type', formData.type);
         fd.append('description', formData.description || '');
+        fd.append('showDownloadButton', formData.showDownloadButton);
         fd.append('isActive', formData.isActive);
         if (formData.document) {
             fd.append('document', formData.document);
@@ -119,6 +124,7 @@ const Material = () => {
             title: material.title,
             type: material.type,
             description: material.description,
+            showDownloadButton: material.showDownloadButton !== false,
             isActive: material.isActive,
             document: null // Don't preload file object
         });
@@ -184,6 +190,20 @@ const Material = () => {
                            <label className="block text-sm font-medium text-gray-700 mb-1">Document Upload</label>
                            <input type="file" id="fileInput" onChange={handleFileChange} className="w-full border rounded p-1.5 bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.jpg,.jpeg,.png"/>
                            {formData.id && <p className="text-xs text-gray-500 mt-1">Leave empty to keep existing document.</p>}
+                       </div>
+
+                       <div className="md:col-span-2">
+                           <label className="block text-sm font-medium text-gray-700 mb-1">Download Button</label>
+                           <div className="flex items-center gap-3 rounded border bg-gray-50 px-3 py-2">
+                               <input
+                                   type="checkbox"
+                                   name="showDownloadButton"
+                                   checked={formData.showDownloadButton}
+                                   onChange={handleFormChange}
+                                   className="h-4 w-4 text-blue-600"
+                               />
+                               <span className="text-sm text-gray-700">Show download button for students</span>
+                           </div>
                        </div>
 
                         <div className="md:col-span-2">
@@ -279,9 +299,23 @@ const Material = () => {
                                         <td className="p-2 border">{moment(m.createdAt).format('DD/MM/YYYY')}</td>
                                         <td className="p-2 border text-center">
                                             {m.document ? (
-                                                <a href={`${import.meta.env.VITE_API_URL}/materials/download/${m._id}`} download className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-600 rounded border border-blue-200 hover:bg-blue-600 hover:text-white transition-colors shadow-sm font-semibold">
-                                                    <Download size={14} /> Download
-                                                </a>
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <a
+                                                        href={getPreviewPageUrl(m._id)}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded border border-emerald-200 hover:bg-emerald-600 hover:text-white transition-colors shadow-sm font-semibold"
+                                                    >
+                                                        <FileText size={14} /> Preview
+                                                    </a>
+                                                    <a
+                                                        href={getDownloadUrl(m._id)}
+                                                        download
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-600 rounded border border-blue-200 hover:bg-blue-600 hover:text-white transition-colors shadow-sm font-semibold"
+                                                    >
+                                                        <Download size={14} /> Download
+                                                    </a>
+                                                </div>
                                             ) : <span className="text-red-500 font-medium">No File</span>}
                                         </td>
                                         <td className="p-2 border text-center">
@@ -293,6 +327,16 @@ const Material = () => {
                                         </td>
                                         <td className="p-2 border text-center">
                                             <div className="flex justify-center gap-1">
+                                                    <a
+                                                        href={m.document ? getPreviewPageUrl(m._id) : '#'}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        onClick={(e) => { if (!m.document) e.preventDefault(); }}
+                                                        className={`p-1 rounded border transition ${m.document ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-not-allowed'}`}
+                                                    title="Preview"
+                                                >
+                                                    <Eye size={14}/>
+                                                </a>
                                                 <button onClick={() => handleEdit(m)} className="bg-orange-50 text-orange-600 p-1 rounded border border-orange-200 hover:bg-orange-100 transition" title="Edit">
                                                     <Edit size={14}/>
                                                 </button>

@@ -381,7 +381,12 @@ const FeeCollection = () => {
         setPrintingReceipt(receipt);
         // Add a small delay to ensure the template has rendered with the new receipt data
         setTimeout(() => {
-            handlePrintReceipt();
+            const printBtn = document.getElementById('hidden-print-trigger-collection');
+            if (printBtn) {
+                printBtn.click();
+            } else {
+                handlePrintReceipt();
+            }
         }, 500);
     };
 
@@ -942,9 +947,28 @@ const FeeCollection = () => {
                 )}
             </div>
 
-            {/* === HIDDEN PRINT TEMPLATES */}
-            <div style={{ display: 'none' }}>
-                <ReceiptPrintTemplate ref={receiptRef} receipt={printingReceipt} />
+            {/* Hidden button to trigger print-to-react properly on mobile */}
+            <button id="hidden-print-trigger-collection" onClick={handlePrintReceipt} className="hidden" />
+
+            {/* Hidden Print Specific Component - Use off-screen instead of display:none for mobile print support */}
+            <div style={{
+                position: 'fixed',
+                left: '-9999px',
+                top: 0,
+                width: '210mm',
+                height: '297mm',
+                overflow: 'hidden',
+                backgroundColor: 'white',
+                zIndex: -1,
+                opacity: 0,
+                pointerEvents: 'none'
+            }}>
+                {printingReceipt && (
+                    <ReceiptPrintTemplate 
+                        ref={receiptRef} 
+                        receipt={printingReceipt} 
+                    />
+                )}
             </div>
 
             {/* === EDIT RECEIPT MODAL === */}
