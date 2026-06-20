@@ -132,6 +132,13 @@ export const fetchEmployees = createAsyncThunk('master/fetchEmployees', async (_
     } catch (error) { return thunkAPI.rejectWithValue(error.message); }
 });
 
+export const fetchPublicEmployeeReferences = createAsyncThunk('master/fetchPublicEmployeeReferences', async (_, thunkAPI) => {
+    try {
+        const response = await axios.get(API_URL + 'employee/public-references');
+        return Array.isArray(response.data) ? response.data : [];
+    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+});
+
 export const fetchExamRequests = createAsyncThunk('master/fetchExamRequests', async (params, thunkAPI) => {
     try {
         const response = await axios.get(API_URL + 'exam-request', { params });
@@ -500,6 +507,7 @@ const masterSlice = createSlice({
         courses: [],
         batches: [],
         employees: [],
+        publicEmployeeReferences: [],
         subjects: [],
         examRequests: [],
         studentsList: [],
@@ -595,6 +603,9 @@ const masterSlice = createSlice({
             .addCase(fetchEmployees.rejected, (state, action) => {
                 state.isLoading = false;
                 console.error(action.payload);
+            })
+            .addCase(fetchPublicEmployeeReferences.fulfilled, (state, action) => {
+                state.publicEmployeeReferences = action.payload;
             })
             
             // --- Subjects (Consolidated) ---

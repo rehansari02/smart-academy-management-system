@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useDispatch, useSelector } from 'react-redux';
 import { createPublicInquiry } from '../../features/transaction/transactionSlice';
-import { fetchCourses, fetchReferences, fetchEducations, fetchStates, fetchCities } from '../../features/master/masterSlice';
+import { fetchCourses, fetchReferences, fetchEducations, fetchStates, fetchCities, fetchPublicEmployeeReferences } from '../../features/master/masterSlice';
 import { getBranches } from '../../features/master/branchSlice';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -18,7 +18,7 @@ const OnlineAdmission = () => {
   const preSelectedCourseId = searchParams.get('courseId');
 
   const { isSuccess, isError, message, isLoading } = useSelector((state) => state.transaction);
-  const { courses, references, educations, states, cities } = useSelector((state) => state.master);
+  const { courses, references, publicEmployeeReferences, educations, states, cities } = useSelector((state) => state.master);
   const { branches } = useSelector((state) => state.branch);
 
   const [previewImage, setPreviewImage] = useState(null);
@@ -52,11 +52,22 @@ const OnlineAdmission = () => {
   useEffect(() => {
     dispatch(fetchCourses());
     dispatch(fetchReferences());
+    dispatch(fetchPublicEmployeeReferences());
     dispatch(fetchEducations());
     dispatch(getBranches());
     dispatch(fetchStates());
     dispatch(fetchCities());
   }, [dispatch]);
+
+  const externalReferenceNames = new Set((references || []).map((ref) => String(ref.name || '').trim().toLowerCase()).filter(Boolean));
+  const internalReferenceNames = new Set();
+  const internalReferences = (publicEmployeeReferences || []).filter((employee) => {
+    const name = String(employee.name || '').trim();
+    const key = name.toLowerCase();
+    if (!name || externalReferenceNames.has(key) || internalReferenceNames.has(key)) return false;
+    internalReferenceNames.add(key);
+    return true;
+  });
 
   useEffect(() => {
     const currentState = watch('state');
@@ -475,7 +486,18 @@ const OnlineAdmission = () => {
                            <select {...register("reference", { required: !newRefMode ? "Required" : false })} className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary outline-none bg-white">
                                 <option value="">-- Select Reference --</option>
                                 <option value="Direct">Direct / Walk-in</option>
-                                {references.map(r => <option key={r._id} value={r.name}>{r.name}</option>)}
+                                {internalReferences.length > 0 && (
+                                  <optgroup label="Internal Employees">
+                                    {internalReferences.map(employee => (
+                                      <option key={employee._id} value={employee.name}>{employee.name}</option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {references.length > 0 && (
+                                  <optgroup label="External References">
+                                    {references.map(r => <option key={r._id} value={r.name}>{r.name}</option>)}
+                                  </optgroup>
+                                )}
                            </select>
                        ) : (
                            <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2">

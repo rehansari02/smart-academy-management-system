@@ -252,6 +252,15 @@ const getEmployees = asyncHandler(async (req, res) => {
     res.json(emps);
 });
 
+const getPublicEmployeeReferences = asyncHandler(async (req, res) => {
+    const employees = await Employee.find({ isDeleted: false, isActive: true })
+        .select('_id name')
+        .sort({ name: 1 })
+        .lean();
+
+    res.json(employees);
+});
+
 // --- REFERENCE CONTROLLERS ---
 const getReferences = asyncHandler(async (req, res) => {
     const references = await Reference.find({ isDeleted: false }).sort({ createdAt: -1 });
@@ -520,7 +529,7 @@ module.exports = {
     getCourses, createCourse, updateCourse, deleteCourse, 
     getBatches, createBatch, updateBatch, deleteBatch,
     getSubjects, createSubject, updateSubject, deleteSubject,
-    createEmployee, getEmployees,
+    createEmployee, getEmployees, getPublicEmployeeReferences,
     getReferences, createReference,
     getEducations, createEducation,
     getEmployeeRoles, createEmployeeRole, updateEmployeeRole, deleteEmployeeRole,

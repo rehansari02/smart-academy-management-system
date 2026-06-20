@@ -5,7 +5,7 @@ const { checkPermission } = require('../middlewares/permissionMiddleware');
 const { 
     getCourses, createCourse, updateCourse, deleteCourse,
     getBatches, createBatch, updateBatch, deleteBatch, 
-    createEmployee, getEmployees,
+    createEmployee, getEmployees, getPublicEmployeeReferences,
     getSubjects, createSubject, updateSubject, deleteSubject,
     getReferences, createReference,
     getEducations, createEducation,
@@ -72,6 +72,9 @@ router.route('/subject/:id')
     .delete(protect, checkPermission('Subject', 'delete'), deleteSubject);
 
 // --- Employee Routes ---
+router.route('/employee/public-references')
+    .get(getPublicEmployeeReferences);
+
 router.route('/employee')
     .get(protect, checkPermission('Employee', 'view'), getEmployees)
     .post(protect, checkPermission('Employee', 'add'), createEmployee);
