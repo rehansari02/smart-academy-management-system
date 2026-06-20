@@ -4,13 +4,6 @@ import axios from "axios";
 import moment from "moment";
 import { QRCodeSVG } from "qrcode.react";
 
-// Import Assets
-import frame from "../../../assets/FRAME.png";
-import smartThump from "../../../assets/SMARTTHUMP.png";
-import aisdc from "../../../assets/aISDC.png";
-import dac from "../../../assets/dac.png";
-import foundation from "../../../assets/fOUNDATION.png";
-import logo2 from "../../../assets/logo2.png";
 import markshettkl from "../../../assets/marksheetrhen.png";
 import certificateImg from "../../../assets/certificate.png";
 
@@ -187,16 +180,6 @@ const ExamResultPrint = () => {
     return fullNumberToWords(year);
   };
 
-  const formatGrade = (grade) => {
-    if (!grade) return "First Class";
-    const g = grade.toUpperCase();
-    if (g === "DISTINCTION") return "First Class";
-    if (g === "FIRST") return "First Class";
-    if (g === "SECOND") return "Second Class";
-    if (g === "THIRD") return "Third Class";
-    return grade;
-  };
-
   const toTitleCase = (value) => {
     const text = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
     if (!text) return "";
@@ -220,20 +203,6 @@ const ExamResultPrint = () => {
 
   const getUpperFullName = (...parts) =>
     parts.map(toUpperText).filter(Boolean).join(" ");
-
-  const getDaySuffix = (day) => {
-    if (day > 3 && day < 21) return "th";
-    switch (day % 10) {
-      case 1:
-        return "st";
-      case 2:
-        return "nd";
-      case 3:
-        return "rd";
-      default:
-        return "th";
-    }
-  };
 
   // Calculate subject-wise grade dynamically matching overall criteria
   const getSubjectGrade = (obtained, max) => {

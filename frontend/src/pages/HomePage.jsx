@@ -6,7 +6,7 @@ import {
     fetchPopularCategories
 } from "../features/master/masterSlice";
 import { getPublicBranches } from '../features/master/branchSlice';
-import { createInquiry, createPublicInquiry } from '../features/transaction/transactionSlice';
+import { createPublicInquiry } from '../features/transaction/transactionSlice';
 import { toast } from 'react-toastify';
 import { Link, useNavigate } from 'react-router-dom';
 import newsService from '../services/newsService';
@@ -17,7 +17,7 @@ import { ArrowRight, X,Trophy, Calendar, ChevronLeft, ChevronRight, Phone, Mail,
 import { formatDate } from '../utils/dateUtils';
 import HeroCarousel from '../components/ui/HeroCarousel';
 import HeroImage1 from '../assets/6.jpg'
-import HeroImage2 from '../assets/5.jpg';
+import HeroImage2 from '../assets/studentWithbooks.webp';
 import Reveal from '../components/Reveal';
 import FeedbackSection from '../components/ui/FeedbackSection';
 
