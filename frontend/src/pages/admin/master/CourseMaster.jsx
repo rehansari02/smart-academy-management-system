@@ -26,6 +26,7 @@ const CourseMaster = () => {
   const [viewingSubjects, setViewingSubjects] = useState(null); // For viewing subjects in table
   const [viewingCourse, setViewingCourse] = useState(null);
   const [viewingFeeHistory, setViewingFeeHistory] = useState(null);
+  const [pendingPriceChange, setPendingPriceChange] = useState(null);
   const [previewImage, setPreviewImage] = useState(null); // Image Preview State
   const { add, edit, delete: canDelete } = useUserRights('Course');
 
@@ -104,6 +105,7 @@ const CourseMaster = () => {
       setPreviewImage(null);
       setIsEditing(false);
       setCurrentCourseId(null);
+      setPendingPriceChange(null);
       setShowForm(false);
   };
 
@@ -169,6 +171,10 @@ const CourseMaster = () => {
       setViewingFeeHistory(null);
   };
 
+  const closePriceChangeModal = () => {
+      setPendingPriceChange(null);
+  };
+
   const handleDelete = (id) => {
       if (!canDelete) {
         showPermissionDenied("You don't have authority to delete courses.");
@@ -201,10 +207,14 @@ const CourseMaster = () => {
         const hasFeeChange = feeFields.some((field) => originalFees[field] !== nextFees[field]);
 
         if (hasFeeChange) {
-          const confirmed = window.confirm(
-            'Are you sure you want to change the course price? Old admissions will keep the previous fee and new admissions will use the updated fee.'
-          );
-          if (!confirmed) return;
+          setPendingPriceChange({
+            id: currentCourseId,
+            payload,
+            courseName: currentCourse.name,
+            oldFees: originalFees,
+            newFees: nextFees
+          });
+          return;
         }
       }
 
@@ -216,6 +226,12 @@ const CourseMaster = () => {
       }
       dispatch(createCourse(payload));
     }
+  };
+
+  const confirmPriceChange = () => {
+      if (!pendingPriceChange) return;
+      dispatch(updateCourse({ id: pendingPriceChange.id, data: pendingPriceChange.payload }));
+      setPendingPriceChange(null);
   };
 
   // Unique Course Types for Filter
@@ -538,6 +554,56 @@ const CourseMaster = () => {
                               No price history is available yet for this course.
                           </div>
                       )}
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* --- Price Change Confirmation Modal --- */}
+      {pendingPriceChange && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[80] p-4 backdrop-blur-sm">
+              <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden">
+                  <div className="bg-orange-600 text-white p-4 flex justify-between items-center">
+                      <div>
+                          <h3 className="text-lg font-bold">Confirm Course Price Change</h3>
+                          <p className="text-xs text-white/80">{pendingPriceChange.courseName}</p>
+                      </div>
+                      <button onClick={closePriceChangeModal} className="hover:text-red-200"><X size={22}/></button>
+                  </div>
+                  <div className="p-5 space-y-4">
+                      <p className="text-sm text-gray-700">
+                          Are you sure you want to change the course price? Old admissions will keep the previous fee and new admissions will use the updated fee.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                          <div className="border rounded-lg p-4 bg-gray-50">
+                              <div className="font-bold text-gray-700 mb-2">Old Fee</div>
+                              <div className="space-y-1 text-gray-600">
+                                  <div>Total: {formatMoney(pendingPriceChange.oldFees.courseFees)}</div>
+                                  <div>Admission: {formatMoney(pendingPriceChange.oldFees.admissionFees)}</div>
+                                  <div>Registration: {formatMoney(pendingPriceChange.oldFees.registrationFees)}</div>
+                                  <div>Monthly: {formatMoney(pendingPriceChange.oldFees.monthlyFees)}</div>
+                                  <div>Installments: {pendingPriceChange.oldFees.totalInstallment || 1}</div>
+                              </div>
+                          </div>
+                          <div className="border rounded-lg p-4 bg-blue-50">
+                              <div className="font-bold text-blue-700 mb-2">New Fee</div>
+                              <div className="space-y-1 text-gray-700">
+                                  <div>Total: {formatMoney(pendingPriceChange.newFees.courseFees)}</div>
+                                  <div>Admission: {formatMoney(pendingPriceChange.newFees.admissionFees)}</div>
+                                  <div>Registration: {formatMoney(pendingPriceChange.newFees.registrationFees)}</div>
+                                  <div>Monthly: {formatMoney(pendingPriceChange.newFees.monthlyFees)}</div>
+                                  <div>Installments: {pendingPriceChange.newFees.totalInstallment || 1}</div>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+                  <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
+                      <button onClick={closePriceChangeModal} className="px-4 py-2 border rounded text-sm font-medium hover:bg-gray-100">
+                          Cancel
+                      </button>
+                      <button onClick={confirmPriceChange} className="px-4 py-2 rounded bg-orange-600 text-white text-sm font-semibold hover:bg-orange-700">
+                          Yes, Change Price
+                      </button>
                   </div>
               </div>
           </div>
