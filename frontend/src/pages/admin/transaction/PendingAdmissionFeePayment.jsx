@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -10,7 +10,7 @@ import {
   resetTransaction,
 } from "../../../features/transaction/transactionSlice";
 import { toast } from "react-toastify";
-import { Save, ArrowLeft } from "lucide-react";
+import { Save, ArrowLeft, Loader2 } from "lucide-react";
 import axios from "axios";
 
 const POPULAR_INDIAN_BANKS = [
@@ -47,6 +47,9 @@ const PendingAdmissionFeePayment = () => {
   } = useSelector((state) => state.transaction);
 
   const { user } = useSelector((state) => state.auth);
+  const submitLockRef = useRef(false);
+  const paymentRequestKeyRef = useRef(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     amountPaid: "",
@@ -99,7 +102,9 @@ const PendingAdmissionFeePayment = () => {
   useEffect(() => {
     if (student && student.course) {
       const defaultFee = student.course.admissionFees || "";
-      setFormData((prev) => ({ ...prev, amountPaid: defaultFee }));
+      Promise.resolve().then(() => {
+        setFormData((prev) => ({ ...prev, amountPaid: defaultFee }));
+      });
     }
   }, [student]);
 
@@ -114,6 +119,8 @@ const PendingAdmissionFeePayment = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (submitLockRef.current || feeLoading || isSubmitting) return;
+
     if (!formData.amountPaid || formData.amountPaid <= 0) {
       toast.error("Please enter a valid amount");
       return;
@@ -162,8 +169,9 @@ const PendingAdmissionFeePayment = () => {
         }
     }
 
-    // FIXED: Prevent double click
-    if (feeLoading) return;
+    if (!paymentRequestKeyRef.current) {
+      paymentRequestKeyRef.current = `${id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
 
     const feeData = {
       studentId: student._id,
@@ -182,9 +190,20 @@ const PendingAdmissionFeePayment = () => {
       paymentProviderName: formData.paymentProviderName,
       paymentDetails: formData.onlinePaymentType === 'UPI' ? formData.upiId : formData.paymentDetails,
       date: formData.date,
+      idempotencyKey: paymentRequestKeyRef.current,
     };
 
-    dispatch(collectFees(feeData));
+    submitLockRef.current = true;
+    setIsSubmitting(true);
+
+    dispatch(collectFees(feeData))
+      .unwrap()
+      .catch((error) => {
+        submitLockRef.current = false;
+        setIsSubmitting(false);
+        paymentRequestKeyRef.current = null;
+        toast.error(error || "Failed to save receipt");
+      });
   };
 
   if (studentLoading || !student) {
@@ -268,7 +287,7 @@ const PendingAdmissionFeePayment = () => {
               Fee Payment
             </h3>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className={`space-y-4 ${isSubmitting ? 'pointer-events-none opacity-75' : ''}`}>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">
                   Receipt Number
@@ -616,10 +635,11 @@ const PendingAdmissionFeePayment = () => {
               <div className="pt-4 flex gap-3">
                 <button
                   type="submit"
-                  disabled={feeLoading}
-                  className="w-full bg-green-600 text-white py-2 rounded shadow hover:bg-green-700 disabled:bg-green-300 flex justify-center items-center gap-2 font-bold"
+                  disabled={feeLoading || isSubmitting}
+                  className="w-full bg-green-600 text-white py-2 rounded shadow hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed flex justify-center items-center gap-2 font-bold"
                 >
-                  <Save size={18} /> {feeLoading ? "Saving..." : "Save"}
+                  {feeLoading || isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                  {feeLoading || isSubmitting ? "Saving..." : "Save"}
                 </button>
               </div>
             </form>

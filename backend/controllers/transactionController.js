@@ -1902,8 +1902,21 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
   const { 
     studentId, courseId, amountPaid, paymentMode, remarks, date,
     bankName, chequeNumber, chequeDate, transactionId, transactionDate,
-    onlinePaymentType, paymentProviderName, paymentDetails
+    onlinePaymentType, paymentProviderName, paymentDetails, idempotencyKey
   } = req.body;
+  const requestKey = String(idempotencyKey || "").trim();
+  const receiptPopulate = [
+    { path: "student", select: "firstName lastName regNo enrollmentNo middleName mobileStudent mobileParent batch totalFees pendingFees branchName emiDetails admissionFeeAmount" },
+    { path: "course", select: "name shortName admissionFees" },
+    { path: "branch", select: "name shortCode address city state phone mobile email" }
+  ];
+
+  if (requestKey) {
+    const existingReceipt = await FeeReceipt.findOne({ idempotencyKey: requestKey }).populate(receiptPopulate);
+    if (existingReceipt) {
+      return res.status(200).json(existingReceipt);
+    }
+  }
 
   // 1. Parallel Data Fetching
   const [student, existingReceipts] = await Promise.all([
@@ -1941,26 +1954,38 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
   // branchId is already determined above
 
   // 3. Create Receipt
-  const receipt = await FeeReceipt.create({
-    receiptNo,
-    student: studentId,
-    course: courseId,
-    branch: branchId, // Assign Branch
-    amountPaid,
-    paymentMode,
-    remarks: receiptPurpose.remarks,
-    date: date || Date.now(),
-    createdBy: req.user._id,
-    installmentNumber: receiptPurpose.installmentNumber,
-    bankName,
-    chequeNumber,
-    chequeDate,
-    transactionId,
-    transactionDate,
-    onlinePaymentType,
-    paymentProviderName,
-    paymentDetails
-  });
+  let receipt;
+  try {
+    receipt = await FeeReceipt.create({
+      receiptNo,
+      student: studentId,
+      course: courseId,
+      branch: branchId, // Assign Branch
+      amountPaid,
+      paymentMode,
+      remarks: receiptPurpose.remarks,
+      date: date || Date.now(),
+      createdBy: req.user._id,
+      installmentNumber: receiptPurpose.installmentNumber,
+      bankName,
+      chequeNumber,
+      chequeDate,
+      transactionId,
+      transactionDate,
+      onlinePaymentType,
+      paymentProviderName,
+      paymentDetails,
+      ...(requestKey ? { idempotencyKey: requestKey } : {})
+    });
+  } catch (error) {
+    if (requestKey && error?.code === 11000) {
+      const existingReceipt = await FeeReceipt.findOne({ idempotencyKey: requestKey }).populate(receiptPopulate);
+      if (existingReceipt) {
+        return res.status(200).json(existingReceipt);
+      }
+    }
+    throw error;
+  }
 
   // 4. Update Student Pending Fees & Status
   let admissionCompletedNow = false;
@@ -2048,11 +2073,7 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
   }
 
   // Populate receipt for frontend immediate use (printing)
-  await receipt.populate([
-    { path: "student", select: "firstName lastName regNo enrollmentNo middleName mobileStudent mobileParent batch totalFees pendingFees branchName emiDetails admissionFeeAmount" },
-    { path: "course", select: "name shortName admissionFees" },
-    { path: "branch", select: "name shortCode address city state phone mobile email" }
-  ]);
+  await receipt.populate(receiptPopulate);
 
   // Add calculated fields for the receipt
   const totalPaid = await calculateTotalPaid(receipt.student?._id);

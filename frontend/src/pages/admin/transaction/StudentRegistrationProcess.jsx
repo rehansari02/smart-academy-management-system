@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchStudentById, confirmRegistration, resetStatus } from '../../../features/student/studentSlice';
 import { toast } from 'react-toastify';
-import { ArrowLeft, Save, X, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Save, X, Eye, EyeOff, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { generateCredentials } from '../../../utils/credentialGenerator';
 
@@ -32,8 +32,10 @@ const StudentRegistrationProcess = () => {
   const dispatch = useDispatch();
   
   const { currentStudent: student, isLoading } = useSelector((state) => state.students);
-  const { isSuccess, message } = useSelector((state) => state.students); // reusing student slice
   const { user } = useSelector((state) => state.auth);
+  const registerLockRef = useRef(false);
+  const registrationRequestKeyRef = useRef(null);
+  const [isRegistering, setIsRegistering] = useState(false);
 
   const [step, setStep] = useState(1); // Always start with Step 1 (Credentials)
   const [showPassword, setShowPassword] = useState(false); // For password visibility toggle
@@ -188,6 +190,8 @@ const StudentRegistrationProcess = () => {
 
   const handleFinalSubmit = async (e) => {
     if(e) e.preventDefault();
+    if (registerLockRef.current || isLoading || isRegistering) return;
+
     if(!regData.username || !regData.password) {
         toast.error("Username and Password are required");
         return;
@@ -245,6 +249,12 @@ const StudentRegistrationProcess = () => {
   };
 
   const submitRegistration = async () => {
+    if (registerLockRef.current || isLoading || isRegistering) return;
+
+    if (!registrationRequestKeyRef.current) {
+        registrationRequestKeyRef.current = `${id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
     const payload = {
         id: student._id,
         data: {
@@ -252,27 +262,33 @@ const StudentRegistrationProcess = () => {
             feeDetails: {
                 ...feeData,
                 amount: Number(feeData.amount) || 0,
-                paymentDetails: feeData.onlinePaymentType === 'UPI' ? feeData.upiId : feeData.paymentDetails
+                paymentDetails: feeData.onlinePaymentType === 'UPI' ? feeData.upiId : feeData.paymentDetails,
+                idempotencyKey: registrationRequestKeyRef.current
             }
         }
     };
 
-    // Check loading state to prevent double submission
-    if (isLoading) {
-        return;
-    }
-    
     // Explicit Error Handling with unwrap()
     try {
+        registerLockRef.current = true;
+        setIsRegistering(true);
         setShowConfirmDialog(false);
         const result = await dispatch(confirmRegistration(payload)).unwrap();
-        toast.success(result.message || "Registration Successful");
-        setTimeout(() => navigate('/master/student'), 1500);
+        toast.success(result.message || "Registration Successful", {
+            toastId: 'student-registration-completed'
+        });
+        setTimeout(() => {
+            dispatch(resetStatus());
+            navigate('/master/student');
+        }, 1500);
     } catch (error) {
         console.error("Registration Error:", error);
         // Error payload is usually the string message from rejectWithValue
         const errMsg = typeof error === 'string' ? error : (error.message || "Registration Failed");
         toast.error(`Registration Failed: ${errMsg}`);
+        registerLockRef.current = false;
+        setIsRegistering(false);
+        registrationRequestKeyRef.current = null;
     }
   };
 
@@ -396,7 +412,7 @@ const StudentRegistrationProcess = () => {
 
         {/* SECTION 3: Fees Details - Show Only on Step 2 */}
          {step === 2 && (
-           <div className="p-6 border-t animate-fade-in">
+           <div className={`p-6 border-t animate-fade-in ${isRegistering ? 'pointer-events-none opacity-75' : ''}`}>
               <h3 className="text-lg font-semibold text-gray-700 mb-4">Step 2: Fee Payment</h3>
               <div className="bg-orange-50 border border-orange-200 p-3 mb-4 rounded text-sm text-orange-800">
                 <strong>Note:</strong> {student.paymentPlan === 'Monthly' ? 'Registration fees payment is required.' : 'Please pay the remaining course fees.'}
@@ -709,10 +725,11 @@ const StudentRegistrationProcess = () => {
               <div className="mt-8 flex gap-4">
                  <button 
                     onClick={handleFinalSubmit} 
-                    disabled={isLoading}
-                    className={`bg-green-600 text-white px-6 py-2 rounded font-bold hover:bg-green-700 flex items-center gap-2 ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    disabled={isLoading || isRegistering}
+                    className={`bg-green-600 text-white px-6 py-2 rounded font-bold hover:bg-green-700 flex items-center gap-2 ${(isLoading || isRegistering) ? 'opacity-50 cursor-not-allowed' : ''}`}
                  >
-                     <Save size={18} /> {isLoading ? 'Processing...' : 'Register'}
+                     {(isLoading || isRegistering) ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                     {(isLoading || isRegistering) ? 'Processing...' : 'Register'}
                  </button>
                  <button onClick={handleBackFromFees} className="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600">
                      Back
@@ -733,6 +750,7 @@ const StudentRegistrationProcess = () => {
               <button
                 type="button"
                 onClick={() => setShowConfirmDialog(false)}
+                disabled={isLoading || isRegistering}
                 className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
                 aria-label="Close confirmation"
               >
@@ -767,17 +785,19 @@ const StudentRegistrationProcess = () => {
               <button
                 type="button"
                 onClick={() => setShowConfirmDialog(false)}
-                className="rounded bg-white border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                disabled={isLoading || isRegistering}
+                className="rounded bg-white border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={submitRegistration}
-                disabled={isLoading}
-                className="rounded bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+                disabled={isLoading || isRegistering}
+                className="rounded bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
               >
-                {isLoading ? 'Processing...' : 'Yes, Register'}
+                {(isLoading || isRegistering) && <Loader2 size={16} className="animate-spin" />}
+                {(isLoading || isRegistering) ? 'Processing...' : 'Yes, Register'}
               </button>
             </div>
           </div>

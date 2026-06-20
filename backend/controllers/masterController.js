@@ -128,10 +128,10 @@ const getBatches = asyncHandler(async (req, res) => {
         }
     }
 
-    // Filter by Branch if provided (for Multi-Branch Support)
-    if (req.query.branchId) {
+    // Filter by Branch if provided by Super Admin, otherwise enforce user's branch.
+    if (req.query.branchId && req.user?.role === 'Super Admin') {
         query.branchId = req.query.branchId;
-    } else if (req.user && (req.user.role === 'Branch Director' || req.user.role === 'Branch Admin') && req.user.branchId) {
+    } else if (req.user?.role !== 'Super Admin' && req.user?.branchId) {
         query.branchId = req.user.branchId;
     }
 

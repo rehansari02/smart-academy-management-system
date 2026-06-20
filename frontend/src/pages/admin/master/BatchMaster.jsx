@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
@@ -22,14 +22,15 @@ const BatchMaster = () => {
   const [selectedCourses, setSelectedCourses] = useState([]); // Array of Course IDs
   const { add, edit, delete: canDelete } = useUserRights('Batch');
 
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm();
+  const { register, handleSubmit, reset, setValue } = useForm();
 
   // --- Search & Pagination State ---
   const [filters, setFilters] = useState({
     startDate: '', 
     endDate: new Date().toISOString().split('T')[0], 
     searchBy: 'Batch Name', 
-    searchValue: ''
+    searchValue: '',
+    branchId: ''
   });
   
   // Applied filters determines what is actually shown/fetched
@@ -38,6 +39,14 @@ const BatchMaster = () => {
   // Pagination State
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+
+  const closeForm = useCallback(() => {
+      reset();
+      setSelectedCourses([]);
+      setIsEditing(false);
+      setCurrentBatchId(null);
+      setShowForm(false);
+  }, [reset]);
 
   useEffect(() => {
     dispatch(fetchCourses());
@@ -58,7 +67,8 @@ const BatchMaster = () => {
         startDate: '', 
         endDate: '', 
         searchBy: 'Batch Name', 
-        searchValue: '' 
+        searchValue: '',
+        branchId: ''
     };
     setFilters(initialFilters);
     setAppliedFilters(initialFilters);
@@ -70,7 +80,7 @@ const BatchMaster = () => {
     if (isSuccess && showForm) {
         toast.success(isEditing ? "Batch Updated" : "Batch Created");
         dispatch(resetMasterStatus());
-        closeForm();
+        Promise.resolve().then(closeForm);
         dispatch(fetchBatches(appliedFilters));
     } else if (isSuccess && !showForm) {
         // Handle delete success
@@ -78,15 +88,7 @@ const BatchMaster = () => {
         dispatch(resetMasterStatus());
         dispatch(fetchBatches(appliedFilters));
     }
-  }, [isSuccess, showForm, dispatch, appliedFilters, isEditing]);
-
-  const closeForm = () => {
-      reset();
-      setSelectedCourses([]);
-      setIsEditing(false);
-      setCurrentBatchId(null);
-      setShowForm(false);
-  };
+  }, [isSuccess, showForm, dispatch, appliedFilters, isEditing, closeForm]);
 
   const handleEdit = (batch) => {
       setValue('name', batch.name);
@@ -183,7 +185,7 @@ const BatchMaster = () => {
         
         <div className="flex flex-col gap-4">
             {/* Row 1: Dates & Search By & Value */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className={`grid grid-cols-1 ${user?.role === 'Super Admin' ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4`}>
                 <div>
                     <label className="text-xs text-gray-500 font-semibold mb-1 block">Start Date (From)</label>
                     <input 
@@ -223,6 +225,21 @@ const BatchMaster = () => {
                         className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-primary outline-none"
                     />
                 </div>
+                {user?.role === 'Super Admin' && (
+                    <div>
+                        <label className="text-xs text-gray-500 font-semibold mb-1 block">Branch</label>
+                        <select
+                            value={filters.branchId}
+                            onChange={e => setFilters({...filters, branchId: e.target.value})}
+                            className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-primary outline-none"
+                        >
+                            <option value="">All Branches</option>
+                            {branches.map(b => (
+                                <option key={b._id} value={b._id}>{b.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
             </div>
 
             {/* Row 2: Buttons */}
@@ -270,7 +287,7 @@ const BatchMaster = () => {
       {/* --- DATA TABLE --- */}
       <div className="bg-white rounded-lg shadow overflow-x-auto border">
         {isLoading ? (
-             <div className="p-4"><TableSkeleton rows={8} cols={7} /></div>
+             <div className="p-4"><TableSkeleton rows={8} cols={user?.role === 'Super Admin' ? 8 : 7} /></div>
         ) : (
         <table className="w-full border-collapse min-w-[1200px]">
             <thead>
@@ -323,7 +340,7 @@ const BatchMaster = () => {
                         </td>
                     </tr>
                 )) : (
-                    <tr><td colSpan="7" className="text-center py-8 text-gray-400">No batches found.</td></tr>
+                    <tr><td colSpan={user?.role === 'Super Admin' ? 8 : 7} className="text-center py-8 text-gray-400">No batches found.</td></tr>
                 )}
             </tbody>
         </table>

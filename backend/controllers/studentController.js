@@ -379,6 +379,7 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
     // const { data } = req.body; // ERROR HERE: Frontend sends body directly!
     const { username, password, feeDetails } = req.body;
     const selectedRegistrationDate = feeDetails?.date ? new Date(feeDetails.date) : new Date();
+    const registrationReceiptKey = String(feeDetails?.idempotencyKey || "").trim();
 
     // console.log("DEBUG: Confirming Registration for Student ID:", id);
     // console.log("DEBUG: Received Data:", JSON.stringify(data, null, 2));
@@ -391,6 +392,13 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
     if (!student) {
         res.status(404);
         throw new Error("Student not found for confirmation");
+    }
+
+    if (registrationReceiptKey) {
+        const existingReceipt = await FeeReceipt.findOne({ idempotencyKey: registrationReceiptKey }).select('_id').lean();
+        if (existingReceipt) {
+            return res.json({ message: 'Student Registration Completed', student });
+        }
     }
 
     while (attempts < maxAttempts) {
@@ -513,7 +521,8 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
                         transactionDate: feeDetails.transactionDate,
                         onlinePaymentType: feeDetails.onlinePaymentType,
                         paymentProviderName: feeDetails.paymentProviderName,
-                        paymentDetails: feeDetails.paymentDetails
+                        paymentDetails: feeDetails.paymentDetails,
+                        ...(registrationReceiptKey ? { idempotencyKey: registrationReceiptKey } : {})
                     };
         
                     await FeeReceipt.create(receiptData);
@@ -522,6 +531,13 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
                     student.pendingFees = Math.max(0, student.pendingFees - Number(feeDetails.amount));
                     student.isRegistrationFeesPaid = true;
                 } catch (feeError) {
+                     if (registrationReceiptKey && feeError.code === 11000) {
+                         const existingReceipt = await FeeReceipt.findOne({ idempotencyKey: registrationReceiptKey }).select('_id').lean();
+                         if (existingReceipt) {
+                             console.warn(`[DEBUG] Duplicate registration receipt request ignored: ${registrationReceiptKey}`);
+                             return res.json({ message: 'Student Registration Completed', student });
+                         }
+                     }
                      if (feeError.code === 11000) {
                          console.warn(`[DEBUG] Receipt Duplicate Key in Attempt ${attempts}, Retrying...`);
                          continue; // Retry loop

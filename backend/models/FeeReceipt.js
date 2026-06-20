@@ -38,6 +38,7 @@ const feeReceiptSchema = new mongoose.Schema(
     remarks: { type: String },
     date: { type: Date, default: Date.now },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    idempotencyKey: { type: String },
   },
   { timestamps: true }
 );
@@ -45,6 +46,7 @@ const feeReceiptSchema = new mongoose.Schema(
 // Indexes
 feeReceiptSchema.index({ student: 1 });
 feeReceiptSchema.index({ branch: 1, receiptNo: 1 }, { unique: true }); // Compound Index Limit duplicate per branch
+feeReceiptSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
 // feeReceiptSchema.index({ receiptNo: 1 });
 feeReceiptSchema.index({ date: -1 });
 feeReceiptSchema.index({ createdAt: -1 }); // Optimized for sorting last Created

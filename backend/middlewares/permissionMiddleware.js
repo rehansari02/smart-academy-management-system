@@ -54,6 +54,18 @@ const checkPermission = (page, action) => asyncHandler(async (req, res, next) =>
         }
     }
 
+    // 3. Admission/registration forms need batch list as a dropdown dependency.
+    if (action === 'view' && page === 'Batch') {
+        const hasAdmissionDependency = userRights.permissions.some(p =>
+            ['Admission', 'Registration'].some(dep => p.page.includes(dep)) &&
+            p.view === true
+        );
+
+        if (hasAdmissionDependency) {
+            return next();
+        }
+    }
+
     res.status(403);
     throw new Error(`Access denied. You do not have permission to ${action} ${page}.`);
 });
