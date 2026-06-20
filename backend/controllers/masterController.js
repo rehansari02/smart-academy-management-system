@@ -15,6 +15,35 @@ const DEFAULT_EMPLOYEE_ROLES = ['Faculty', 'Manager', 'Marketing Person', 'Branc
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const feeFields = ['courseFees', 'admissionFees', 'registrationFees', 'monthlyFees', 'totalInstallment'];
+
+const toNumberOrDefault = (value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const getFeeSnapshot = (source = {}) => ({
+    courseFees: toNumberOrDefault(source.courseFees, 0),
+    admissionFees: toNumberOrDefault(source.admissionFees, 0),
+    registrationFees: toNumberOrDefault(source.registrationFees, 0),
+    monthlyFees: toNumberOrDefault(source.monthlyFees, 0),
+    totalInstallment: toNumberOrDefault(source.totalInstallment, 1)
+});
+
+const feeSnapshotChanged = (current = {}, next = {}) => feeFields.some((field) => {
+    const currentValue = toNumberOrDefault(current[field], field === 'totalInstallment' ? 1 : 0);
+    const nextValue = toNumberOrDefault(next[field], field === 'totalInstallment' ? 1 : 0);
+    return currentValue !== nextValue;
+});
+
+const buildFeeHistoryEntry = (snapshot, effectiveFrom, note = '') => ({
+    ...snapshot,
+    effectiveFrom,
+    effectiveTo: null,
+    changedAt: effectiveFrom,
+    note
+});
+
 // --- COURSE CONTROLLERS ---
 const getCourses = asyncHandler(async (req, res) => {
     const { courseId, courseType } = req.query;
@@ -59,6 +88,15 @@ const createCourse = asyncHandler(async (req, res) => {
         }
     }
 
+    const feeSnapshot = getFeeSnapshot(data);
+    const now = new Date();
+    data.courseFees = feeSnapshot.courseFees;
+    data.admissionFees = feeSnapshot.admissionFees;
+    data.registrationFees = feeSnapshot.registrationFees;
+    data.monthlyFees = feeSnapshot.monthlyFees;
+    data.totalInstallment = feeSnapshot.totalInstallment;
+    data.feeHistory = [buildFeeHistoryEntry(feeSnapshot, now, 'Initial course fee setup')];
+
     const course = await Course.create(data);
     res.status(201).json(course);
 });
@@ -86,11 +124,38 @@ const updateCourse = asyncHandler(async (req, res) => {
             }
         }
 
-        const updatedCourse = await Course.findByIdAndUpdate(id, data, { new: true })
-            .populate({
-                path: 'subjects.subject',
-                select: 'name printedName theoryMarks practicalMarks totalMarks'
-            });
+        const currentSnapshot = getFeeSnapshot(course);
+        const incomingSnapshot = getFeeSnapshot({ ...course.toObject(), ...data });
+        const hasFeeChange = feeSnapshotChanged(currentSnapshot, incomingSnapshot);
+        const now = new Date();
+
+        course.set(data);
+        course.courseFees = incomingSnapshot.courseFees;
+        course.admissionFees = incomingSnapshot.admissionFees;
+        course.registrationFees = incomingSnapshot.registrationFees;
+        course.monthlyFees = incomingSnapshot.monthlyFees;
+        course.totalInstallment = incomingSnapshot.totalInstallment;
+
+        if (hasFeeChange) {
+            const history = Array.isArray(course.feeHistory) ? [...course.feeHistory] : [];
+            const lastEntry = history[history.length - 1];
+
+            if (lastEntry && !lastEntry.effectiveTo) {
+                lastEntry.effectiveTo = now;
+            } else if (!history.length) {
+                history.push(buildFeeHistoryEntry(currentSnapshot, course.createdAt || now, 'Initial course fee setup'));
+                history[0].effectiveTo = now;
+            }
+
+            history.push(buildFeeHistoryEntry(incomingSnapshot, now, 'Course fee updated'));
+            course.feeHistory = history;
+        }
+
+        const updatedCourse = await course.save();
+        await updatedCourse.populate({
+            path: 'subjects.subject',
+            select: 'name printedName theoryMarks practicalMarks totalMarks'
+        });
         res.json(updatedCourse);
     } else {
         res.status(404); throw new Error('Course not found');

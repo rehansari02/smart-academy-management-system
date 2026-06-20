@@ -1,5 +1,17 @@
 const mongoose = require('mongoose');
 
+const feeHistorySchema = new mongoose.Schema({
+    courseFees: { type: Number, required: true },
+    admissionFees: { type: Number, default: 0 },
+    registrationFees: { type: Number, default: 0 },
+    monthlyFees: { type: Number, default: 0 },
+    totalInstallment: { type: Number, default: 1 },
+    effectiveFrom: { type: Date, required: true },
+    effectiveTo: { type: Date, default: null },
+    changedAt: { type: Date, default: Date.now },
+    note: { type: String, default: '' }
+}, { _id: false });
+
 const courseSchema = new mongoose.Schema({
     // --- Basic Info ---
     name: { type: String, required: true }, // e.g., "Advance Degree..."
@@ -34,7 +46,10 @@ const courseSchema = new mongoose.Schema({
 
     // --- Status ---
     isActive: { type: Boolean, default: true },
-    isDeleted: { type: Boolean, default: false }
+    isDeleted: { type: Boolean, default: false },
+
+    // --- Fee Change History ---
+    feeHistory: { type: [feeHistorySchema], default: [] }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Course', courseSchema);

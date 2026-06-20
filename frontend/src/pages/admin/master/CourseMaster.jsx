@@ -7,7 +7,7 @@ import {
     fetchSubjects, resetMasterStatus 
 } from '../../../features/master/masterSlice';
 import { toast } from 'react-toastify';
-import { Search, Plus, X, Edit2, Trash2, BookOpen, Check, Layers, Eye, Upload, RefreshCw, Clock, Star } from 'lucide-react';
+import { Search, Plus, X, Edit2, Trash2, Layers, Eye, Upload, RefreshCw, Clock, Star } from 'lucide-react';
 import { TableSkeleton } from '../../../components/common/SkeletonLoader';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
@@ -24,10 +24,12 @@ const CourseMaster = () => {
   // Subject Selection State: { subjectId: sortOrder }
   const [selectedSubjectMap, setSelectedSubjectMap] = useState({});
   const [viewingSubjects, setViewingSubjects] = useState(null); // For viewing subjects in table
+  const [viewingCourse, setViewingCourse] = useState(null);
+  const [viewingFeeHistory, setViewingFeeHistory] = useState(null);
   const [previewImage, setPreviewImage] = useState(null); // Image Preview State
   const { add, edit, delete: canDelete } = useUserRights('Course');
 
-  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm();
+  const { register, handleSubmit, reset, setValue, watch } = useForm();
   const commissionType = watch('commissionType') || 'Percentage';
   
   // --- Filter & Pagination State ---
@@ -36,6 +38,28 @@ const CourseMaster = () => {
   
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const feeFields = ['courseFees', 'admissionFees', 'registrationFees', 'monthlyFees', 'totalInstallment'];
+
+  const formatMoney = (value) => `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
+  const formatDateTime = (value) => {
+    if (!value) return 'Present';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+  const getFeeSnapshot = (course = {}) => ({
+    courseFees: Number(course.courseFees || 0),
+    admissionFees: Number(course.admissionFees || 0),
+    registrationFees: Number(course.registrationFees || 0),
+    monthlyFees: Number(course.monthlyFees || 0),
+    totalInstallment: Number(course.totalInstallment || 1)
+  });
 
   // Load Initial Data
   useEffect(() => {
@@ -135,6 +159,16 @@ const CourseMaster = () => {
       setShowForm(true);
   };
 
+  const handleView = (course) => {
+      setViewingFeeHistory(null);
+      setViewingCourse(course);
+  };
+
+  const closeViewModal = () => {
+      setViewingCourse(null);
+      setViewingFeeHistory(null);
+  };
+
   const handleDelete = (id) => {
       if (!canDelete) {
         showPermissionDenied("You don't have authority to delete courses.");
@@ -159,6 +193,21 @@ const CourseMaster = () => {
         showPermissionDenied("You don't have authority to edit courses.");
         return;
       }
+
+      const currentCourse = courses.find((course) => course._id === currentCourseId);
+      if (currentCourse) {
+        const originalFees = getFeeSnapshot(currentCourse);
+        const nextFees = getFeeSnapshot(payload);
+        const hasFeeChange = feeFields.some((field) => originalFees[field] !== nextFees[field]);
+
+        if (hasFeeChange) {
+          const confirmed = window.confirm(
+            'Are you sure you want to change the course price? Old admissions will keep the previous fee and new admissions will use the updated fee.'
+          );
+          if (!confirmed) return;
+        }
+      }
+
       dispatch(updateCourse({ id: currentCourseId, data: payload }));
     } else {
       if (!add) {
@@ -280,7 +329,7 @@ const CourseMaster = () => {
                     <th className="p-2 border font-semibold text-center">Popular</th>
                     <th className="p-2 border font-semibold text-center">Commission</th>
                     <th className="p-2 border font-semibold text-center">Subjects</th>
-                    <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-24">Actions</th>
+                    <th className="p-2 border font-semibold text-center sticky right-0 bg-blue-600 z-10 w-32">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -290,7 +339,7 @@ const CourseMaster = () => {
                         <td className="p-2 border font-medium text-gray-700">{course.shortName}</td>
                         <td className="p-2 border font-semibold text-gray-900">{course.name}</td>
                         <td className="p-2 border text-gray-600">{course.courseType}</td>
-                        <td className="p-2 border text-gray-700">₹{course.courseFees ?? 0}</td>
+                        <td className="p-2 border text-gray-700">{formatMoney(course.courseFees ?? 0)}</td>
                         <td className="p-2 border text-gray-600">{course.duration} {course.durationType}</td>
                         <td className="p-2 border text-center">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${course.isActive ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'}`}>
@@ -304,7 +353,7 @@ const CourseMaster = () => {
                         </td>
                         <td className="p-2 border text-center text-gray-700">
                             {course.commissionType === 'Amount'
-                                ? `₹${course.commission ?? 0}`
+                                ? formatMoney(course.commission ?? 0)
                                 : `${course.commission ?? 0}%`}
                         </td>
                         <td className="p-2 border text-center">
@@ -318,6 +367,9 @@ const CourseMaster = () => {
                         </td>
                         <td className="p-2 border text-center sticky right-0 bg-white z-[5]">
                             <div className="flex justify-center gap-1">
+                                <button onClick={() => handleView(course)} className="bg-emerald-50 text-emerald-700 p-1 rounded border border-emerald-200 hover:bg-emerald-100 transition" title="View">
+                                    <Eye size={14}/>
+                                </button>
                                 <button onClick={() => handleEdit(course)} className="bg-blue-50 text-blue-600 p-1 rounded border border-blue-200 hover:bg-blue-100 transition" title="Edit">
                                     <Edit2 size={14}/>
                                 </button>
@@ -336,7 +388,7 @@ const CourseMaster = () => {
       </div>
 
        {/* Pagination Footer */}
-       {!isLoading && courses && courses.length > 0 && (
+      {!isLoading && courses && courses.length > 0 && (
           <div className="bg-gray-50 px-4 py-3 border-t flex justify-between items-center mt-2 rounded-lg">
               <span className="text-xs text-gray-500">
                   Page {currentPage} of {totalPages} ({courses.length} records)
@@ -365,6 +417,128 @@ const CourseMaster = () => {
                   >
                       Next
                   </button>
+              </div>
+          </div>
+      )}
+
+      {/* --- Course Detail Modal --- */}
+      {viewingCourse && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
+              <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl overflow-hidden max-h-[90vh] flex flex-col">
+                  <div className="bg-primary text-white p-4 flex justify-between items-center">
+                      <div>
+                          <h3 className="text-lg font-bold">{viewingCourse.name}</h3>
+                          <p className="text-xs text-white/80">Course details and current fee snapshot</p>
+                      </div>
+                      <button onClick={closeViewModal} className="hover:text-red-200"><X size={22}/></button>
+                  </div>
+                  <div className="p-5 overflow-y-auto space-y-5">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="p-4 rounded-lg border bg-gray-50">
+                              <div className="text-xs text-gray-500 uppercase font-bold">Course Name</div>
+                              <div className="mt-1 font-semibold text-gray-800">{viewingCourse.name}</div>
+                          </div>
+                          <div className="p-4 rounded-lg border bg-gray-50">
+                              <div className="text-xs text-gray-500 uppercase font-bold">Short Name</div>
+                              <div className="mt-1 font-semibold text-gray-800">{viewingCourse.shortName}</div>
+                          </div>
+                          <div className="p-4 rounded-lg border bg-gray-50">
+                              <div className="text-xs text-gray-500 uppercase font-bold">Status</div>
+                              <div className="mt-1 font-semibold text-gray-800">{viewingCourse.isActive ? 'Active' : 'Inactive'}</div>
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="border rounded-lg p-4">
+                              <h4 className="font-bold text-gray-700 mb-3">Current Fee Snapshot</h4>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                  <div><span className="text-gray-500">Total Fees:</span> <span className="font-semibold">{formatMoney(viewingCourse.courseFees)}</span></div>
+                                  <div><span className="text-gray-500">Admission Fees:</span> <span className="font-semibold">{formatMoney(viewingCourse.admissionFees)}</span></div>
+                                  <div><span className="text-gray-500">Registration Fees:</span> <span className="font-semibold">{formatMoney(viewingCourse.registrationFees)}</span></div>
+                                  <div><span className="text-gray-500">Monthly Fees:</span> <span className="font-semibold">{formatMoney(viewingCourse.monthlyFees)}</span></div>
+                                  <div><span className="text-gray-500">Installments:</span> <span className="font-semibold">{viewingCourse.totalInstallment || 1}</span></div>
+                                  <div><span className="text-gray-500">Duration:</span> <span className="font-semibold">{viewingCourse.duration} {viewingCourse.durationType}</span></div>
+                              </div>
+                          </div>
+                          <div className="border rounded-lg p-4">
+                              <h4 className="font-bold text-gray-700 mb-3">Other Details</h4>
+                              <div className="space-y-2 text-sm text-gray-700">
+                                  <div><span className="text-gray-500">Type:</span> {viewingCourse.courseType || '-'}</div>
+                                  <div><span className="text-gray-500">Commission:</span> {viewingCourse.commissionType === 'Amount' ? formatMoney(viewingCourse.commission) : `${viewingCourse.commission || 0}%`}</div>
+                                  <div><span className="text-gray-500">Sort Order:</span> {viewingCourse.sorting ?? 0}</div>
+                                  <div><span className="text-gray-500">Subjects:</span> {viewingCourse.subjects?.length || 0}</div>
+                                  <div><span className="text-gray-500">Created:</span> {formatDateTime(viewingCourse.createdAt)}</div>
+                              </div>
+                          </div>
+                      </div>
+
+                      <div className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                              <h4 className="font-bold text-gray-700">Description</h4>
+                              <button
+                                  type="button"
+                                  onClick={() => setViewingFeeHistory(viewingCourse)}
+                                  className="px-3 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition flex items-center gap-2"
+                              >
+                                  <Clock size={14} /> View Price Change History
+                              </button>
+                          </div>
+                          <p className="mt-3 text-sm text-gray-600 whitespace-pre-wrap">{viewingCourse.description || 'No description available.'}</p>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* --- Fee History Modal --- */}
+      {viewingFeeHistory && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[70] p-4 backdrop-blur-sm">
+              <div className="bg-white rounded-lg shadow-2xl w-full max-w-5xl overflow-hidden max-h-[90vh] flex flex-col">
+                  <div className="bg-gray-900 text-white p-4 flex justify-between items-center">
+                      <div>
+                          <h3 className="text-lg font-bold">Price Change History</h3>
+                          <p className="text-xs text-white/70">{viewingFeeHistory.name}</p>
+                      </div>
+                      <button onClick={() => setViewingFeeHistory(null)} className="hover:text-red-300"><X size={22}/></button>
+                  </div>
+                  <div className="p-5 overflow-y-auto">
+                      {Array.isArray(viewingFeeHistory.feeHistory) && viewingFeeHistory.feeHistory.length > 0 ? (
+                          <div className="overflow-x-auto">
+                              <table className="w-full border-collapse text-sm">
+                                  <thead>
+                                      <tr className="bg-gray-100 text-left text-xs uppercase text-gray-500">
+                                          <th className="p-3 border">Valid From</th>
+                                          <th className="p-3 border">Valid To</th>
+                                          <th className="p-3 border">Total Fees</th>
+                                          <th className="p-3 border">Admission</th>
+                                          <th className="p-3 border">Registration</th>
+                                          <th className="p-3 border">Monthly</th>
+                                          <th className="p-3 border">Installments</th>
+                                          <th className="p-3 border">Note</th>
+                                      </tr>
+                                  </thead>
+                                  <tbody>
+                                      {[...viewingFeeHistory.feeHistory].slice().reverse().map((row, index) => (
+                                          <tr key={index} className="border-b hover:bg-blue-50/60">
+                                              <td className="p-3 border">{formatDateTime(row.effectiveFrom)}</td>
+                                              <td className="p-3 border">{formatDateTime(row.effectiveTo)}</td>
+                                              <td className="p-3 border font-semibold">{formatMoney(row.courseFees)}</td>
+                                              <td className="p-3 border">{formatMoney(row.admissionFees)}</td>
+                                              <td className="p-3 border">{formatMoney(row.registrationFees)}</td>
+                                              <td className="p-3 border">{formatMoney(row.monthlyFees)}</td>
+                                              <td className="p-3 border">{row.totalInstallment || 1}</td>
+                                              <td className="p-3 border text-gray-600">{row.note || '-'}</td>
+                                          </tr>
+                                      ))}
+                                  </tbody>
+                              </table>
+                          </div>
+                      ) : (
+                          <div className="border rounded-lg p-6 text-sm text-gray-500 bg-gray-50">
+                              No price history is available yet for this course.
+                          </div>
+                      )}
+                  </div>
               </div>
           </div>
       )}
