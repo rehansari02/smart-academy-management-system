@@ -95,30 +95,18 @@ const referenceFeeAddFields = (getFeeStatusExpr) => ({
 
 const referenceStageGroupFields = {
     admissionCount: {
-        $sum: {
-            $cond: [
-                { $and: ['$isAdmissionPaidCalc', '$isRegistrationPaidCalc'] },
-                1,
-                0
-            ]
-        }
+        $sum: { $cond: ['$isAdmissionFeesPaid', 1, 0] }
     },
     registrationCount: {
-        $sum: {
-            $cond: [
-                { $and: ['$isAdmissionPaidCalc', { $not: ['$isRegistrationPaidCalc'] }] },
-                1,
-                0
-            ]
-        }
+        $sum: { $cond: ['$isRegistered', 1, 0] }
     },
     pendingAdmissionCount: {
-        $sum: { $cond: ['$isAdmissionPaidCalc', 0, 1] }
+        $sum: { $cond: ['$isAdmissionFeesPaid', 0, 1] }
     },
     pendingRegistrationCount: {
         $sum: {
             $cond: [
-                { $and: ['$isAdmissionPaidCalc', { $not: ['$isRegistrationPaidCalc'] }] },
+                { $and: ['$isAdmissionFeesPaid', { $not: ['$isRegistered'] }] },
                 1,
                 0
             ]
@@ -348,6 +336,7 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
     // Get all unique references with aggregation and incentive calculation
     const allRefsMatch = {
         isDeleted: false,
+        isCancelled: false,
         ...(branchObjectId ? { branchId: branchObjectId } : {}),
         reference: referenceFilter,
         ...(dateMatch ? { admissionDate: dateMatch } : {})
@@ -434,6 +423,7 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
 
         const studentQuery = {
             isDeleted: false,
+            isCancelled: false,
             reference: finalReferenceMatch,
             ...(detailDateMatch ? { admissionDate: detailDateMatch } : {}),
             ...(['Paid', 'Pending'].includes(incentiveStatus) ? { incentiveStatus } : {}),

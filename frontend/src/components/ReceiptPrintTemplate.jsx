@@ -91,7 +91,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {/* Left Logo (Placeholder or same logo duplicated if needed, image shows 2) */}
+          {/* Left Logo */}
           <img
             src={logo}
             alt="Logo"
@@ -166,7 +166,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
         {/* Table Header */}
         <div style={{
           display: 'flex',
-          backgroundColor: '#2e75b6', // Darker Blue
+          backgroundColor: '#2e75b6',
           color: 'white',
           fontWeight: 'bold',
           padding: '6px 10px',
@@ -212,8 +212,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
             justifyContent: 'center',
             fontSize: '16px',
             fontWeight: 'bold',
-            backgroundColor: '#d0d0d0' // Slightly darker grey for amount cell? Check image. 
-            // Image has simplified shading. Using plain background for now.
+            backgroundColor: '#d0d0d0'
           }}>
             {receipt.amountPaid.toFixed(2)}
           </div>
@@ -238,18 +237,14 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
           <span style={{ color: '#0066cc' }}>DUE FEES : </span>
           <span>
             {(() => {
-              // Use the pre-calculated due from the server if available
               if (receipt.student?.calculatedTotalDue !== undefined) {
                 return formatAmount(receipt.student.calculatedTotalDue);
               }
-
-              // Fallback to manual calculation if not provided
               const courseDue = receipt.student?.pendingFees || 0;
               const courseAdmFees = receipt.course?.admissionFees || 0;
               const paidAdmFees = receipt.student?.admissionFeeAmount || 0;
               const pendingAdm = Math.max(0, courseAdmFees - paidAdmFees);
               const totalDue = courseDue + pendingAdm;
-
               return totalDue > 0 ? formatAmount(totalDue) : '0.00';
             })()}
           </span>
@@ -278,7 +273,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
         </div>
 
         <div style={{ flex: 1, position: 'relative', minHeight: '120px' }}>
-          {/* Signature Area - pushed to bottom to leave stamp space above */}
+          {/* Signature Area */}
           <div style={{ position: 'absolute', bottom: '4px', right: '10px', textAlign: 'right' }}>
             <div style={{ marginBottom: '4px', fontWeight: 'bold' }}>
               {user?.name || 'Admin'}
@@ -313,31 +308,23 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   );
 
   return (
-    <div ref={ref}>
-      {/* Styles only for the print content, no styles that hide body elements */}
+    <div ref={ref} className="print-only-container" style={{
+      width: '210mm',
+      height: '297mm',
+      margin: '0',
+      padding: '0',
+      backgroundColor: 'white',
+      WebkitPrintColorAdjust: 'exact',
+      printColorAdjust: 'exact',
+      colorAdjust: 'exact'
+    }}>
+      {renderSingleReceipt()}
       <div style={{
-        width: '210mm',
-        height: '297mm',
+        borderTop: '2px dashed #999',
         margin: '0',
-        padding: '0',
-        backgroundColor: 'white',
-        WebkitPrintColorAdjust: 'exact',
-        printColorAdjust: 'exact',
-        colorAdjust: 'exact'
-      }}>
-        {/* First Copy */}
-        {renderSingleReceipt()}
-
-        {/* Dotted Line Separator */}
-        <div style={{
-          borderTop: '2px dashed #999',
-          margin: '0',
-          height: '0'
-        }}></div>
-
-        {/* Second Copy */}
-        {renderSingleReceipt()}
-      </div>
+        height: '0'
+      }}></div>
+      {renderSingleReceipt()}
     </div>
   );
 });

@@ -575,14 +575,16 @@ function TeacherPerformanceDetail({
     const required = configuredRequired > 0 ? configuredRequired : storedPaid;
     const paid = required > 0 ? Math.min(storedPaid, required) : storedPaid;
     const isPaid = feeType === 'admission'
-      ? (required > 0 ? storedPaid >= required : Boolean(student?.isAdmissionFeesPaid))
-      : (required > 0 ? storedPaid >= required : Boolean(student?.isRegistered));
+      ? Boolean(student?.isAdmissionFeesPaid)
+      : Boolean(student?.isRegistered);
 
     return {
       required,
       paid,
       isPaid,
-      label: isPaid ? 'Paid' : 'Pending'
+      label: feeType === 'admission'
+        ? (isPaid ? 'Paid' : 'Pending')
+        : (isPaid ? 'Registered' : 'Pending')
     };
   };
 
@@ -700,13 +702,16 @@ function TeacherPerformanceDetail({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatBox label="Admitted" value={summary.admissionCount} className="text-emerald-300" />
+          <StatBox label="Admission Paid" value={summary.admissionCount} className="text-emerald-300" />
           <StatBox label="Pending Admission" value={summary.pendingAdmissionCount || 0} className="text-rose-300" />
           <StatBox label="Pending Registration" value={summary.pendingRegistrationCount || 0} className="text-amber-300" />
           <StatBox label="Total Rev." value={formatMoney(totalReceived)} className="text-cyan-300" />
         </div>
         <div className="mt-2 text-xs font-semibold text-white/70">
           Total referrals: {summary.studentCount || 0} | Incentive: {formatMoney(summary.totalIncentive || 0)}
+        </div>
+        <div className="mt-1 text-[11px] font-semibold text-white/60">
+          Pending counts match the transaction pending pages.
         </div>
       </div>
 
@@ -921,7 +926,7 @@ function TeacherPerformanceDetail({
                 <th className="p-3 text-left font-black">Branch</th>
                 <th className="p-3 text-left font-black">Course</th>
                 <th className="p-3 text-center font-black">Admission Fee</th>
-                <th className="p-3 text-center font-black">Registration Fee</th>
+                <th className="p-3 text-center font-black">Registration</th>
                 <th className="p-3 text-right font-black">Incentive</th>
                 <th className="p-3 text-center font-black">Status</th>
                 <th className="w-24 p-3 text-center font-black">Action</th>

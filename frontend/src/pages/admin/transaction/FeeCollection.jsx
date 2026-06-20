@@ -348,7 +348,26 @@ const FeeCollection = () => {
         onAfterPrint: () => {
             setPrintingReceipt(null);
         },
-        documentTitle: `Receipt-${printingReceipt?.receiptNo || 'print'}`
+        documentTitle: `Receipt-${printingReceipt?.receiptNo || 'print'}`,
+        pageStyle: `
+            @page {
+                margin: 0;
+                size: A4 portrait;
+            }
+            html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #fff !important;
+                width: 210mm !important;
+                height: 297mm !important;
+                overflow: visible !important;
+            }
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }
+        `
     });
 
     const triggerPrintReceipt = (receipt) => {
@@ -917,16 +936,7 @@ const FeeCollection = () => {
             </div>
 
             {/* === HIDDEN PRINT TEMPLATES */}
-            <div style={{
-                position: 'fixed',
-                left: '-99999px',
-                top: '-99999px',
-                width: '210mm',
-                height: '297mm',
-                overflow: 'hidden',
-                backgroundColor: 'white',
-                zIndex: -99999
-            }}>
+            <div style={{ display: 'none' }}>
                 <ReceiptPrintTemplate ref={receiptRef} receipt={printingReceipt} />
             </div>
 

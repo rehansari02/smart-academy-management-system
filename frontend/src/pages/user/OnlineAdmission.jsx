@@ -275,6 +275,24 @@ const OnlineAdmission = () => {
             <h3 className="text-lg font-bold text-gray-800 border-b pb-2 mb-4 flex items-center gap-2">
                 <User size={20} className="text-primary"/> Personal Information
             </h3>
+            <div className="flex flex-col items-center gap-3 mb-6">
+                <label className="text-sm font-semibold text-gray-700">
+                    Student Photo
+                </label>
+                <ProfileImageUploader
+                    value={watch('studentPhoto')}
+                    onChange={(file) => setValue('studentPhoto', file)}
+                    onDelete={() => {
+                        setValue('studentPhoto', null);
+                        setPreviewImage(null);
+                    }}
+                    onProcessingChange={(processing) => setIsImageProcessing(processing)}
+                    size="w-20 h-20"
+                    name="studentPhoto"
+                    enableAdjustments
+                />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
                    <label className="block text-sm font-semibold text-gray-700 mb-1">First Name <span className="text-red-500">*</span></label>
@@ -313,7 +331,7 @@ const OnlineAdmission = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                  <div>
                    <label className="block text-sm font-semibold text-gray-700 mb-1">Date of Birth <span className="text-red-500">*</span></label>
                    <input type="date" {...register("dob", { required: "Required" })} className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary outline-none transition-all" />
@@ -329,21 +347,6 @@ const OnlineAdmission = () => {
                             <input type="radio" value="Female" {...register("gender")} className="text-pink-500 focus:ring-pink-500" /> Female
                         </label>
                     </div>
-                </div>
-                <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">Student Photo</label>
-                    <ProfileImageUploader
-                        value={watch('studentPhoto')}
-                        onChange={(file) => setValue('studentPhoto', file)}
-                        onDelete={() => {
-                            setValue('studentPhoto', null);
-                            setPreviewImage(null);
-                        }}
-                        onProcessingChange={(processing) => setIsImageProcessing(processing)}
-                        size="w-20 h-20"
-                        name="studentPhoto"
-                        enableAdjustments
-                    />
                 </div>
             </div>
           </div>
