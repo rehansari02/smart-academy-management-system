@@ -238,19 +238,19 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
           <span style={{ color: '#0066cc' }}>DUE FEES : </span>
           <span>
             {(() => {
-                // Use the pre-calculated due from the server if available
-                if (receipt.student?.calculatedTotalDue !== undefined) {
-                    return formatAmount(receipt.student.calculatedTotalDue);
-                }
+              // Use the pre-calculated due from the server if available
+              if (receipt.student?.calculatedTotalDue !== undefined) {
+                return formatAmount(receipt.student.calculatedTotalDue);
+              }
 
-                // Fallback to manual calculation if not provided
-                const courseDue = receipt.student?.pendingFees || 0;
-                const courseAdmFees = receipt.course?.admissionFees || 0;
-                const paidAdmFees = receipt.student?.admissionFeeAmount || 0;
-                const pendingAdm = Math.max(0, courseAdmFees - paidAdmFees);
-                const totalDue = courseDue + pendingAdm;
+              // Fallback to manual calculation if not provided
+              const courseDue = receipt.student?.pendingFees || 0;
+              const courseAdmFees = receipt.course?.admissionFees || 0;
+              const paidAdmFees = receipt.student?.admissionFeeAmount || 0;
+              const pendingAdm = Math.max(0, courseAdmFees - paidAdmFees);
+              const totalDue = courseDue + pendingAdm;
 
-                return totalDue > 0 ? formatAmount(totalDue) : '0.00';
+              return totalDue > 0 ? formatAmount(totalDue) : '0.00';
             })()}
           </span>
         </div>
@@ -313,54 +313,8 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   );
 
   return (
-    <div ref={ref} className="print-only-container">
-      <style>
-        {`
-          @media print {
-            @page {
-              margin: 0;
-              size: A4 portrait;
-            }
-            html, body {
-              margin: 0 !important;
-              padding: 0 !important;
-              background: #fff !important;
-              width: 210mm !important;
-              height: 297mm !important;
-              overflow: visible !important;
-              position: relative !important;
-            }
-            /* Hide EVERYTHING by default during print */
-            body > *:not(.print-only-container) {
-              display: none !important;
-            }
-            /* Ensure print container is visible and takes full page */
-            .print-only-container {
-              display: block !important;
-              position: fixed !important;
-              left: 0 !important;
-              top: 0 !important;
-              width: 210mm !important;
-              height: 297mm !important;
-              background: white !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              z-index: 999999999999 !important;
-              visibility: visible !important;
-              overflow: hidden !important;
-            }
-            .print-only-container * {
-              visibility: visible !important;
-            }
-          }
-          @media screen {
-            .print-only-container {
-              display: none;
-            }
-          }
-        `}
-      </style>
-
+    <div ref={ref}>
+      {/* Styles only for the print content, no styles that hide body elements */}
       <div style={{
         width: '210mm',
         height: '297mm',
