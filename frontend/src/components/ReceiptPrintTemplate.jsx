@@ -77,7 +77,10 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   const renderSingleReceipt = () => (
     <div style={{
       width: '100%',
-      height: '148mm', // Exactly half of A4 page (297mm)
+      height: '148mm',
+      maxHeight: '148mm',
+      overflow: 'hidden',
+      pageBreakInside: 'avoid',
       border: '0px solid #ddd',
       padding: '20px',
       fontFamily: '"Calibri", "Arial", sans-serif',
@@ -310,9 +313,8 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   return (
     <div ref={ref} className="print-only-container" style={{
       width: '210mm',
-      height: '297mm',
-      margin: '0',
-      padding: '0',
+      minHeight: '297mm',
+      margin: '0 auto',
       backgroundColor: 'white',
       WebkitPrintColorAdjust: 'exact',
       printColorAdjust: 'exact',
@@ -322,7 +324,9 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
       <div style={{
         borderTop: '2px dashed #999',
         margin: '0',
-        height: '0'
+        height: '0',
+        pageBreakAfter: 'avoid',
+        pageBreakBefore: 'avoid'
       }}></div>
       {renderSingleReceipt()}
     </div>

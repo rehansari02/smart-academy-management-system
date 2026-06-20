@@ -349,24 +349,31 @@ const FeeCollection = () => {
             setPrintingReceipt(null);
         },
         documentTitle: `Receipt-${printingReceipt?.receiptNo || 'print'}`,
-        pageStyle: `
-            @page {
-                margin: 0;
-                size: A4 portrait;
-            }
-            html, body {
-                margin: 0 !important;
-                padding: 0 !important;
-                background: #fff !important;
-                width: 210mm !important;
-                height: 297mm !important;
-                overflow: visible !important;
-            }
-            * {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-                color-adjust: exact !important;
-            }
+        pageStyle: ` 
+          @page { 
+            margin: 0; 
+            size: A4 portrait; 
+          } 
+          @media print { 
+            html, body { 
+              margin: 0 !important; 
+              padding: 0 !important; 
+              background: #fff !important; 
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important; 
+            } 
+            .print-only-container { 
+              width: 210mm !important; 
+              height: 297mm !important; 
+              page-break-after: avoid !important; 
+              page-break-inside: avoid !important; 
+            } 
+          } 
+          * { 
+            -webkit-print-color-adjust: exact !important; 
+            print-color-adjust: exact !important; 
+            color-adjust: exact !important; 
+          } 
         `
     });
 
