@@ -133,12 +133,13 @@ const resolveInquiryOwner = async ({ referenceBy, requestedAllocatedTo, fallback
   return fallbackUserId;
 };
 
-const addInquiryOwnershipScope = (query, ownerId) => {
+const addInquiryOwnershipScope = (query, ownerId, extraOwnershipConditions = []) => {
   const ownership = {
     $or: [
       { allocatedTo: ownerId },
       { allocatedTo: { $exists: false }, createdBy: ownerId },
       { allocatedTo: null, createdBy: ownerId },
+      ...extraOwnershipConditions,
     ],
   };
 
@@ -148,6 +149,43 @@ const addInquiryOwnershipScope = (query, ownerId) => {
   } else {
     query.$and = [...(query.$and || []), ownership];
   }
+};
+
+const backfillOnlineAdmissionOwners = async (branchId) => {
+  if (!branchId) return;
+
+  const inquiries = await Inquiry.find({
+    source: "OnlineAdmission",
+    branchId,
+    isDeleted: false,
+    $or: [
+      { allocatedTo: { $exists: false } },
+      { allocatedTo: null },
+    ],
+    referenceBy: { $exists: true, $nin: [null, ""] },
+  })
+    .select("_id referenceBy isExternalRef")
+    .limit(100)
+    .lean();
+
+  await Promise.all(inquiries.map(async (inquiry) => {
+    const ownerId = await resolveInquiryOwner({
+      referenceBy: inquiry.referenceBy,
+      requestedAllocatedTo: null,
+      fallbackUserId: null,
+      isExternalRef: inquiry.isExternalRef,
+    });
+
+    if (ownerId) {
+      await Inquiry.updateOne({
+        _id: inquiry._id,
+        $or: [
+          { allocatedTo: { $exists: false } },
+          { allocatedTo: null },
+        ],
+      }, { $set: { allocatedTo: ownerId } });
+    }
+  }));
 };
 
 const getReceiptPurpose = (receipt) => {
@@ -504,6 +542,10 @@ const getInquiries = asyncHandler(async (req, res) => {
     }
   }
 
+  if (req.query.adminHome === "true" && req.user?.branchId) {
+    await backfillOnlineAdmissionOwners(req.user.branchId);
+  }
+
   const canViewBranchWideInquiries = req.user
     && ["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role);
   const employeeFilter = req.query.employeeId || req.query.allocatedTo;
@@ -517,7 +559,18 @@ const getInquiries = asyncHandler(async (req, res) => {
   }
 
   if (req.user && !canViewBranchWideInquiries && !isAdmissionLookup) {
-    addInquiryOwnershipScope(query, req.user._id);
+    const extraOwnershipConditions = [];
+    if (req.query.adminHome === "true" && req.user.branchId) {
+      extraOwnershipConditions.push({
+        source: "OnlineAdmission",
+        branchId: req.user.branchId,
+        $or: [
+          { allocatedTo: { $exists: false } },
+          { allocatedTo: null },
+        ],
+      });
+    }
+    addInquiryOwnershipScope(query, req.user._id, extraOwnershipConditions);
   }
 
   if (followUpById) {
@@ -689,11 +742,11 @@ const createInquiry = asyncHandler(async (req, res) => {
     }
   }
 
-  if (req.user?._id) {
+  if (req.user?._id || data.source === "OnlineAdmission") {
     data.allocatedTo = await resolveInquiryOwner({
       referenceBy: data.referenceBy || data.referenceDetail?.name,
-      requestedAllocatedTo: req.user.role === "Super Admin" ? data.allocatedTo : null,
-      fallbackUserId: req.user._id,
+      requestedAllocatedTo: req.user?.role === "Super Admin" ? data.allocatedTo : null,
+      fallbackUserId: req.user?._id || null,
       isExternalRef: data.isExternalRef
     });
   }
@@ -1525,6 +1578,8 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
       hasFollowUpChanged = true;
     }
 
+    const isMovingToOnline = req.body.source === "Online" && inquiry.source !== "Online";
+
     const fields = [
       "status",
       "source",
@@ -1609,11 +1664,19 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
       inquiry.studentPhoto = req.file.path.replace(/\\/g, "/");
     }
 
-    if (req.user?._id && req.body.referenceBy !== undefined && req.body.allocatedTo === undefined) {
+    const shouldResolveOwner =
+      req.user?._id &&
+      req.body.allocatedTo === undefined &&
+      (
+        req.body.referenceBy !== undefined ||
+        isMovingToOnline
+      );
+
+    if (shouldResolveOwner) {
       inquiry.allocatedTo = await resolveInquiryOwner({
         referenceBy: inquiry.referenceBy || inquiry.referenceDetail?.name,
         requestedAllocatedTo: null,
-        fallbackUserId: inquiry.createdBy || req.user._id,
+        fallbackUserId: req.body.source === "Online" ? req.user._id : (inquiry.createdBy || req.user._id),
         isExternalRef: inquiry.isExternalRef
       });
     }

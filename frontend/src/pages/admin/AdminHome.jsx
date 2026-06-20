@@ -49,12 +49,13 @@ const AdminHome = () => {
         branchId: '',
         minPendingDays: 30
     });
+    const adminHomeInquiryParams = { adminHome: 'true' };
 
     // Initial Fetch - Fetch ALL inquiries and filter them client-side
     useEffect(() => {
         // Fetch inquiries if has any inquiry right or is admin
         if (canViewInquiryList || canViewOnlineAdmissions || (user && user.role === 'Super Admin')) {
-            dispatch(fetchInquiries({}));
+            dispatch(fetchInquiries(adminHomeInquiryParams));
         }
         
         // Fetch exam pending students if has right or is admin
@@ -204,7 +205,7 @@ const AdminHome = () => {
 
             if (!res.error) {
                 toast.success("Inquiry transferred to Online Inquiry list");
-                dispatch(fetchInquiries({}));
+                dispatch(fetchInquiries(adminHomeInquiryParams));
             }
         }
     };
@@ -524,7 +525,7 @@ const AdminHome = () => {
                             <span className="text-xs font-semibold bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
                                 Total: {quickContactInquiries.length}
                             </span>
-                            <button onClick={() => dispatch(fetchInquiries({}))} className="p-1 hover:bg-gray-200 rounded-full transition-colors" title="Refresh">
+                            <button onClick={() => dispatch(fetchInquiries(adminHomeInquiryParams))} className="p-1 hover:bg-gray-200 rounded-full transition-colors" title="Refresh">
                                 <RefreshCw size={16} className="text-gray-500" />
                             </button>
                         </div>
@@ -605,7 +606,7 @@ const AdminHome = () => {
                             <span className="text-xs font-semibold bg-green-100 text-green-800 px-3 py-1 rounded-full">
                                 Total: {onlineAdmissionInquiries.length}
                             </span>
-                            <button onClick={() => dispatch(fetchInquiries({}))} className="p-1 hover:bg-gray-200 rounded-full transition-colors" title="Refresh">
+                            <button onClick={() => dispatch(fetchInquiries(adminHomeInquiryParams))} className="p-1 hover:bg-gray-200 rounded-full transition-colors" title="Refresh">
                                 <RefreshCw size={16} className="text-gray-500" />
                             </button>
                         </div>
