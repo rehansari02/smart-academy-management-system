@@ -462,8 +462,9 @@ const AdminDashboard = () => {
                   ['Date', row => formatDate(row.date)],
                   ['Receipt', row => row.receiptNo],
                   ['Student', row => row.student ? `${row.student.firstName || ''} ${row.student.lastName || ''}` : '-'],
-                  ['Branch', row => row.branch?.name || '-'],
-                  ['Amount', row => formatAmount(row.amountPaid), 'text-right font-black']
+                  ['Branch', row => row.branch?.name || row.student?.branchId?.name || row.student?.branchName || '-'],
+                  ['Amount', row => formatAmount(row.amountPaid), 'text-right font-black'],
+                  ['Type', row => row.remarks || 'Fees Payment']
                 ]} />
                 <DataTable title="Recent Visitors" rows={listData.visitors} limit={recentListLimit} columns={[
                   ['Date', row => formatDate(row.visitingDate)],

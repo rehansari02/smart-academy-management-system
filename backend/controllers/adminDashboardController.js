@@ -122,6 +122,99 @@ const moneySum = async (match) => {
     return result[0] || { amount: 0, count: 0 };
 };
 
+const getReceiptPurpose = (receipt) => {
+    const remarks = String(receipt?.remarks || '').toLowerCase();
+    if (remarks.includes('admission')) return 'admission';
+    if (remarks.includes('registration')) return 'registration';
+    return 'installment';
+};
+
+const sortReceiptsChronologically = (receipts = []) => [...receipts].sort((a, b) => {
+    const aTime = new Date(a.date || a.createdAt || 0).getTime();
+    const bTime = new Date(b.date || b.createdAt || 0).getTime();
+    if (aTime !== bTime) return aTime - bTime;
+    return Number(a.receiptNo || 0) - Number(b.receiptNo || 0);
+});
+
+const getReceiptLifecycleInfo = (receipts = []) => {
+    const receiptInfo = new Map();
+    let hasAdmission = false;
+    let hasRegistration = false;
+    let installmentNumber = 0;
+
+    sortReceiptsChronologically(receipts).forEach((receipt) => {
+        const rawPurpose = getReceiptPurpose(receipt);
+        let purpose = rawPurpose;
+
+        if (rawPurpose === 'admission') {
+            if (hasAdmission) {
+                purpose = 'installment';
+            } else {
+                hasAdmission = true;
+            }
+        } else if (rawPurpose === 'registration') {
+            if (hasRegistration) {
+                purpose = 'installment';
+            } else {
+                hasRegistration = true;
+            }
+        }
+
+        const displayInstallmentNumber = purpose === 'installment' ? ++installmentNumber : 0;
+        if (receipt?._id) {
+            receiptInfo.set(receipt._id.toString(), { purpose, displayInstallmentNumber });
+        }
+    });
+
+    return receiptInfo;
+};
+
+const getLifecycleFeeSummary = async (feeQuery) => {
+    const rangeReceipts = await FeeReceipt.find(feeQuery)
+        .select('_id student amountPaid remarks date createdAt receiptNo')
+        .lean();
+
+    const studentIds = [...new Set(rangeReceipts.map((receipt) => receipt.student?.toString()).filter(Boolean))];
+    if (!studentIds.length) {
+        return {
+            admission: { amount: 0, count: 0 },
+            registration: { amount: 0, count: 0 }
+        };
+    }
+
+    const allStudentReceipts = await FeeReceipt.find({ student: { $in: studentIds } })
+        .select('_id student amountPaid remarks date createdAt receiptNo')
+        .lean();
+
+    const receiptsByStudent = allStudentReceipts.reduce((map, receipt) => {
+        const key = receipt.student?.toString();
+        if (!key) return map;
+        if (!map[key]) map[key] = [];
+        map[key].push(receipt);
+        return map;
+    }, {});
+
+    const lifecycleByReceiptId = new Map();
+    Object.values(receiptsByStudent).forEach((studentReceipts) => {
+        getReceiptLifecycleInfo(studentReceipts).forEach((info, receiptId) => {
+            lifecycleByReceiptId.set(receiptId, info);
+        });
+    });
+
+    return rangeReceipts.reduce((summary, receipt) => {
+        const info = lifecycleByReceiptId.get(receipt._id.toString());
+        const purpose = info?.purpose || getReceiptPurpose(receipt);
+        if (purpose === 'admission' || purpose === 'registration') {
+            summary[purpose].amount += Number(receipt.amountPaid || 0);
+            summary[purpose].count += 1;
+        }
+        return summary;
+    }, {
+        admission: { amount: 0, count: 0 },
+        registration: { amount: 0, count: 0 }
+    });
+};
+
 const getAdminDashboard = asyncHandler(async (req, res) => {
     const { period = 'today', fromDate, toDate } = req.query;
     let branchId = req.query.branchId || '';
@@ -146,23 +239,13 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
     const feeQuery = addBranchScope({ date: dateMatch }, 'branch', branchObjectId);
     const expenseQuery = addBranchScope({ date: dateMatch }, 'branch', branchObjectId);
 
-    const admissionFeeQuery = {
-        ...feeQuery,
-        remarks: { $regex: 'admission', $options: 'i' }
-    };
-    const registrationFeeQuery = {
-        ...feeQuery,
-        remarks: { $regex: 'registration', $options: 'i' }
-    };
-
     const [
         inquiryCount,
         admissionCount,
         registrationCount,
         visitorCount,
         feeSummary,
-        admissionFeeSummary,
-        registrationFeeSummary,
+        lifecycleFeeSummary,
         sourceCounts,
         paymentModeCounts,
         recentInquiries,
@@ -179,8 +262,7 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
         Student.countDocuments(registrationQuery),
         Visitor.countDocuments(visitorQuery),
         moneySum(feeQuery),
-        moneySum(admissionFeeQuery),
-        moneySum(registrationFeeQuery),
+        getLifecycleFeeSummary(feeQuery),
         Inquiry.aggregate([
             { $match: inquiryQuery },
             { $group: { _id: '$source', count: { $sum: 1 } } },
@@ -239,8 +321,8 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
             visitors: visitorCount,
             receipts: feeSummary.count,
             collection: feeSummary.amount,
-            admissionFees: admissionFeeSummary.amount,
-            registrationFees: registrationFeeSummary.amount,
+            admissionFees: lifecycleFeeSummary.admission.amount,
+            registrationFees: lifecycleFeeSummary.registration.amount,
             pendingAdmissionFees,
             pendingRegistrationFees,
             totalExpenses: (expenseSummaryResult[0] || { amount: 0 }).amount,
