@@ -2,11 +2,12 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { CalendarDays, PlusCircle, Trash2, RotateCcw, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
+import { getDateInputValue, getTodayDateISO } from '../../../utils/dateUtils';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/transaction/attendance/`;
 
-const today = new Date().toISOString().split('T')[0];
-const toDateInputValue = (value) => value ? new Date(value).toISOString().split('T')[0] : today;
+const today = getTodayDateISO();
+const toDateInputValue = (value) => getDateInputValue(value);
 
 const ManageAttendance = () => {
     const [items, setItems] = useState([]);

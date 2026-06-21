@@ -187,7 +187,7 @@ const HomePage = () => {
             const data = await newsService.getPublicNews();
             // Sort by release date descending
             const sortedData = [...data].sort((a,b) => new Date(b.releaseDate) - new Date(a.releaseDate));
-            setLatestNews(sortedData.slice(0, 3)); // Only take top 3
+            setLatestNews(sortedData);
         } catch (error) {
             console.error("Failed to load news", error);
         } finally {

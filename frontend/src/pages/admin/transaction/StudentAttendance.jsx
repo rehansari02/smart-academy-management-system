@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
+import { getDateInputValue, getTodayDateISO } from '../../../utils/dateUtils';
 
 const StudentAttendance = () => {
     const dispatch = useDispatch();
@@ -29,15 +30,15 @@ const StudentAttendance = () => {
     
     // --- Filters for History List ---
     const [filters, setFilters] = useState({
-        fromDate: new Date().toISOString().split('T')[0],
-        toDate: new Date().toISOString().split('T')[0],
+        fromDate: getTodayDateISO(),
+        toDate: getTodayDateISO(),
         batch: '',
         batchTime: ''
     });
     
     // --- Form State ---
     const [formData, setFormData] = useState({
-        date: new Date().toISOString().split('T')[0],
+        date: getTodayDateISO(),
         batchId: '',
         batchName: '',
         batchTime: '', // Will be auto-populated or selected
@@ -63,7 +64,7 @@ const StudentAttendance = () => {
 
     // Reset Filters
     const handleResetFilters = () => {
-        setFilters({ fromDate: new Date().toISOString().split('T')[0], toDate: new Date().toISOString().split('T')[0], batch: '', batchTime: '' });
+        setFilters({ fromDate: getTodayDateISO(), toDate: getTodayDateISO(), batch: '', batchTime: '' });
         dispatch(fetchStudentAttendanceHistory({}));
     };
 
@@ -191,7 +192,7 @@ const StudentAttendance = () => {
         setIsEditing(true);
         setViewMode('form');
         setFormData({
-            date: new Date(record.date).toISOString().split('T')[0],
+            date: getDateInputValue(record.date),
             batchId: batches.find(b => b.name === record.batchName && `${b.startTime} - ${b.endTime}` === record.batchTime)?._id || '',
             batchName: record.batchName,
             batchTime: record.batchTime,
@@ -279,7 +280,7 @@ const StudentAttendance = () => {
                 {viewMode === 'list' && (
                     <button 
                         onClick={() => {
-                            setFormData({ date: new Date().toISOString().split('T')[0], batchId: '', batchName: '', batchTime: '', remarks: '' });
+                            setFormData({ date: getTodayDateISO(), batchId: '', batchName: '', batchTime: '', remarks: '' });
                             setAttendanceGrid([]);
                             if (!add) {
                                 showPermissionDenied("You don't have authority to add student attendance.");
@@ -537,7 +538,7 @@ const StudentAttendance = () => {
                                     <button onClick={() => setViewMode('list')} className="px-6 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">Cancel</button>
                                     <button 
                                         onClick={() => {
-                                            setFormData({ date: new Date().toISOString().split('T')[0], batchId: '', batchName: '', batchTime: '', remarks: '' });
+                                            setFormData({ date: getTodayDateISO(), batchId: '', batchName: '', batchTime: '', remarks: '' });
                                             setAttendanceGrid([]);
                                             dispatch(resetAttendanceState()); // Reset data
                                         }} // Reset to fresh

@@ -6,10 +6,24 @@ const ExamSchedule = require('../models/ExamSchedule');
 const AttendanceCalendar = require('../models/AttendanceCalendar');
 const sendSMS = require('../utils/smsSender');
 
+const parseLocalDate = (dateValue) => {
+    if (dateValue instanceof Date) return new Date(dateValue);
+
+    if (typeof dateValue === 'string') {
+        const match = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (match) {
+            const [, year, month, day] = match;
+            return new Date(Number(year), Number(month) - 1, Number(day));
+        }
+    }
+
+    return new Date(dateValue);
+};
+
 const normalizeDateRange = (dateValue) => {
-    const start = new Date(dateValue);
+    const start = parseLocalDate(dateValue);
     start.setHours(0, 0, 0, 0);
-    const end = new Date(dateValue);
+    const end = parseLocalDate(dateValue);
     end.setHours(23, 59, 59, 999);
     return { start, end };
 };
@@ -39,8 +53,8 @@ const getCourseEndDate = (student) => {
 
 const getCalendarYears = (fromDate, toDate) => {
     const currentYear = new Date().getFullYear();
-    const startYear = fromDate ? new Date(fromDate).getFullYear() : currentYear;
-    const endYear = toDate ? new Date(toDate).getFullYear() : startYear;
+    const startYear = fromDate ? parseLocalDate(fromDate).getFullYear() : currentYear;
+    const endYear = toDate ? parseLocalDate(toDate).getFullYear() : startYear;
 
     if (Number.isNaN(startYear) || Number.isNaN(endYear)) return [currentYear];
 
@@ -337,7 +351,7 @@ exports.getStudentsForAttendance = async (req, res) => {
             .populate('course', 'name duration durationType')
             .sort({ admissionDate: -1, createdAt: -1 });
 
-        const attendanceDate = date ? new Date(date) : new Date();
+        const attendanceDate = date ? parseLocalDate(date) : new Date();
         attendanceDate.setHours(23, 59, 59, 999);
         const attendanceDayStart = new Date(attendanceDate);
         attendanceDayStart.setHours(0, 0, 0, 0);
@@ -400,10 +414,7 @@ exports.checkStudentAttendanceStatus = async (req, res) => {
         // Best approach: Store date as start of day payload from frontend or range query.
         // For simplicity, let's assume specific date match if stored with time 00:00:00, or use range.
         
-        const startOfDay = new Date(date);
-        startOfDay.setHours(0,0,0,0);
-        const endOfDay = new Date(date);
-        endOfDay.setHours(23,59,59,999);
+        const { start: startOfDay, end: endOfDay } = normalizeDateRange(date);
 
         const existingRecord = await StudentAttendance.findOne({
             batchName: batch,
@@ -444,17 +455,14 @@ exports.saveStudentAttendance = async (req, res) => {
         }
         
         // Parse date
-        const attendanceDate = new Date(date);
+        const attendanceDate = parseLocalDate(date);
         // Normalize time to avoid dupes if strictly checking date
         // But the schema has unique index on date+batch+time. 
         // It's safer if we rely on the Date object being consistent (e.g. set to noon or midnight UTC) OR use the query range check above.
         // Ideally, we should check if exists first to update or throw error.
         
         // Double check uniqueness to be safe (though index handles it)
-        const startOfDay = new Date(attendanceDate);
-        startOfDay.setHours(0,0,0,0);
-        const endOfDay = new Date(attendanceDate);
-        endOfDay.setHours(23,59,59,999);
+        const { start: startOfDay, end: endOfDay } = normalizeDateRange(attendanceDate);
 
         let attendance = await StudentAttendance.findOne({
             batchName,
@@ -526,10 +534,9 @@ exports.getStudentAttendanceHistory = async (req, res) => {
         let query = {};
         
         if (fromDate && toDate) {
-             query.date = {
-                 $gte: new Date(fromDate),
-                 $lte: new Date(toDate)
-             };
+             const { start } = normalizeDateRange(fromDate);
+             const { end } = normalizeDateRange(toDate);
+             query.date = { $gte: start, $lte: end };
         }
         
         if (batch) {
@@ -609,10 +616,7 @@ exports.checkEmployeeAttendanceStatus = async (req, res) => {
             });
         }
         
-        const startOfDay = new Date(date);
-        startOfDay.setHours(0,0,0,0);
-        const endOfDay = new Date(date);
-        endOfDay.setHours(23,59,59,999);
+        const { start: startOfDay, end: endOfDay } = normalizeDateRange(date);
 
         const record = await EmployeeAttendance.findOne({
             date: { $gte: startOfDay, $lte: endOfDay },
@@ -635,15 +639,12 @@ exports.saveEmployeeAttendance = async (req, res) => {
         const { date, remarks, records } = req.body;
         const takenBy = req.user.id;
 
-        const attendanceDate = new Date(date);
+        const attendanceDate = parseLocalDate(date);
         const closure = await getAttendanceClosureForDate(date, req.user);
         if (closure) {
             return res.status(400).json({ message: `Attendance cannot be taken on this date. ${closure.reason}`, closure });
         }
-        const startOfDay = new Date(attendanceDate);
-        startOfDay.setHours(0,0,0,0);
-        const endOfDay = new Date(attendanceDate);
-        endOfDay.setHours(23,59,59,999);
+        const { start: startOfDay, end: endOfDay } = normalizeDateRange(attendanceDate);
 
         const branchId = req.user.branchId || null; // Use current user's branch
         
@@ -681,7 +682,9 @@ exports.getEmployeeAttendanceHistory = async (req, res) => {
         const { fromDate, toDate } = req.query;
         let query = {};
         if (fromDate && toDate) {
-            query.date = { $gte: new Date(fromDate), $lte: new Date(toDate) };
+            const { start } = normalizeDateRange(fromDate);
+            const { end } = normalizeDateRange(toDate);
+            query.date = { $gte: start, $lte: end };
         }
         
         // Filter by branch for non-super admins

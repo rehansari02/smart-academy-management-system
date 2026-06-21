@@ -16,6 +16,7 @@ import {
 import axios from 'axios';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
+import { getDateInputValue, getTodayDateISO } from '../../../utils/dateUtils';
 
 const EmployeeAttendance = () => {
     const dispatch = useDispatch();
@@ -26,13 +27,13 @@ const EmployeeAttendance = () => {
     
     // Filters
     const [filters, setFilters] = useState({
-        fromDate: new Date().toISOString().split('T')[0],
-        toDate: new Date().toISOString().split('T')[0]
+        fromDate: getTodayDateISO(),
+        toDate: getTodayDateISO()
     });
 
     // Form
     const [formData, setFormData] = useState({
-        date: new Date().toISOString().split('T')[0],
+        date: getTodayDateISO(),
         remarks: ''
     });
     
@@ -51,7 +52,7 @@ const EmployeeAttendance = () => {
     };
 
     const handleResetFilters = () => {
-        setFilters({ fromDate: new Date().toISOString().split('T')[0], toDate: new Date().toISOString().split('T')[0] });
+        setFilters({ fromDate: getTodayDateISO(), toDate: getTodayDateISO() });
         dispatch(fetchEmployeeAttendanceHistory({}));
     };
 
@@ -186,7 +187,7 @@ const EmployeeAttendance = () => {
         setIsEditing(true);
         setViewMode('form');
         setFormData({
-            date: new Date(record.date).toISOString().split('T')[0],
+            date: getDateInputValue(record.date),
             remarks: record.remarks
         });
 
@@ -215,7 +216,7 @@ const EmployeeAttendance = () => {
                 {viewMode === 'list' && (
                     <button 
                         onClick={() => {
-                            setFormData({ date: new Date().toISOString().split('T')[0], remarks: '' });
+                            setFormData({ date: getTodayDateISO(), remarks: '' });
                             setAttendanceGrid([]);
                             if (!add) {
                                 showPermissionDenied("You don't have authority to add employee attendance.");
@@ -403,7 +404,7 @@ const EmployeeAttendance = () => {
                             <button onClick={() => setViewMode('list')} className="px-6 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">Cancel</button>
                              <button 
                                 onClick={() => {
-                                    setFormData({ date: new Date().toISOString().split('T')[0], remarks: '' });
+                                    setFormData({ date: getTodayDateISO(), remarks: '' });
                                     setAttendanceGrid([]);
                                     setIsEditing(false);
                                     dispatch(resetAttendanceState()); 

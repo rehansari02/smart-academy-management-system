@@ -43,6 +43,8 @@ const AllReceipts = () => {
     // Edit Modal State
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingReceipt, setEditingReceipt] = useState(null);
+    const [receiptToDelete, setReceiptToDelete] = useState(null);
+    const [isDeleting, setIsDeleting] = useState(false);
     const pageTotalAmount = useMemo(() => (receipts || []).reduce((sum, receipt) => sum + Number(receipt?.amountPaid || 0), 0), [receipts]);
     const filteredTotalAmount = Number(receiptSummary?.totalAmount || pageTotalAmount || 0);
     const totalColumns = user && user.role === 'Super Admin' ? 9 : 8;
@@ -127,9 +129,25 @@ const AllReceipts = () => {
         applyFilters({ page });
     };
 
-    const handleDelete = (id) => {
-        if (window.confirm('Are you sure you want to delete this receipt?')) {
-            dispatch(deleteFeeReceipt(id));
+    const handleDelete = (receipt) => {
+        setReceiptToDelete(receipt);
+    };
+
+    const closeDeleteDialog = () => {
+        if (!isDeleting) {
+            setReceiptToDelete(null);
+        }
+    };
+
+    const confirmDelete = async () => {
+        if (!receiptToDelete?._id || isDeleting) return;
+        setIsDeleting(true);
+        try {
+            await dispatch(deleteFeeReceipt(receiptToDelete._id)).unwrap();
+            setReceiptToDelete(null);
+            dispatch(fetchFeeReceipts(buildReceiptParams(filters)));
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -406,7 +424,7 @@ const AllReceipts = () => {
                                                     <Edit2 size={14}/>
                                                 </button>
                                                 <button 
-                                                    onClick={() => handleDelete(receipt._id)}
+                                                    onClick={() => handleDelete(receipt)}
                                                     className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" 
                                                     title="Delete"
                                                 >
@@ -480,6 +498,63 @@ const AllReceipts = () => {
                         >
                             Next
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {receiptToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+                    <div className="w-full max-w-md rounded-lg bg-white shadow-2xl border border-gray-200">
+                        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+                            <div>
+                                <h2 className="text-lg font-bold text-gray-900">Delete Receipt?</h2>
+                                <p className="text-xs text-gray-500">This action cannot be undone.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeDeleteDialog}
+                                disabled={isDeleting}
+                                className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                aria-label="Close"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-3 px-5 py-4 text-sm">
+                            <div className="rounded-lg border border-red-100 bg-red-50 p-3">
+                                <p className="font-semibold text-red-800">Receipt #{receiptToDelete.receiptNo}</p>
+                                <p className="mt-1 text-red-700">
+                                    {receiptToDelete.student?.firstName} {receiptToDelete.student?.lastName}
+                                </p>
+                                <p className="mt-1 text-red-700">
+                                    Rs. {Number(receiptToDelete.amountPaid || 0).toLocaleString('en-IN')} | {moment(receiptToDelete.date).format('DD/MM/YYYY')}
+                                </p>
+                            </div>
+                            <p className="text-gray-600">
+                                Are you sure you want to permanently delete this fee receipt?
+                            </p>
+                        </div>
+
+                        <div className="flex justify-end gap-3 border-t border-gray-100 px-5 py-4">
+                            <button
+                                type="button"
+                                onClick={closeDeleteDialog}
+                                disabled={isDeleting}
+                                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={confirmDelete}
+                                disabled={isDeleting}
+                                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                                {isDeleting ? <RefreshCw size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                                {isDeleting ? 'Deleting...' : 'Delete Receipt'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

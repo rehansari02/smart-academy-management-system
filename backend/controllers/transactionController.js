@@ -197,6 +197,49 @@ const getReceiptPurpose = (receipt) => {
 
 const getReceiptAmount = (receipt) => Number(receipt?.amountPaid || 0);
 
+const sortReceiptsChronologically = (receipts = []) => [...receipts].sort((a, b) => {
+  const aTime = new Date(a.date || a.createdAt || 0).getTime();
+  const bTime = new Date(b.date || b.createdAt || 0).getTime();
+  if (aTime !== bTime) return aTime - bTime;
+  return Number(a.receiptNo || 0) - Number(b.receiptNo || 0);
+});
+
+const getReceiptLifecycleInfo = (receipts = []) => {
+  const receiptInfo = new Map();
+  let hasAdmission = false;
+  let hasRegistration = false;
+  let installmentNumber = 0;
+
+  sortReceiptsChronologically(receipts).forEach((receipt) => {
+    const rawPurpose = getReceiptPurpose(receipt);
+    let purpose = rawPurpose;
+
+    if (rawPurpose === "admission") {
+      if (hasAdmission) {
+        purpose = "installment";
+      } else {
+        hasAdmission = true;
+      }
+    } else if (rawPurpose === "registration") {
+      if (hasRegistration) {
+        purpose = "installment";
+      } else {
+        hasRegistration = true;
+      }
+    }
+
+    const displayInstallmentNumber = purpose === "installment" ? ++installmentNumber : 0;
+    if (receipt?._id) {
+      receiptInfo.set(receipt._id.toString(), {
+        purpose,
+        displayInstallmentNumber
+      });
+    }
+  });
+
+  return receiptInfo;
+};
+
 const getFeeCaps = (student, receipts = []) => {
   const firstReceipt = receipts[0] || {};
   const course = student?.course || firstReceipt.course || {};
@@ -221,17 +264,15 @@ const allocateReceiptPayments = (student, receipts = []) => {
   let installmentPaid = 0;
   const receiptAllocations = new Map();
 
-  const sortedReceipts = [...receipts].sort((a, b) => {
-    const aTime = new Date(a.date || a.createdAt || 0).getTime();
-    const bTime = new Date(b.date || b.createdAt || 0).getTime();
-    if (aTime !== bTime) return aTime - bTime;
-    return Number(a.receiptNo || 0) - Number(b.receiptNo || 0);
-  });
+  const sortedReceipts = sortReceiptsChronologically(receipts);
+  const receiptLifecycleInfo = getReceiptLifecycleInfo(sortedReceipts);
 
   sortedReceipts.forEach((receipt) => {
     let amount = getReceiptAmount(receipt);
     const allocation = { admission: 0, registration: 0, installment: 0 };
-    const purpose = getReceiptPurpose(receipt);
+    const purpose = receipt?._id
+      ? receiptLifecycleInfo.get(receipt._id.toString())?.purpose || getReceiptPurpose(receipt)
+      : getReceiptPurpose(receipt);
 
     if (purpose === "admission" && admissionRemaining > 0) {
       const used = Math.min(amount, admissionRemaining);
@@ -272,17 +313,25 @@ const allocateReceiptPayments = (student, receipts = []) => {
 };
 
 const getNextInstallmentNumber = (receipts) => {
-  const installmentReceipts = receipts.filter((receipt) => getReceiptPurpose(receipt) === "installment");
-  const maxStoredInstallment = installmentReceipts.reduce((max, receipt) => {
+  const receiptLifecycleInfo = getReceiptLifecycleInfo(receipts);
+  const maxDisplayInstallment = [...receiptLifecycleInfo.values()].reduce((max, info) => {
+    const value = Number(info.displayInstallmentNumber || 0);
+    return value > max ? value : max;
+  }, 0);
+  const maxStoredInstallment = receipts.reduce((max, receipt) => {
+    const info = receipt?._id ? receiptLifecycleInfo.get(receipt._id.toString()) : null;
+    if (info?.purpose !== "installment") return max;
     const value = Number(receipt.installmentNumber || 0);
     return value > max ? value : max;
   }, 0);
 
-  return Math.max(maxStoredInstallment, installmentReceipts.length) + 1;
+  return Math.max(maxStoredInstallment, maxDisplayInstallment) + 1;
 };
 
 const resolveReceiptPurposeForPayment = (student, receipts, requestedRemarks = "") => {
   const normalizedRemarks = (requestedRemarks || "").toLowerCase();
+  const receiptLifecycleInfo = getReceiptLifecycleInfo(receipts);
+  const hasRegistrationReceipt = [...receiptLifecycleInfo.values()].some((info) => info.purpose === "registration");
   const { admissionFee, registrationFee } = getFeeCaps(student, receipts);
   const { admissionPaid, registrationPaid } = allocateReceiptPayments(student, receipts);
   const admissionOutstanding = Math.max(0, admissionFee - admissionPaid);
@@ -292,7 +341,7 @@ const resolveReceiptPurposeForPayment = (student, receipts, requestedRemarks = "
     return { purpose: "admission", remarks: requestedRemarks || "Admission Fee", installmentNumber: 0 };
   }
 
-  if (normalizedRemarks.includes("registration") && registrationOutstanding > 0) {
+  if (!hasRegistrationReceipt && normalizedRemarks.includes("registration") && registrationOutstanding > 0) {
     return { purpose: "registration", remarks: requestedRemarks || "Registration Fee", installmentNumber: 0 };
   }
 
@@ -300,7 +349,7 @@ const resolveReceiptPurposeForPayment = (student, receipts, requestedRemarks = "
     return { purpose: "admission", remarks: "Admission Fee", installmentNumber: 0 };
   }
 
-  if (registrationOutstanding > 0) {
+  if (!hasRegistrationReceipt && registrationOutstanding > 0) {
     return { purpose: "registration", remarks: "Registration Fee", installmentNumber: 0 };
   }
 
@@ -316,39 +365,23 @@ const resolveReceiptPurposeForPayment = (student, receipts, requestedRemarks = "
 };
 
 const attachReceiptDisplayInfo = (receipts) => {
-  const sortedReceipts = [...receipts].sort((a, b) => {
-    const aTime = new Date(a.date || a.createdAt || 0).getTime();
-    const bTime = new Date(b.date || b.createdAt || 0).getTime();
-    if (aTime !== bTime) return aTime - bTime;
-    return Number(a.receiptNo || 0) - Number(b.receiptNo || 0);
-  });
-
+  const sortedReceipts = sortReceiptsChronologically(receipts);
   const receiptId = (receipt) => receipt._id.toString();
-  const firstReceipt = sortedReceipts[0] || {};
-  const student = firstReceipt.student || {};
-  const { receiptAllocations } = allocateReceiptPayments(student, sortedReceipts);
-
-  let installmentNumber = 0;
+  const receiptLifecycleInfo = getReceiptLifecycleInfo(sortedReceipts);
   const purposeOrder = { admission: 0, registration: 1, installment: 2 };
   return receipts
     .map((receipt) => {
-      const allocation = receiptAllocations.get(receiptId(receipt)) || {};
-      let role = "installment";
-      if (Number(allocation.admission || 0) > 0) {
-        role = "admission";
-      } else if (Number(allocation.registration || 0) > 0) {
-        role = "registration";
-      } else if (Number(allocation.installment || 0) > 0) {
-        role = "installment";
-      } else {
-        role = getReceiptPurpose(receipt);
-      }
-      const displayInstallmentNumber = role === "installment" ? ++installmentNumber : 0;
+      const info = receiptLifecycleInfo.get(receiptId(receipt)) || {
+        purpose: getReceiptPurpose(receipt),
+        displayInstallmentNumber: getReceiptPurpose(receipt) === "installment"
+          ? Number(receipt.installmentNumber || 1)
+          : 0
+      };
 
       return {
         ...receipt,
-        receiptPurpose: role,
-        displayInstallmentNumber
+        receiptPurpose: info.purpose,
+        displayInstallmentNumber: info.displayInstallmentNumber
       };
     })
     .sort((a, b) => {

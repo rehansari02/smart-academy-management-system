@@ -1,7 +1,7 @@
 console.log("SERVER STARTING...");
 const dotenv = require("dotenv");
 const path = require("path");
-dotenv.config({ path: path.join(__dirname, ".env") });
+dotenv.config({ path: path.join(__dirname, ".env"), override: true });
 console.log("Env loaded:", process.env.MONGO_URI ? "YES" : "NO");
 
 console.log("Loading express...");

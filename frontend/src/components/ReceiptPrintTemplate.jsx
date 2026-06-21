@@ -45,6 +45,15 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
     return batchObj ? `${batchObj.startTime} To ${batchObj.endTime}` : receipt.student.batch;
   };
 
+  const getReceiptRemarks = () => {
+    if (receipt.receiptPurpose === 'admission') return 'Admission Fee';
+    if (receipt.receiptPurpose === 'registration') return 'Registration Fee';
+    if (receipt.receiptPurpose === 'installment') {
+      return `Installment ${receipt.displayInstallmentNumber || receipt.installmentNumber || 1}`;
+    }
+    return receipt.remarks || '';
+  };
+
   const getBranchInfo = () => {
     const branch = receipt.branch && typeof receipt.branch === 'object' ? receipt.branch : null;
     const studentBranch = receipt.student?.branchId && typeof receipt.student.branchId === 'object' ? receipt.student.branchId : null;
@@ -198,7 +207,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
             </div>
             <div style={{ marginBottom: '6px' }}>
               <span style={{ color: '#0066cc' }}>Remarks : </span>
-              <span>{receipt.remarks || ''}</span>
+              <span>{getReceiptRemarks()}</span>
             </div>
 
             <div style={{ marginTop: '15px' }}>

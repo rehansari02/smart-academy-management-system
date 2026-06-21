@@ -963,7 +963,7 @@ function TeacherPerformanceDetail({
                             {fee.label}
                           </span>
                           <div className="mt-1 text-[10px] font-semibold text-slate-500">
-                            ₹{fee.paid.toLocaleString('en-IN')} / ₹{fee.required.toLocaleString('en-IN')}
+                            ₹{fee.required.toLocaleString('en-IN')} / ₹{fee.paid.toLocaleString('en-IN')}
                           </div>
                         </div>
                       );
@@ -978,7 +978,7 @@ function TeacherPerformanceDetail({
                             {fee.label}
                           </span>
                           <div className="mt-1 text-[10px] font-semibold text-slate-500">
-                            ₹{fee.paid.toLocaleString('en-IN')} / ₹{fee.required.toLocaleString('en-IN')}
+                            ₹{fee.required.toLocaleString('en-IN')} / ₹{fee.paid.toLocaleString('en-IN')}
                           </div>
                         </div>
                       );

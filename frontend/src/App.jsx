@@ -32,6 +32,7 @@ const GalleryPage = lazy(() => import("./pages/user/GalleryPage"));
 const FranchisePage = lazy(() => import("./pages/user/FranchisePage"));
 const ContactPage = lazy(() => import("./pages/user/ContactPage"));
 const BlogPage = lazy(() => import("./pages/user/BlogPage"));
+const NewsPage = lazy(() => import("./pages/user/NewsPage"));
 const FeedbackPage = lazy(() => import("./pages/user/FeedbackPage"));
 const OnlineAdmission = lazy(() => import("./pages/user/OnlineAdmission"));
 const TermsAndConditions = lazy(() => import("./pages/user/TermsAndConditions"));
@@ -866,6 +867,7 @@ function App() {
                 <Route path="/our-team" element={<OurTeamPage />} />
                 <Route path="/franchise" element={<FranchisePage />} />
                 <Route path="/contact" element={<ContactPage />} />
+                <Route path="/news" element={<NewsPage />} />
                 <Route path="/blog" element={<BlogPage />} />
                 <Route path="/blog/:slug" element={<BlogDetail />} />
                 <Route path="/feedback" element={<FeedbackPage />} />

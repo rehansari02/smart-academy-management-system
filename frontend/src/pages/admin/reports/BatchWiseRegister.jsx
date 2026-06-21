@@ -266,20 +266,35 @@ const BatchWiseRegister = () => {
         .replace(/\./g, ':')
         .trim();
 
-    const parseStartHour = (startTimeStr) => {
-        if (!startTimeStr) return null;
-        const cleaned = normalizeTimeText(startTimeStr);
+    const parseTimeToMinutes = (timeValue) => {
+        if (!timeValue) return null;
+        const cleaned = normalizeTimeText(timeValue);
         const timeMatch = cleaned.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
         if (!timeMatch) return null;
 
         let hour = parseInt(timeMatch[1], 10);
+        const minutes = parseInt(timeMatch[2] || '0', 10);
         const meridian = timeMatch[3]?.toLowerCase();
-        if (Number.isNaN(hour)) return null;
+        if (Number.isNaN(hour) || Number.isNaN(minutes)) return null;
 
         if (meridian === 'pm' && hour < 12) hour += 12;
         if (meridian === 'am' && hour === 12) hour = 0;
 
-        return hour;
+        // Most batches are stored as 8, 10, 12, 2, 4, 6 without AM/PM.
+        // Treat 1-6 as afternoon/evening so morning batches stay first.
+        if (!meridian && hour >= 1 && hour <= 6) hour += 12;
+
+        return (hour * 60) + minutes;
+    };
+
+    const getBatchStartMinutes = (batchItem) => {
+        if (!batchItem) return null;
+        return parseTimeToMinutes(batchItem.startTime) ?? parseTimeToMinutes(batchItem.name);
+    };
+
+    const getBatchEndMinutes = (batchItem) => {
+        if (!batchItem) return null;
+        return parseTimeToMinutes(batchItem.endTime);
     };
 
     const getStudentBatchObject = (student) => {
@@ -335,12 +350,27 @@ const BatchWiseRegister = () => {
                 return true;
             })
             .sort((a, b) => {
-                const aTime = parseStartHour(a.startTime) ?? 99;
-                const bTime = parseStartHour(b.startTime) ?? 99;
+                const aTime = getBatchStartMinutes(a) ?? 9999;
+                const bTime = getBatchStartMinutes(b) ?? 9999;
                 if (aTime !== bTime) return aTime - bTime;
+                const aEndTime = getBatchEndMinutes(a) ?? 9999;
+                const bEndTime = getBatchEndMinutes(b) ?? 9999;
+                if (aEndTime !== bEndTime) return aEndTime - bEndTime;
                 return a.name.localeCompare(b.name);
             });
     }, [batches, filters.branchId, filters.batch, filters.courseFilter]);
+
+    const sortedBatchesForFilter = useMemo(() => {
+        return [...(batches || [])].sort((a, b) => {
+            const aTime = getBatchStartMinutes(a) ?? 9999;
+            const bTime = getBatchStartMinutes(b) ?? 9999;
+            if (aTime !== bTime) return aTime - bTime;
+            const aEndTime = getBatchEndMinutes(a) ?? 9999;
+            const bEndTime = getBatchEndMinutes(b) ?? 9999;
+            if (aEndTime !== bEndTime) return aEndTime - bEndTime;
+            return a.name.localeCompare(b.name);
+        });
+    }, [batches]);
 
     const batchGroups = useMemo(() => {
         if (!eligibleStudents?.length) return [];
@@ -407,9 +437,12 @@ const BatchWiseRegister = () => {
                 };
             })
             .sort((a, b) => {
-                const aTime = a.batch ? parseStartHour(a.batch.startTime) ?? 99 : 99;
-                const bTime = b.batch ? parseStartHour(b.batch.startTime) ?? 99 : 99;
+                const aTime = a.batch ? getBatchStartMinutes(a.batch) ?? 9999 : 9999;
+                const bTime = b.batch ? getBatchStartMinutes(b.batch) ?? 9999 : 9999;
                 if (a.batch && b.batch && aTime !== bTime) return aTime - bTime;
+                const aEndTime = a.batch ? getBatchEndMinutes(a.batch) ?? 9999 : 9999;
+                const bEndTime = b.batch ? getBatchEndMinutes(b.batch) ?? 9999 : 9999;
+                if (a.batch && b.batch && aEndTime !== bEndTime) return aEndTime - bEndTime;
                 if (a.batch && !b.batch) return -1;
                 if (!a.batch && b.batch) return 1;
                 if (b.matchCount !== a.matchCount) return b.matchCount - a.matchCount;
@@ -583,7 +616,7 @@ const BatchWiseRegister = () => {
                         <label className="mb-1 block text-sm font-semibold text-slate-700">Batch</label>
                         <select name="batch" value={filters.batch} onChange={handleFilterChange} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
                             <option value="All">All Batches</option>
-                            {batches && batches.map(b => <option key={b._id} value={b.name}>{b.name} ({b.startTime} - {b.endTime})</option>)}
+                            {sortedBatchesForFilter.map(b => <option key={b._id} value={b.name}>{b.name} ({b.startTime} - {b.endTime})</option>)}
                         </select>
                     </div>
                     <div>

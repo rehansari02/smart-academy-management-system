@@ -34,8 +34,13 @@ const deleteNews = async (id) => {
 };
 
 // Public fetch for homepage (if different endpoint usage is preferred later, currently same controller)
-const getPublicNews = async () => {
-    const response = await axios.get(`${API_URL}/public?isActive=true&limit=3`); 
+const getPublicNews = async (filters = {}) => {
+    const params = new URLSearchParams({
+        isActive: 'true',
+        limit: '12',
+        ...filters
+    }).toString();
+    const response = await axios.get(`${API_URL}/public?${params}`); 
     return response.data;
 };
 
