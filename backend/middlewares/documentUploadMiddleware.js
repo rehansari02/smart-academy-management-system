@@ -16,9 +16,14 @@ const documentStorage = new CloudinaryStorage({
     cloudinary,
     params: (req, file) => {
         const ext = path.extname(file.originalname || '').toLowerCase().replace('.', '');
+        const baseName = path.basename(file.originalname || 'material', path.extname(file.originalname || ''))
+            .replace(/[^a-zA-Z0-9_-]/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_+|_+$/g, '') || 'material';
         const isDocument = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt'].includes(ext);
         return {
             folder: 'materials_uploads',
+            public_id: `${Date.now()}-${baseName}${isDocument && ext ? `.${ext}` : ''}`,
             allowed_formats: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'jpg', 'jpeg', 'png', 'webp'],
             resource_type: isDocument ? 'raw' : 'image',
         };

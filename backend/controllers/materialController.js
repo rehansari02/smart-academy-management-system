@@ -3,6 +3,7 @@ const Material = require('../models/Material');
 const fs = require('fs');
 const path = require('path');
 const cloudinary = require('cloudinary').v2;
+const axios = require('axios');
 
 const isRemoteDocument = (document) => /^https?:\/\//i.test(document || '');
 
@@ -12,11 +13,22 @@ const getCloudinaryPublicId = (document) => {
     if (!isRemoteDocument(document)) return '';
     try {
         const url = new URL(document);
-        const match = url.pathname.match(/\/upload\/(?:v\d+\/)?(.+)\.[^.]+$/);
-        return match ? match[1] : '';
+        const match = url.pathname.match(/\/upload\/(?:v\d+\/)?(.+)$/);
+        return match ? decodeURIComponent(match[1]) : '';
     } catch (err) {
         return '';
     }
+};
+
+const normalizeUploadedDocumentPath = (file) => {
+    if (!file) return null;
+    return (
+        file.secure_url ||
+        file.url ||
+        file.path ||
+        file.filename ||
+        ''
+    ).replace(/\\/g, '/');
 };
 
 const getFileExtension = (document) => {
@@ -56,6 +68,39 @@ const resolveRemoteFileExtension = async (document) => {
         // keep falling back
     }
 
+    try {
+        const response = await axios.get(document, {
+            responseType: 'arraybuffer',
+            headers: { Range: 'bytes=0-15' },
+            validateStatus: () => true,
+            timeout: 8000
+        });
+        const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
+        const bytes = Buffer.from(response.data || []);
+        return getExtensionFromContent(contentType, bytes);
+    } catch (err) {
+        // keep falling back
+    }
+
+    return '';
+};
+
+const getExtensionFromContent = (contentType = '', bytes = Buffer.alloc(0)) => {
+    const type = String(contentType || '').toLowerCase();
+    if (type.includes('pdf')) return '.pdf';
+    if (type.includes('wordprocessingml')) return '.docx';
+    if (type.includes('msword')) return '.doc';
+    if (type.includes('presentationml')) return '.pptx';
+    if (type.includes('spreadsheetml')) return '.xlsx';
+    if (type.includes('image/png')) return '.png';
+    if (type.includes('image/jpeg')) return '.jpg';
+    if (type.includes('image/webp')) return '.webp';
+
+    const signature = bytes.slice(0, 8).toString('utf8');
+    if (signature.startsWith('%PDF')) return '.pdf';
+    if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04) {
+        return '.docx';
+    }
     return '';
 };
 
@@ -227,7 +272,7 @@ const getRawMaterial = asyncHandler(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
 
     if (isRemoteDocument(material.document)) {
-        const response = await require('axios').get(material.document, {
+        const response = await axios.get(material.document, {
             responseType: 'stream',
             validateStatus: () => true
         });
@@ -237,7 +282,8 @@ const getRawMaterial = asyncHandler(async (req, res) => {
             throw new Error('Remote file could not be fetched');
         }
 
-        if (response.headers['content-type']) {
+        const remoteContentType = String(response.headers['content-type'] || '').toLowerCase();
+        if (remoteContentType && remoteContentType !== 'application/octet-stream') {
             res.setHeader('Content-Type', response.headers['content-type']);
         }
 
@@ -313,7 +359,7 @@ const downloadMaterial = asyncHandler(async (req, res) => {
 // @access  Private/Admin
 const createMaterial = asyncHandler(async (req, res) => {
     const { subject, title, type, description, showDownloadButton, isActive } = req.body;
-    const documentPath = req.file ? req.file.path.replace(/\\/g, "/") : null;
+    const documentPath = normalizeUploadedDocumentPath(req.file);
 
     const material = await Material.create({
         subject,
@@ -366,7 +412,7 @@ const updateMaterial = asyncHandler(async (req, res) => {
                 try { fs.unlinkSync(material.document); } catch (err) {}
             }
         }
-        material.document = req.file.path.replace(/\\/g, "/");
+        material.document = normalizeUploadedDocumentPath(req.file);
     }
 
     const updatedMaterial = await material.save();
