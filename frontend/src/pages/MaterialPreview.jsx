@@ -7,7 +7,7 @@ import { renderAsync as renderDocxAsync } from 'docx-preview';
 const MaterialPreview = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const apiBase = import.meta.env.VITE_API_URL;
+    const apiBase = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
     const [material, setMaterial] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -22,7 +22,7 @@ const MaterialPreview = () => {
         const load = async () => {
             try {
                 setLoading(true);
-                const { data } = await axios.get(`/api/materials/preview-meta/${id}`);
+                const { data } = await axios.get(`${apiBase}/materials/preview-meta/${id}`);
                 if (!active) return;
                 setMaterial(data);
                 setError('');
@@ -42,7 +42,7 @@ const MaterialPreview = () => {
     }, [apiBase, id]);
 
     const documentUrl = material?.documentUrl || '';
-    const rawUrl = `/api/materials/raw/${id}`;
+    const rawUrl = `${apiBase}/materials/raw/${id}`;
     const sourceUrl = rawUrl;
     const extension = String(material?.extension || '').toLowerCase();
     const isImage = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'].includes(extension);

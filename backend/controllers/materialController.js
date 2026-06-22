@@ -210,6 +210,12 @@ const getMaterials = asyncHandler(async (req, res) => {
         query.isActive = true; // Force active only
     }
 
+    // Faculty View Filter (Faculty + shared material)
+    if (req.query.facultyView === 'true') {
+        query.type = { $in: ['Faculty only', 'Student and Faculty only'] };
+        query.isActive = true;
+    }
+
     let materials = await Material.find(query)
         .populate('subject', 'name')
         .sort({ createdAt: -1 });

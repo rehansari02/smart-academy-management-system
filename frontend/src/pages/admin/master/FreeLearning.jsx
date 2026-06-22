@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
+    fetchSubjects,
     fetchFreeLearningQuestions, 
     createFreeLearningQuestion, 
     updateFreeLearningQuestion, 
     deleteFreeLearningQuestion,
     resetMasterStatus 
 } from '../../../features/master/masterSlice';
-import { Search, RefreshCw, Plus, Edit, Trash2, Save, X, CheckSquare, Square } from 'lucide-react';
+import { BarChart3, Search, RefreshCw, Plus, Edit, Trash2, Save, X, CheckSquare, Square } from 'lucide-react';
 import { toast } from 'react-toastify';
 import moment from 'moment';
 import { useUserRights } from '../../../hooks/useUserRights';
@@ -15,19 +17,22 @@ import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const FreeLearning = () => {
     const dispatch = useDispatch();
-    const { freeLearningQuestions, isLoading, isSuccess, message } = useSelector((state) => state.master);
+    const navigate = useNavigate();
+    const { freeLearningQuestions, subjects, isLoading, isSuccess, message } = useSelector((state) => state.master);
     const { add, edit, delete: canDelete } = useUserRights('Free Learning');
     
     // Filter State
     const [filters, setFilters] = useState({
         fromDate: '',
         toDate: new Date().toISOString().split('T')[0],
+        subject: '',
         search: ''
     });
 
     // Form State
     const [formData, setFormData] = useState({
         id: null,
+        subject: '',
         question: '',
         options: ['', '', '', ''],
         correctOption: 0,
@@ -38,6 +43,10 @@ const FreeLearning = () => {
     useEffect(() => {
         dispatch(fetchFreeLearningQuestions(filters));
     }, [dispatch, filters.toDate]); // Re-fetch when toDate changes (and initial load)
+
+    useEffect(() => {
+        dispatch(fetchSubjects());
+    }, [dispatch]);
 
     useEffect(() => {
         if (message) {
@@ -60,11 +69,13 @@ const FreeLearning = () => {
         setFilters({
             fromDate: '',
             toDate: new Date().toISOString().split('T')[0],
+            subject: '',
             search: ''
         });
         dispatch(fetchFreeLearningQuestions({
             fromDate: '',
             toDate: new Date().toISOString().split('T')[0],
+            subject: '',
             search: ''
         }));
     };
@@ -95,12 +106,13 @@ const FreeLearning = () => {
         }
         
         // Validation
-        if (!formData.question || formData.options.some(opt => !opt.trim())) {
-            toast.error("Please fill in question and all options.");
+        if (!formData.subject || !formData.question || formData.options.some(opt => !opt.trim())) {
+            toast.error("Please select subject and fill in question and all options.");
             return;
         }
 
         const payload = {
+            subject: formData.subject,
             question: formData.question,
             options: formData.options,
             correctOption: parseInt(formData.correctOption),
@@ -121,6 +133,7 @@ const FreeLearning = () => {
         }
         setFormData({
             id: q._id,
+            subject: q.subject?._id || q.subject || '',
             question: q.question,
             options: [...q.options],
             correctOption: q.correctOption,
@@ -143,6 +156,7 @@ const FreeLearning = () => {
     const resetForm = () => {
         setFormData({
             id: null,
+            subject: '',
             question: '',
             options: ['', '', '', ''],
             correctOption: 0,
@@ -158,7 +172,7 @@ const FreeLearning = () => {
                 <h2 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
                     <Search size={16}/> Filter Questions
                 </h2>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                     <div>
                         <label className="text-xs text-gray-500">From Date</label>
                         <input type="date" name="fromDate" value={filters.fromDate} onChange={handleFilterChange} className="w-full border p-1 rounded text-sm"/>
@@ -166,6 +180,15 @@ const FreeLearning = () => {
                     <div>
                         <label className="text-xs text-gray-500">To Date</label>
                         <input type="date" name="toDate" value={filters.toDate} onChange={handleFilterChange} className="w-full border p-1 rounded text-sm"/>
+                    </div>
+                    <div>
+                        <label className="text-xs text-gray-500">Subject</label>
+                        <select name="subject" value={filters.subject} onChange={handleFilterChange} className="w-full border p-1 rounded text-sm">
+                            <option value="">All Subjects</option>
+                            {subjects.map((subject) => (
+                                <option key={subject._id} value={subject._id}>{subject.name}</option>
+                            ))}
+                        </select>
                     </div>
                     <div>
                         <label className="text-xs text-gray-500">Search Question</label>
@@ -179,7 +202,7 @@ const FreeLearning = () => {
             </div>
 
             {/* --- Add New / Edit Section --- */}
-            <div className="mb-6">
+            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
                  {!showForm ? (
                     <button onClick={() => setShowForm(true)} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-2 shadow text-sm font-medium">
                         <Plus size={18}/> Add New Question
@@ -191,6 +214,21 @@ const FreeLearning = () => {
                             <button onClick={() => { setShowForm(false); resetForm(); }} className="text-gray-400 hover:text-red-500"><X size={20}/></button>
                         </div>
                         <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                                <select
+                                    name="subject"
+                                    value={formData.subject}
+                                    onChange={handleInputChange}
+                                    className="w-full border rounded p-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                    required
+                                >
+                                    <option value="">Select subject</option>
+                                    {subjects.map((subject) => (
+                                        <option key={subject._id} value={subject._id}>{subject.name}</option>
+                                    ))}
+                                </select>
+                            </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Question</label>
                                 <textarea 
@@ -260,14 +298,24 @@ const FreeLearning = () => {
                         </form>
                     </div>
                  )}
+                 {!showForm && (
+                    <button
+                        type="button"
+                        onClick={() => navigate('/master/free-learning/manage')}
+                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center gap-2 shadow text-sm font-medium"
+                    >
+                        <BarChart3 size={18} /> Manage Free Learning
+                    </button>
+                 )}
             </div>
 
             {/* --- Table Section --- */}
             <div className="bg-white rounded-lg shadow overflow-x-auto border">
-                <table className="w-full border-collapse min-w-[800px]">
+                <table className="w-full border-collapse min-w-[900px]">
                     <thead>
                         <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
                             <th className="p-3 border font-semibold w-12 text-center">#</th>
+                            <th className="p-3 border font-semibold w-44">Subject</th>
                             <th className="p-3 border font-semibold">Question</th>
                             <th className="p-3 border font-semibold w-48">Created By</th>
                             <th className="p-3 border font-semibold w-32">Date</th>
@@ -280,6 +328,9 @@ const FreeLearning = () => {
                             freeLearningQuestions.map((q, index) => (
                                 <tr key={q._id} className="hover:bg-blue-50 text-sm border-b border-gray-100 transition-colors">
                                     <td className="p-3 border text-center text-gray-500">{index + 1}</td>
+                                    <td className="p-3 border text-gray-700 font-medium">
+                                        {q.subject?.name || 'Not assigned'}
+                                    </td>
                                     <td className="p-3 border font-medium text-gray-800">
                                         {q.question}
                                         <div className="text-xs text-gray-400 mt-1">
@@ -313,7 +364,7 @@ const FreeLearning = () => {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="6" className="text-center py-8 text-gray-500">No questions found. Add one to get started!</td>
+                                <td colSpan="7" className="text-center py-8 text-gray-500">No questions found. Add one to get started!</td>
                             </tr>
                         )}
                     </tbody>

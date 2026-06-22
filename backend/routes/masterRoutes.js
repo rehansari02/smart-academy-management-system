@@ -19,7 +19,14 @@ const {
 const { getExamRequests, getExamRequestBranches, cancelExamRequest, createExamRequest, getPendingExams } = require('../controllers/examController');
 const { getExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, getExamScheduleDetails, getMyExamSchedules } = require('../controllers/examScheduleController');
 const { getExamResults, createExamResult, updateExamResult, deleteExamResult, getExamResultById, getNextResultNumbers, verifyExamResult } = require('../controllers/examResultController');
-const { createQuestion, getQuestions, updateQuestion, deleteQuestion } = require('../controllers/freeLearningController');
+const {
+    createQuestion,
+    getQuestions,
+    updateQuestion,
+    deleteQuestion,
+    getFreeLearningSubjectsReport,
+    getFreeLearningSubjectStudentReport
+} = require('../controllers/freeLearningController');
 const locationRoutes = require('./locationRoutes');
 
 const upload = require('../middlewares/uploadMiddleware');
@@ -148,6 +155,9 @@ router.route('/free-learning')
 router.route('/free-learning/:id')
     .put(protect, updateQuestion)
     .delete(protect, deleteQuestion);
+
+router.get('/free-learning-report/subjects', protect, getFreeLearningSubjectsReport);
+router.get('/free-learning-report/subjects/:subjectId', protect, getFreeLearningSubjectStudentReport);
 
 // --- Location Routes ---
 router.use('/location', locationRoutes);

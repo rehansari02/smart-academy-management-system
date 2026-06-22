@@ -244,9 +244,50 @@ const getStudyMaterials = async (req, res) => {
 // @access  Private (Student)
 const getFreeLearningQuestions = async (req, res) => {
     try {
+        const Student = require('../models/Student');
         const FreeLearning = require('../models/FreeLearning');
-        // Fetch all questions - in a real app might want to paginate or limit
-        const questions = await FreeLearning.find({ isActive: true }).select('-correctOption -explanation'); // Hide answers
+
+        const student = await Student.findOne({ userId: req.user._id, isDeleted: false })
+            .populate({
+                path: 'course',
+                select: 'subjects',
+                populate: {
+                    path: 'subjects.subject',
+                    select: '_id'
+                }
+            })
+            .lean();
+
+        if (!student) {
+            return res.status(404).json({ message: 'Student not found' });
+        }
+
+        const subjectIds = (student.course?.subjects || [])
+            .map((item) => item?.subject?._id || item?.subject)
+            .filter(Boolean);
+
+        if (!subjectIds.length) {
+            return res.json([]);
+        }
+
+        const progressRecords = await require('../models/FreeLearningProgress')
+            .find({ studentId: student._id })
+            .select('questions.questionId')
+            .lean();
+        const answeredQuestionIds = progressRecords
+            .flatMap((record) => record.questions || [])
+            .map((item) => item.questionId)
+            .filter(Boolean);
+
+        const questions = await FreeLearning.find({
+            isActive: true,
+            subject: { $in: subjectIds },
+            _id: { $nin: answeredQuestionIds }
+        })
+            .populate('subject', 'name')
+            .select('-correctOption -explanation')
+            .sort({ createdAt: -1 });
+
         res.json(questions);
     } catch (error) {
         console.error(error);
@@ -265,16 +306,46 @@ const submitFreeLearning = async (req, res) => {
         const FreeLearning = require('../models/FreeLearning');
         const FreeLearningProgress = require('../models/FreeLearningProgress');
 
-        const student = await Student.findOne({ userId, isDeleted: false });
+        const student = await Student.findOne({ userId, isDeleted: false })
+            .populate({
+                path: 'course',
+                select: 'subjects',
+                populate: {
+                    path: 'subjects.subject',
+                    select: '_id'
+                }
+            })
+            .lean();
         if (!student) return res.status(404).json({ message: 'Student not found' });
 
+        const subjectIds = (student.course?.subjects || [])
+            .map((item) => item?.subject?._id || item?.subject)
+            .filter(Boolean)
+            .map((id) => String(id));
+        const allowedSubjectIds = new Set(subjectIds);
+        const previousProgress = await FreeLearningProgress.find({ studentId: student._id })
+            .select('questions.questionId')
+            .lean();
+        const answeredQuestionIds = new Set(
+            previousProgress
+                .flatMap((record) => record.questions || [])
+                .map((item) => String(item.questionId))
+                .filter(Boolean)
+        );
         let totalScore = 0;
         const processedQuestions = [];
 
         // Validate answers
         for (const ans of answers) {
-            const question = await FreeLearning.findById(ans.questionId);
-            if (question) {
+            const question = await FreeLearning.findOne({
+                _id: ans.questionId,
+                isActive: true
+            });
+            if (
+                question &&
+                allowedSubjectIds.has(String(question.subject)) &&
+                !answeredQuestionIds.has(String(question._id))
+            ) {
                 const isCorrect = question.correctOption === parseInt(ans.selectedOption);
                 if (isCorrect) totalScore++;
                 
@@ -284,6 +355,10 @@ const submitFreeLearning = async (req, res) => {
                     isCorrect
                 });
             }
+        }
+
+        if (!processedQuestions.length) {
+            return res.status(400).json({ message: 'No valid questions were submitted for your course subjects' });
         }
 
         // Save Progress
@@ -320,7 +395,13 @@ const getFreeLearningReport = async (req, res) => {
         if (!student) return res.status(404).json({ message: 'Student not found' });
 
         const reports = await FreeLearningProgress.find({ studentId: student._id })
-            .populate('questions.questionId')
+            .populate({
+                path: 'questions.questionId',
+                populate: {
+                    path: 'subject',
+                    select: 'name'
+                }
+            })
             .sort({ date: -1 });
 
         res.json(reports);

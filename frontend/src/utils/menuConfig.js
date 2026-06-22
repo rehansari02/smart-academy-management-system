@@ -27,6 +27,7 @@ export const MENU_CONFIG = [
       { title: 'Exam Result', path: '/master/exam-result' },
       { title: 'User Rights', path: '/master/user-rights' },
       { title: 'Material', path: '/master/material' },
+      { title: 'Faculty Material', path: '/faculty/material' },
       { title: 'Free Learning', path: '/master/free-learning' },
       { title: 'Manage News', path: '/master/manage-news' },
       { title: 'Topper Result', path: '/master/manage-toppers' },

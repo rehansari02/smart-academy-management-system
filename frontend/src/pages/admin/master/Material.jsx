@@ -243,13 +243,12 @@ const Material = () => {
                                 <input type="date" name="toDate" value={filters.toDate} onChange={handleFilterChange} className="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-primary"/>
                             </div>
                             <div>
-                                <label className="text-xs text-gray-500 font-semibold">Type</label>
+                                <label className="text-xs text-gray-500 font-semibold">Audience</label>
                                 <select name="type" value={filters.type} onChange={handleFilterChange} className="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-primary">
                                     <option value="">All</option>
-                                    <option value="Public">Public</option>
-                                    <option value="Student only">Student only</option>
-                                    <option value="Student and Faculty only">Student and Faculty only</option>
-                                    <option value="Faculty only">Faculty only</option>
+                                    <option value="Student only">Student</option>
+                                    <option value="Faculty only">Faculty</option>
+                                    <option value="Student and Faculty only">Student & Faculty Both</option>
                                 </select>
                             </div>
                             <div>

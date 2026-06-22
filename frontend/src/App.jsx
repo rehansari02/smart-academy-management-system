@@ -86,7 +86,9 @@ const ManageGallery = lazy(() => import("./pages/admin/master/ManageGallery"));
 const ManageFeedback = lazy(() => import("./pages/admin/master/ManageFeedback"));
 const BranchMaster = lazy(() => import("./pages/admin/master/BranchMaster"));
 const Material = lazy(() => import("./pages/admin/master/Material"));
+const FacultyMaterial = lazy(() => import("./pages/admin/FacultyMaterial"));
 const FreeLearning = lazy(() => import("./pages/admin/master/FreeLearning"));
+const ManageFreeLearning = lazy(() => import("./pages/admin/master/ManageFreeLearning"));
 const ReferenceIncentive = lazy(() => import("./pages/admin/master/ReferenceIncentive"));
 const ManageTeam = lazy(() => import("./pages/admin/master/ManageTeam"));
 const CloudinaryManager = lazy(() => import("./pages/admin/utility/CloudinaryManager"));
@@ -411,7 +413,7 @@ function App() {
                   </PrivateRoute>
                 }
               />
-               <Route
+              <Route
                 path="/master/material"
                 element={
                   <PrivateRoute>
@@ -420,10 +422,26 @@ function App() {
                 }
               />
               <Route
+                path="/faculty/material"
+                element={
+                  <PrivateRoute>
+                    <FacultyMaterial />
+                  </PrivateRoute>
+                }
+              />
+              <Route
                 path="/master/free-learning"
                 element={
                   <PrivateRoute>
                     <FreeLearning />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/free-learning/manage"
+                element={
+                  <PrivateRoute>
+                    <ManageFreeLearning />
                   </PrivateRoute>
                 }
               />

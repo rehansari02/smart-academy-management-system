@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const freeLearningSchema = new mongoose.Schema({
+    subject: { type: mongoose.Schema.Types.ObjectId, ref: 'Subject' },
     question: { type: String, required: true },
     options: [{ type: String, required: true }], // Array of options i.e. ["Option 1", "Option 2", "Option 3", "Option 4"]
     correctOption: { type: Number, required: true }, // Index of correct option (0-3)

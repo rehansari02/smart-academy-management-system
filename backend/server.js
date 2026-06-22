@@ -36,9 +36,6 @@ const app = express();
 
 app.set('trust proxy', 1);
 
-// Security Middleware
-app.use(helmet());
-
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
@@ -49,6 +46,16 @@ const allowedOrigins = [
   "https://smar.smartinstituteonline.com",
   "https://api.smartinstituteonline.com",
 ];
+
+// Security Middleware
+app.use(helmet({
+  frameguard: false,
+  contentSecurityPolicy: {
+    directives: {
+      frameAncestors: ["'self'", ...allowedOrigins],
+    },
+  },
+}));
 
 // Helper to check if origin is allowed (supports exact match and subdomain patterns)
 function isOriginAllowed(origin) {
