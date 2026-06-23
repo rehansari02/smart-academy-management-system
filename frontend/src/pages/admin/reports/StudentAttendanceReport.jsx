@@ -17,6 +17,11 @@ const getStudentStartDate = (student) => {
     return date.isValid() ? date.startOf('day') : null;
 };
 
+const getBranchIdValue = (branchId) => {
+    if (!branchId) return '';
+    return typeof branchId === 'object' ? (branchId._id || '') : branchId;
+};
+
 const getCourseEndDate = (student) => {
     const duration = Number(student?.course?.duration || 0);
     const startDate = getStudentStartDate(student);
@@ -72,13 +77,15 @@ const StudentAttendanceReport = () => {
         }
     }, [dispatch, user]);
 
-    const fetchAttendanceClosures = async (fromDate, toDate) => {
+    const fetchAttendanceClosures = async (fromDate, toDate, branchId = '') => {
         try {
             const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/attendance/manage`, {
                 params: {
                     fromDate,
                     toDate,
-                    limit: 1000
+                    limit: 1000,
+                    branchId: branchId || undefined,
+                    globalOnly: branchId ? undefined : 'true'
                 },
                 withCredentials: true
             });
@@ -141,6 +148,10 @@ const StudentAttendanceReport = () => {
 
         const startDate = moment(reportFilters.month, 'YYYY-MM').startOf('month').format('YYYY-MM-DD');
         const endDate = moment(reportFilters.month, 'YYYY-MM').endOf('month').format('YYYY-MM-DD');
+        const selectedBatch = reportFilters.batch
+            ? batches.find(b => b.name === reportFilters.batch)
+            : null;
+        const closureBranchId = reportFilters.branchId || getBranchIdValue(selectedBatch?.branchId);
 
         // Fetch Attendance History
         dispatch(fetchStudentAttendanceHistory({
@@ -167,7 +178,7 @@ const StudentAttendanceReport = () => {
         if (reportFilters.studentName) studentParams.studentName = reportFilters.studentName;
 
         dispatch(fetchStudents(studentParams));
-        fetchAttendanceClosures(startDate, endDate);
+        fetchAttendanceClosures(startDate, endDate, closureBranchId);
 
         setDaysInMonth(getDaysInMonth(reportFilters.month));
         setShowReport(true);

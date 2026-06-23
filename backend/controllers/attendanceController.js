@@ -6,6 +6,12 @@ const ExamSchedule = require('../models/ExamSchedule');
 const AttendanceCalendar = require('../models/AttendanceCalendar');
 const sendSMS = require('../utils/smsSender');
 
+const getObjectIdString = (value) => {
+    if (!value) return null;
+    if (typeof value === 'object' && value._id) return value._id.toString();
+    return value.toString();
+};
+
 const parseLocalDate = (dateValue) => {
     if (dateValue instanceof Date) return new Date(dateValue);
 
@@ -109,7 +115,7 @@ const ensureSundayCalendarEntries = async (years, user) => {
     }
 };
 
-const getAttendanceClosureForDate = async (dateValue, user) => {
+const getAttendanceClosureForDate = async (dateValue, user, branchId = null) => {
     if (!dateValue) return null;
 
     const { start, end } = normalizeDateRange(dateValue);
@@ -129,8 +135,14 @@ const getAttendanceClosureForDate = async (dateValue, user) => {
         endDate: { $gte: start }
     };
 
-    if (user && user.role !== 'Super Admin' && user.branchId) {
-        query.$or = [{ branch: user.branchId }, { branch: { $exists: false } }, { branch: null }];
+    const scopedBranchId = user && user.role !== 'Super Admin'
+        ? getObjectIdString(user.branchId)
+        : getObjectIdString(branchId);
+
+    if (scopedBranchId) {
+        query.$or = [{ branch: scopedBranchId }, { branch: { $exists: false } }, { branch: null }];
+    } else if (user?.role === 'Super Admin') {
+        query.$or = [{ branch: { $exists: false } }, { branch: null }];
     }
 
     const closure = await AttendanceCalendar.findOne(query).sort({ startDate: 1 });
@@ -163,8 +175,14 @@ exports.getAttendanceCalendar = async (req, res) => {
             query.endDate = { $gte: start };
         }
 
-        if (req.user && req.user.role !== 'Super Admin' && req.user.branchId) {
-            query.$or = [{ branch: req.user.branchId }, { branch: { $exists: false } }, { branch: null }];
+        const scopedBranchId = req.user?.role !== 'Super Admin'
+            ? getObjectIdString(req.user?.branchId)
+            : getObjectIdString(req.query.branchId);
+
+        if (scopedBranchId) {
+            query.$or = [{ branch: scopedBranchId }, { branch: { $exists: false } }, { branch: null }];
+        } else if (req.query.globalOnly === 'true') {
+            query.$or = [{ branch: { $exists: false } }, { branch: null }];
         }
 
         const [items, total] = await Promise.all([
@@ -287,7 +305,7 @@ exports.deleteAttendanceCalendar = async (req, res) => {
 
 exports.checkAttendanceCalendarStatus = async (req, res) => {
     try {
-        const closure = await getAttendanceClosureForDate(req.query.date, req.user);
+        const closure = await getAttendanceClosureForDate(req.query.date, req.user, req.query.branchId);
         res.status(200).json({ isClosed: !!closure, closure });
     } catch (error) {
         res.status(500).json({ message: 'Error checking attendance calendar', error: error.message });
@@ -299,18 +317,14 @@ exports.checkAttendanceCalendarStatus = async (req, res) => {
 // Get list of registered students for a specific batch and time to take attendance
 exports.getStudentsForAttendance = async (req, res) => {
     try {
-        const { batch, batchId, date } = req.query;
+        const { batch, batchId, date, branchId } = req.query;
 
         if (!batch && !batchId) {
             return res.status(400).json({ message: "Batch is required" });
         }
 
-        const closure = await getAttendanceClosureForDate(date, req.user);
-        if (closure) {
-            return res.status(200).json([]);
-        }
-
         const batchValues = [batch, batchId].filter(Boolean).map(value => String(value).trim()).filter(Boolean);
+        let batchDoc = null;
         if (batchId || batch) {
             const Batch = require('../models/Batch');
             const batchLookup = [];
@@ -321,11 +335,17 @@ exports.getStudentsForAttendance = async (req, res) => {
                 batchLookup.push({ name: new RegExp(`^${String(batch).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
             }
 
-            const batchDoc = batchLookup.length > 0
-                ? await Batch.findOne({ $or: batchLookup }).select('name')
+            batchDoc = batchLookup.length > 0
+                ? await Batch.findOne({ $or: batchLookup }).select('name branchId')
                 : null;
 
             if (batchDoc?.name) batchValues.push(batchDoc.name);
+        }
+
+        const closureBranchId = branchId || batchDoc?.branchId;
+        const closure = await getAttendanceClosureForDate(date, req.user, closureBranchId);
+        if (closure) {
+            return res.status(200).json([]);
         }
 
         const batchMatchers = [...new Set(batchValues)].map(value => (
@@ -395,10 +415,10 @@ exports.getStudentsForAttendance = async (req, res) => {
 // Check if attendance already taken
 exports.checkStudentAttendanceStatus = async (req, res) => {
     try {
-        const { date, batch, batchTime } = req.query;
+        const { date, batch, batchTime, branchId } = req.query;
         if (!date || !batch || !batchTime) return res.status(400).json({ message: "Missing params" });
 
-        const closure = await getAttendanceClosureForDate(date, req.user);
+        const closure = await getAttendanceClosureForDate(date, req.user, branchId);
         if (closure) {
             return res.status(200).json({
                 exists: false,
@@ -441,7 +461,7 @@ exports.checkStudentAttendanceStatus = async (req, res) => {
 // Save Student Attendance
 exports.saveStudentAttendance = async (req, res) => {
     try {
-        const { date, batchName, batchTime, remarks, records } = req.body;
+        const { date, batchName, batchTime, remarks, records, branchId } = req.body;
         const takenBy = req.user.id; // From auth middleware
 
         // Validate basic
@@ -449,7 +469,7 @@ exports.saveStudentAttendance = async (req, res) => {
              return res.status(400).json({ message: "Missing required fields" });
         }
 
-        const closure = await getAttendanceClosureForDate(date, req.user);
+        const closure = await getAttendanceClosureForDate(date, req.user, branchId);
         if (closure) {
             return res.status(400).json({ message: `Attendance cannot be taken on this date. ${closure.reason}`, closure });
         }

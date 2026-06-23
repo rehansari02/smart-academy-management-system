@@ -9,15 +9,131 @@ const isRemoteDocument = (document) => /^https?:\/\//i.test(document || '');
 
 const isBareExtensionValue = (document) => /^\.[a-z0-9]+$/i.test(String(document || '').trim());
 
-const getCloudinaryPublicId = (document) => {
-    if (!isRemoteDocument(document)) return '';
+const getCloudinaryAssetInfo = (document) => {
+    if (!isRemoteDocument(document)) return null;
+
     try {
         const url = new URL(document);
-        const match = url.pathname.match(/\/upload\/(?:v\d+\/)?(.+)$/);
-        return match ? decodeURIComponent(match[1]) : '';
+        if (!/cloudinary\.com$/i.test(url.hostname) && !/\.cloudinary\.com$/i.test(url.hostname)) {
+            return null;
+        }
+
+        const pathname = decodeURIComponent(url.pathname);
+        const typedMatch = pathname.match(/\/(image|video|raw)\/(upload|private|authenticated)\/(?:v\d+\/)?(.+)$/);
+        if (typedMatch) {
+            return {
+                resourceType: typedMatch[1],
+                type: typedMatch[2],
+                publicId: typedMatch[3]
+            };
+        }
+
+        const uploadMatch = pathname.match(/\/upload\/(?:v\d+\/)?(.+)$/);
+        if (uploadMatch) {
+            return {
+                resourceType: 'raw',
+                type: 'upload',
+                publicId: uploadMatch[1]
+            };
+        }
     } catch (err) {
-        return '';
+        return null;
     }
+
+    return null;
+};
+
+const getCloudinaryPublicId = (document) => {
+    return getCloudinaryAssetInfo(document)?.publicId || '';
+};
+
+const uniqueValues = (values) => [...new Set(values.filter(Boolean))];
+
+const withoutPublicIdExtension = (publicId, ext) => {
+    if (!publicId || !ext) return publicId;
+    return publicId.toLowerCase().endsWith(ext.toLowerCase())
+        ? publicId.slice(0, -ext.length)
+        : publicId;
+};
+
+const getCloudinaryResourceMetadata = async (document, ext = '') => {
+    const assetInfo = getCloudinaryAssetInfo(document);
+    if (!assetInfo?.publicId) return null;
+
+    const publicIds = uniqueValues([
+        assetInfo.publicId,
+        withoutPublicIdExtension(assetInfo.publicId, ext)
+    ]);
+    const resourceTypes = uniqueValues([assetInfo.resourceType, 'raw']);
+    const types = uniqueValues([assetInfo.type, 'upload', 'authenticated', 'private']);
+
+    for (const resourceType of resourceTypes) {
+        for (const type of types) {
+            for (const publicId of publicIds) {
+                try {
+                    return await cloudinary.api.resource(publicId, {
+                        resource_type: resourceType,
+                        type
+                    });
+                } catch (err) {
+                    // Try the next public id/type combination.
+                }
+            }
+        }
+    }
+
+    return null;
+};
+
+const buildCloudinaryFetchUrls = async (document, ext = '') => {
+    const assetInfo = getCloudinaryAssetInfo(document);
+    if (!assetInfo?.publicId) return [];
+
+    const resource = await getCloudinaryResourceMetadata(document, ext);
+    const resolvedExt = ext || (resource?.format ? `.${resource.format}` : getFileExtension(document));
+    const format = String(resource?.format || resolvedExt.replace('.', '') || '').toLowerCase();
+    const expiresAt = Math.floor(Date.now() / 1000) + 10 * 60;
+
+    const publicIds = uniqueValues([
+        resource?.public_id,
+        assetInfo.publicId,
+        withoutPublicIdExtension(assetInfo.publicId, resolvedExt)
+    ]);
+    const resourceTypes = uniqueValues([resource?.resource_type, assetInfo.resourceType, 'raw']);
+    const types = uniqueValues([resource?.type, assetInfo.type, 'upload', 'authenticated', 'private']);
+    const urls = [];
+
+    for (const resourceType of resourceTypes) {
+        for (const type of types) {
+            for (const publicId of publicIds) {
+                try {
+                    urls.push(cloudinary.url(publicId, {
+                        resource_type: resourceType,
+                        type,
+                        secure: true,
+                        sign_url: true,
+                        ...(format && !publicId.toLowerCase().endsWith(`.${format}`) ? { format } : {})
+                    }));
+                } catch (err) {
+                    // Ignore invalid signing combinations.
+                }
+
+                if (format) {
+                    try {
+                        urls.push(cloudinary.utils.private_download_url(publicId, format, {
+                            resource_type: resourceType,
+                            type,
+                            expires_at: expiresAt
+                        }));
+                    } catch (err) {
+                        // Ignore invalid download URL combinations.
+                    }
+                }
+            }
+        }
+    }
+
+    return uniqueValues(urls).filter((url) => url !== document);
 };
 
 const normalizeUploadedDocumentPath = (file) => {
@@ -46,6 +162,44 @@ const getFileExtension = (document) => {
         // fall through to path.extname
     }
     return path.extname(value).toLowerCase();
+};
+
+const fetchRemoteDocument = async (document, ext = '') => {
+    const requestOptions = {
+        responseType: 'stream',
+        validateStatus: () => true,
+        timeout: 30000
+    };
+
+    let fallbackResponse = null;
+    try {
+        fallbackResponse = await axios.get(document, requestOptions);
+        if (fallbackResponse.status < 400) {
+            return fallbackResponse;
+        }
+    } catch (err) {
+        fallbackResponse = err.response || null;
+    }
+
+    const signedUrls = await buildCloudinaryFetchUrls(document, ext);
+    for (const signedUrl of signedUrls) {
+        try {
+            const response = await axios.get(signedUrl, requestOptions);
+            if (response.status < 400) {
+                return response;
+            }
+            fallbackResponse = response;
+        } catch (err) {
+            fallbackResponse = err.response || fallbackResponse;
+        }
+    }
+
+    return fallbackResponse;
+};
+
+const getDownloadFileName = (material, ext) => {
+    const safeTitle = String(material.title || 'material').replace(/[^a-zA-Z0-9_-]/g, '_');
+    return `${safeTitle}${ext || ''}`;
 };
 
 const resolveRemoteFileExtension = async (document) => {
@@ -244,7 +398,19 @@ const previewMaterial = asyncHandler(async (req, res) => {
     const documentUrl = getDocumentUrl(req, material.document);
 
     if (isRemoteDocument(material.document)) {
-        return res.redirect(documentUrl);
+        const response = await fetchRemoteDocument(material.document, ext);
+        if (!response || response.status >= 400) {
+            res.status(response?.status || 502);
+            throw new Error('Remote file could not be fetched');
+        }
+
+        const remoteContentType = String(response.headers['content-type'] || '').toLowerCase();
+        res.setHeader('Content-Type', remoteContentType && remoteContentType !== 'application/octet-stream'
+            ? response.headers['content-type']
+            : getContentTypeByExtension(ext));
+        res.setHeader('Content-Disposition', `inline; filename="${getDownloadFileName(material, ext)}"`);
+        response.data.pipe(res);
+        return;
     }
 
     const filePath = resolveLocalDocumentPath(material.document);
@@ -271,27 +437,22 @@ const getRawMaterial = asyncHandler(async (req, res) => {
         throw new Error('Document not found');
     }
 
-    const ext = await resolveRemoteFileExtension(material.document);
-    const contentType = getContentTypeByExtension(ext);
-
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'no-store');
+    const ext = isRemoteDocument(material.document)
+        ? await resolveRemoteFileExtension(material.document)
+        : getFileExtension(material.document);
 
     if (isRemoteDocument(material.document)) {
-        const response = await axios.get(material.document, {
-            responseType: 'stream',
-            validateStatus: () => true
-        });
-
-        if (response.status >= 400) {
-            res.status(response.status);
+        const response = await fetchRemoteDocument(material.document, ext);
+        if (!response || response.status >= 400) {
+            res.status(response?.status || 502);
             throw new Error('Remote file could not be fetched');
         }
 
         const remoteContentType = String(response.headers['content-type'] || '').toLowerCase();
-        if (remoteContentType && remoteContentType !== 'application/octet-stream') {
-            res.setHeader('Content-Type', response.headers['content-type']);
-        }
+        res.setHeader('Content-Type', remoteContentType && remoteContentType !== 'application/octet-stream'
+            ? response.headers['content-type']
+            : getContentTypeByExtension(ext));
+        res.setHeader('Cache-Control', 'no-store');
 
         response.data.pipe(res);
         return;
@@ -344,9 +505,23 @@ const downloadMaterial = asyncHandler(async (req, res) => {
         res.status(404); throw new Error('Document not found');
     }
 
-    const ext = await resolveRemoteFileExtension(material.document);
+    const ext = isRemoteDocument(material.document)
+        ? await resolveRemoteFileExtension(material.document)
+        : getFileExtension(material.document);
     if (isRemoteDocument(material.document)) {
-        return res.redirect(material.document);
+        const response = await fetchRemoteDocument(material.document, ext);
+        if (!response || response.status >= 400) {
+            res.status(response?.status || 502);
+            throw new Error('Remote file could not be fetched');
+        }
+
+        const remoteContentType = String(response.headers['content-type'] || '').toLowerCase();
+        res.setHeader('Content-Type', remoteContentType && remoteContentType !== 'application/octet-stream'
+            ? response.headers['content-type']
+            : getContentTypeByExtension(ext));
+        res.setHeader('Content-Disposition', `attachment; filename="${getDownloadFileName(material, ext)}"`);
+        response.data.pipe(res);
+        return;
     }
 
     const filePath = resolveLocalDocumentPath(material.document);
@@ -354,8 +529,7 @@ const downloadMaterial = asyncHandler(async (req, res) => {
         res.status(404); throw new Error('File not found on server');
     }
 
-    const safeTitle = material.title.replace(/[^a-zA-Z0-9]/g, "_");
-    const downloadFileName = `${safeTitle}${ext}`;
+    const downloadFileName = getDownloadFileName(material, ext);
 
     res.download(filePath, downloadFileName);
 });

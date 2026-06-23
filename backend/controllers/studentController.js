@@ -529,6 +529,7 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
                     console.log(`[DEBUG] Fee Receipt Created: ${receiptNo}`);
                     
                     student.pendingFees = Math.max(0, student.pendingFees - Number(feeDetails.amount));
+                    student.registrationFeeAmount = (student.registrationFeeAmount || 0) + Number(feeDetails.amount);
                     student.isRegistrationFeesPaid = true;
                 } catch (feeError) {
                      if (registrationReceiptKey && feeError.code === 11000) {

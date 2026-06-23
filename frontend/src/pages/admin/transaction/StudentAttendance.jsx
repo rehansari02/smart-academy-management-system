@@ -19,6 +19,11 @@ import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
 import { getDateInputValue, getTodayDateISO } from '../../../utils/dateUtils';
 
+const getBranchIdValue = (branchId) => {
+    if (!branchId) return '';
+    return typeof branchId === 'object' ? (branchId._id || '') : branchId;
+};
+
 const StudentAttendance = () => {
     const dispatch = useDispatch();
     const { attendanceList, currentAttendanceStudents, attendanceStatus, isSuccess, message, isLoading } = useSelector(state => state.attendance);
@@ -42,6 +47,7 @@ const StudentAttendance = () => {
         batchId: '',
         batchName: '',
         batchTime: '', // Will be auto-populated or selected
+        branchId: '',
         remarks: ''
     });
     
@@ -75,7 +81,7 @@ const StudentAttendance = () => {
         const checkClosedDate = async () => {
             try {
                 const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/attendance/calendar/status`, {
-                    params: { date: formData.date },
+                    params: { date: formData.date, branchId: formData.branchId || undefined },
                     withCredentials: true
                 });
                 setClosedDateStatus(data);
@@ -89,7 +95,7 @@ const StudentAttendance = () => {
         };
 
         checkClosedDate();
-    }, [formData.date, viewMode, isEditing, dispatch]);
+    }, [formData.date, formData.branchId, viewMode, isEditing, dispatch]);
 
     useEffect(() => {
         // When Batch/Time/Date changes, check status and fetch students
@@ -103,6 +109,7 @@ const StudentAttendance = () => {
             dispatch(fetchStudentsForAttendance({ 
                 batch: formData.batchName,
                 batchId: formData.batchId,
+                branchId: formData.branchId,
                 date: formData.date
             }));
 
@@ -111,7 +118,8 @@ const StudentAttendance = () => {
                 dispatch(checkStudentAttendance({ 
                     date: formData.date, 
                     batch: formData.batchName, 
-                    batchTime: formData.batchTime 
+                    batchTime: formData.batchTime,
+                    branchId: formData.branchId
                 }));
             }
         }
@@ -173,6 +181,7 @@ const StudentAttendance = () => {
         const selectedBatch = batches.find(b => b._id === batchId);
         const batchName = selectedBatch?.name || '';
         const time = selectedBatch ? `${selectedBatch.startTime} - ${selectedBatch.endTime}` : '';
+        const branchId = getBranchIdValue(selectedBatch?.branchId);
         
         setAttendanceGrid([]);
         dispatch(resetAttendanceState());
@@ -180,7 +189,8 @@ const StudentAttendance = () => {
             ...prev, 
             batchId,
             batchName,
-            batchTime: time // Set default time
+            batchTime: time, // Set default time
+            branchId
         }));
     };
 
@@ -196,6 +206,7 @@ const StudentAttendance = () => {
             batchId: batches.find(b => b.name === record.batchName && `${b.startTime} - ${b.endTime}` === record.batchTime)?._id || '',
             batchName: record.batchName,
             batchTime: record.batchTime,
+            branchId: getBranchIdValue(batches.find(b => b.name === record.batchName && `${b.startTime} - ${b.endTime}` === record.batchTime)?.branchId),
             remarks: record.remarks
         });
 
@@ -241,6 +252,7 @@ const StudentAttendance = () => {
             date: formData.date,
             batchName: formData.batchName,
             batchTime: formData.batchTime,
+            branchId: formData.branchId,
             remarks: formData.remarks,
             records: attendanceGrid.map(rec => ({
                 ...rec,
@@ -280,7 +292,7 @@ const StudentAttendance = () => {
                 {viewMode === 'list' && (
                     <button 
                         onClick={() => {
-                            setFormData({ date: getTodayDateISO(), batchId: '', batchName: '', batchTime: '', remarks: '' });
+                            setFormData({ date: getTodayDateISO(), batchId: '', batchName: '', batchTime: '', branchId: '', remarks: '' });
                             setAttendanceGrid([]);
                             if (!add) {
                                 showPermissionDenied("You don't have authority to add student attendance.");
@@ -538,7 +550,7 @@ const StudentAttendance = () => {
                                     <button onClick={() => setViewMode('list')} className="px-6 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">Cancel</button>
                                     <button 
                                         onClick={() => {
-                                            setFormData({ date: getTodayDateISO(), batchId: '', batchName: '', batchTime: '', remarks: '' });
+                                            setFormData({ date: getTodayDateISO(), batchId: '', batchName: '', batchTime: '', branchId: '', remarks: '' });
                                             setAttendanceGrid([]);
                                             dispatch(resetAttendanceState()); // Reset data
                                         }} // Reset to fresh

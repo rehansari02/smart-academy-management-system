@@ -169,6 +169,33 @@ const getReceiptLifecycleInfo = (receipts = []) => {
     return receiptInfo;
 };
 
+const getStudentLifecycleFeeTotals = (receipts = [], student = {}) => {
+    const lifecycleInfo = getReceiptLifecycleInfo(receipts);
+    const totals = receipts.reduce((summary, receipt) => {
+        const info = receipt?._id ? lifecycleInfo.get(receipt._id.toString()) : null;
+        const purpose = info?.purpose || getReceiptPurpose(receipt);
+
+        if (purpose === 'admission' || purpose === 'registration') {
+            summary[purpose] += Number(receipt.amountPaid || 0);
+        }
+
+        return summary;
+    }, { admission: 0, registration: 0 });
+
+    if (student?.isRegistered && totals.registration <= 0) {
+        const totalPaid = receipts.reduce((sum, receipt) => sum + Number(receipt.amountPaid || 0), 0);
+        const knownAdmissionPaid = Math.max(totals.admission, Number(student.admissionFeeAmount || 0));
+        const configuredRegistrationFee = Number(student?.course?.registrationFees || student?.emiDetails?.registrationFees || 0);
+        const inferredRegistrationPaid = Math.max(0, totalPaid - knownAdmissionPaid);
+
+        totals.registration = configuredRegistrationFee > 0
+            ? Math.min(inferredRegistrationPaid, configuredRegistrationFee)
+            : inferredRegistrationPaid;
+    }
+
+    return totals;
+};
+
 const getLifecycleFeeSummary = async (feeQuery) => {
     const rangeReceipts = await FeeReceipt.find(feeQuery)
         .select('_id student amountPaid remarks date createdAt receiptNo')
@@ -400,7 +427,7 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
     });
     const detailDateMatch = detailRange.start && detailRange.end ? { $gte: detailRange.start, $lte: detailRange.end } : null;
 
-    let referenceFilter = { $exists: true, $nin: ['', null, 'Direct'] };
+    let referenceFilter = { $exists: true, $nin: ['', null] };
     if (!canViewReferenceOverview) {
         // Only show this user's references
         // We match against full name, first name, or username for better compatibility
@@ -580,6 +607,19 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
         ]);
 
         const studentIds = await Student.distinct('_id', studentQuery);
+        const pageStudentIds = students.map(student => student._id);
+        const pageReceipts = pageStudentIds.length
+            ? await FeeReceipt.find({ student: { $in: pageStudentIds } })
+                .select('_id student amountPaid remarks date createdAt receiptNo')
+                .lean()
+            : [];
+        const feeTotalsByStudent = pageReceipts.reduce((map, receipt) => {
+            const key = receipt.student?.toString();
+            if (!key) return map;
+            if (!map[key]) map[key] = [];
+            map[key].push(receipt);
+            return map;
+        }, {});
 
         // Calculate incentive for each student in the detailed view
         const studentsWithIncentive = students.map(s => {
@@ -591,7 +631,20 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
                     incentive = s.course.commission || 0;
                 }
             }
-            return { ...s, incentive };
+
+            const feeTotals = getStudentLifecycleFeeTotals(feeTotalsByStudent[s._id.toString()] || [], s);
+
+            const admissionPaidAmount = Math.max(Number(s.admissionFeeAmount || 0), feeTotals.admission);
+            const registrationPaidAmount = Math.max(Number(s.registrationFeeAmount || 0), feeTotals.registration);
+
+            return {
+                ...s,
+                incentive,
+                admissionFeeAmount: admissionPaidAmount,
+                registrationFeeAmount: registrationPaidAmount,
+                admissionPaidAmount,
+                registrationPaidAmount
+            };
         });
 
         // Get fee receipts for these students

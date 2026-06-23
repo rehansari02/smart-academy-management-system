@@ -9,9 +9,9 @@ axios.defaults.withCredentials = true;
 // Student Thunks
 export const fetchStudentsForAttendance = createAsyncThunk(
     'attendance/fetchStudents',
-    async ({ batch, batchId, batchTime, date }, thunkAPI) => {
+    async ({ batch, batchId, batchTime, date, branchId }, thunkAPI) => {
         try {
-            const response = await axios.get(API_URL + 'student/list', { params: { batch, batchId, batchTime, date } });
+            const response = await axios.get(API_URL + 'student/list', { params: { batch, batchId, batchTime, date, branchId } });
             return response.data;
         } catch (error) {
             return thunkAPI.rejectWithValue(error.response?.data?.message || error.message);
@@ -21,9 +21,9 @@ export const fetchStudentsForAttendance = createAsyncThunk(
 
 export const checkStudentAttendance = createAsyncThunk(
     'attendance/checkStudent',
-    async ({ date, batch, batchTime }, thunkAPI) => {
+    async ({ date, batch, batchTime, branchId }, thunkAPI) => {
         try {
-            const response = await axios.get(API_URL + 'student/check', { params: { date, batch, batchTime } });
+            const response = await axios.get(API_URL + 'student/check', { params: { date, batch, batchTime, branchId } });
             return response.data; // { exists: bool, takenBy: string, record: object }
         } catch (error) {
             return thunkAPI.rejectWithValue(error.response?.data?.message || error.message);

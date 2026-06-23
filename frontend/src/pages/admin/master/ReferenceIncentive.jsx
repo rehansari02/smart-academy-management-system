@@ -567,8 +567,8 @@ function TeacherPerformanceDetail({
   const getFeeStatus = (student, feeType) => {
     const course = student?.course || {};
     const storedPaid = feeType === 'admission'
-      ? Number(student?.admissionFeeAmount || 0)
-      : Number(student?.registrationFeeAmount || 0);
+      ? Number(student?.admissionPaidAmount ?? student?.admissionFeeAmount ?? 0)
+      : Number(student?.registrationPaidAmount ?? student?.registrationFeeAmount ?? 0);
     const configuredRequired = feeType === 'admission'
       ? Number(course?.admissionFees || 0)
       : Number(course?.registrationFees || student?.emiDetails?.registrationFees || 0);
@@ -913,7 +913,7 @@ function TeacherPerformanceDetail({
         </div>
 
         <div className="hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[1200px] text-sm">
+          <table className="w-full min-w-[1280px] text-sm">
             <thead className="bg-white text-xs uppercase text-slate-500">
               <tr>
                 <th className="w-10 p-3 text-center font-black">
@@ -923,6 +923,7 @@ function TeacherPerformanceDetail({
                 </th>
                 <th className="w-10 p-3 text-center font-black">#</th>
                 <th className="p-3 text-left font-black">Student</th>
+                <th className="p-3 text-left font-black">Admission Date</th>
                 <th className="p-3 text-left font-black">Branch</th>
                 <th className="p-3 text-left font-black">Course</th>
                 <th className="p-3 text-center font-black">Admission Fee</th>
@@ -946,6 +947,9 @@ function TeacherPerformanceDetail({
                     <div className="text-[10px] font-semibold text-slate-400">ID: {s.regNo || s.enrollmentNo || 'N/A'}</div>
                   </td>
                   <td className="p-3">
+                    <div className="font-semibold text-slate-700">{formatDate(s.admissionDate)}</div>
+                  </td>
+                  <td className="p-3">
                     <div className="font-semibold text-slate-700">{s.branchId?.name || s.branchName || '-'}</div>
                   </td>
                   <td className="p-3">
@@ -963,7 +967,7 @@ function TeacherPerformanceDetail({
                             {fee.label}
                           </span>
                           <div className="mt-1 text-[10px] font-semibold text-slate-500">
-                            ₹{fee.required.toLocaleString('en-IN')} / ₹{fee.paid.toLocaleString('en-IN')}
+                            {formatMoney(fee.required)} / {formatMoney(fee.paid)}
                           </div>
                         </div>
                       );
@@ -978,7 +982,7 @@ function TeacherPerformanceDetail({
                             {fee.label}
                           </span>
                           <div className="mt-1 text-[10px] font-semibold text-slate-500">
-                            ₹{fee.required.toLocaleString('en-IN')} / ₹{fee.paid.toLocaleString('en-IN')}
+                            {formatMoney(fee.required)} / {formatMoney(fee.paid)}
                           </div>
                         </div>
                       );
@@ -1010,7 +1014,7 @@ function TeacherPerformanceDetail({
                   </td>
                 </tr>
               )) : (
-                <tr><td colSpan={10} className="p-8 text-center font-semibold text-slate-400">No students found.</td></tr>
+                <tr><td colSpan={11} className="p-8 text-center font-semibold text-slate-400">No students found.</td></tr>
               )}
             </tbody>
           </table>
@@ -1033,6 +1037,7 @@ function TeacherPerformanceDetail({
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div><span className="font-semibold text-slate-500">Course:</span> <span className="text-slate-700">{s.course?.name || '-'}</span></div>
                 <div><span className="font-semibold text-slate-500">Branch:</span> <span className="text-slate-700">{s.branchId?.name || s.branchName || '-'}</span></div>
+                <div><span className="font-semibold text-slate-500">Admission Date:</span> <span className="text-slate-700">{formatDate(s.admissionDate)}</span></div>
                 <div><span className="font-semibold text-slate-500">Admission:</span> <span className="text-slate-700">{getFeeStatus(s, 'admission').label}</span></div>
                 <div><span className="font-semibold text-slate-500">Registration:</span> <span className="text-slate-700">{getFeeStatus(s, 'registration').label}</span></div>
                 <div><span className="font-semibold text-slate-500">Incentive:</span> <span className="font-black text-indigo-600">{formatMoney(s.incentive)}</span></div>

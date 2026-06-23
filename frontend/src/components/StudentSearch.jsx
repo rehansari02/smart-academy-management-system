@@ -306,7 +306,7 @@ const StudentSearch = ({
                                         </p>
                                         {item.regNo && (
                                             <p className="text-[10px] text-blue-600 font-bold font-mono">
-                                                Ref: {item.regNo}
+                                                Reg: {item.regNo}
                                             </p>
                                         )}
                                     </div>
