@@ -3,6 +3,7 @@ const router = express.Router();
 const { protect } = require('../middlewares/authMiddleware');
 const documentUpload = require('../middlewares/documentUploadMiddleware');
 const { 
+    getPdfWorker,
     getMaterials, 
     previewMaterial,
     getMaterialPreviewMeta,
@@ -18,6 +19,7 @@ router.route('/')
     .post(protect, documentUpload.single('document'), createMaterial);
 
 router.get('/preview-meta/:id', getMaterialPreviewMeta);
+router.get('/pdf-worker', getPdfWorker);
 router.get('/raw/:id', getRawMaterial);
 router.get('/preview/:id', previewMaterial);
 router.get('/download/:id', downloadMaterial);

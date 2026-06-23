@@ -13,24 +13,33 @@ const getObjectIdString = (value) => {
 };
 
 const parseLocalDate = (dateValue) => {
-    if (dateValue instanceof Date) return new Date(dateValue);
+    if (!dateValue) return new Date();
+
+    if (dateValue instanceof Date) {
+        return new Date(Date.UTC(dateValue.getUTCFullYear(), dateValue.getUTCMonth(), dateValue.getUTCDate(), dateValue.getUTCHours(), dateValue.getUTCMinutes(), dateValue.getUTCSeconds(), dateValue.getUTCMilliseconds()));
+    }
 
     if (typeof dateValue === 'string') {
-        const match = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        const match = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})/);
         if (match) {
             const [, year, month, day] = match;
-            return new Date(Number(year), Number(month) - 1, Number(day));
+            return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
         }
     }
 
-    return new Date(dateValue);
+    const d = new Date(dateValue);
+    if (!Number.isNaN(d.getTime())) {
+        return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()));
+    }
+
+    return d;
 };
 
 const normalizeDateRange = (dateValue) => {
     const start = parseLocalDate(dateValue);
-    start.setHours(0, 0, 0, 0);
+    start.setUTCHours(0, 0, 0, 0);
     const end = parseLocalDate(dateValue);
-    end.setHours(23, 59, 59, 999);
+    end.setUTCHours(23, 59, 59, 999);
     return { start, end };
 };
 
@@ -41,26 +50,26 @@ const getCourseEndDate = (student) => {
     const startDate = new Date(student.batchStartDate || student.admissionDate);
     if (Number.isNaN(startDate.getTime())) return null;
 
-    startDate.setHours(0, 0, 0, 0);
+    startDate.setUTCHours(0, 0, 0, 0);
     const endDate = new Date(startDate);
     const durationType = String(student?.course?.durationType || 'Month').toLowerCase();
 
     if (durationType.startsWith('year')) {
-        endDate.setFullYear(endDate.getFullYear() + duration);
+        endDate.setUTCFullYear(endDate.getUTCFullYear() + duration);
     } else if (durationType.startsWith('day')) {
-        endDate.setDate(endDate.getDate() + duration);
+        endDate.setUTCDate(endDate.getUTCDate() + duration);
     } else {
-        endDate.setMonth(endDate.getMonth() + duration);
+        endDate.setUTCMonth(endDate.getUTCMonth() + duration);
     }
 
-    endDate.setHours(23, 59, 59, 999);
+    endDate.setUTCHours(23, 59, 59, 999);
     return endDate;
 };
 
 const getCalendarYears = (fromDate, toDate) => {
     const currentYear = new Date().getFullYear();
-    const startYear = fromDate ? parseLocalDate(fromDate).getFullYear() : currentYear;
-    const endYear = toDate ? parseLocalDate(toDate).getFullYear() : startYear;
+    const startYear = fromDate ? parseLocalDate(fromDate).getUTCFullYear() : currentYear;
+    const endYear = toDate ? parseLocalDate(toDate).getUTCFullYear() : startYear;
 
     if (Number.isNaN(startYear) || Number.isNaN(endYear)) return [currentYear];
 
@@ -76,12 +85,12 @@ const ensureSundayCalendarEntries = async (years, user) => {
     const operations = [];
 
     years.forEach((year) => {
-        const date = new Date(year, 0, 1);
-        while (date.getDay() !== 0) {
-            date.setDate(date.getDate() + 1);
+        const date = new Date(Date.UTC(year, 0, 1));
+        while (date.getUTCDay() !== 0) {
+            date.setUTCDate(date.getUTCDate() + 1);
         }
 
-        while (date.getFullYear() === year) {
+        while (date.getUTCFullYear() === year) {
             const { start, end } = normalizeDateRange(date);
             const query = { type: 'Sunday', startDate: start, endDate: end };
             if (branch) query.branch = branch;
@@ -106,7 +115,7 @@ const ensureSundayCalendarEntries = async (years, user) => {
                 }
             });
 
-            date.setDate(date.getDate() + 7);
+            date.setUTCDate(date.getUTCDate() + 7);
         }
     });
 
@@ -121,7 +130,7 @@ const getAttendanceClosureForDate = async (dateValue, user, branchId = null) => 
     const { start, end } = normalizeDateRange(dateValue);
     if (Number.isNaN(start.getTime())) return null;
 
-    if (start.getDay() === 0) {
+    if (start.getUTCDay() === 0) {
         return {
             type: 'Sunday',
             title: 'Sunday',
@@ -372,9 +381,9 @@ exports.getStudentsForAttendance = async (req, res) => {
             .sort({ admissionDate: -1, createdAt: -1 });
 
         const attendanceDate = date ? parseLocalDate(date) : new Date();
-        attendanceDate.setHours(23, 59, 59, 999);
+        attendanceDate.setUTCHours(23, 59, 59, 999);
         const attendanceDayStart = new Date(attendanceDate);
-        attendanceDayStart.setHours(0, 0, 0, 0);
+        attendanceDayStart.setUTCHours(0, 0, 0, 0);
 
         let eligibleStudents = students.filter(student => {
             const courseEndDate = getCourseEndDate(student);

@@ -13,40 +13,49 @@ const buildRange = ({ period = 'today', fromDate, toDate }) => {
         return { start: null, end: null };
     }
 
-    const now = new Date();
-    const start = new Date(now);
-    const end = new Date(now);
+    const start = new Date();
+    const end = new Date();
 
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
+    start.setUTCHours(0, 0, 0, 0);
+    end.setUTCHours(23, 59, 59, 999);
 
     if (period === 'yesterday') {
-        start.setDate(start.getDate() - 1);
-        end.setDate(end.getDate() - 1);
+        start.setUTCDate(start.getUTCDate() - 1);
+        end.setUTCDate(end.getUTCDate() - 1);
     } else if (period === 'week') {
-        const day = start.getDay();
-        start.setDate(start.getDate() - day);
+        const day = start.getUTCDay();
+        start.setUTCDate(start.getUTCDate() - day);
         end.setTime(start.getTime());
-        end.setDate(end.getDate() + 6);
-        end.setHours(23, 59, 59, 999);
+        end.setUTCDate(end.getUTCDate() + 6);
+        end.setUTCHours(23, 59, 59, 999);
     } else if (period === 'month') {
-        start.setDate(1);
-        end.setMonth(start.getMonth() + 1, 0);
-        end.setHours(23, 59, 59, 999);
+        start.setUTCDate(1);
+        end.setUTCMonth(start.getUTCMonth() + 1, 0);
+        end.setUTCHours(23, 59, 59, 999);
     } else if (period === 'year') {
-        start.setMonth(0, 1);
-        end.setMonth(11, 31);
-        end.setHours(23, 59, 59, 999);
+        start.setUTCMonth(0, 1);
+        end.setUTCMonth(11, 31);
+        end.setUTCHours(23, 59, 59, 999);
     } else if (period === 'custom') {
         if (fromDate) {
-            const customStart = new Date(fromDate);
-            customStart.setHours(0, 0, 0, 0);
-            start.setTime(customStart.getTime());
+            const match = fromDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (match) {
+                const [, y, m, d] = match;
+                start.setTime(Date.UTC(Number(y), Number(m) - 1, Number(d), 0, 0, 0, 0));
+            } else {
+                const customStart = new Date(fromDate);
+                start.setTime(Date.UTC(customStart.getUTCFullYear(), customStart.getUTCMonth(), customStart.getUTCDate(), 0, 0, 0, 0));
+            }
         }
         if (toDate) {
-            const customEnd = new Date(toDate);
-            customEnd.setHours(23, 59, 59, 999);
-            end.setTime(customEnd.getTime());
+            const match = toDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (match) {
+                const [, y, m, d] = match;
+                end.setTime(Date.UTC(Number(y), Number(m) - 1, Number(d), 23, 59, 59, 999));
+            } else {
+                const customEnd = new Date(toDate);
+                end.setTime(Date.UTC(customEnd.getUTCFullYear(), customEnd.getUTCMonth(), customEnd.getUTCDate(), 23, 59, 59, 999));
+            }
         }
     }
 

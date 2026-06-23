@@ -8,6 +8,7 @@ import {
 } from 'recharts';
 import {
   ArrowLeft,
+  BarChart3,
   Search,
   RefreshCw,
   TrendingUp,
@@ -62,6 +63,7 @@ const ReferenceIncentive = () => {
   const [studentFilters, setStudentFilters] = useState({ period: 'month', fromDate: '', toDate: '', incentiveStatus: '' });
   const [studentPage, setStudentPage] = useState(1);
   const [showSidebar, setShowSidebar] = useState(true);
+
 
   useEffect(() => {
     dispatch(getBranches());
@@ -236,17 +238,28 @@ const ReferenceIncentive = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-black uppercase tracking-wide text-slate-500">Date Filter</label>
-                  <button
-                    onClick={() => setShowSidebar(!showSidebar)}
-                    className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-black transition ${
-                      showSidebar
-                        ? 'bg-primary/10 text-primary'
-                        : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                    }`}
-                  >
-                    <Menu size={14} />
-                    {showSidebar ? 'Hide Teachers' : 'Show Teachers'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {isSuperAdmin && (
+                      <button
+                        onClick={() => navigate('/reference-chart')}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-black text-white hover:bg-blue-700 transition shadow-sm"
+                      >
+                        <BarChart3 size={14} />
+                        Teacher Reference Chart
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowSidebar(!showSidebar)}
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-black transition ${
+                        showSidebar
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                      }`}
+                    >
+                      <Menu size={14} />
+                      {showSidebar ? 'Hide Teachers' : 'Show Teachers'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">

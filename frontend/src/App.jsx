@@ -90,6 +90,7 @@ const FacultyMaterial = lazy(() => import("./pages/admin/FacultyMaterial"));
 const FreeLearning = lazy(() => import("./pages/admin/master/FreeLearning"));
 const ManageFreeLearning = lazy(() => import("./pages/admin/master/ManageFreeLearning"));
 const ReferenceIncentive = lazy(() => import("./pages/admin/master/ReferenceIncentive"));
+const ReferenceChart = lazy(() => import("./pages/admin/master/ReferenceChart"));
 const ManageTeam = lazy(() => import("./pages/admin/master/ManageTeam"));
 const CloudinaryManager = lazy(() => import("./pages/admin/utility/CloudinaryManager"));
 const LocationMaster = lazy(() => import("./pages/admin/utility/LocationMaster"));
@@ -403,6 +404,14 @@ function App() {
                   <PrivateRoute>
                     <ReferenceIncentive />
                   </PrivateRoute>
+                }
+              />
+              <Route
+                path="/reference-chart"
+                element={
+                  <SuperAdminRoute>
+                    <ReferenceChart />
+                  </SuperAdminRoute>
                 }
               />
               <Route

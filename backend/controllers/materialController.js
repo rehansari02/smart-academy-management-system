@@ -323,6 +323,23 @@ const getContentTypeByExtension = (ext) => {
     }
 };
 
+// @desc    Serve PDF.js worker from the API host for production-safe PDF previews
+// @route   GET /api/materials/pdf-worker
+// @access  Public
+const getPdfWorker = (req, res) => {
+    const workerPath = path.resolve(__dirname, '..', 'node_modules', 'pdfjs-dist', 'build', 'pdf.worker.mjs');
+
+    if (!fs.existsSync(workerPath)) {
+        res.status(404);
+        throw new Error('PDF worker not found');
+    }
+
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.sendFile(workerPath);
+};
+
 // @desc    Get all materials with filters
 // @route   GET /api/materials
 // @access  Private/Public (depending on type)
@@ -631,6 +648,7 @@ const deleteMaterial = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+    getPdfWorker,
     getMaterials,
     previewMaterial,
     getMaterialPreviewMeta,

@@ -224,40 +224,55 @@ const BatchWiseRegister = () => {
         printReport();
     };
 
-    const getBranchInfo = () => {
-        let branchId = user?.branchId;
+    const getBranchIdValue = (value) => {
+        if (!value) return '';
+        if (typeof value === 'object') {
+            return String(value?._id || value?.name || value?.shortCode || '');
+        }
+        return String(value);
+    };
+
+    const normalizeBranchText = (value = '') => normalizeTimeText(String(value || '')
+        .replace(/\s*branch$/i, '')
+        .replace(/\s+/g, ' '));
+
+    const getBranchInfo = (branchId) => {
+        const normalizedBranchId = getBranchIdValue(branchId);
 
         if (user?.role === 'Super Admin') {
-            return {
-                name: "Main Branch",
-                address: "Smart Institute",
-                phone: "96017-49300",
-                mobile: "98988-30409",
-                email: "smartinstitutes@gmail.com"
-            };
+            if (!normalizedBranchId) {
+                return {
+                    name: 'All Branches',
+                    address: '',
+                    phone: '',
+                    mobile: '',
+                    email: ''
+                };
+            }
+
+            const found = (branches || []).find((branch) => String(branch._id) === normalizedBranchId);
+            if (found) return found;
         }
 
         if (user && user.branchDetails && user.branchDetails.address) {
             return user.branchDetails;
         }
 
-        if (branchId) {
-             if (branches && branches.length > 0) {
-                 const found = branches.find(b => b._id === branchId || b._id === branchId?._id);
-                 if (found) return found;
-             }
+        if (normalizedBranchId && branches && branches.length > 0) {
+            const found = branches.find((branch) => String(branch._id) === normalizedBranchId);
+            if (found) return found;
         }
 
-         return {
-            name: user?.branchName || "Main Branch", 
-            address: "Smart Institute",
-            phone: "96017-49300", 
-            mobile: "98988-30409",
-            email: "smartinstitutes@gmail.com" 
+        return {
+            name: user?.branchName || 'All Branches',
+            address: '',
+            phone: '',
+            mobile: '',
+            email: ''
         };
     };
 
-    const headerBranch = getBranchInfo();
+    const headerBranch = getBranchInfo(filters.branchId || userBranchId);
 
     const normalizeTimeText = (value = '') => value
         .toString()
@@ -297,11 +312,130 @@ const BatchWiseRegister = () => {
         return parseTimeToMinutes(batchItem.endTime);
     };
 
-    const getStudentBatchObject = (student) => {
+    const getBatchSequenceNumber = (batchItem) => {
+        if (!batchItem?.name) return null;
+        const matches = String(batchItem.name).match(/\d+/g);
+        if (!matches?.length) return null;
+        const sequence = Number(matches[matches.length - 1]);
+        return Number.isFinite(sequence) ? sequence : null;
+    };
+
+    const compareBatchOrder = (a, b) => {
+        const aSequence = getBatchSequenceNumber(a);
+        const bSequence = getBatchSequenceNumber(b);
+        if (aSequence !== null && bSequence !== null && aSequence !== bSequence) {
+            return aSequence - bSequence;
+        }
+        if (aSequence !== null && bSequence === null) return -1;
+        if (aSequence === null && bSequence !== null) return 1;
+
+        const aTime = getBatchStartMinutes(a) ?? 9999;
+        const bTime = getBatchStartMinutes(b) ?? 9999;
+        if (aTime !== bTime) return aTime - bTime;
+
+        const aEndTime = getBatchEndMinutes(a) ?? 9999;
+        const bEndTime = getBatchEndMinutes(b) ?? 9999;
+        if (aEndTime !== bEndTime) return aEndTime - bEndTime;
+
+        return (a?.name || '').localeCompare(b?.name || '', undefined, { numeric: true });
+    };
+
+    const getStudentBranchId = (student) => getBranchIdValue(student?.branchId || student?.branch || student?.branchName);
+
+    const getBatchBranchId = (batchItem) => getBranchIdValue(batchItem?.branchId || batchItem?.branch || batchItem?.branchName);
+
+    const getCourseIdValue = (value) => {
+        if (!value) return '';
+        return String(typeof value === 'object' ? value?._id : value);
+    };
+
+    const isNumericOnlyLabel = (value) => /^\d+$/.test(String(value || '').trim());
+
+    const normalizeCourseText = (value) => String(value || '')
+        .trim()
+        .replace(/^[\s\-–—:|/\\()]+/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const getReadableCourseLabel = (course) => {
+        const shortName = normalizeCourseText(course?.shortName);
+        const name = normalizeCourseText(course?.name);
+        const label = isNumericOnlyLabel(shortName) ? name : (shortName || name);
+        const normalizedLabel = normalizeCourseText(label);
+        return isNumericOnlyLabel(normalizedLabel) ? '' : normalizedLabel;
+    };
+
+    const getCourseLabel = (courseValue) => {
+        if (!courseValue) return '';
+        if (typeof courseValue === 'object') {
+            return getReadableCourseLabel(courseValue);
+        }
+
+        const courseId = getCourseIdValue(courseValue);
+        const matchedCourse = (courses || []).find((course) => String(course._id) === courseId);
+        return getReadableCourseLabel(matchedCourse);
+    };
+
+    const getStudentCourseLabel = (student, group) => {
+        const studentCourseLabel = getCourseLabel(student?.course);
+        if (studentCourseLabel) return studentCourseLabel;
+
+        const groupCourseLabel = (group?.courseNames || []).find((name) => name && !isNumericOnlyLabel(name));
+        if (groupCourseLabel) return groupCourseLabel;
+
+        return filters.courseFilter && selectedCourseName !== 'All Courses' ? selectedCourseName : '';
+    };
+
+    const getBranchNameById = (branchId) => {
+        const normalizedBranchId = getBranchIdValue(branchId);
+        if (!normalizedBranchId) return 'Unassigned Branch';
+
+        const foundBranch = (branches || []).find((branch) => (
+            String(branch._id) === normalizedBranchId
+            || normalizeBranchText(branch.name) === normalizeBranchText(normalizedBranchId)
+            || normalizeBranchText(branch.shortCode) === normalizeBranchText(normalizedBranchId)
+        ));
+        return foundBranch?.name || normalizedBranchId || 'Unassigned Branch';
+    };
+
+    const branchMatchesSelection = (batchItem, selectedBranchId) => {
+        const normalizedSelectedBranchId = getBranchIdValue(selectedBranchId);
+        if (!normalizedSelectedBranchId) return true;
+
+        const selectedBranch = (branches || []).find((branch) => String(branch._id) === normalizedSelectedBranchId);
+        const batchBranchValue = batchItem?.branchId || batchItem?.branch || batchItem?.branchName;
+        const normalizedBatchBranchValue = getBranchIdValue(batchBranchValue);
+        const normalizedBatchBranchName = normalizeBranchText(batchItem?.branchName || batchItem?.branch?.name || batchItem?.branchId?.name);
+
+        if (selectedBranch) {
+            if (normalizedBatchBranchValue && String(selectedBranch._id) === normalizedBatchBranchValue) return true;
+            if (normalizedBatchBranchName && normalizeBranchText(selectedBranch.name) === normalizedBatchBranchName) return true;
+            if (normalizedBatchBranchName && normalizeBranchText(selectedBranch.shortCode) === normalizedBatchBranchName) return true;
+        }
+
+        return false;
+    };
+
+    const compareBranchNames = (branchIdA, branchIdB) => {
+        const nameA = getBranchNameById(branchIdA);
+        const nameB = getBranchNameById(branchIdB);
+        return nameA.localeCompare(nameB, undefined, { numeric: true });
+    };
+
+    const getStudentBatchObject = (student, preferredBranchId = '') => {
         if (!student?.batch || !batches?.length) return null;
         const studentBatch = normalizeTimeText(student.batch);
+        const studentBranchId = getStudentBranchId(student);
+        const activeBranchId = getBranchIdValue(preferredBranchId);
 
-        return batches.find((batchItem) => {
+        const batchSource = activeBranchId
+            ? batches.filter((batchItem) => branchMatchesSelection(batchItem, activeBranchId))
+            : batches;
+
+        return batchSource.find((batchItem) => {
+            const batchBranchId = getBatchBranchId(batchItem);
+            if (!activeBranchId && studentBranchId && batchBranchId && studentBranchId !== batchBranchId) return false;
+
             const batchName = normalizeTimeText(batchItem.name);
             const batchTime = normalizeTimeText(`${batchItem.startTime} to ${batchItem.endTime}`);
             const batchDashTime = normalizeTimeText(`${batchItem.startTime} - ${batchItem.endTime}`);
@@ -321,10 +455,7 @@ const BatchWiseRegister = () => {
         return (batches || [])
             .filter((batchItem) => batchItem.isActive !== false && !batchItem.isDeleted)
             .filter((batchItem) => {
-                if (normalizedBranchId) {
-                    const batchBranchId = typeof batchItem.branchId === 'object' ? batchItem.branchId?._id : batchItem.branchId;
-                    if (!batchBranchId || String(batchBranchId) !== String(normalizedBranchId)) return false;
-                }
+                if (normalizedBranchId && !branchMatchesSelection(batchItem, normalizedBranchId)) return false;
 
                 if (selectedBatchName) {
                     const batchName = normalizeTimeText(batchItem.name);
@@ -350,25 +481,19 @@ const BatchWiseRegister = () => {
                 return true;
             })
             .sort((a, b) => {
-                const aTime = getBatchStartMinutes(a) ?? 9999;
-                const bTime = getBatchStartMinutes(b) ?? 9999;
-                if (aTime !== bTime) return aTime - bTime;
-                const aEndTime = getBatchEndMinutes(a) ?? 9999;
-                const bEndTime = getBatchEndMinutes(b) ?? 9999;
-                if (aEndTime !== bEndTime) return aEndTime - bEndTime;
-                return a.name.localeCompare(b.name);
+                const branchCompare = compareBranchNames(getBatchBranchId(a), getBatchBranchId(b));
+                if (branchCompare !== 0) return branchCompare;
+
+                return compareBatchOrder(a, b);
             });
     }, [batches, filters.branchId, filters.batch, filters.courseFilter]);
 
     const sortedBatchesForFilter = useMemo(() => {
         return [...(batches || [])].sort((a, b) => {
-            const aTime = getBatchStartMinutes(a) ?? 9999;
-            const bTime = getBatchStartMinutes(b) ?? 9999;
-            if (aTime !== bTime) return aTime - bTime;
-            const aEndTime = getBatchEndMinutes(a) ?? 9999;
-            const bEndTime = getBatchEndMinutes(b) ?? 9999;
-            if (aEndTime !== bEndTime) return aEndTime - bEndTime;
-            return a.name.localeCompare(b.name);
+            const branchCompare = compareBranchNames(getBatchBranchId(a), getBatchBranchId(b));
+            if (branchCompare !== 0) return branchCompare;
+
+            return compareBatchOrder(a, b);
         });
     }, [batches]);
 
@@ -376,14 +501,17 @@ const BatchWiseRegister = () => {
         if (!eligibleStudents?.length) return [];
 
         const byKey = new Map();
+        const activeBranchId = getBranchIdValue(filters.branchId) || (user?.role === 'Super Admin' ? '' : userBranchId || '');
 
         eligibleStudents.forEach((student) => {
-            const batchObj = getStudentBatchObject(student);
-            const key = batchObj?._id || normalizeTimeText(student.batch || 'unassigned');
+            const batchObj = getStudentBatchObject(student, activeBranchId);
+            const studentBranchId = activeBranchId || getStudentBranchId(student);
+            const key = batchObj?._id || `${studentBranchId || 'unassigned-branch'}::${normalizeTimeText(student.batch || 'unassigned')}`;
             if (!byKey.has(key)) {
                 byKey.set(key, {
                     id: key,
                     batch: batchObj,
+                    branchId: getBatchBranchId(batchObj) || studentBranchId,
                     name: batchObj?.name || student.batch || 'Unassigned',
                     students: [],
                     courseIds: new Set(),
@@ -406,6 +534,7 @@ const BatchWiseRegister = () => {
                 byKey.set(key, {
                     id: key,
                     batch: batchItem,
+                    branchId: getBatchBranchId(batchItem),
                     name: batchItem.name,
                     students: [],
                     courseIds: new Set((batchItem.courses || []).map((course) => String(typeof course === 'object' ? course?._id : course)).filter(Boolean)),
@@ -419,12 +548,14 @@ const BatchWiseRegister = () => {
                 const batchItem = group.batch || batchMap.get(String(group.id));
                 const courseList = batchItem?.courses || [];
                 const courseNames = courseList
-                    .map((course) => (typeof course === 'object' ? course?.name : course))
+                    .map((course) => getCourseLabel(course))
                     .filter(Boolean);
 
                 return {
                     ...group,
                     batch: batchItem || group.batch,
+                    branchId: getBatchBranchId(batchItem) || group.branchId,
+                    branchName: getBranchNameById(getBatchBranchId(batchItem) || group.branchId),
                     courseCount: courseList.length,
                     courseNames,
                     capacity: Number(batchItem?.batchSize || 0),
@@ -437,18 +568,19 @@ const BatchWiseRegister = () => {
                 };
             })
             .sort((a, b) => {
-                const aTime = a.batch ? getBatchStartMinutes(a.batch) ?? 9999 : 9999;
-                const bTime = b.batch ? getBatchStartMinutes(b.batch) ?? 9999 : 9999;
-                if (a.batch && b.batch && aTime !== bTime) return aTime - bTime;
-                const aEndTime = a.batch ? getBatchEndMinutes(a.batch) ?? 9999 : 9999;
-                const bEndTime = b.batch ? getBatchEndMinutes(b.batch) ?? 9999 : 9999;
-                if (a.batch && b.batch && aEndTime !== bEndTime) return aEndTime - bEndTime;
+                const branchCompare = compareBranchNames(a.branchId, b.branchId);
+                if (branchCompare !== 0) return branchCompare;
+
+                if (a.batch && b.batch) {
+                    const batchCompare = compareBatchOrder(a.batch, b.batch);
+                    if (batchCompare !== 0) return batchCompare;
+                }
                 if (a.batch && !b.batch) return -1;
                 if (!a.batch && b.batch) return 1;
                 if (b.matchCount !== a.matchCount) return b.matchCount - a.matchCount;
                 return a.name.localeCompare(b.name);
             });
-    }, [eligibleStudents, visibleBatches]);
+    }, [eligibleStudents, visibleBatches, filters.branchId, user?.role, userBranchId]);
 
     const getHeaderDateString = () => {
         const dateVal = filters.startDate || filters.endDate || new Date();
@@ -458,10 +590,38 @@ const BatchWiseRegister = () => {
     const totalCount = batchGroups.reduce((acc, group) => acc + group.students.length, 0);
     const visibleBatchCount = batchGroups.length;
     const selectedCourseName = courses?.find(c => c._id === filters.courseFilter)?.name || 'All Courses';
-    const selectedBranchName = branches?.find(b => b._id === filters.branchId)?.name || headerBranch.name || 'Current Branch';
+    const selectedBranchName = user?.role === 'Super Admin' && !getBranchIdValue(filters.branchId)
+        ? 'All Branches'
+        : branches?.find((b) => String(b._id) === String(getBranchIdValue(filters.branchId)))?.name
+            || headerBranch.name
+            || 'Current Branch';
     const activeDateLabel = filters.startDate && filters.endDate
         ? `${moment(filters.startDate).format('DD-MMM-YYYY')} to ${moment(filters.endDate).format('DD-MMM-YYYY')}`
         : 'All admission dates';
+
+    const batchSections = useMemo(() => {
+        const allBranchesMode = user?.role === 'Super Admin' && !getBranchIdValue(filters.branchId);
+        if (!allBranchesMode) {
+            return [{ id: 'selected-branch', name: selectedBranchName, groups: batchGroups }];
+        }
+
+        const sectionMap = new Map();
+        batchGroups.forEach((group) => {
+            const branchId = getBranchIdValue(group.branchId) || 'unassigned-branch';
+            if (!sectionMap.has(branchId)) {
+                sectionMap.set(branchId, {
+                    id: branchId,
+                    name: group.branchName || getBranchNameById(branchId),
+                    groups: []
+                });
+            }
+            sectionMap.get(branchId).groups.push(group);
+        });
+
+        return Array.from(sectionMap.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    }, [batchGroups, filters.branchId, selectedBranchName, user?.role]);
+
+    const summaryGroups = batchSections.flatMap((section) => section.groups);
 
     const renderBatchTable = (group) => {
         const rows = [];
@@ -490,9 +650,14 @@ const BatchWiseRegister = () => {
                 </thead>
                 <tbody>
                     {rows.map((student, idx) => {
-                        const parentMobile = student?.mobileParent || student?.contactParent || '-';
-                        const homeMobile = student?.contactHome || '-';
-                        const studentMobile = student?.mobileStudent || student?.contactStudent || '-';
+                        const parentMobile = student?.mobileParent || student?.contactParent || '';
+                        const homeMobile = student?.contactHome || '';
+                        const studentMobile = student?.mobileStudent || student?.contactStudent || '';
+                        const mobileRows = [
+                            { label: parentMobile ? 'G' : '', value: parentMobile },
+                            { label: homeMobile ? 'H' : '', value: homeMobile },
+                            { label: studentMobile ? 'S' : '', value: studentMobile }
+                        ];
                         
                         return (
                             <tr key={idx} style={{ height: '8.8mm', borderBottom: idx < rows.length - 1 ? '1px solid #000' : 'none' }}>
@@ -506,23 +671,17 @@ const BatchWiseRegister = () => {
                                 <td style={{ borderRight: '1px solid #000', padding: 0 }}>
                                     <table style={{ width: '100%', height: '100%', borderCollapse: 'collapse', border: 'none', margin: 0, padding: 0 }}>
                                         <tbody>
-                                            <tr style={{ height: '2.9mm' }}>
-                                                <td style={{ width: '20%', borderRight: '1px solid #000', borderBottom: '1px solid #000', textAlign: 'center', fontWeight: 'bold', fontSize: '6px', padding: 0 }}>G</td>
-                                                <td style={{ borderBottom: '1px solid #000', paddingLeft: '2px', fontSize: '6.5px', fontWeight: '600', padding: 0, textAlign: 'left' }}>{parentMobile}</td>
-                                            </tr>
-                                            <tr style={{ height: '2.9mm' }}>
-                                                <td style={{ width: '20%', borderRight: '1px solid #000', borderBottom: '1px solid #000', textAlign: 'center', fontWeight: 'bold', fontSize: '6px', padding: 0 }}>H</td>
-                                                <td style={{ borderBottom: '1px solid #000', paddingLeft: '2px', fontSize: '6.5px', fontWeight: '600', padding: 0, textAlign: 'left' }}>{homeMobile}</td>
-                                            </tr>
-                                            <tr style={{ height: '2.9mm' }}>
-                                                <td style={{ width: '20%', borderRight: '1px solid #000', textAlign: 'center', fontWeight: 'bold', fontSize: '6px', padding: 0 }}>S</td>
-                                                <td style={{ paddingLeft: '2px', fontSize: '6.5px', fontWeight: '600', padding: 0, textAlign: 'left' }}>{studentMobile}</td>
-                                            </tr>
+                                            {mobileRows.map((row, mobileIdx) => (
+                                                <tr key={row.label || mobileIdx} style={{ height: '2.9mm' }}>
+                                                    <td style={{ width: '20%', borderRight: '1px solid #000', borderBottom: mobileIdx < mobileRows.length - 1 ? '1px solid #000' : 'none', textAlign: 'center', fontWeight: 'bold', fontSize: '6px', padding: 0 }}>{row.label}</td>
+                                                    <td style={{ borderBottom: mobileIdx < mobileRows.length - 1 ? '1px solid #000' : 'none', paddingLeft: '2px', fontSize: '6.5px', fontWeight: '600', padding: 0, textAlign: 'left' }}>{row.value}</td>
+                                                </tr>
+                                            ))}
                                         </tbody>
                                     </table>
                                 </td>
                                 <td style={{ paddingLeft: '4px', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '7px', textAlign: 'left' }}>
-                                    {student?.course?.shortName || student?.course?.name || ''}
+                                    {getStudentCourseLabel(student, group)}
                                 </td>
                             </tr>
                         );
@@ -680,21 +839,29 @@ const BatchWiseRegister = () => {
                             </div>
 
                             {/* Month and Year */}
-                            <div style={{ width: '40%', textAlign: 'center' }}>
+                            {/* <div style={{ width: '40%', textAlign: 'center' }}>
                                 <div style={{ fontSize: '6mm', fontWeight: '900', color: '#1e3a8a', fontFamily: 'Arial, sans-serif' }}>
                                     {getHeaderDateString()}
                                 </div>
-                            </div>
+                            </div> */}
 
                             {/* Branch Address & Contacts */}
                             <div style={{ width: '38%', textAlign: 'right', fontFamily: 'Arial, sans-serif', color: '#000', fontSize: '7px', lineHeight: '1.2' }}>
-                                <div style={{ fontWeight: '900', fontSize: '9px', color: '#1e3a8a' }}>{headerBranch.name || 'Godadra Branch'}</div>
-                                <div>{headerBranch.address || 'H.O.: 1st & 2nd Floor, 30, kober Nagar,'}</div>
-                                <div>Opp. Haba baijnath Mandir, Aas-pass Circle, Godadra,</div>
-                                <div>Surat, Gujarat (INDIA)</div>
-                                <div style={{ fontWeight: 'bold' }}>
-                                    Ph. No.: {headerBranch.phone || '96017 49300'} Mob.: {headerBranch.mobile || '+91 98988 30409'}
-                                </div>
+                                <div style={{ fontWeight: '900', fontSize: '9px', color: '#1e3a8a' }}>{selectedBranchName}</div>
+                                {filters.branchId || user?.role !== 'Super Admin' ? (
+                                    <>
+                                        <div>{headerBranch.address || 'Smart Institute'}</div>
+                                        <div>Opp. Haba baijnath Mandir, Aas-pass Circle, Godadra,</div>
+                                        <div>Surat, Gujarat (INDIA)</div>
+                                        <div style={{ fontWeight: 'bold' }}>
+                                            Ph. No.: {headerBranch.phone || '96017-49300'} Mob.: {headerBranch.mobile || '98988-30409'}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div style={{ fontWeight: '600', color: '#334155' }}>
+                                        Branch-wise combined register
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -714,7 +881,7 @@ const BatchWiseRegister = () => {
                                 border: '1.5px solid #000',
                                 borderRight: 'none'
                             }}>
-                                BATCH WISE REGISTER {moment(filters.startDate || filters.endDate || new Date()).format('YYYY')}
+                                BATCH WISE REGISTER
                             </div>
                             <div style={{ 
                                 width: '15%', 
@@ -732,19 +899,32 @@ const BatchWiseRegister = () => {
                             </div>
                         </div>
 
-                        {/* Double-Column Grid of Batch Tables */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3mm', width: '100%', boxSizing: 'border-box' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3mm' }}>
-                                {batchGroups.filter((_, idx) => idx % 2 === 0).map((group) => (
-                                    <React.Fragment key={group.id}>{renderBatchTable(group)}</React.Fragment>
-                                ))}
-                            </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3mm' }}>
-                                {batchGroups.filter((_, idx) => idx % 2 === 1).map((group) => (
-                                    <React.Fragment key={group.id}>{renderBatchTable(group)}</React.Fragment>
-                                ))}
-                            </div>
+                        {/* Branch-wise sections, each branch starts its own batch sequence */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3mm', width: '100%', boxSizing: 'border-box' }}>
+                            {batchSections.map((section) => (
+                                <div key={section.id} style={{ width: '100%', breakInside: 'avoid' }}>
+                                    {batchSections.length > 1 && (
+                                        <div style={{
+                                            backgroundColor: '#1e3a8a',
+                                            color: '#fff',
+                                            border: '1.2px solid #000',
+                                            fontSize: '9px',
+                                            fontWeight: '900',
+                                            fontFamily: 'Arial, sans-serif',
+                                            padding: '2px 6px',
+                                            marginBottom: '2mm',
+                                            textTransform: 'uppercase'
+                                        }}>
+                                            {section.name}
+                                        </div>
+                                    )}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3mm', width: '100%', boxSizing: 'border-box', alignItems: 'start' }}>
+                                        {section.groups.map((group) => (
+                                            <React.Fragment key={group.id}>{renderBatchTable(group)}</React.Fragment>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
 
                         {/* Summary Section */}
@@ -752,32 +932,24 @@ const BatchWiseRegister = () => {
                             {/* Summary Table */}
                             <div style={{ width: '45%', border: '1.5px solid #000', borderCollapse: 'collapse' }}>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', width: '100%' }}>
-                                    {/* Left Column of Summary */}
-                                    <div style={{ borderRight: '1px solid #000' }}>
-                                        {batchGroups.filter((_, idx) => idx % 2 === 0).map((group, summaryIdx, arr) => (
-                                            <div key={group.id} style={{ display: 'flex', height: '6.5mm', borderBottom: summaryIdx < arr.length - 1 ? '1px solid #000' : 'none' }}>
-                                                <div style={{ width: '65%', backgroundColor: '#ec9b1c', color: '#000', fontSize: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', paddingLeft: '4px', borderRight: '1px solid #000' }}>
-                                                    {group.batch ? `${group.batch.startTime} - ${group.batch.endTime}` : '-'}
-                                                </div>
-                                                <div style={{ width: '35%', backgroundColor: '#e5e7eb', color: '#000', fontSize: '9px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                    {group.students.length}
-                                                </div>
+                                    {summaryGroups.map((group, summaryIdx) => (
+                                        <div
+                                            key={group.id}
+                                            style={{
+                                                display: 'flex',
+                                                height: '6.5mm',
+                                                borderBottom: summaryIdx < summaryGroups.length - 2 ? '1px solid #000' : 'none',
+                                                borderRight: summaryIdx % 2 === 0 ? '1px solid #000' : 'none'
+                                            }}
+                                        >
+                                            <div style={{ width: '65%', backgroundColor: '#ec9b1c', color: '#000', fontSize: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', paddingLeft: '4px', borderRight: '1px solid #000' }}>
+                                                {group.batch ? `${group.batch.startTime} - ${group.batch.endTime}` : '-'}
                                             </div>
-                                        ))}
-                                    </div>
-                                    {/* Right Column of Summary */}
-                                    <div>
-                                        {batchGroups.filter((_, idx) => idx % 2 === 1).map((group, summaryIdx, arr) => (
-                                            <div key={group.id} style={{ display: 'flex', height: '6.5mm', borderBottom: summaryIdx < arr.length - 1 ? '1px solid #000' : 'none' }}>
-                                                <div style={{ width: '65%', backgroundColor: '#ec9b1c', color: '#000', fontSize: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', paddingLeft: '4px', borderRight: '1px solid #000' }}>
-                                                    {group.batch ? `${group.batch.startTime} - ${group.batch.endTime}` : '-'}
-                                                </div>
-                                                <div style={{ width: '35%', backgroundColor: '#e5e7eb', color: '#000', fontSize: '9px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                    {group.students.length}
-                                                </div>
+                                            <div style={{ width: '35%', backgroundColor: '#e5e7eb', color: '#000', fontSize: '9px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                {group.students.length}
                                             </div>
-                                        ))}
-                                    </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 
