@@ -16,19 +16,38 @@ export const MENU_CONFIG = [
     title: 'Master',
     path: '/master',
     type: 'dropdown',
+    isCustom: true,
     subItems: [
       { title: 'Student', path: '/master/student' },
       { title: 'Employee', path: '/master/employee' },
-      { title: 'Batch', path: '/master/batch' },
-      { title: 'Course', path: '/master/course' },
-      { title: 'Subject', path: '/master/subject' },
-      { title: 'Exam Request List', path: '/master/exam-request-list' },
-      { title: 'Exam Schedule', path: '/master/exam-schedule' },
-      { title: 'Exam Result', path: '/master/exam-result' },
+       {
+        title: 'Academics',
+        type: 'nested',
+        subItems: [
+          { title: 'Batch', path: '/master/batch' },
+          { title: 'Course', path: '/master/course' },
+          { title: 'Subject', path: '/master/subject' }
+        ]
+      },
       { title: 'User Rights', path: '/master/user-rights' },
-      { title: 'Material', path: '/master/material' },
-      { title: 'Faculty Material', path: '/faculty/material' },
-      { title: 'Free Learning', path: '/master/free-learning' },
+      {
+        title: 'Exam',
+        type: 'nested',
+        subItems: [
+          { title: 'Exam Request List', path: '/master/exam-request-list' },
+          { title: 'Exam Schedule', path: '/master/exam-schedule' },
+          { title: 'Exam Result', path: '/master/exam-result' }
+        ]
+      },
+      {
+        title: 'Learning',
+        type: 'nested',
+        subItems: [
+          { title: 'Material', path: '/master/material' },
+          { title: 'Faculty Material', path: '/faculty/material' },
+          { title: 'Free Learning', path: '/master/free-learning' }
+        ]
+      },
       { title: 'Manage News', path: '/master/manage-news' },
       { title: 'Topper Result', path: '/master/manage-toppers' },
       { title: 'Our Team', path: '/master/manage-team' }
@@ -149,6 +168,7 @@ export const MENU_CONFIG = [
     subItems: [
       { title: 'Branch', path: '/master/branch', restricted: true },
       { title: 'Location', path: '/utility/location' },
+      { title: 'Syllabus Management', path: '/utility/syllabus-management', restricted: true },
       { title: 'Manage Terms', path: '/master/manage-terms' },
       { title: 'Cloudinary Management', path: '/utility/cloudinary-manager' },
       { title: 'SMS Station', path: '/utility/sms-station' },

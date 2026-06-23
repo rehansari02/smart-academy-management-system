@@ -18,6 +18,14 @@ const subjectSchema = new mongoose.Schema({
     topicName: { type: String }, // Specific topic focus
     description: { type: String },
     
+    // --- Syllabus Details ---
+    daysToComplete: { type: Number, default: 0 },
+    totalPages: { type: Number, default: 0 },
+    projectsCount: { type: Number, default: 0 },
+    projects: [{ type: String }],
+    chaptersCount: { type: Number, default: 0 },
+    chapters: [{ type: String }],
+
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false }
 }, { timestamps: true });

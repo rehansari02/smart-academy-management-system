@@ -97,6 +97,7 @@ const LocationMaster = lazy(() => import("./pages/admin/utility/LocationMaster")
 const SmsStation = lazy(() => import("./pages/admin/utility/SmsStation"));
 const ManageContact = lazy(() => import("./pages/admin/utility/ManageContact"));
 const ComplainManagement = lazy(() => import("./pages/admin/utility/ComplainManagement"));
+const SyllabusManagement = lazy(() => import("./pages/admin/utility/SyllabusManagement"));
 
 // Transaction Pages
 const InquiryPage = lazy(() => import("./pages/admin/transaction/InquiryPage"));
@@ -775,6 +776,66 @@ function App() {
                 }
               />
               
+              <Route
+                path="/utility/syllabus-management"
+                element={
+                  <SuperAdminRoute>
+                    <Suspense fallback={<Loading />}>
+                        <SyllabusManagement />
+                    </Suspense>
+                  </SuperAdminRoute>
+                }
+              />
+              <Route
+                path="/utility/syllabus-management/:branchId"
+                element={
+                  <SuperAdminRoute>
+                    <Suspense fallback={<Loading />}>
+                        <SyllabusManagement />
+                    </Suspense>
+                  </SuperAdminRoute>
+                }
+              />
+              <Route
+                path="/utility/syllabus-management/:branchId/:batchId"
+                element={
+                  <SuperAdminRoute>
+                    <Suspense fallback={<Loading />}>
+                        <SyllabusManagement />
+                    </Suspense>
+                  </SuperAdminRoute>
+                }
+              />
+              <Route
+                path="/utility/syllabus-management/:branchId/:batchId/:courseId"
+                element={
+                  <SuperAdminRoute>
+                    <Suspense fallback={<Loading />}>
+                        <SyllabusManagement />
+                    </Suspense>
+                  </SuperAdminRoute>
+                }
+              />
+              <Route
+                path="/utility/syllabus-management/:branchId/:batchId/:courseId/:subjectId/students"
+                element={
+                  <SuperAdminRoute>
+                    <Suspense fallback={<Loading />}>
+                        <SyllabusManagement />
+                    </Suspense>
+                  </SuperAdminRoute>
+                }
+              />
+              <Route
+                path="/utility/syllabus-management/:branchId/:batchId/:courseId/:subjectId/edit"
+                element={
+                  <SuperAdminRoute>
+                    <Suspense fallback={<Loading />}>
+                        <SyllabusManagement />
+                    </Suspense>
+                  </SuperAdminRoute>
+                }
+              />
               <Route
                 path="/utility/cloudinary-manager"
                 element={
