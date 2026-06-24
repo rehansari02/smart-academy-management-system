@@ -168,7 +168,8 @@ export const MENU_CONFIG = [
     subItems: [
       { title: 'Branch', path: '/master/branch', restricted: true },
       { title: 'Location', path: '/utility/location' },
-      { title: 'Syllabus Management', path: '/utility/syllabus-management', restricted: true },
+      { title: 'Syllabus Management', path: '/utility/syllabus-management' },
+      { title: 'Teacher Subject Management', path: '/utility/teacher-subject-management' },
       { title: 'Manage Terms', path: '/master/manage-terms' },
       { title: 'Cloudinary Management', path: '/utility/cloudinary-manager' },
       { title: 'SMS Station', path: '/utility/sms-station' },

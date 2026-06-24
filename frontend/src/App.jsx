@@ -98,6 +98,7 @@ const SmsStation = lazy(() => import("./pages/admin/utility/SmsStation"));
 const ManageContact = lazy(() => import("./pages/admin/utility/ManageContact"));
 const ComplainManagement = lazy(() => import("./pages/admin/utility/ComplainManagement"));
 const SyllabusManagement = lazy(() => import("./pages/admin/utility/SyllabusManagement"));
+const TeacherSubjectManagement = lazy(() => import("./pages/admin/utility/TeacherSubjectManagement"));
 
 // Transaction Pages
 const InquiryPage = lazy(() => import("./pages/admin/transaction/InquiryPage"));
@@ -175,7 +176,7 @@ const SuperAdminRoute = ({ children }) => {
 
   if (!user) return <Navigate to="/login" replace />;
   if (user.role === 'Student') return <Navigate to="/student/home" replace />;
-  if (user.role !== 'Super Admin') return <Navigate to="/home" replace />;
+  if (user.role !== 'Super Admin' && user.type !== 'Super Admin') return <Navigate to="/home" replace />;
 
   return children;
 };
@@ -779,61 +780,71 @@ function App() {
               <Route
                 path="/utility/syllabus-management"
                 element={
-                  <SuperAdminRoute>
+                  <PrivateRoute>
                     <Suspense fallback={<Loading />}>
                         <SyllabusManagement />
                     </Suspense>
-                  </SuperAdminRoute>
+                  </PrivateRoute>
                 }
               />
               <Route
                 path="/utility/syllabus-management/:branchId"
                 element={
-                  <SuperAdminRoute>
+                  <PrivateRoute>
                     <Suspense fallback={<Loading />}>
                         <SyllabusManagement />
                     </Suspense>
-                  </SuperAdminRoute>
+                  </PrivateRoute>
                 }
               />
               <Route
                 path="/utility/syllabus-management/:branchId/:batchId"
                 element={
-                  <SuperAdminRoute>
+                  <PrivateRoute>
                     <Suspense fallback={<Loading />}>
                         <SyllabusManagement />
                     </Suspense>
-                  </SuperAdminRoute>
+                  </PrivateRoute>
                 }
               />
               <Route
                 path="/utility/syllabus-management/:branchId/:batchId/:courseId"
                 element={
-                  <SuperAdminRoute>
+                  <PrivateRoute>
                     <Suspense fallback={<Loading />}>
                         <SyllabusManagement />
                     </Suspense>
-                  </SuperAdminRoute>
+                  </PrivateRoute>
                 }
               />
               <Route
                 path="/utility/syllabus-management/:branchId/:batchId/:courseId/:subjectId/students"
                 element={
-                  <SuperAdminRoute>
+                  <PrivateRoute>
                     <Suspense fallback={<Loading />}>
                         <SyllabusManagement />
                     </Suspense>
-                  </SuperAdminRoute>
+                  </PrivateRoute>
                 }
               />
               <Route
                 path="/utility/syllabus-management/:branchId/:batchId/:courseId/:subjectId/edit"
                 element={
-                  <SuperAdminRoute>
+                  <PrivateRoute>
                     <Suspense fallback={<Loading />}>
                         <SyllabusManagement />
                     </Suspense>
-                  </SuperAdminRoute>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/utility/teacher-subject-management"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <TeacherSubjectManagement />
+                    </Suspense>
+                  </PrivateRoute>
                 }
               />
               <Route

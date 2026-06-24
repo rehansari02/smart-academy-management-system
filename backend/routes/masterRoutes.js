@@ -27,6 +27,13 @@ const {
     getFreeLearningSubjectsReport,
     getFreeLearningSubjectStudentReport
 } = require('../controllers/freeLearningController');
+const {
+    getTeachersBySubject,
+    getTeacherSubjectAccess,
+    assignTeacherToSubject,
+    removeTeacherAssignment,
+    getAssignmentsByBatchAndCourse
+} = require('../controllers/teacherSubjectController');
 const locationRoutes = require('./locationRoutes');
 
 const upload = require('../middlewares/uploadMiddleware');
@@ -158,6 +165,14 @@ router.route('/free-learning/:id')
 
 router.get('/free-learning-report/subjects', protect, getFreeLearningSubjectsReport);
 router.get('/free-learning-report/subjects/:subjectId', protect, getFreeLearningSubjectStudentReport);
+
+// --- Teacher Subject Access Routes ---
+router.get('/teacher-subject/subject/:subjectId', protect, checkPermission('Teacher Subject Management', 'view'), getTeachersBySubject);
+router.get('/teacher-subject/employee/me', protect, getTeacherSubjectAccess);
+router.get('/teacher-subject/employee/:employeeId', protect, checkPermission('Teacher Subject Management', 'view'), getTeacherSubjectAccess);
+router.get('/teacher-subject/batch/:batchId/course/:courseId', protect, checkPermission('Teacher Subject Management', 'view'), getAssignmentsByBatchAndCourse);
+router.post('/teacher-subject/assign', protect, checkPermission('Teacher Subject Management', 'add'), assignTeacherToSubject);
+router.delete('/teacher-subject/remove', protect, checkPermission('Teacher Subject Management', 'delete'), removeTeacherAssignment);
 
 // --- Location Routes ---
 router.use('/location', locationRoutes);

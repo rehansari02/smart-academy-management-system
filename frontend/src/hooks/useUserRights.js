@@ -11,7 +11,7 @@ export const useUserRights = (pageName) => {
   const { myPermissions = [] } = useSelector((state) => state.userRights || {});
 
   // Super Admin has all access
-  if (user && user.role === 'Super Admin') {
+  if (user && (user.role === 'Super Admin' || user.type === 'Super Admin')) {
     return {
       view: true,
       add: true,

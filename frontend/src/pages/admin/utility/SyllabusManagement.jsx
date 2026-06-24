@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
@@ -19,13 +19,35 @@ import {
   Plus,
   Trash2,
   X,
+  Check,
   BookOpenCheck,
-  Award
+  Award,
+  UserCheck,
+  UserPlus,
+  UserMinus,
+  AlertCircle,
+  ListTodo,
+  Sparkles,
+  CalendarDays,
+  BookMarked,
+  FolderCheck,
+  Timer,
+  TrendingUp,
+  ChevronDown,
+  ChevronUp,
+  Save,
+  PenLine,
+  BarChart3,
+  CheckCircle2,
+  Circle,
+  Eye
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import moment from 'moment';
 import { getBranches } from '../../../features/master/branchSlice';
 import { fetchBatches, fetchCourses } from '../../../features/master/masterSlice';
+import { fetchEmployees } from '../../../features/employee/employeeSlice';
+import { useUserRights } from '../../../hooks/useUserRights';
 
 // Helper to shorten 24-char hex MongoDB ObjectID to a 16-char base64url string
 const encodeId = (hexId) => {
@@ -175,8 +197,62 @@ const SyllabusManagement = () => {
   const subjectId = decodeId(params.subjectId);
 
   // Redux state
+  const { user } = useSelector((state) => state.auth);
   const { branches, isLoading: branchesLoading } = useSelector((state) => state.branch);
   const { batches, courses, isLoading: masterLoading } = useSelector((state) => state.master);
+  const { employees } = useSelector((state) => state.employees);
+
+  // User Rights Permissions
+  const { view, edit } = useUserRights('Syllabus Management');
+  const { view: canManageTeachers } = useUserRights('Teacher Subject Management');
+
+  const isSuperAdmin = !user || user.role === 'Super Admin' || user.type === 'Super Admin';
+  const showEdit = isSuperAdmin || edit;
+  const showTeacher = isSuperAdmin || canManageTeachers;
+
+  // Teacher Subject Assignments (if logged-in user is not Super Admin)
+  const [assignedCombos, setAssignedCombos] = useState([]);
+  const [combosLoading, setCombosLoading] = useState(false);
+
+  useEffect(() => {
+    if (user && user.role !== 'Super Admin' && user.type !== 'Super Admin') {
+      setCombosLoading(true);
+      axios.get(`${import.meta.env.VITE_API_URL}/master/teacher-subject/employee/me`, { withCredentials: true })
+        .then(res => {
+          setAssignedCombos(res.data?.assignments || []);
+        })
+        .catch(err => {
+          console.error('Failed to load teacher assignments', err);
+        })
+        .finally(() => {
+          setCombosLoading(false);
+        });
+    }
+  }, [user]);
+
+  // Assigned Teachers List for current batch/course (shown in the subject table columns)
+  const [assignedTeachersList, setAssignedTeachersList] = useState([]);
+  const [teachersListLoading, setTeachersListLoading] = useState(false);
+
+  const fetchAssignedTeachersList = useCallback(async () => {
+    if (!batchId || !courseId) {
+      setAssignedTeachersList([]);
+      return;
+    }
+    setTeachersListLoading(true);
+    try {
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/master/teacher-subject/batch/${batchId}/course/${courseId}`, { withCredentials: true });
+      setAssignedTeachersList(data || []);
+    } catch (err) {
+      console.error('Failed to load assigned teachers for subjects', err);
+    } finally {
+      setTeachersListLoading(false);
+    }
+  }, [batchId, courseId]);
+
+  useEffect(() => {
+    fetchAssignedTeachersList();
+  }, [fetchAssignedTeachersList]);
 
   // Search filter query
   const [searchQuery, setSearchQuery] = useState('');
@@ -195,13 +271,71 @@ const SyllabusManagement = () => {
   const [newProjectName, setNewProjectName] = useState('');
   const [editChapters, setEditChapters] = useState([]);
   const [newChapterName, setNewChapterName] = useState('');
+  const [newChapterStartPage, setNewChapterStartPage] = useState('');
+  const [newChapterEndPage, setNewChapterEndPage] = useState('');
+  const [selectedProjectChapterId, setSelectedProjectChapterId] = useState('');
+  const [loadedSubjectId, setLoadedSubjectId] = useState(null);
+  const [editingChapterId, setEditingChapterId] = useState(null);
+  const [editingChapterName, setEditingChapterName] = useState('');
+  const [editingChapterStartPage, setEditingChapterStartPage] = useState('');
+  const [editingChapterEndPage, setEditingChapterEndPage] = useState('');
+  const [editingProjectIndex, setEditingProjectIndex] = useState(null);
+  const [editingProjectName, setEditingProjectName] = useState('');
+  const [editingProjectChapterId, setEditingProjectChapterId] = useState('');
+  const [newProjectNames, setNewProjectNames] = useState({});
   const [saveLoading, setSaveLoading] = useState(false);
+
+  // ── Teacher Management Modal state (per-subject, from subject list row) ─────
+  const [teacherModalOpen, setTeacherModalOpen] = useState(false);
+  const [teacherModalSubject, setTeacherModalSubject] = useState(null);
+  const [assignedTeachers, setAssignedTeachers] = useState([]);
+  const [teacherLoading, setTeacherLoading] = useState(false);
+  const [selectedTeacherId, setSelectedTeacherId] = useState('');
+  const [teacherSaving, setTeacherSaving] = useState(false);
+
+  // ── STANDALONE Teacher Access Modal state (from header button) ──────────────
+  const [saOpen, setSaOpen] = useState(false);               // standalone modal open
+  const [saTeacherId, setSaTeacherId] = useState('');        // selected teacher
+  const [saBatchId, setSaBatchId] = useState('');            // selected batch
+  const [saCourseId, setSaCourseId] = useState('');          // selected course
+  const [saSubjectId, setSaSubjectId] = useState('');        // selected subject
+  const [saAssignments, setSaAssignments] = useState([]);    // existing assignments shown
+  const [saLoading, setSaLoading] = useState(false);
+  const [saSaving, setSaSaving] = useState(false);
+
+  // Batches available for standalone modal (all batches across branches)
+  const [allBatches, setAllBatches] = useState([]);
 
   // Student list state (Level 5)
   const [studentsList, setStudentsList] = useState([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
   const [studentsSearchQuery, setStudentsSearchQuery] = useState('');
   const [holidays, setHolidays] = useState([]);
+
+  // ── Syllabus Log state (Level 5 – per student panel) ──────────────────────
+  const [expandedLogStudent, setExpandedLogStudent] = useState(null); // studentId whose log panel is open
+  const [logsByStudent, setLogsByStudent] = useState({}); // { [studentId]: { logs, analytics, subject } }
+  const [logLoadingFor, setLogLoadingFor] = useState(null); // studentId currently loading
+  const [batchSummaries, setBatchSummaries] = useState({}); // { [studentId]: summary }
+
+  // Add-log form state
+  const [addLogFor, setAddLogFor] = useState(null); // studentId for whom form is open
+  const [logFormDate, setLogFormDate] = useState('');
+  const [logFormChapterId, setLogFormChapterId] = useState('');
+  const [logFormProjectIds, setLogFormProjectIds] = useState([]);
+  const [logFormNotes, setLogFormNotes] = useState('');
+  const [logFormSaving, setLogFormSaving] = useState(false);
+
+  // View progress modal state
+  const [viewProgressStudent, setViewProgressStudent] = useState(null);
+
+  // Edit-log form state
+  const [editLogId, setEditLogId] = useState(null);
+  const [editLogDate, setEditLogDate] = useState('');
+  const [editLogChapterId, setEditLogChapterId] = useState('');
+  const [editLogProjectIds, setEditLogProjectIds] = useState([]);
+  const [editLogNotes, setEditLogNotes] = useState('');
+  const [editLogSaving, setEditLogSaving] = useState(false);
 
   // Determine current step based on route parameters
   const step = useMemo(() => {
@@ -234,11 +368,27 @@ const SyllabusManagement = () => {
     return subObj?.subject || null;
   }, [selectedCourse, subjectId]);
 
-  // Fetch branches and all courses on mount
+  // Fetch branches, courses & employees on mount
   useEffect(() => {
     dispatch(getBranches());
     dispatch(fetchCourses());
+    dispatch(fetchEmployees({ isActive: true }));
   }, [dispatch]);
+
+  // Fetch ALL batches for standalone modal (no branch filter)
+  useEffect(() => {
+    const fetchAllBatches = async () => {
+      try {
+        const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/master/batch`, {
+          withCredentials: true
+        });
+        setAllBatches(Array.isArray(data) ? data : data.batches || []);
+      } catch (e) {
+        console.error('Failed to load batches for teacher modal', e);
+      }
+    };
+    fetchAllBatches();
+  }, []);
 
   // Fetch batches when branchId parameter changes
   useEffect(() => {
@@ -250,35 +400,66 @@ const SyllabusManagement = () => {
   // Initialize edit fields when step is 6 (Edit Subject Page)
   useEffect(() => {
     if (step === 6 && selectedSubject) {
-      setEditDays(selectedSubject.daysToComplete || 0);
-      setEditPages(selectedSubject.totalPages || 0);
-      setEditProjects(selectedSubject.projects || []);
-      setNewProjectName('');
-      setEditChapters(selectedSubject.chapters || []);
-      setNewChapterName('');
+      if (loadedSubjectId !== selectedSubject._id) {
+        setEditDays(selectedSubject.daysToComplete || 0);
+        setEditPages(selectedSubject.totalPages || 0);
+        
+        // Normalize chapters to objects
+        const normalizedChapters = (selectedSubject.chapters || []).map((c, idx) => {
+          if (typeof c === 'string') {
+            return { _id: `legacy_${idx}`, name: c, startPage: 0, endPage: 0 };
+          }
+          return c;
+        });
+        setEditChapters(normalizedChapters);
+        
+        // Normalize projects to objects
+        const normalizedProjects = (selectedSubject.projects || []).map(p => {
+          if (typeof p === 'string') {
+            return { name: p, chapterId: null };
+          }
+          return p;
+        });
+        setEditProjects(normalizedProjects);
+
+        setNewProjectName('');
+        setNewChapterName('');
+        
+        // Find the highest end page among existing chapters to suggest the next start page
+        let maxEndPage = 0;
+        normalizedChapters.forEach(c => {
+          if (Number(c.endPage) > maxEndPage) {
+            maxEndPage = Number(c.endPage);
+          }
+        });
+        setNewChapterStartPage(maxEndPage > 0 ? String(maxEndPage + 1) : '1');
+        
+        setNewChapterEndPage('');
+        setSelectedProjectChapterId('');
+        setLoadedSubjectId(selectedSubject._id);
+      }
+    } else if (step !== 6 && loadedSubjectId !== null) {
+      setLoadedSubjectId(null);
     }
-  }, [step, selectedSubject]);
+  }, [step, selectedSubject, loadedSubjectId]);
 
   // Fetch student list when step is 5 (Student list page)
   useEffect(() => {
     const fetchStudentsForActiveSubject = async () => {
-      // Wait until selectedBatch is resolved. On hard refresh, batches load async from Redux.
-      // If selectedBatch is still null/undefined, the batch filter would be missing,
-      // causing ALL students to be returned instead of only those in this batch.
       if (step === 5 && batchId && selectedBatch?.name) {
         setStudentsLoading(true);
         setStudentsSearchQuery('');
         setStudentsList([]);
+        setExpandedLogStudent(null);
+        setLogsByStudent({});
+        setBatchSummaries({});
         try {
-          // 1. Fetch holidays/closed dates
           const holidaysRes = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/attendance/manage`, {
             params: { limit: 1000 },
             withCredentials: true
           });
           const holidaysList = holidaysRes.data?.items || [];
 
-          // 2. Fetch students of the current batch and course using the general students API
-          // to match the count and visibility seen in the register reports.
           const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/students`, {
             params: {
               branchId: branchId || undefined,
@@ -310,32 +491,225 @@ const SyllabusManagement = () => {
 
           setStudentsList(mapped);
           setHolidays(holidaysList);
+
+          // Also fetch batch-level summaries for all students at once
+          if (subjectId) {
+            try {
+              const sumRes = await axios.get(
+                `${import.meta.env.VITE_API_URL}/syllabus-logs/subject/${subjectId}/batch/${batchId}`,
+                { withCredentials: true }
+              );
+              const summaryMap = {};
+              (sumRes.data?.summaries || []).forEach(s => {
+                summaryMap[s.studentId] = s;
+              });
+              setBatchSummaries(summaryMap);
+            } catch (e) {
+              console.error('Failed to load batch summaries', e);
+            }
+          }
         } catch (error) {
-          console.error("Failed to load students", error);
-          toast.error("Failed to load students");
+          console.error('Failed to load students', error);
+          toast.error('Failed to load students');
         } finally {
           setStudentsLoading(false);
         }
       }
     };
-
     fetchStudentsForActiveSubject();
-  }, [step, batchId, courseId, branchId, selectedBatch?.name]);
+  }, [step, batchId, courseId, branchId, selectedBatch?.name, subjectId]);
+
+  // Fetch detailed logs for a specific student
+  const fetchStudentLogs = useCallback(async (studentId) => {
+    if (!subjectId) return;
+    setLogLoadingFor(studentId);
+    try {
+      const { data } = await axios.get(
+        `${import.meta.env.VITE_API_URL}/syllabus-logs/student/${studentId}/subject/${subjectId}`,
+        { withCredentials: true }
+      );
+      setLogsByStudent(prev => ({ ...prev, [studentId]: data }));
+      // Update batch summary for this student
+      if (data.analytics) {
+        setBatchSummaries(prev => ({
+          ...prev,
+          [studentId]: {
+            ...data.analytics,
+            studentId,
+          }
+        }));
+      }
+    } catch (e) {
+      console.error('Failed to load student logs', e);
+      toast.error('Failed to load logs');
+    } finally {
+      setLogLoadingFor(null);
+    }
+  }, [subjectId]);
+
+  // Toggle log panel for a student
+  const handleToggleLogPanel = useCallback((studentId) => {
+    setAddLogFor(null);
+    setEditLogId(null);
+    if (expandedLogStudent === studentId) {
+      setExpandedLogStudent(null);
+    } else {
+      setExpandedLogStudent(studentId);
+      if (!logsByStudent[studentId]) {
+        fetchStudentLogs(studentId);
+      }
+    }
+  }, [expandedLogStudent, logsByStudent, fetchStudentLogs]);
+
+  // Open progress modal for a student
+  const handleOpenProgressModal = useCallback((student) => {
+    setViewProgressStudent(student);
+    if (student && !logsByStudent[student._id]) {
+      fetchStudentLogs(student._id);
+    }
+  }, [logsByStudent, fetchStudentLogs]);
+
+  // Open add-log form for a student
+  const handleOpenAddLog = useCallback((studentId) => {
+    setEditLogId(null);
+    setAddLogFor(studentId);
+    setLogFormDate(moment().format('YYYY-MM-DD'));
+    setLogFormChapterId('');
+    setLogFormProjectIds([]);
+    setLogFormNotes('');
+  }, []);
+
+  // Submit new log
+  const handleSubmitAddLog = useCallback(async (student) => {
+    if (!logFormDate) { toast.error('Please select a session date.'); return; }
+    if (!logFormChapterId) { toast.error('Please select the chapter covered.'); return; }
+    setLogFormSaving(true);
+    try {
+      const chapterObj = (selectedSubject?.chapters || []).find(c => c._id === logFormChapterId || String(c._id) === logFormChapterId);
+      const projectObjs = (selectedSubject?.projects || [])
+        .filter(p => logFormProjectIds.includes(String(p._id)))
+        .map(p => ({ projectId: p._id, projectName: p.name }));
+
+      await axios.post(`${import.meta.env.VITE_API_URL}/syllabus-logs`, {
+        studentId: student._id,
+        subjectId,
+        batchId,
+        courseId,
+        branchId,
+        sessionDate: logFormDate,
+        chapterId: logFormChapterId,
+        chapterName: chapterObj?.name || '',
+        projects: projectObjs,
+        notes: logFormNotes,
+      }, { withCredentials: true });
+
+      toast.success('Session log added!');
+      setAddLogFor(null);
+      fetchStudentLogs(student._id);
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to save log.');
+    } finally {
+      setLogFormSaving(false);
+    }
+  }, [logFormDate, logFormChapterId, logFormProjectIds, logFormNotes, selectedSubject, subjectId, batchId, courseId, branchId, fetchStudentLogs]);
+
+  // Open edit-log form
+  const handleOpenEditLog = useCallback((log) => {
+    setAddLogFor(null);
+    setEditLogId(log._id);
+    setEditLogDate(moment(log.sessionDate).format('YYYY-MM-DD'));
+    setEditLogChapterId(log.chapterId ? String(log.chapterId) : '');
+    setEditLogProjectIds((log.projects || []).map(p => String(p.projectId)).filter(Boolean));
+    setEditLogNotes(log.notes || '');
+  }, []);
+
+  // Submit edited log
+  const handleSubmitEditLog = useCallback(async (studentId) => {
+    if (!editLogDate) { toast.error('Please select a session date.'); return; }
+    setEditLogSaving(true);
+    try {
+      const chapterObj = (selectedSubject?.chapters || []).find(c => String(c._id) === editLogChapterId);
+      const projectObjs = (selectedSubject?.projects || [])
+        .filter(p => editLogProjectIds.includes(String(p._id)))
+        .map(p => ({ projectId: p._id, projectName: p.name }));
+
+      await axios.put(`${import.meta.env.VITE_API_URL}/syllabus-logs/${editLogId}`, {
+        sessionDate: editLogDate,
+        chapterId: editLogChapterId || null,
+        chapterName: chapterObj?.name || '',
+        projects: projectObjs,
+        notes: editLogNotes,
+      }, { withCredentials: true });
+
+      toast.success('Log updated!');
+      setEditLogId(null);
+      fetchStudentLogs(studentId);
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to update log.');
+    } finally {
+      setEditLogSaving(false);
+    }
+  }, [editLogDate, editLogChapterId, editLogProjectIds, editLogNotes, selectedSubject, editLogId, fetchStudentLogs]);
+
+  // Delete log
+  const handleDeleteLog = useCallback(async (logId, studentId) => {
+    if (!window.confirm('Delete this log entry?')) return;
+    try {
+      await axios.delete(`${import.meta.env.VITE_API_URL}/syllabus-logs/${logId}`, { withCredentials: true });
+      toast.success('Log deleted.');
+      fetchStudentLogs(studentId);
+    } catch (e) {
+      toast.error('Failed to delete log.');
+    }
+  }, [fetchStudentLogs]);
+
+  // Toggle project in form
+  const toggleProjectInForm = (pid, setter) => {
+    setter(prev => prev.includes(pid) ? prev.filter(x => x !== pid) : [...prev, pid]);
+  };
 
   const loading = branchesLoading || masterLoading || studentsLoading;
 
-  // (Selected object lookups moved above to prevent initialization reference error)
+  // Permitted branch, batch, course, and subject ID sets for non-Super Admin users
 
-  // Filtered lists based on search query
+  const allowedBranchIds = useMemo(() => {
+    if (isSuperAdmin) return null;
+    return new Set(assignedCombos.map(a => a.batchId?.branchId?.toString()).filter(Boolean));
+  }, [assignedCombos, isSuperAdmin]);
+
+  const allowedBatchIds = useMemo(() => {
+    if (isSuperAdmin) return null;
+    return new Set(assignedCombos.map(a => a.batchId?._id?.toString()).filter(Boolean));
+  }, [assignedCombos, isSuperAdmin]);
+
+  const allowedCourseIds = useMemo(() => {
+    if (isSuperAdmin) return null;
+    return new Set(assignedCombos.map(a => a.courseId?._id?.toString()).filter(Boolean));
+  }, [assignedCombos, isSuperAdmin]);
+
+  const allowedSubjectIds = useMemo(() => {
+    if (isSuperAdmin) return null;
+    return new Set(assignedCombos.map(a => a.subjectId?._id?.toString()).filter(Boolean));
+  }, [assignedCombos, isSuperAdmin]);
+
+  // Filtered lists based on search query and teacher assignments
   const filteredBranches = useMemo(() => {
     if (step !== 1) return [];
-    return branches.filter(b => b.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  }, [branches, searchQuery, step]);
+    let list = branches;
+    if (allowedBranchIds) {
+      list = list.filter(b => allowedBranchIds.has(b._id.toString()));
+    }
+    return list.filter(b => b.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [branches, searchQuery, step, allowedBranchIds]);
 
   const filteredBatches = useMemo(() => {
     if (step !== 2) return [];
-    return batches.filter(b => b.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  }, [batches, searchQuery, step]);
+    let list = batches;
+    if (allowedBatchIds) {
+      list = list.filter(b => allowedBatchIds.has(b._id.toString()));
+    }
+    return list.filter(b => b.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [batches, searchQuery, step, allowedBatchIds]);
 
   const filteredCourses = useMemo(() => {
     if (step !== 3 || !selectedBatch) return [];
@@ -348,19 +722,26 @@ const SyllabusManagement = () => {
       )
     );
 
-    return courses.filter(c => 
-      activeCourseIds.has(c._id.toString()) && 
+    let list = courses.filter(c => activeCourseIds.has(c._id.toString()));
+    if (allowedCourseIds) {
+      list = list.filter(c => allowedCourseIds.has(c._id.toString()));
+    }
+
+    return list.filter(c => 
       c.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [courses, selectedBatch, searchQuery, step]);
+  }, [courses, selectedBatch, searchQuery, step, allowedCourseIds]);
 
   const filteredSubjects = useMemo(() => {
     if (step !== 4 || !selectedCourse) return [];
-    const subList = selectedCourse.subjects || [];
+    let subList = selectedCourse.subjects || [];
+    if (allowedSubjectIds) {
+      subList = subList.filter(s => s.subject && allowedSubjectIds.has(s.subject._id.toString()));
+    }
     return subList
       .filter(s => s.subject && s.subject.name.toLowerCase().includes(searchQuery.toLowerCase()))
       .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-  }, [selectedCourse, searchQuery, step]);
+  }, [selectedCourse, searchQuery, step, allowedSubjectIds]);
 
   // Filter students based on search string and selected course name
   const filteredStudents = useMemo(() => {
@@ -380,6 +761,24 @@ const SyllabusManagement = () => {
     }
     return list;
   }, [studentsList, selectedCourse, studentsSearchQuery, step]);
+
+  const progressLogData = useMemo(() => {
+    return viewProgressStudent ? logsByStudent[viewProgressStudent._id] : null;
+  }, [viewProgressStudent, logsByStudent]);
+
+  const isModalLoading = logLoadingFor && viewProgressStudent && logLoadingFor === viewProgressStudent._id;
+  const completedChIds = useMemo(() => {
+    return progressLogData?.analytics?.completedChapterIds || [];
+  }, [progressLogData]);
+
+  const completedProjIds = useMemo(() => {
+    return progressLogData?.analytics?.completedProjectIds || [];
+  }, [progressLogData]);
+
+  const subjectChapters = selectedSubject?.chapters || [];
+  const subjectProjects = selectedSubject?.projects || [];
+  const chaptersLogged = progressLogData?.analytics?.chaptersLogged || 0;
+  const projectsLogged = progressLogData?.analytics?.projectsLogged || 0;
 
   // Handle drill-down clicks (navigating via URL parameters)
   const handleBranchClick = (branch) => {
@@ -466,30 +865,242 @@ const SyllabusManagement = () => {
     setNewChapterName('');
   };
 
+  // Auto-save updated Subject details to database
+  const autoSaveSubjectDetails = async (updatedChapters, updatedProjects, days = editDays, pages = editPages) => {
+    const subjectToSave = step === 6 ? selectedSubject : editingSubject;
+    if (!subjectToSave) return;
+    try {
+      const payload = {
+        daysToComplete: Number(days) || 0,
+        totalPages: Number(pages) || 0,
+        projectsCount: updatedProjects.length,
+        projects: updatedProjects,
+        chaptersCount: updatedChapters.length,
+        chapters: updatedChapters
+      };
+
+      await axios.put(`${import.meta.env.VITE_API_URL}/master/subject/${subjectToSave._id}`, payload, {
+        withCredentials: true
+      });
+
+      // Reload courses to update state
+      dispatch(fetchCourses());
+    } catch (error) {
+      console.error('Auto-save failed', error);
+    }
+  };
+
   // Add project to subject edit list
   const handleAddProject = () => {
-    if (newProjectName.trim()) {
-      setEditProjects(prev => [...prev, newProjectName.trim()]);
+    if (newProjectName.trim() && selectedProjectChapterId) {
+      const nextProjects = [...editProjects, {
+        name: newProjectName.trim(),
+        chapterId: selectedProjectChapterId
+      }];
+      setEditProjects(nextProjects);
       setNewProjectName('');
+      autoSaveSubjectDetails(editChapters, nextProjects);
     }
   };
 
   // Delete project from subject edit list
   const handleRemoveProject = (index) => {
-    setEditProjects(prev => prev.filter((_, idx) => idx !== index));
+    const nextProjects = editProjects.filter((_, idx) => idx !== index);
+    setEditProjects(nextProjects);
+    autoSaveSubjectDetails(editChapters, nextProjects);
   };
 
   // Add chapter to subject edit list
   const handleAddChapter = () => {
     if (newChapterName.trim()) {
-      setEditChapters(prev => [...prev, newChapterName.trim()]);
+      const start = Number(newChapterStartPage) || 0;
+      const end = Number(newChapterEndPage) || 0;
+
+      // Validation 1: start and end page must be greater than 0
+      if (start <= 0 || end <= 0) {
+        toast.error('Start page and End page must be greater than 0');
+        return;
+      }
+
+      // Validation 2: end page must be >= start page
+      if (end < start) {
+        toast.error('End page cannot be less than Start page');
+        return;
+      }
+
+      // Validation 3: Check for overlaps with existing chapters
+      for (const chap of editChapters) {
+        const existingStart = Number(chap.startPage) || 0;
+        const existingEnd = Number(chap.endPage) || 0;
+        if (start <= existingEnd && end >= existingStart) {
+          toast.error(`Page range overlaps with existing chapter: "${chap.name || chap}" (Pages: ${existingStart} - ${existingEnd})`);
+          return;
+        }
+      }
+
+      // Generate a valid 24-character hex string for MongoDB ObjectId
+      const chars = '0123456789abcdef';
+      let uniqueId = '';
+      for (let i = 0; i < 24; i++) {
+        uniqueId += chars[Math.floor(Math.random() * 16)];
+      }
+      const nextChapters = [...editChapters, {
+        _id: uniqueId,
+        name: newChapterName.trim(),
+        startPage: start,
+        endPage: end
+      }];
+      setEditChapters(nextChapters);
       setNewChapterName('');
+      setNewChapterStartPage(String(end + 1));
+      setNewChapterEndPage('');
+      autoSaveSubjectDetails(nextChapters, editProjects);
     }
   };
 
-  // Delete chapter from subject edit list
+  // Delete chapter from subject edit list and remove associated projects
   const handleRemoveChapter = (index) => {
-    setEditChapters(prev => prev.filter((_, idx) => idx !== index));
+    const chapterToRemove = editChapters[index];
+    const nextChapters = editChapters.filter((_, idx) => idx !== index);
+    setEditChapters(nextChapters);
+    
+    let nextProjects = editProjects;
+    if (chapterToRemove?._id) {
+      nextProjects = editProjects.filter(p => String(p.chapterId) !== String(chapterToRemove._id));
+      setEditProjects(nextProjects);
+    }
+
+    // Auto-suggest next start page based on remaining chapters
+    let maxEndPage = 0;
+    nextChapters.forEach(c => {
+      if (Number(c.endPage) > maxEndPage) {
+        maxEndPage = Number(c.endPage);
+      }
+    });
+    setNewChapterStartPage(maxEndPage > 0 ? String(maxEndPage + 1) : '1');
+
+    autoSaveSubjectDetails(nextChapters, nextProjects);
+  };
+
+  // Start inline editing of a chapter
+  const handleStartEditChapter = (chap) => {
+    setEditingChapterId(chap._id);
+    setEditingChapterName(chap.name || chap);
+    setEditingChapterStartPage(String(chap.startPage || 0));
+    setEditingChapterEndPage(String(chap.endPage || 0));
+  };
+
+  // Save inline editing of a chapter
+  const handleSaveEditChapter = () => {
+    if (editingChapterName.trim() && editingChapterId) {
+      const start = Number(editingChapterStartPage) || 0;
+      const end = Number(editingChapterEndPage) || 0;
+
+      // Validation 1: start and end page must be greater than 0
+      if (start <= 0 || end <= 0) {
+        toast.error('Start page and End page must be greater than 0');
+        return;
+      }
+
+      // Validation 2: end page must be >= start page
+      if (end < start) {
+        toast.error('End page cannot be less than Start page');
+        return;
+      }
+
+      // Validation 3: Check for overlaps with other chapters
+      for (const chap of editChapters) {
+        if (chap._id === editingChapterId) continue; // Skip self
+        const existingStart = Number(chap.startPage) || 0;
+        const existingEnd = Number(chap.endPage) || 0;
+        if (start <= existingEnd && end >= existingStart) {
+          toast.error(`Page range overlaps with existing chapter: "${chap.name || chap}" (Pages: ${existingStart} - ${existingEnd})`);
+          return;
+        }
+      }
+
+      const nextChapters = editChapters.map(chap => {
+        if (chap._id === editingChapterId) {
+          return {
+            ...chap,
+            name: editingChapterName.trim(),
+            startPage: start,
+            endPage: end
+          };
+        }
+        return chap;
+      });
+
+      setEditChapters(nextChapters);
+      setEditingChapterId(null);
+      setEditingChapterName('');
+      setEditingChapterStartPage('');
+      setEditingChapterEndPage('');
+
+      autoSaveSubjectDetails(nextChapters, editProjects);
+    }
+  };
+
+  // Cancel inline editing of a chapter
+  const handleCancelEditChapter = () => {
+    setEditingChapterId(null);
+    setEditingChapterName('');
+    setEditingChapterStartPage('');
+    setEditingChapterEndPage('');
+  };
+
+  // Start inline editing of a project
+  const handleStartEditProject = (proj, index) => {
+    setEditingProjectIndex(index);
+    setEditingProjectName(proj.name || proj);
+    setEditingProjectChapterId(proj.chapterId || '');
+  };
+
+  // Save inline editing of a project
+  const handleSaveEditProject = () => {
+    if (editingProjectName.trim() && editingProjectIndex !== null && editingProjectChapterId) {
+      const nextProjects = editProjects.map((proj, idx) => {
+        if (idx === editingProjectIndex) {
+          return {
+            ...proj,
+            name: editingProjectName.trim(),
+            chapterId: editingProjectChapterId
+          };
+        }
+        return proj;
+      });
+
+      setEditProjects(nextProjects);
+      setEditingProjectIndex(null);
+      setEditingProjectName('');
+      setEditingProjectChapterId('');
+
+      autoSaveSubjectDetails(editChapters, nextProjects);
+    }
+  };
+
+  // Cancel inline editing of a project
+  const handleCancelEditProject = () => {
+    setEditingProjectIndex(null);
+    setEditingProjectName('');
+    setEditingProjectChapterId('');
+  };
+
+  // Add project to specific chapter card directly
+  const handleAddProjectForChapter = (chapterId) => {
+    const text = newProjectNames[chapterId] || '';
+    if (text.trim() && chapterId) {
+      const nextProjects = [...editProjects, {
+        name: text.trim(),
+        chapterId: chapterId
+      }];
+      setEditProjects(nextProjects);
+      setNewProjectNames(prev => ({
+        ...prev,
+        [chapterId]: ''
+      }));
+      autoSaveSubjectDetails(editChapters, nextProjects);
+    }
   };
 
   // Save updated Subject details to database
@@ -530,7 +1141,178 @@ const SyllabusManagement = () => {
     }
   };
 
+  // ── Active teachers: filter employees who are Teachers / Faculty ────────────
+  const activeTeachers = useMemo(() => {
+    return employees.filter(
+      e => e.isActive && !e.isDeleted &&
+      (e.type === 'Teacher' || e.type === 'Faculty' ||
+       (e.role && (e.role.toLowerCase().includes('teacher') || e.role.toLowerCase().includes('faculty'))))
+    );
+  }, [employees]);
+
+  // ── Open the Teacher Management modal for a subject ──────────────────────────
+  const handleOpenTeacherModal = useCallback(async (sub) => {
+    const subjectObj = sub.subject;
+    if (!subjectObj) return;
+    setTeacherModalSubject(subjectObj);
+    setSelectedTeacherId('');
+    setAssignedTeachers([]);
+    setTeacherModalOpen(true);
+    setTeacherLoading(true);
+    try {
+      const { data } = await axios.get(
+        `${import.meta.env.VITE_API_URL}/master/teacher-subject/subject/${subjectObj._id}`,
+        { withCredentials: true }
+      );
+      setAssignedTeachers(data || []);
+    } catch (err) {
+      toast.error('Could not load teacher assignments.');
+    } finally {
+      setTeacherLoading(false);
+    }
+  }, []);
+
+  // ── Assign selected teacher to this subject ──────────────────────────────────
+  const handleAssignTeacher = async () => {
+    if (!selectedTeacherId) { toast.warn('Please select a teacher first.'); return; }
+    if (!teacherModalSubject || !batchId || !courseId) {
+      toast.error('Missing context (batch/course/subject).');
+      return;
+    }
+    setTeacherSaving(true);
+    try {
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/master/teacher-subject/assign`,
+        { employeeId: selectedTeacherId, batchId, courseId, subjectId: teacherModalSubject._id },
+        { withCredentials: true }
+      );
+      toast.success('Teacher assigned successfully!');
+      // Refresh list
+      const { data } = await axios.get(
+        `${import.meta.env.VITE_API_URL}/master/teacher-subject/subject/${teacherModalSubject._id}`,
+        { withCredentials: true }
+      );
+      setAssignedTeachers(data || []);
+      setSelectedTeacherId('');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to assign teacher.');
+    } finally {
+      setTeacherSaving(false);
+    }
+  };
+
+  // ── Remove a teacher's assignment from this subject ──────────────────────────
+  const handleRemoveTeacherAssignment = async (teacherAssignment) => {
+    if (!window.confirm(`Remove ${teacherAssignment.employeeName} from this subject?`)) return;
+    try {
+      await axios.delete(
+        `${import.meta.env.VITE_API_URL}/master/teacher-subject/remove`,
+        {
+          data: {
+            employeeId: teacherAssignment.employeeId,
+            batchId,
+            courseId,
+            subjectId: teacherModalSubject._id
+          },
+          withCredentials: true
+        }
+      );
+      toast.success('Assignment removed.');
+      setAssignedTeachers(prev => prev.filter(t => String(t.employeeId) !== String(teacherAssignment.employeeId)));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to remove assignment.');
+    }
+  };
+
+  // ── Standalone modal: courses filtered by selected batch ─────────────────────
+  const saFilteredCourses = useMemo(() => {
+    if (!saBatchId) return [];
+    const batch = allBatches.find(b => b._id === saBatchId);
+    if (!batch) return [];
+    const activeCourseIds = new Set(
+      Object.keys(batch.courseCounts || {}).filter(cId => (batch.courseCounts[cId] || 0) > 0)
+    );
+    return courses.filter(c => activeCourseIds.has(c._id.toString()));
+  }, [saBatchId, allBatches, courses]);
+
+  // ── Standalone modal: subjects filtered by selected course ────────────────────
+  const saFilteredSubjects = useMemo(() => {
+    if (!saCourseId) return [];
+    const course = courses.find(c => c._id === saCourseId);
+    if (!course) return [];
+    return (course.subjects || []).filter(s => s.subject).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  }, [saCourseId, courses]);
+
+  // ── Standalone modal: load existing assignments when subject changes ──────────
+  useEffect(() => {
+    if (!saSubjectId) { setSaAssignments([]); return; }
+    setSaLoading(true);
+    axios.get(`${import.meta.env.VITE_API_URL}/master/teacher-subject/subject/${saSubjectId}`, { withCredentials: true })
+      .then(res => setSaAssignments(res.data || []))
+      .catch(() => toast.error('Could not load assignments.'))
+      .finally(() => setSaLoading(false));
+  }, [saSubjectId]);
+
+  // ── Standalone modal: assign teacher ─────────────────────────────────────────
+  const handleSaAssign = async () => {
+    if (!saTeacherId || !saBatchId || !saCourseId || !saSubjectId) {
+      toast.warn('Please select Teacher, Batch, Course and Subject.');
+      return;
+    }
+    setSaSaving(true);
+    try {
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/master/teacher-subject/assign`,
+        { employeeId: saTeacherId, batchId: saBatchId, courseId: saCourseId, subjectId: saSubjectId },
+        { withCredentials: true }
+      );
+      toast.success('Teacher assigned successfully!');
+      const { data } = await axios.get(
+        `${import.meta.env.VITE_API_URL}/master/teacher-subject/subject/${saSubjectId}`,
+        { withCredentials: true }
+      );
+      setSaAssignments(data || []);
+      setSaTeacherId('');
+      fetchAssignedTeachersList();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to assign teacher.');
+    } finally {
+      setSaSaving(false);
+    }
+  };
+
+  // ── Standalone modal: remove assignment ───────────────────────────────────────
+  const handleSaRemove = async (t) => {
+    if (!window.confirm(`Remove ${t.employeeName} from this subject?`)) return;
+    try {
+      await axios.delete(
+        `${import.meta.env.VITE_API_URL}/master/teacher-subject/remove`,
+        { data: { employeeId: t.employeeId, batchId: saBatchId, courseId: saCourseId, subjectId: saSubjectId }, withCredentials: true }
+      );
+      toast.success('Assignment removed.');
+      setSaAssignments(prev => prev.filter(x => String(x.employeeId) !== String(t.employeeId)));
+      fetchAssignedTeachersList();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to remove assignment.');
+    }
+  };
+
+  const hasBranchAccess = !branchId || !allowedBranchIds || allowedBranchIds.has(branchId);
+  const hasBatchAccess = !batchId || !allowedBatchIds || allowedBatchIds.has(batchId);
+  const hasCourseAccess = !courseId || !allowedCourseIds || allowedCourseIds.has(courseId);
+  const hasSubjectAccess = !subjectId || !allowedSubjectIds || allowedSubjectIds.has(subjectId);
+
+  if (!view || !hasBranchAccess || !hasBatchAccess || !hasCourseAccess || !hasSubjectAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] p-4 text-center">
+        <h2 className="text-xl font-bold text-red-600 mb-2">Access Denied</h2>
+        <p className="text-gray-600">You do not have permission to view this syllabus section or subject.</p>
+      </div>
+    );
+  }
+
   return (
+    <>
     <div className="min-h-screen bg-[#f3f6fb] text-slate-800">
       <div className="mx-auto w-full max-w-[1500px] px-3 py-4 sm:px-5 lg:px-7">
         
@@ -554,6 +1336,16 @@ const SyllabusManagement = () => {
                 <p className="mt-1 text-sm text-slate-300">Browse branches, batches, courses, and syllabus details</p>
               </div>
             </div>
+            {/* ── Manage Teacher Access button ─ only visible if permitted ── */}
+            {showTeacher && (
+              <button
+                onClick={() => navigate('/utility/teacher-subject-management')}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-black text-white shadow-lg hover:bg-emerald-400 active:scale-95 transition-all"
+              >
+                <UserCheck size={16} />
+                Manage Teacher Access
+              </button>
+            )}
           </div>
         </div>
 
@@ -822,6 +1614,7 @@ const SyllabusManagement = () => {
                         <tr className="border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-400 bg-slate-50/70">
                           <th className="py-3 px-4">Order</th>
                           <th className="py-3 px-4">Subject</th>
+                          <th className="py-3 px-4 text-center">Assigned Teacher</th>
                           <th className="py-3 px-4 text-center">Days to Complete</th>
                           <th className="py-3 px-4 text-center">Pages</th>
                           <th className="py-3 px-4 text-center">Projects Count</th>
@@ -837,6 +1630,10 @@ const SyllabusManagement = () => {
                           const projectList = sub.subject?.projects || [];
                           const chapterList = sub.subject?.chapters || [];
 
+                          const matchingTeachers = assignedTeachersList
+                            .filter(t => String(t.subjectId) === String(subId))
+                            .map(t => t.employeeName);
+
                           return (
                             <React.Fragment key={subId || idx}>
                               <tr className="hover:bg-slate-50/50 transition">
@@ -850,24 +1647,29 @@ const SyllabusManagement = () => {
                                       <span className="font-black text-slate-900">{sub.subject?.name || 'Unnamed Subject'}</span>
                                     </div>
                                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                      {projectList.length > 0 && (
+                                      {(projectList.length > 0 || chapterList.length > 0) && (
                                         <button 
                                           onClick={() => toggleSubjectExpanded(subId)}
                                           className="inline-flex items-center gap-1 text-[11px] font-bold text-primary hover:underline"
                                         >
-                                          {isExpanded ? 'Hide Projects' : `Show Projects (${projectList.length})`}
-                                        </button>
-                                      )}
-                                      {chapterList.length > 0 && (
-                                        <button 
-                                          onClick={() => toggleChaptersExpanded(subId)}
-                                          className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-650 hover:underline"
-                                        >
-                                          {isChaptersExpanded ? 'Hide Chapters' : `Show Chapters (${chapterList.length})`}
+                                          {isExpanded ? 'Hide Syllabus' : `Show Syllabus (${chapterList.length} Ch, ${projectList.length} Proj)`}
                                         </button>
                                       )}
                                     </div>
                                   </div>
+                                </td>
+                                <td className="py-4 px-4 text-center">
+                                  {matchingTeachers.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1 justify-center">
+                                      {matchingTeachers.map((tName, tIdx) => (
+                                        <span key={tIdx} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
+                                          {tName}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs font-bold text-slate-400">Not Assigned</span>
+                                  )}
                                 </td>
                                 <td className="py-4 px-4 text-center font-mono font-bold text-slate-800">
                                   {sub.subject?.daysToComplete || 0} days
@@ -881,60 +1683,132 @@ const SyllabusManagement = () => {
                                 <td className="py-4 px-4 text-center font-mono font-bold text-slate-800">
                                   {chapterList.length || sub.subject?.chaptersCount || 0}
                                 </td>
-                                <td className="py-4 px-4">
-                                  <div className="flex items-center justify-center gap-2">
-                                    <button
-                                      onClick={() => handleEditPageClick(sub)}
-                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition"
-                                      title="Edit Subject parameters"
-                                    >
-                                      <Edit3 size={12} /> Edit
-                                    </button>
+                                <td className="py-4 px-4 whitespace-nowrap">
+                                  <div className="flex items-center justify-center gap-1.5 flex-nowrap">
+                                    {showEdit && (
+                                      <button
+                                        onClick={() => handleEditPageClick(sub)}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition shrink-0"
+                                        title="Edit Subject parameters"
+                                      >
+                                        <Edit3 size={12} /> Edit
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => handleStudentsPageClick(sub)}
-                                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-indigo-700 transition"
+                                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-indigo-700 transition shrink-0"
                                       title="View enrolled students"
                                     >
                                       <Users size={12} /> Students
                                     </button>
+                                    {showTeacher && (
+                                      <button
+                                        onClick={() => {
+                                          setSaSubjectId(sub.subject?._id);
+                                          setSaBatchId(batchId);
+                                          setSaCourseId(courseId);
+                                          setSaOpen(true);
+                                        }}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700 transition shrink-0"
+                                        title="Manage Teacher Access"
+                                      >
+                                        <UserCheck size={12} /> Teacher
+                                      </button>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
                               
-                              {/* Accordion dropdown row for projects */}
-                              {isExpanded && projectList.length > 0 && (
+                              {/* Accordion dropdown row for grouped syllabus */}
+                              {isExpanded && (projectList.length > 0 || chapterList.length > 0) && (
                                 <tr className="bg-slate-50/50">
                                   <td />
-                                  <td colSpan={6} className="py-3 px-4 border-l-2 border-primary">
-                                    <div className="space-y-1">
-                                      <p className="text-[10px] font-black uppercase tracking-wide text-slate-400 mb-1.5">Project List</p>
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                                        {projectList.map((pName, pIdx) => (
-                                          <div key={pIdx} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-white p-2 text-xs font-bold text-slate-700 shadow-sm">
-                                            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-slate-100 text-[10px] font-black text-slate-500">{pIdx + 1}</span>
-                                            <span className="truncate">{pName}</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
+                                  <td colSpan={7} className="py-4 px-5 border-l-2 border-primary">
+                                    <div className="space-y-3">
+                                      <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Syllabus Details (Chapters & Projects)</p>
+                                      
+                                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {chapterList.map((chap, chapIdx) => {
+                                          const chapId = chap._id || `idx_${chapIdx}`;
+                                          const chapProjects = projectList.filter(p => {
+                                            if (typeof p === 'string') return false;
+                                            return String(p.chapterId) === String(chapId);
+                                          });
 
-                              {/* Accordion dropdown row for chapters */}
-                              {isChaptersExpanded && chapterList.length > 0 && (
-                                <tr className="bg-slate-50/50">
-                                  <td />
-                                  <td colSpan={6} className="py-3 px-4 border-l-2 border-emerald-500">
-                                    <div className="space-y-1">
-                                      <p className="text-[10px] font-black uppercase tracking-wide text-slate-400 mb-1.5">Chapter List (Theory)</p>
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                                        {chapterList.map((cName, cIdx) => (
-                                          <div key={cIdx} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-white p-2 text-xs font-bold text-slate-700 shadow-sm">
-                                            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-emerald-50 text-[10px] font-black text-emerald-600">{cIdx + 1}</span>
-                                            <span className="truncate">{cName}</span>
-                                          </div>
-                                        ))}
+                                          return (
+                                            <div key={chapId} className="flex flex-col rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm hover:shadow transition duration-200">
+                                              <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2 mb-2.5">
+                                                <div className="min-w-0">
+                                                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold text-emerald-700 uppercase tracking-wider mb-1">
+                                                    Chapter {chapIdx + 1}
+                                                  </span>
+                                                  <h5 className="font-extrabold text-slate-800 text-sm truncate" title={chap.name || chap}>
+                                                    {chap.name || chap}
+                                                  </h5>
+                                                </div>
+                                                <div className="text-right shrink-0">
+                                                  <span className="block text-[10px] font-black text-slate-400 uppercase">Pages</span>
+                                                  <span className="font-mono text-xs font-bold text-slate-600">
+                                                    {chap.startPage !== undefined ? `${chap.startPage} - ${chap.endPage}` : '0 - 0'}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                              
+                                              <div className="space-y-1.5 flex-1">
+                                                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Associated Projects ({chapProjects.length})</p>
+                                                {chapProjects.length > 0 ? (
+                                                  <div className="space-y-1">
+                                                    {chapProjects.map((proj, projIdx) => (
+                                                      <div key={projIdx} className="flex items-center gap-2 rounded bg-slate-50 border border-slate-100/70 px-2 py-1.5 text-xs text-slate-700 font-semibold">
+                                                        <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-slate-200/70 text-[9px] font-bold text-slate-500">{projIdx + 1}</span>
+                                                        <span className="truncate">{proj.name || proj}</span>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                ) : (
+                                                  <p className="text-[10px] text-slate-400 italic font-medium py-1">No projects assigned.</p>
+                                                )}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                        
+                                        {/* Legacy / Unassigned Projects */}
+                                        {(() => {
+                                          const unassignedProjects = projectList.filter(p => {
+                                            if (typeof p === 'string') return true;
+                                            return !p.chapterId || !chapterList.some(c => String(c._id || '') === String(p.chapterId));
+                                          });
+
+                                          if (unassignedProjects.length > 0) {
+                                            return (
+                                              <div className="flex flex-col rounded-xl border border-rose-100 bg-rose-50/10 p-3.5 shadow-sm">
+                                                <div className="flex items-start justify-between gap-2 border-b border-rose-100/50 pb-2 mb-2.5">
+                                                  <div className="min-w-0">
+                                                    <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-[9px] font-extrabold text-rose-700 uppercase tracking-wider mb-1">
+                                                      Unassigned
+                                                    </span>
+                                                    <h5 className="font-extrabold text-rose-800 text-sm truncate">
+                                                      Legacy / Unassigned Projects
+                                                    </h5>
+                                                  </div>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                  <p className="text-[9px] font-bold uppercase tracking-wider text-rose-500">Projects ({unassignedProjects.length})</p>
+                                                  <div className="space-y-1">
+                                                    {unassignedProjects.map((proj, projIdx) => (
+                                                      <div key={projIdx} className="flex items-center gap-2 rounded bg-white border border-rose-100/50 px-2 py-1.5 text-xs text-rose-700 font-semibold shadow-sm">
+                                                        <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-rose-50 text-[9px] font-bold text-rose-500">{projIdx + 1}</span>
+                                                        <span className="truncate">{typeof proj === 'string' ? proj : (proj.name || proj)}</span>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            );
+                                          }
+                                          return null;
+                                        })()}
                                       </div>
                                     </div>
                                   </td>
@@ -956,292 +1830,1126 @@ const SyllabusManagement = () => {
             </div>
           )}
 
-          {/* LEVEL 5: ENROLLED STUDENTS LIST (DEDICATED PAGE) */}
+          {/* LEVEL 5: ENROLLED STUDENTS + TEACHING LOG DASHBOARD */}
           {step === 5 && (
             <div className="space-y-4">
+              {/* Header card */}
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                      <Users className="text-indigo-600" /> Active Enrolled Students
+                      <BarChart3 className="text-indigo-600" size={22} /> Teaching Progression Log
                     </h3>
-                    <div className="mt-2 space-y-1 text-sm">
-                      <p className="font-black text-slate-800">
-                        Course: <span className="text-emerald-700 font-extrabold">{selectedCourse?.name || 'Unassigned Course'}</span>
-                      </p>
-                      <p className="font-bold text-slate-600">
-                        Subject: <span className="text-indigo-700">"{selectedSubject?.name || 'Unnamed Subject'}"</span>
-                      </p>
-                      <p className="text-xs font-semibold text-slate-400">
-                        Batch: {selectedBatch?.name || 'Unassigned Batch'}
-                      </p>
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                      <span className="font-bold text-slate-600">
+                        Course: <span className="text-emerald-700 font-extrabold">{selectedCourse?.name || '—'}</span>
+                      </span>
+                      <span className="font-bold text-slate-600">
+                        Subject: <span className="text-indigo-700 font-extrabold">{selectedSubject?.name || '—'}</span>
+                      </span>
+                      <span className="font-semibold text-slate-400">
+                        Batch: {selectedBatch?.name || '—'}
+                      </span>
                     </div>
                   </div>
-                  <span className="self-start rounded-xl bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">
-                    {filteredStudents.length} Active Student(s)
-                  </span>
-                </div>
-
-                <div className="overflow-x-auto">
-                  {studentsLoading || (step === 5 && !selectedBatch) ? (
-                    <div className="py-12 text-center font-bold text-slate-500">
-                      <RefreshCw className="mr-2 inline-block animate-spin" size={18} /> Loading students...
+                  <div className="flex items-center gap-3">
+                    {/* Subject quick stats */}
+                    <div className="flex gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-xl bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700">
+                        <BookMarked size={13} /> {(selectedSubject?.chapters || []).length} Chapters
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-xl bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">
+                        <FolderCheck size={13} /> {(selectedSubject?.projects || []).length} Projects
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700">
+                        <Timer size={13} /> {selectedSubject?.daysToComplete || 0}d Target
+                      </span>
                     </div>
-                  ) : filteredStudents.length > 0 ? (
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-400 bg-slate-50/70">
-                          <th className="py-3.5 px-4 w-16">Sr No</th>
-                          <th className="py-3.5 px-4">Student Name</th>
-                          <th className="py-3.5 px-4">Course Duration</th>
-                          <th className="py-3.5 px-4">Days Remaining</th>
-                          <th className="py-3.5 px-4 text-center">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
-                        {filteredStudents.map((student, index) => {
-                          const startDate = getStudentStartDate(student);
-                          const endDate = getCourseEndDate(student, holidays, branchId);
-                          const remaining = getDaysRemainingText(student, holidays, branchId);
-
-                          return (
-                            <tr key={student._id} className="hover:bg-slate-50/50 transition">
-                              <td className="py-3 px-4 font-mono font-bold text-slate-500">
-                                {index + 1}
-                              </td>
-                              <td className="py-3 px-4 font-black text-slate-900">
-                                {student.name}
-                              </td>
-                              <td className="py-3 px-4 text-xs font-bold text-slate-600">
-                                {startDate ? startDate.format('DD-MM-YYYY') : '-'} to {endDate ? endDate.format('DD-MM-YYYY') : '-'}
-                              </td>
-                              <td className="py-3 px-4">
-                                <span className={`inline-block rounded-lg px-2.5 py-1 text-xs font-bold ${remaining.colorClass}`}>
-                                  {remaining.text}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span className="inline-block rounded px-2.5 py-0.5 text-xs font-black bg-emerald-100 text-emerald-800">
-                                  Active
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <div className="py-16 text-center text-sm font-bold text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
-                      <Users size={48} className="text-slate-300 mx-auto mb-2" />
-                      No active students found matching the attendance criteria.
-                    </div>
-                  )}
+                    <span className="rounded-xl bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700">
+                      {filteredStudents.length} Student(s)
+                    </span>
+                  </div>
                 </div>
               </div>
+
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  type="text"
+                  placeholder="Search student name or enrollment no…"
+                  value={studentsSearchQuery}
+                  onChange={e => setStudentsSearchQuery(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              {studentsLoading || (step === 5 && !selectedBatch) ? (
+                <div className="rounded-2xl border border-slate-100 bg-white py-16 text-center">
+                  <RefreshCw className="mx-auto mb-3 animate-spin text-indigo-500" size={28} />
+                  <p className="font-bold text-slate-500">Loading students…</p>
+                </div>
+              ) : filteredStudents.length === 0 ? (
+                <div className="rounded-2xl border border-slate-100 bg-white py-16 text-center">
+                  <Users size={48} className="mx-auto mb-2 text-slate-200" />
+                  <p className="font-bold text-slate-400">No active students found.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredStudents.map((student, index) => {
+                    const startDate = getStudentStartDate(student);
+                    const endDate = getCourseEndDate(student, holidays, branchId);
+                    const remaining = getDaysRemainingText(student, holidays, branchId);
+                    const isExpanded = expandedLogStudent === student._id;
+                    const summary = batchSummaries[student._id];
+                    const studentLogData = logsByStudent[student._id];
+                    const isLoadingLogs = logLoadingFor === student._id;
+                    const subjectChapters = selectedSubject?.chapters || [];
+                    const subjectProjects = selectedSubject?.projects || [];
+
+                    return (
+                      <div
+                        key={student._id}
+                        className={`rounded-2xl border bg-white shadow-sm transition-all duration-200 ${
+                          isExpanded ? 'border-indigo-200 shadow-indigo-100/60 shadow-md' : 'border-slate-200'
+                        }`}
+                      >
+                        {/* Student row header */}
+                        <div
+                          className="flex cursor-pointer flex-col gap-2 p-4 sm:flex-row sm:items-center sm:gap-4"
+                          onClick={() => handleToggleLogPanel(student._id)}
+                        >
+                          {/* Index badge */}
+                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-indigo-600 font-black text-white text-sm">
+                            {index + 1}
+                          </div>
+
+                          {/* Name & enrollment */}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-black text-slate-900 truncate">{student.name}</p>
+                            <p className="text-xs font-semibold text-slate-400">{student.enrollmentNo || '—'}</p>
+                          </div>
+
+                          {/* Mini-stats from batch summary */}
+                          <div className="flex flex-wrap gap-2">
+                            {summary ? (
+                              <>
+                                <span className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">
+                                  <BookMarked size={11} />
+                                  {summary.chaptersLogged}/{summary.totalChapters} Ch
+                                </span>
+                                <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+                                  <FolderCheck size={11} />
+                                  {summary.projectsLogged}/{summary.totalProjects} Proj
+                                </span>
+                                <span className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">
+                                  <CalendarDays size={11} />
+                                  {summary.elapsedDays}d elapsed
+                                </span>
+                                {summary.projectsPending > 0 && (
+                                  <span className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-600">
+                                    <AlertCircle size={11} />
+                                    {summary.projectsPending} pending
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">
+                                <PenLine size={11} /> No logs yet
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Course duration */}
+                          <div className="hidden text-right text-xs font-semibold text-slate-400 sm:block">
+                            <p>{startDate ? startDate.format('DD-MM-YY') : '—'} → {endDate ? endDate.format('DD-MM-YY') : '—'}</p>
+                            <span className={`mt-0.5 inline-block rounded-md px-2 py-0.5 text-xs font-bold ${remaining.colorClass}`}>
+                              {remaining.text}
+                            </span>
+                          </div>
+
+                          {/* Actions: Eye button & Expand chevron */}
+                          <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenProgressModal(student)}
+                              title="View Syllabus Progress"
+                              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-all active:scale-95"
+                            >
+                              <Eye size={18} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleLogPanel(student._id)}
+                              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all active:scale-95"
+                            >
+                              {isExpanded
+                                ? <ChevronUp size={18} className="text-indigo-500" />
+                                : <ChevronDown size={18} className="text-slate-400" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* ── Expanded log panel ── */}
+                        {isExpanded && (
+                          <div className="border-t border-slate-100 bg-slate-50/60 p-4">
+                            {isLoadingLogs ? (
+                              <div className="flex items-center justify-center gap-2 py-8 text-indigo-600 font-bold">
+                                <RefreshCw size={16} className="animate-spin" /> Loading logs…
+                              </div>
+                            ) : (
+                              <div className="space-y-5">
+
+                                {/* Analytics cards */}
+                                {studentLogData && (
+                                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                    <div className="rounded-xl bg-white border border-slate-200 p-3 text-center shadow-sm">
+                                      <p className="text-2xl font-black text-indigo-700">{studentLogData.analytics.elapsedDays}</p>
+                                      <p className="mt-0.5 text-xs font-bold text-slate-500">Days Elapsed</p>
+                                      <p className="text-xs text-slate-400">(target: {studentLogData.analytics.daysToComplete})</p>
+                                    </div>
+                                    <div className="rounded-xl bg-white border border-violet-200 p-3 text-center shadow-sm">
+                                      <p className="text-2xl font-black text-violet-700">{studentLogData.analytics.chaptersLogged}<span className="text-base font-semibold text-slate-400">/{studentLogData.analytics.totalChapters}</span></p>
+                                      <p className="mt-0.5 text-xs font-bold text-slate-500">Chapters Done</p>
+                                    </div>
+                                    <div className="rounded-xl bg-white border border-amber-200 p-3 text-center shadow-sm">
+                                      <p className="text-2xl font-black text-amber-700">{studentLogData.analytics.projectsLogged}<span className="text-base font-semibold text-slate-400">/{studentLogData.analytics.totalProjects}</span></p>
+                                      <p className="mt-0.5 text-xs font-bold text-slate-500">Projects Done</p>
+                                    </div>
+                                    <div className="rounded-xl bg-white border border-rose-200 p-3 text-center shadow-sm">
+                                      <p className="text-2xl font-black text-rose-600">{studentLogData.analytics.projectsPending}</p>
+                                      <p className="mt-0.5 text-xs font-bold text-slate-500">Projects Pending</p>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Add log button */}
+                                {addLogFor !== student._id && (
+                                  <button
+                                    onClick={() => handleOpenAddLog(student._id)}
+                                    className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 transition"
+                                  >
+                                    <Plus size={15} /> Add Session Log
+                                  </button>
+                                )}
+
+                                {/* ── Add log form ── */}
+                                {addLogFor === student._id && (
+                                  <div className="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm space-y-4">
+                                    <div className="flex items-center justify-between">
+                                      <h4 className="font-black text-indigo-800 flex items-center gap-2"><PenLine size={15} /> New Session Log</h4>
+                                      <button onClick={() => setAddLogFor(null)} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                      {/* Date */}
+                                      <div>
+                                        <label className="block text-xs font-bold text-slate-600 mb-1">Session Date *</label>
+                                        <input
+                                          type="date"
+                                          value={logFormDate}
+                                          onChange={e => setLogFormDate(e.target.value)}
+                                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-400 focus:outline-none"
+                                        />
+                                      </div>
+
+                                      {/* Chapter */}
+                                      <div>
+                                        <label className="block text-xs font-bold text-slate-600 mb-1">Chapter Covered *</label>
+                                        <select
+                                          value={logFormChapterId}
+                                          onChange={e => setLogFormChapterId(e.target.value)}
+                                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-400 focus:outline-none"
+                                        >
+                                          <option value="">— Select Chapter —</option>
+                                          {subjectChapters.map(ch => (
+                                            <option key={ch._id} value={String(ch._id)}>{ch.name}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    </div>
+
+                                    {/* Projects */}
+                                    {subjectProjects.length > 0 && (
+                                      <div>
+                                        <label className="block text-xs font-bold text-slate-600 mb-2">Projects Completed (select all that apply)</label>
+                                        <div className="flex flex-wrap gap-2">
+                                          {subjectProjects.map(proj => {
+                                            const pid = String(proj._id);
+                                            const checked = logFormProjectIds.includes(pid);
+                                            return (
+                                              <button
+                                                key={pid}
+                                                type="button"
+                                                onClick={() => toggleProjectInForm(pid, setLogFormProjectIds)}
+                                                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition ${
+                                                  checked
+                                                    ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+                                                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
+                                                }`}
+                                              >
+                                                {checked ? <CheckCircle2 size={12} /> : <Circle size={12} />}
+                                                {proj.name}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Notes */}
+                                    <div>
+                                      <label className="block text-xs font-bold text-slate-600 mb-1">Notes (optional)</label>
+                                      <textarea
+                                        rows={2}
+                                        value={logFormNotes}
+                                        onChange={e => setLogFormNotes(e.target.value)}
+                                        placeholder="Any remarks about this session…"
+                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-400 focus:outline-none resize-none"
+                                      />
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() => handleSubmitAddLog(student)}
+                                        disabled={logFormSaving}
+                                        className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-60 transition"
+                                      >
+                                        {logFormSaving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
+                                        {logFormSaving ? 'Saving…' : 'Save Log'}
+                                      </button>
+                                      <button
+                                        onClick={() => setAddLogFor(null)}
+                                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 transition"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* ── Log history table ── */}
+                                {studentLogData && studentLogData.logs.length > 0 ? (
+                                  <div>
+                                    <h4 className="mb-2 font-black text-slate-700 text-sm flex items-center gap-1.5"><ListTodo size={14} /> Session History ({studentLogData.logs.length})</h4>
+                                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                      <table className="w-full text-left text-xs">
+                                        <thead>
+                                          <tr className="border-b border-slate-200 bg-slate-100/70 text-xs font-black uppercase tracking-wider text-slate-400">
+                                            <th className="px-3 py-2.5">#</th>
+                                            <th className="px-3 py-2.5">Date</th>
+                                            <th className="px-3 py-2.5">Chapter</th>
+                                            <th className="px-3 py-2.5">Projects Done</th>
+                                            <th className="px-3 py-2.5">Logged By</th>
+                                            <th className="px-3 py-2.5">Notes</th>
+                                            <th className="px-3 py-2.5 text-center">Actions</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                          {studentLogData.logs.map((log, li) => (
+                                            <React.Fragment key={log._id}>
+                                              {editLogId === log._id ? (
+                                                /* ── Inline edit row ── */
+                                                <tr className="bg-indigo-50/60">
+                                                  <td className="px-3 py-2.5 font-mono font-bold text-slate-400">{li + 1}</td>
+                                                  <td className="px-3 py-2.5">
+                                                    <input
+                                                      type="date"
+                                                      value={editLogDate}
+                                                      onChange={e => setEditLogDate(e.target.value)}
+                                                      className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold focus:outline-none w-32"
+                                                    />
+                                                  </td>
+                                                  <td className="px-3 py-2.5">
+                                                    <select
+                                                      value={editLogChapterId}
+                                                      onChange={e => setEditLogChapterId(e.target.value)}
+                                                      className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold focus:outline-none max-w-[140px]"
+                                                    >
+                                                      <option value="">— Chapter —</option>
+                                                      {subjectChapters.map(ch => (
+                                                        <option key={ch._id} value={String(ch._id)}>{ch.name}</option>
+                                                      ))}
+                                                    </select>
+                                                  </td>
+                                                  <td className="px-3 py-2.5">
+                                                    <div className="flex flex-wrap gap-1">
+                                                      {subjectProjects.map(proj => {
+                                                        const pid = String(proj._id);
+                                                        const checked = editLogProjectIds.includes(pid);
+                                                        return (
+                                                          <button
+                                                            key={pid}
+                                                            type="button"
+                                                            onClick={() => toggleProjectInForm(pid, setEditLogProjectIds)}
+                                                            className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs font-bold transition ${
+                                                              checked ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                                                            }`}
+                                                          >
+                                                            {checked ? <CheckCircle2 size={10} /> : <Circle size={10} />} {proj.name}
+                                                          </button>
+                                                        );
+                                                      })}
+                                                    </div>
+                                                  </td>
+                                                  <td className="px-3 py-2.5 text-slate-400">{log.loggedByName || '—'}</td>
+                                                  <td className="px-3 py-2.5">
+                                                    <input
+                                                      type="text"
+                                                      value={editLogNotes}
+                                                      onChange={e => setEditLogNotes(e.target.value)}
+                                                      className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold focus:outline-none w-28"
+                                                      placeholder="Notes…"
+                                                    />
+                                                  </td>
+                                                  <td className="px-3 py-2.5">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                      <button
+                                                        onClick={() => handleSubmitEditLog(student._id)}
+                                                        disabled={editLogSaving}
+                                                        className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-60"
+                                                      >
+                                                        {editLogSaving ? <RefreshCw size={10} className="animate-spin" /> : <Save size={10} />} Save
+                                                      </button>
+                                                      <button
+                                                        onClick={() => setEditLogId(null)}
+                                                        className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-slate-500 hover:bg-slate-50"
+                                                      >
+                                                        Cancel
+                                                      </button>
+                                                    </div>
+                                                  </td>
+                                                </tr>
+                                              ) : (
+                                                /* ── Normal row ── */
+                                                <tr className="hover:bg-slate-50/50 transition font-semibold text-slate-700">
+                                                  <td className="px-3 py-2.5 font-mono text-slate-400">{li + 1}</td>
+                                                  <td className="px-3 py-2.5 whitespace-nowrap">
+                                                    {moment(log.sessionDate).format('DD MMM YYYY')}
+                                                  </td>
+                                                  <td className="px-3 py-2.5">
+                                                    {log.chapterName ? (
+                                                      <span className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">
+                                                        <BookMarked size={10} /> {log.chapterName}
+                                                      </span>
+                                                    ) : '—'}
+                                                  </td>
+                                                  <td className="px-3 py-2.5">
+                                                    <div className="flex flex-wrap gap-1">
+                                                      {(log.projects || []).length > 0
+                                                        ? (log.projects || []).map((p, pi) => (
+                                                            <span key={pi} className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                                                              <CheckCircle2 size={10} /> {p.projectName || '—'}
+                                                            </span>
+                                                          ))
+                                                        : <span className="text-slate-400">—</span>}
+                                                    </div>
+                                                  </td>
+                                                  <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{log.loggedByName || '—'}</td>
+                                                  <td className="px-3 py-2.5 text-slate-500 max-w-[140px] truncate" title={log.notes}>{log.notes || '—'}</td>
+                                                  <td className="px-3 py-2.5">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                      <button
+                                                        onClick={() => handleOpenEditLog(log)}
+                                                        className="flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition"
+                                                      >
+                                                        <Edit3 size={11} /> Edit
+                                                      </button>
+                                                      <button
+                                                        onClick={() => handleDeleteLog(log._id, student._id)}
+                                                        className="flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition"
+                                                      >
+                                                        <Trash2 size={11} /> Del
+                                                      </button>
+                                                    </div>
+                                                  </td>
+                                                </tr>
+                                              )}
+                                            </React.Fragment>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  !isLoadingLogs && (
+                                    <div className="rounded-xl border border-dashed border-slate-200 bg-white py-8 text-center">
+                                      <CalendarDays size={32} className="mx-auto mb-2 text-slate-300" />
+                                      <p className="font-bold text-slate-400 text-sm">No session logs yet.</p>
+                                      <p className="text-xs text-slate-400">Click "Add Session Log" to record the first teaching session.</p>
+                                    </div>
+                                  )
+                                )}
+
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
-
       </div>
 
       {/* LEVEL 6: EDIT SUBJECT PARAMETERS */}
       {step === 6 && selectedSubject && (
         <div className="mx-auto w-full max-w-[1500px]">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            {/* Header Section */}
-            <div className="border-b border-slate-100 pb-4 mb-6">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            {/* ── Header Section ── */}
+            <div className="border-b border-slate-100 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-6 py-5">
               <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Editing Subject Parameters</span>
-                  <h3 className="text-xl font-black text-slate-900 mt-0.5">{selectedSubject.name}</h3>
-                  <p className="text-xs font-semibold text-slate-400 mt-1">
-                    Course: <span className="text-slate-600 font-bold">{selectedCourse?.name}</span> | Batch: <span className="text-slate-600 font-bold">{selectedBatch?.name}</span>
-                  </p>
+                <div className="flex items-center gap-4">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/10 text-indigo-300 border border-white/10">
+                    <BookOpenCheck size={22} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-indigo-200">
+                      Syllabus Designer
+                    </p>
+                    <h3 className="text-xl font-black text-white">
+                      {selectedSubject.name}
+                    </h3>
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-semibold text-slate-350 mt-0.5">
+                      <span className="inline-flex items-center gap-1">
+                        <GraduationCap size={12} className="text-emerald-400" />
+                        <span className="text-slate-300 font-bold">{selectedCourse?.name}</span>
+                      </span>
+                      <span className="text-slate-500">|</span>
+                      <span className="inline-flex items-center gap-1">
+                        <Layers size={12} className="text-indigo-400" />
+                        <span className="text-slate-300 font-bold">{selectedBatch?.name}</span>
+                      </span>
+                    </p>
+                  </div>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleBack}
-                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-4 text-xs font-bold text-slate-300 hover:bg-white/10 transition active:scale-95"
                   >
-                    Cancel
+                    <X size={14} /> Cancel
                   </button>
                   <button
                     onClick={handleSaveSubjectDetails}
                     disabled={saveLoading}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2 text-xs font-bold text-white hover:bg-primary/95 transition disabled:opacity-70 shadow-sm"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-indigo-600 px-5 text-xs font-bold text-white hover:bg-indigo-500 transition disabled:opacity-60 shadow-md active:scale-95"
                   >
-                    {saveLoading && <RefreshCw size={12} className="animate-spin" />}
+                    {saveLoading ? (
+                      <RefreshCw size={14} className="animate-spin" />
+                    ) : (
+                      <Check size={14} />
+                    )}
                     Save Changes
                   </button>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left Column: Subject Info & Main Stats */}
-              <div className="space-y-6 lg:border-r lg:border-slate-100 lg:pr-6">
+            {/* Dashboard Stats Panel */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 py-4 bg-slate-50/50 border-b border-slate-100">
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm flex items-center gap-3">
+                <div className="p-2.5 rounded-lg bg-indigo-50 text-indigo-600">
+                  <BookOpenCheck size={20} />
+                </div>
                 <div>
-                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3">Syllabus Parameters</h4>
-                  
-                  <div className="space-y-4">
+                  <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Chapters</p>
+                  <p className="text-lg font-black text-slate-800">{editChapters.length}</p>
+                </div>
+              </div>
+              
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm flex items-center gap-3">
+                <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600">
+                  <ListTodo size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Projects</p>
+                  <p className="text-lg font-black text-slate-800">{editProjects.length}</p>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm flex items-center gap-3">
+                <div className="p-2.5 rounded-lg bg-amber-50 text-amber-600">
+                  <Clock size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Teaching Days</p>
+                  <p className="text-lg font-black text-slate-800">{editDays || 0} Days</p>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm flex items-center gap-3">
+                <div className="p-2.5 rounded-lg bg-blue-50 text-blue-600">
+                  <BookOpen size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Total Pages</p>
+                  <p className="text-lg font-black text-slate-800">{editPages || 0} Pages</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Main Content Grid ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 bg-slate-50/20">
+              
+              {/* ═══ Left Column: Parameters, Index & Unassigned ═══ */}
+              <div className="lg:col-span-4 space-y-6">
+                
+                {/* Syllabus Parameters Card */}
+                <div className="rounded-2xl bg-white border border-slate-200/80 shadow-sm overflow-hidden">
+                  <div className="border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+                    <h4 className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-700">
+                      <FileText size={14} className="text-slate-400" />
+                      Subject Configuration
+                    </h4>
+                  </div>
+                  <div className="p-4 space-y-4">
                     <div>
-                      <label className="block text-xs font-black uppercase tracking-wide text-slate-500 mb-1.5">Days to Complete</label>
-                      <div className="relative rounded-lg border border-slate-200 bg-slate-50 focus-within:border-primary/50 focus-within:bg-white transition-all duration-200">
+                      <label className="flex items-center gap-1.5 text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1.5">
+                        <Clock size={12} className="text-amber-500" />
+                        Days to Complete
+                      </label>
+                      <div className="relative rounded-xl border border-slate-200 bg-white transition-all duration-200 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-150">
                         <input
                           type="number"
                           min="0"
                           value={editDays}
                           onChange={(e) => setEditDays(e.target.value)}
-                          className="h-10 w-full bg-transparent px-3 text-sm font-semibold text-slate-700 outline-none"
+                          onBlur={(e) => autoSaveSubjectDetails(editChapters, editProjects, e.target.value, editPages)}
+                          className="h-10 w-full bg-transparent px-3 text-sm font-bold text-slate-800 outline-none"
+                          placeholder="e.g. 30"
                         />
                       </div>
-                      <p className="text-[10px] text-slate-400 font-semibold mt-1">Number of calendar days recommended to teach this subject.</p>
+                      <p className="text-[9px] text-slate-400 font-medium mt-1 leading-tight">Suggested calendar teaching days for this subject.</p>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-black uppercase tracking-wide text-slate-500 mb-1.5">Total Pages</label>
-                      <div className="relative rounded-lg border border-slate-200 bg-slate-50 focus-within:border-primary/50 focus-within:bg-white transition-all duration-200">
+                      <label className="flex items-center gap-1.5 text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1.5">
+                        <BookOpen size={12} className="text-blue-500" />
+                        Total Curriculum Pages
+                      </label>
+                      <div className="relative rounded-xl border border-slate-200 bg-white transition-all duration-200 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-150">
                         <input
                           type="number"
                           min="0"
                           value={editPages}
                           onChange={(e) => setEditPages(e.target.value)}
-                          className="h-10 w-full bg-transparent px-3 text-sm font-semibold text-slate-700 outline-none"
+                          onBlur={(e) => autoSaveSubjectDetails(editChapters, editProjects, editDays, e.target.value)}
+                          className="h-10 w-full bg-transparent px-3 text-sm font-bold text-slate-800 outline-none"
+                          placeholder="e.g. 150"
                         />
                       </div>
-                      <p className="text-[10px] text-slate-400 font-semibold mt-1">Total textbook or curriculum pages.</p>
+                      <p className="text-[9px] text-slate-400 font-medium mt-1 leading-tight">Total course book or digital textbook pages.</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-4 border border-slate-100 space-y-3">
-                  <h5 className="text-[11px] font-black uppercase tracking-wide text-slate-500">Summary statistics</h5>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white p-3 rounded-lg border border-slate-200/50">
-                      <p className="text-[10px] font-bold text-slate-400">Total Projects</p>
-                      <p className="text-xl font-black text-primary mt-0.5">{editProjects.length}</p>
+                {/* Table of Contents Index Card */}
+                <div className="rounded-2xl bg-white border border-slate-200/80 shadow-sm p-4 space-y-4">
+                  <div>
+                    <h4 className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-700">
+                      <Sparkles size={14} className="text-indigo-500 animate-pulse" />
+                      Curriculum Outline
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Quickly navigate the syllabus sections.</p>
+                  </div>
+                  
+                  {editChapters.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic py-2 text-center">No chapters created yet.</p>
+                  ) : (
+                    <div className="relative pl-3 space-y-4 border-l border-slate-100 max-h-[350px] overflow-y-auto pr-1">
+                      {editChapters.map((c, cIdx) => {
+                        const chapId = c._id || `idx_${cIdx}`;
+                        const chapProjects = editProjects.filter(p => String(p.chapterId) === String(chapId));
+                        return (
+                          <div 
+                            key={chapId}
+                            onClick={() => {
+                              const targetElement = document.getElementById(`chapter-card-${chapId}`);
+                              if (targetElement) {
+                                targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                targetElement.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2');
+                                setTimeout(() => {
+                                  targetElement.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-2');
+                                }, 1500);
+                              }
+                            }}
+                            className="group relative cursor-pointer hover:translate-x-1 transition-all duration-200"
+                          >
+                            {/* Marker dot */}
+                            <span className="absolute -left-[17.5px] top-1 flex h-2 w-2 rounded-full bg-slate-300 group-hover:bg-indigo-500 transition-colors" />
+                            
+                            <div className="min-w-0">
+                              <h5 className="text-xs font-extrabold text-slate-700 group-hover:text-indigo-600 truncate transition-colors leading-snug">
+                                Chapter {cIdx + 1}: {c.name || c}
+                              </h5>
+                              <div className="flex gap-2 text-[9px] font-bold text-slate-400 mt-0.5">
+                                <span className="bg-slate-100 text-slate-500 rounded px-1">Pages {c.startPage}-{c.endPage}</span>
+                                <span className="bg-indigo-50/70 text-indigo-750 rounded px-1">{chapProjects.length} Project(s)</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="bg-white p-3 rounded-lg border border-slate-200/50">
-                      <p className="text-[10px] font-bold text-slate-400">Total Chapters</p>
-                      <p className="text-xl font-black text-emerald-605 mt-0.5">{editChapters.length}</p>
+                  )}
+                </div>
+
+                {/* Legacy / Unassigned Projects Drawer Card */}
+                {(() => {
+                  const unassignedProjects = editProjects.filter(p => !p.chapterId || !editChapters.some(c => String(c._id || '') === String(p.chapterId)));
+                  if (unassignedProjects.length > 0) {
+                    return (
+                      <div className="rounded-2xl border border-rose-250 bg-rose-50/10 p-4 shadow-sm space-y-3 border-l-4 border-l-rose-500">
+                        <div className="flex items-center gap-2 border-b border-rose-100 pb-2">
+                          <AlertCircle size={16} className="text-rose-600 animate-pulse" />
+                          <h5 className="font-extrabold text-rose-800 text-xs uppercase tracking-wider">Unassigned Projects ({unassignedProjects.length})</h5>
+                        </div>
+                        <p className="text-[10px] text-rose-600 font-semibold leading-tight">These legacy projects are not mapped to any chapter. Assign them to a chapter below:</p>
+                        <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                          {unassignedProjects.map((proj, projIdx) => {
+                            const originalIdx = editProjects.findIndex(p => p === proj);
+                            const isEditingProject = editingProjectIndex === originalIdx;
+
+                            if (isEditingProject) {
+                              return (
+                                <div key={projIdx} className="flex flex-col gap-2 rounded-lg border border-indigo-400 bg-white p-2.5 shadow-sm">
+                                  <select
+                                    value={editingProjectChapterId}
+                                    onChange={(e) => setEditingProjectChapterId(e.target.value)}
+                                    className="h-8 w-full rounded border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-755 outline-none focus:border-indigo-500 transition"
+                                  >
+                                    <option value="">-- Assign Chapter --</option>
+                                    {editChapters.map((c, cIdx) => (
+                                      <option key={c._id || cIdx} value={c._id || `idx_${cIdx}`}>
+                                        Chapter {cIdx + 1}: {c.name || c}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <div className="flex gap-2">
+                                    <input
+                                      type="text"
+                                      value={editingProjectName}
+                                      onChange={(e) => setEditingProjectName(e.target.value)}
+                                      onKeyDown={(e) => { if(e.key === 'Enter') handleSaveEditProject(); }}
+                                      className="h-8 flex-1 rounded border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-700 outline-none"
+                                      placeholder="Project name..."
+                                    />
+                                    <div className="flex gap-1">
+                                      <button
+                                        onClick={handleSaveEditProject}
+                                        disabled={!editingProjectName.trim() || !editingProjectChapterId}
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded bg-emerald-600 text-white hover:bg-emerald-700 transition"
+                                      >
+                                        <Check size={14} />
+                                      </button>
+                                      <button
+                                        onClick={handleCancelEditProject}
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded bg-slate-100 text-slate-655 hover:bg-slate-200 transition"
+                                      >
+                                        <X size={14} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div key={projIdx} className="flex flex-col gap-2 rounded-lg bg-white border border-rose-100 p-2.5 shadow-sm hover:border-rose-350 transition">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-bold text-slate-800 truncate">{proj.name || proj}</span>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      onClick={() => handleStartEditProject(proj, originalIdx)}
+                                      className="text-slate-400 hover:text-indigo-650 p-1 hover:bg-slate-50 rounded transition"
+                                      title="Edit project"
+                                    >
+                                      <Edit3 size={12} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleRemoveProject(originalIdx)}
+                                      className="text-red-400 hover:text-red-655 p-1 hover:bg-red-50 rounded transition"
+                                      title="Remove project"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </div>
+                                </div>
+                                
+                                {/* Quick assign dropdown */}
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-[9px] text-slate-400 font-extrabold uppercase shrink-0">Assign to:</span>
+                                  <select
+                                    onChange={(e) => {
+                                      const chapterId = e.target.value;
+                                      if (chapterId) {
+                                        const nextProjects = editProjects.map((p, idx) => {
+                                          if (idx === originalIdx) {
+                                            return { ...p, chapterId };
+                                          }
+                                          return p;
+                                        });
+                                        setEditProjects(nextProjects);
+                                        autoSaveSubjectDetails(editChapters, nextProjects);
+                                        toast.success(`Project assigned successfully`);
+                                      }
+                                    }}
+                                    defaultValue=""
+                                    className="h-6 flex-1 rounded border border-slate-200 bg-slate-50 px-1 text-[10px] font-semibold text-slate-600 outline-none focus:border-indigo-500 transition"
+                                  >
+                                    <option value="" disabled>-- Select Chapter --</option>
+                                    {editChapters.map((c, cIdx) => (
+                                      <option key={c._id || cIdx} value={c._id || `idx_${cIdx}`}>
+                                        Chapter {cIdx + 1}: {c.name || c}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
+              </div>
+
+              {/* ═══ Right Column: Syllabus Workspace Builder ═══ */}
+              <div className="lg:col-span-8 space-y-6">
+                
+                {/* Add New Chapter Form Card */}
+                <div className="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50/50 via-teal-50/20 to-white p-5 space-y-4 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-100 text-emerald-700 shadow-sm">
+                      <Plus size={16} className="stroke-[3]" />
+                    </div>
+                    <div>
+                      <h5 className="text-xs font-black uppercase tracking-wider text-emerald-800">Add New Chapter</h5>
+                      <p className="text-[10px] text-emerald-600/80 font-medium">Add a chapter block to partition the book syllabus</p>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              {/* Middle Column: Projects List */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Projects List ({editProjects.length})</h4>
-                </div>
-
-                {/* Add new project */}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter project name..."
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    onKeyDown={(e) => { if(e.key === 'Enter') handleAddProject(); }}
-                    className="h-10 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3.5 text-xs font-semibold text-slate-700 outline-none focus:border-primary/50 focus:bg-white transition"
-                  />
-                  <button
-                    onClick={handleAddProject}
-                    className="inline-flex h-10 items-center gap-1 rounded-lg bg-slate-900 px-4 text-xs font-bold text-white hover:bg-slate-800 transition"
-                  >
-                    <Plus size={14} /> Add
-                  </button>
-                </div>
-
-                {/* Project items list */}
-                <div className="max-h-[350px] overflow-y-auto rounded-lg border border-slate-150 p-2.5 bg-slate-50 space-y-1.5">
-                  {editProjects.length > 0 ? (
-                    editProjects.map((proj, idx) => (
-                      <div key={idx} className="flex items-center justify-between gap-3 rounded-lg bg-white border border-slate-100 p-2.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-slate-200 transition">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-100 text-[10px] font-black text-slate-500">{idx + 1}</span>
-                          <span className="truncate font-bold">{proj}</span>
-                        </div>
-                        <button 
-                          onClick={() => handleRemoveProject(idx)}
-                          className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded-lg transition shrink-0"
-                          title="Remove project"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="py-16 text-center text-xs font-semibold text-slate-400 bg-white rounded-lg border border-slate-150/50">
-                      No projects added yet. Use input above.
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                    <div className="md:col-span-6">
+                      <label className="block text-[9px] font-black uppercase text-slate-400 tracking-wider mb-1">Chapter Title</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Chapter 1: Introduction to Web Design"
+                        value={newChapterName}
+                        onChange={(e) => setNewChapterName(e.target.value)}
+                        onKeyDown={(e) => { if(e.key === 'Enter') handleAddChapter(); }}
+                        className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition shadow-inner"
+                      />
                     </div>
+                    <div className="md:col-span-3">
+                      <label className="block text-[9px] font-black uppercase text-slate-400 tracking-wider mb-1">Start Page</label>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="1"
+                        value={newChapterStartPage}
+                        onChange={(e) => setNewChapterStartPage(e.target.value)}
+                        onKeyDown={(e) => { if(e.key === 'Enter') handleAddChapter(); }}
+                        className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition shadow-inner"
+                      />
+                    </div>
+                    <div className="md:col-span-3">
+                      <label className="block text-[9px] font-black uppercase text-slate-400 tracking-wider mb-1">End Page</label>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="20"
+                        value={newChapterEndPage}
+                        onChange={(e) => setNewChapterEndPage(e.target.value)}
+                        onKeyDown={(e) => { if(e.key === 'Enter') handleAddChapter(); }}
+                        className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition shadow-inner"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-end pt-1">
+                    <button
+                      onClick={handleAddChapter}
+                      disabled={!newChapterName.trim() || !newChapterStartPage || !newChapterEndPage}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-emerald-600 px-5 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50 shadow-md active:scale-95 hover:shadow-lg"
+                    >
+                      <Plus size={14} className="stroke-[3]" /> Create Chapter
+                    </button>
+                  </div>
+                </div>
+
+                {/* Chapters list container */}
+                <div className="space-y-5 max-h-[600px] overflow-y-auto pr-1">
+                  {editChapters.length === 0 ? (
+                    <div className="py-16 text-center bg-white rounded-2xl border border-slate-200/80 shadow-sm flex flex-col items-center justify-center p-6">
+                      <FolderKanban size={40} className="text-slate-300 mb-2" />
+                      <p className="text-xs font-bold text-slate-400">No chapters created yet.</p>
+                      <p className="text-[10px] text-slate-400 mt-1 max-w-[280px]">Fill in the form above and click "Create Chapter" to begin structuring your syllabus.</p>
+                    </div>
+                  ) : (
+                    editChapters.map((chap, idx) => {
+                      const isEditingChapter = editingChapterId === chap._id;
+                      const chapId = chap._id || `idx_${idx}`;
+                      const chapProjects = editProjects.filter(p => String(p.chapterId) === String(chapId));
+
+                      // Calculate percentage placement for the visual page range track
+                      const totalPages = Number(editPages) || 1;
+                      const start = Number(chap.startPage) || 0;
+                      const end = Number(chap.endPage) || 0;
+                      const leftPercent = Math.max(0, Math.min(100, ((start - 1) / totalPages) * 100));
+                      const widthPercent = Math.max(0, Math.min(100, ((end - start + 1) / totalPages) * 100));
+
+                      return (
+                        <div 
+                          key={chapId} 
+                          id={`chapter-card-${chapId}`}
+                          className="bg-white rounded-2xl border border-slate-200/85 shadow-sm hover:border-slate-300 hover:shadow-md transition-all duration-300 overflow-hidden"
+                        >
+                          
+                          {/* Chapter Card Header */}
+                          {isEditingChapter ? (
+                            <div className="bg-slate-50 p-4 border-b border-slate-100 space-y-3 border-l-4 border-l-indigo-600">
+                              <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Editing Chapter {idx + 1}</span>
+                              <input
+                                type="text"
+                                value={editingChapterName}
+                                onChange={(e) => setEditingChapterName(e.target.value)}
+                                onKeyDown={(e) => { if(e.key === 'Enter') handleSaveEditChapter(); }}
+                                className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 transition"
+                                placeholder="Chapter title..."
+                              />
+                              <div className="flex gap-2">
+                                <input
+                                  type="number"
+                                  value={editingChapterStartPage}
+                                  onChange={(e) => setEditingChapterStartPage(e.target.value)}
+                                  onKeyDown={(e) => { if(e.key === 'Enter') handleSaveEditChapter(); }}
+                                  className="h-9 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 transition"
+                                  placeholder="Start Page"
+                                />
+                                <input
+                                  type="number"
+                                  value={editingChapterEndPage}
+                                  onChange={(e) => setEditingChapterEndPage(e.target.value)}
+                                  onKeyDown={(e) => { if(e.key === 'Enter') handleSaveEditChapter(); }}
+                                  className="h-9 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 transition"
+                                  placeholder="End Page"
+                                />
+                                <div className="flex gap-1 shrink-0">
+                                  <button
+                                    onClick={handleSaveEditChapter}
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-sm"
+                                    title="Save Changes"
+                                  >
+                                    <Check size={16} />
+                                  </button>
+                                  <button
+                                    onClick={handleCancelEditChapter}
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-655 hover:bg-slate-50 transition shadow-sm"
+                                    title="Cancel"
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between gap-4 bg-slate-50/80 border-b border-slate-100 px-4 py-3.5 border-l-4 border-l-indigo-600">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100 text-[10px] font-black text-indigo-600 shadow-sm">
+                                  {String(idx + 1).padStart(2, '0')}
+                                </span>
+                                <div className="min-w-0">
+                                  <h5 className="font-extrabold text-slate-800 text-xs sm:text-sm truncate" title={chap.name || chap}>
+                                    {chap.name || chap}
+                                  </h5>
+                                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                    <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase bg-indigo-50/70 text-indigo-755 rounded px-1.5 py-0.5">
+                                      <BookOpen size={9} /> Pages {chap.startPage !== undefined ? `${chap.startPage} – ${chap.endPage}` : '0 – 0'}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase bg-emerald-100/60 text-emerald-800 rounded px-1.5 py-0.5">
+                                      <ListTodo size={9} /> {chapProjects.length} Project{chapProjects.length !== 1 ? 's' : ''}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  onClick={() => handleStartEditChapter(chap)}
+                                  className="text-slate-400 hover:text-indigo-650 p-1.5 hover:bg-slate-200/50 rounded-md transition"
+                                  title="Edit chapter details"
+                                >
+                                  <Edit3 size={13} />
+                                </button>
+                                <button
+                                  onClick={() => handleRemoveChapter(idx)}
+                                  className="text-red-400 hover:text-red-655 p-1.5 hover:bg-red-50 rounded-md transition"
+                                  title="Delete chapter"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Visual Page Range Progress Bar */}
+                          {Number(editPages) > 0 && !isEditingChapter && (
+                            <div className="px-4 py-2 bg-slate-50/30 border-b border-slate-100">
+                              <div className="h-1.5 w-full bg-slate-100 rounded-full relative overflow-hidden">
+                                <div 
+                                  className="absolute h-full bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full"
+                                  style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
+                                />
+                              </div>
+                              <div className="flex justify-between text-[9px] text-slate-400 font-extrabold uppercase mt-1">
+                                <span>Page {start}</span>
+                                <span className="text-indigo-600 font-black">{end - start + 1} pages total ({Math.round(widthPercent)}%)</span>
+                                <span>Page {end}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Nested Projects List inside Chapter Card */}
+                          <div className="p-4 bg-white space-y-3">
+                            <span className="block text-[9px] font-black uppercase tracking-wider text-slate-400">
+                              Associated Projects ({chapProjects.length})
+                            </span>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              {chapProjects.length > 0 ? (
+                                chapProjects.map((proj, projIdx) => {
+                                  const originalIdx = editProjects.findIndex(p => p === proj);
+                                  const isEditingProject = editingProjectIndex === originalIdx;
+
+                                  if (isEditingProject) {
+                                    return (
+                                      <div key={projIdx} className="col-span-full flex flex-col gap-2 rounded-xl border border-indigo-200 bg-indigo-50/30 p-3 shadow-inner">
+                                        <span className="text-[9px] font-black uppercase text-indigo-600 tracking-wider">Move to Chapter</span>
+                                        <select
+                                          value={editingProjectChapterId}
+                                          onChange={(e) => setEditingProjectChapterId(e.target.value)}
+                                          className="h-8 w-full rounded border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 transition"
+                                        >
+                                          {editChapters.map((c, cIdx) => (
+                                            <option key={c._id || cIdx} value={c._id || `idx_${cIdx}`}>
+                                              Chapter {cIdx + 1}: {c.name || c}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="text"
+                                            value={editingProjectName}
+                                            onChange={(e) => setEditingProjectName(e.target.value)}
+                                            onKeyDown={(e) => { if(e.key === 'Enter') handleSaveEditProject(); }}
+                                            className="h-8 flex-1 rounded border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 transition"
+                                            placeholder="Project name..."
+                                          />
+                                          <div className="flex gap-1">
+                                            <button
+                                              onClick={handleSaveEditProject}
+                                              disabled={!editingProjectName.trim() || !editingProjectChapterId}
+                                              className="inline-flex h-8 w-8 items-center justify-center rounded bg-emerald-600 text-white hover:bg-emerald-700 transition"
+                                              title="Save Changes"
+                                            >
+                                              <Check size={14} />
+                                            </button>
+                                            <button
+                                              onClick={handleCancelEditProject}
+                                              className="inline-flex h-8 w-8 items-center justify-center rounded bg-white border border-slate-200 text-slate-655 hover:bg-slate-50 transition"
+                                              title="Cancel"
+                                            >
+                                              <X size={14} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <div 
+                                      key={projIdx} 
+                                      className="group/item flex items-center justify-between gap-3 rounded-xl bg-slate-50 border border-slate-100/70 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:border-slate-200 transition-all duration-200"
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-500 group-hover/item:bg-indigo-500 group-hover/item:text-white transition-all">
+                                          <FolderKanban size={10} />
+                                        </div>
+                                        <span className="truncate text-slate-800 font-bold">{proj.name || proj}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover/item:opacity-100 transition-all duration-200">
+                                        <button
+                                          onClick={() => handleStartEditProject(proj, originalIdx)}
+                                          className="text-slate-400 hover:text-indigo-655 p-1 hover:bg-white rounded transition shadow-sm border border-transparent hover:border-slate-200"
+                                          title="Edit project"
+                                        >
+                                          <Edit3 size={11} />
+                                        </button>
+                                        <button
+                                          onClick={() => handleRemoveProject(originalIdx)}
+                                          className="text-red-400 hover:text-red-655 p-1 hover:bg-red-50 rounded transition shadow-sm border border-transparent hover:border-red-100"
+                                          title="Remove project"
+                                        >
+                                          <Trash2 size={11} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <p className="text-[10px] text-slate-400 italic px-1.5 py-0.5 col-span-full">No projects added under this chapter.</p>
+                              )}
+                            </div>
+
+                            {/* Direct Project Addition Form under Chapter Card */}
+                            <div className="flex gap-2 mt-4 pt-3 border-t border-slate-100">
+                              <input
+                                type="text"
+                                placeholder={`New project name...`}
+                                value={newProjectNames[chapId] || ''}
+                                onChange={(e) => setNewProjectNames(prev => ({ ...prev, [chapId]: e.target.value }))}
+                                onKeyDown={(e) => { if(e.key === 'Enter') handleAddProjectForChapter(chapId); }}
+                                className="h-8 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 focus:bg-white transition shadow-inner"
+                              />
+                              <button
+                                onClick={() => handleAddProjectForChapter(chapId)}
+                                disabled={!(newProjectNames[chapId] || '').trim()}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-slate-800 px-4 text-xs font-bold text-white hover:bg-slate-900 transition disabled:opacity-50 shrink-0 shadow-sm active:scale-95"
+                              >
+                                <Plus size={12} className="stroke-[2.5]" /> Add Project
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
-              </div>
 
-              {/* Right Column: Chapters List */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Chapters List (Theory) ({editChapters.length})</h4>
-                </div>
-
-                {/* Add new chapter */}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter chapter name..."
-                    value={newChapterName}
-                    onChange={(e) => setNewChapterName(e.target.value)}
-                    onKeyDown={(e) => { if(e.key === 'Enter') handleAddChapter(); }}
-                    className="h-10 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3.5 text-xs font-semibold text-slate-700 outline-none focus:border-primary/50 focus:bg-white transition"
-                  />
-                  <button
-                    onClick={handleAddChapter}
-                    className="inline-flex h-10 items-center gap-1 rounded-lg bg-slate-900 px-4 text-xs font-bold text-white hover:bg-slate-800 transition"
-                  >
-                    <Plus size={14} /> Add
-                  </button>
-                </div>
-
-                {/* Chapter items list */}
-                <div className="max-h-[350px] overflow-y-auto rounded-lg border border-slate-150 p-2.5 bg-slate-50 space-y-1.5">
-                  {editChapters.length > 0 ? (
-                    editChapters.map((chap, idx) => (
-                      <div key={idx} className="flex items-center justify-between gap-3 rounded-lg bg-white border border-slate-100 p-2.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-slate-200 transition">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-emerald-50 text-[10px] font-black text-emerald-600">{idx + 1}</span>
-                          <span className="truncate font-bold">{chap}</span>
-                        </div>
-                        <button 
-                          onClick={() => handleRemoveChapter(idx)}
-                          className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded-lg transition shrink-0"
-                          title="Remove chapter"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="py-16 text-center text-xs font-semibold text-slate-400 bg-white rounded-lg border border-slate-150/50">
-                      No chapters added yet. Use input above.
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
 
-            <div className="mt-8 flex justify-end gap-3 border-t border-slate-100 pt-4">
+            {/* Bottom bar */}
+            <div className="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/50 px-6 py-4">
               <button
                 onClick={handleBack}
-                className="rounded-lg border border-slate-200 bg-white px-5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+                className="rounded-xl border border-slate-200 bg-white px-5 py-2 text-xs font-bold text-slate-655 hover:bg-slate-100 transition shadow-sm active:scale-95"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveSubjectDetails}
                 disabled={saveLoading}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-6 py-2 text-xs font-bold text-white hover:bg-primary/95 transition disabled:opacity-70 shadow-sm"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-6 py-2 text-xs font-bold text-white hover:bg-indigo-500 transition disabled:opacity-70 shadow-md active:scale-95"
               >
                 {saveLoading && <RefreshCw size={12} className="animate-spin" />}
                 Save Changes
@@ -1250,7 +2958,473 @@ const SyllabusManagement = () => {
           </div>
         </div>
       )}
+
+    {/* ══════════════════════════════════════════════════════════════════════
+        TEACHER MANAGEMENT MODAL
+        ══════════════════════════════════════════════════════════════════════ */}
+    {teacherModalOpen && teacherModalSubject && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background: 'rgba(15,23,42,0.65)'}}>
+        <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+
+          {/* Modal Header */}
+          <div className="flex items-center justify-between gap-4 bg-gradient-to-r from-emerald-700 to-emerald-500 px-6 py-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/20">
+                <UserCheck size={20} className="text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-wide text-emerald-100">Teacher Management</p>
+                <h3 className="text-base font-black text-white truncate">{teacherModalSubject.name}</h3>
+              </div>
+            </div>
+            <button
+              onClick={() => { setTeacherModalOpen(false); setTeacherModalSubject(null); }}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/15 text-white hover:bg-white/30 transition"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Context info bar */}
+          <div className="flex flex-wrap gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3 text-xs font-bold text-slate-500">
+            <span className="flex items-center gap-1.5">
+              <Layers size={12} className="text-indigo-400" />
+              Batch: <span className="text-slate-800">{selectedBatch?.name || '—'}</span>
+            </span>
+            <span className="text-slate-200">|</span>
+            <span className="flex items-center gap-1.5">
+              <GraduationCap size={12} className="text-emerald-500" />
+              Course: <span className="text-slate-800">{selectedCourse?.name || '—'}</span>
+            </span>
+            <span className="text-slate-200">|</span>
+            <span className="flex items-center gap-1.5">
+              <BookOpenCheck size={12} className="text-indigo-500" />
+              Subject: <span className="text-indigo-700">{teacherModalSubject.name}</span>
+            </span>
+          </div>
+
+          {/* Scrollable body */}
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+            {/* ── Assign New Teacher ── */}
+            <div>
+              <h4 className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Assign Teacher</h4>
+              <div className="flex gap-3">
+                <div className="flex-1 relative">
+                  <select
+                    value={selectedTeacherId}
+                    onChange={e => setSelectedTeacherId(e.target.value)}
+                    className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 pl-4 pr-10 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-400 focus:bg-white transition"
+                  >
+                    <option value="">— Select Active Teacher —</option>
+                    {activeTeachers.length === 0 && (
+                      <option disabled>No teachers found (check employee type)</option>
+                    )}
+                    {activeTeachers.map(t => (
+                      <option key={t._id} value={t._id}>
+                        {t.name} {t.type ? `(${t.type})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <UserPlus size={14} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                </div>
+                <button
+                  onClick={handleAssignTeacher}
+                  disabled={teacherSaving || !selectedTeacherId}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-bold text-white hover:bg-emerald-700 transition disabled:opacity-60 shrink-0"
+                >
+                  {teacherSaving ? <RefreshCw size={14} className="animate-spin" /> : <UserPlus size={14} />}
+                  Assign
+                </button>
+              </div>
+            </div>
+
+            {/* ── Current Assignments ── */}
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">Assigned Teachers</h4>
+                <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-black text-emerald-700">
+                  {assignedTeachers.length} Teacher{assignedTeachers.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              {teacherLoading ? (
+                <div className="flex items-center justify-center py-10 text-slate-400">
+                  <RefreshCw size={18} className="animate-spin mr-2" /> Loading assignments...
+                </div>
+              ) : assignedTeachers.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center">
+                  <UserCheck size={36} className="text-slate-300 mb-2" />
+                  <p className="text-sm font-bold text-slate-400">No teachers assigned yet</p>
+                  <p className="text-xs font-semibold text-slate-300 mt-1">Use the dropdown above to assign a teacher</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {assignedTeachers.map((t, idx) => (
+                    <div
+                      key={t.employeeId || idx}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-sm hover:border-emerald-100 hover:shadow transition"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-600 font-black text-sm">
+                          {t.employeeName?.charAt(0)?.toUpperCase() || 'T'}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-slate-800">{t.employeeName}</p>
+                          <p className="text-xs font-semibold text-slate-400">{t.employeeType || 'Teacher'}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveTeacherAssignment(t)}
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-red-100 bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition"
+                        title="Remove assignment"
+                      >
+                        <UserMinus size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Modal Footer */}
+          <div className="flex justify-end border-t border-slate-100 bg-slate-50 px-6 py-4">
+            <button
+              onClick={() => { setTeacherModalOpen(false); setTeacherModalSubject(null); }}
+              className="rounded-xl border border-slate-200 bg-white px-6 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* STANDALONE TEACHER ACCESS MODAL (header button) */}
+    {saOpen && (
+      <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 overflow-y-auto" style={{background: 'rgba(15,23,42,0.70)'}}>
+        <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col mb-10">
+
+          {/* Header */}
+          <div className="flex items-center justify-between gap-4 bg-gradient-to-r from-emerald-700 to-teal-500 px-6 py-4 rounded-t-2xl">
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/20">
+                <UserCheck size={20} className="text-white" />
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-emerald-100">Super Admin</p>
+                <h3 className="text-base font-black text-white">Manage Teacher Access</h3>
+              </div>
+            </div>
+            <button onClick={() => setSaOpen(false)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/15 text-white hover:bg-white/30 transition">
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="px-6 py-5 space-y-4">
+
+            {/* Teacher */}
+            <div>
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-1.5">1. Select Active Teacher</label>
+              <select value={saTeacherId} onChange={e => setSaTeacherId(e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-400 focus:bg-white transition">
+                <option value="">— Select Teacher —</option>
+                {activeTeachers.length === 0 && <option disabled>No Faculty employees found (check employee type = Faculty)</option>}
+                {activeTeachers.map(t => <option key={t._id} value={t._id}>{t.name} ({t.type})</option>)}
+              </select>
+            </div>
+
+            {/* Batch */}
+            <div>
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-1.5">2. Select Batch</label>
+              <select value={saBatchId} onChange={e => { setSaBatchId(e.target.value); setSaCourseId(''); setSaSubjectId(''); setSaAssignments([]); }}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-400 focus:bg-white transition">
+                <option value="">— Select Batch —</option>
+                {allBatches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
+              </select>
+            </div>
+
+            {/* Course */}
+            <div>
+              <label className={`block text-xs font-black uppercase tracking-wider mb-1.5 ${!saBatchId ? 'text-slate-300' : 'text-slate-500'}`}>3. Select Course</label>
+              <select value={saCourseId} onChange={e => { setSaCourseId(e.target.value); setSaSubjectId(''); setSaAssignments([]); }} disabled={!saBatchId}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-400 focus:bg-white transition disabled:opacity-50 disabled:cursor-not-allowed">
+                <option value="">— Select Course —</option>
+                {saFilteredCourses.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+              </select>
+              {saBatchId && saFilteredCourses.length === 0 && (
+                <p className="mt-1 text-xs font-semibold text-amber-600">No active courses found in this batch.</p>
+              )}
+            </div>
+
+            {/* Subject */}
+            <div>
+              <label className={`block text-xs font-black uppercase tracking-wider mb-1.5 ${!saCourseId ? 'text-slate-300' : 'text-slate-500'}`}>4. Select Subject</label>
+              <select value={saSubjectId} onChange={e => setSaSubjectId(e.target.value)} disabled={!saCourseId}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-400 focus:bg-white transition disabled:opacity-50 disabled:cursor-not-allowed">
+                <option value="">— Select Subject —</option>
+                {saFilteredSubjects.map(s => <option key={s.subject._id} value={s.subject._id}>{s.subject.name}</option>)}
+              </select>
+            </div>
+
+            {/* Assign Button */}
+            <button onClick={handleSaAssign} disabled={saSaving || !saTeacherId || !saBatchId || !saCourseId || !saSubjectId}
+              className="inline-flex w-full items-center justify-center gap-2 h-11 rounded-xl bg-emerald-600 text-sm font-black text-white hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm">
+              {saSaving ? <RefreshCw size={15} className="animate-spin" /> : <UserPlus size={15} />}
+              Assign Teacher to Subject
+            </button>
+
+            {/* Current Assignments */}
+            {saSubjectId && (
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">Assigned Teachers for this Subject</h4>
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-black text-emerald-700">{saAssignments.length} Teacher{saAssignments.length !== 1 ? 's' : ''}</span>
+                </div>
+                {saLoading ? (
+                  <div className="flex items-center justify-center py-6 text-slate-400 text-sm font-semibold"><RefreshCw size={16} className="animate-spin mr-2" /> Loading...</div>
+                ) : saAssignments.length === 0 ? (
+                  <div className="py-6 text-center text-sm font-bold text-slate-400">No teachers assigned yet.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {saAssignments.map((t, idx) => (
+                      <div key={t.employeeId || idx} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-700 font-black text-sm">
+                            {t.employeeName?.charAt(0)?.toUpperCase() || 'T'}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-black text-slate-800">{t.employeeName}</p>
+                            <p className="text-xs font-semibold text-slate-400">{t.employeeType || 'Faculty'}</p>
+                          </div>
+                        </div>
+                        <button onClick={() => handleSaRemove(t)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-red-100 bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition" title="Remove">
+                          <UserMinus size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-end border-t border-slate-100 bg-slate-50 px-6 py-4 rounded-b-2xl">
+            <button onClick={() => setSaOpen(false)} className="rounded-xl border border-slate-200 bg-white px-6 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 transition">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* STUDENT SYLLABUS PROGRESS MODAL */}
+    {viewProgressStudent && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div className="relative w-full max-w-5xl rounded-2xl bg-white shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-slate-900 to-indigo-950 p-6 text-white flex items-start justify-between">
+            <div>
+              <span className="inline-block rounded-md bg-indigo-500/20 px-2 py-0.5 text-xs font-black uppercase tracking-wider text-indigo-300">
+                Student Syllabus Progress
+              </span>
+              <h3 className="text-xl font-black mt-1 text-white">
+                {viewProgressStudent.name}
+              </h3>
+              <p className="text-xs text-slate-300 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                <span>Enrollment No: <strong className="text-white">{viewProgressStudent.enrollmentNo || '—'}</strong></span>
+                <span>Course: <strong className="text-white">{selectedCourse?.name || '—'}</strong></span>
+                <span>Subject: <strong className="text-white">{selectedSubject?.name || '—'}</strong></span>
+              </p>
+            </div>
+            <button
+              onClick={() => setViewProgressStudent(null)}
+              className="rounded-full p-1.5 text-slate-400 hover:bg-white/10 hover:text-white transition"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+            {isModalLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 text-indigo-600 font-bold gap-3">
+                <RefreshCw size={36} className="animate-spin text-indigo-600" />
+                <span>Fetching progress data...</span>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Quick summary stats card */}
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  <div className="rounded-xl bg-white border border-slate-200 p-4 text-center shadow-sm">
+                    <p className="text-3xl font-black text-indigo-700">
+                      {chaptersLogged}
+                      <span className="text-base font-semibold text-slate-400">/{subjectChapters.length}</span>
+                    </p>
+                    <p className="mt-1 text-xs font-bold text-slate-500">Chapters Completed</p>
+                  </div>
+                  <div className="rounded-xl bg-white border border-slate-200 p-4 text-center shadow-sm">
+                    <p className="text-3xl font-black text-violet-700">
+                      {projectsLogged}
+                      <span className="text-base font-semibold text-slate-400">/{subjectProjects.length}</span>
+                    </p>
+                    <p className="mt-1 text-xs font-bold text-slate-500">Projects Completed</p>
+                  </div>
+                  <div className="rounded-xl bg-white border border-slate-200 p-4 text-center shadow-sm col-span-2 sm:col-span-2">
+                    <p className="text-xs font-bold text-slate-500 mb-2">Overall Progress Completion</p>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-3 rounded-full bg-slate-100 overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500" 
+                          style={{ 
+                            width: `${
+                              subjectChapters.length > 0 
+                                ? Math.round((chaptersLogged / subjectChapters.length) * 100) 
+                                : 0
+                            }%` 
+                          }}
+                        />
+                      </div>
+                      <span className="text-sm font-extrabold text-slate-700">
+                        {subjectChapters.length > 0 
+                          ? Math.round((chaptersLogged / subjectChapters.length) * 100) 
+                          : 0}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Split layout: Chapters on left, Projects on right */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  
+                  {/* Chapters Card */}
+                  <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col">
+                    <h4 className="font-black text-slate-900 text-base mb-4 flex items-center gap-2">
+                      <BookMarked className="text-indigo-600" size={18} /> Chapters Syllabus
+                    </h4>
+                    
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50 text-slate-400 font-bold uppercase tracking-wider">
+                            <th className="px-3 py-2">#</th>
+                            <th className="px-3 py-2">Chapter Name</th>
+                            <th className="px-3 py-2">Pages</th>
+                            <th className="px-3 py-2 text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {subjectChapters.map((ch, idx) => {
+                            const isDone = completedChIds.includes(String(ch._id));
+                            return (
+                              <tr 
+                                key={ch._id} 
+                                className={`transition-colors ${
+                                  isDone ? 'bg-emerald-50/40 text-emerald-950 font-semibold' : 'text-slate-600'
+                                }`}
+                              >
+                                <td className="px-3 py-3 font-mono font-bold text-slate-400">{idx + 1}</td>
+                                <td className="px-3 py-3 font-bold">{ch.name}</td>
+                                <td className="px-3 py-3 text-slate-500">
+                                  {ch.startPage || ch.endPage ? `p. ${ch.startPage || 0} - ${ch.endPage || 0}` : '—'}
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                  {isDone ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black uppercase text-emerald-800 border border-emerald-200">
+                                      <CheckCircle2 size={10} /> Done
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black uppercase text-slate-500 border border-slate-200">
+                                      Pending
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {subjectChapters.length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="py-6 text-center text-slate-400 font-bold">No chapters defined.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Projects Card */}
+                  <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col">
+                    <h4 className="font-black text-slate-900 text-base mb-4 flex items-center gap-2">
+                      <FolderCheck className="text-violet-600" size={18} /> Projects Tracker
+                    </h4>
+                    
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50 text-slate-400 font-bold uppercase tracking-wider">
+                            <th className="px-3 py-2">#</th>
+                            <th className="px-3 py-2">Project Name</th>
+                            <th className="px-3 py-2 text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {subjectProjects.map((proj, idx) => {
+                            const isDone = completedProjIds.includes(String(proj._id));
+                            return (
+                              <tr 
+                                key={proj._id} 
+                                className={`transition-colors ${
+                                  isDone ? 'bg-emerald-50/40 text-emerald-950 font-semibold' : 'text-slate-600'
+                                }`}
+                              >
+                                <td className="px-3 py-3 font-mono font-bold text-slate-400">{idx + 1}</td>
+                                <td className="px-3 py-3 font-bold">{proj.name}</td>
+                                <td className="px-3 py-3 text-center">
+                                  {isDone ? (
+                                    <span className="inline-flex items-center gap-1 text-emerald-600 font-black">
+                                      <CheckCircle2 size={16} /> Completed
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-slate-400 font-semibold">
+                                      <Circle size={16} className="text-slate-350" /> Pending
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {subjectProjects.length === 0 && (
+                            <tr>
+                              <td colSpan={3} className="py-6 text-center text-slate-400 font-bold">No projects defined.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="bg-slate-50 border-t border-slate-100 px-6 py-4 flex justify-end">
+            <button
+              onClick={() => setViewProgressStudent(null)}
+              className="rounded-xl border border-slate-200 bg-white px-5 py-2 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition"
+            >
+              Close View
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
+    </>
   );
 };
 

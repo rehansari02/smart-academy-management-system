@@ -55,7 +55,7 @@ const getCourses = asyncHandler(async (req, res) => {
     const courses = await Course.find(query)
         .populate({
             path: 'subjects.subject',
-            select: 'name printedName theoryMarks practicalMarks totalMarks'
+            select: 'name printedName theoryMarks practicalMarks totalMarks daysToComplete totalPages projectsCount projects chaptersCount chapters'
         })
         .sort({ sorting: 1, createdAt: -1 })
         .lean();
@@ -154,7 +154,7 @@ const updateCourse = asyncHandler(async (req, res) => {
         const updatedCourse = await course.save();
         await updatedCourse.populate({
             path: 'subjects.subject',
-            select: 'name printedName theoryMarks practicalMarks totalMarks'
+            select: 'name printedName theoryMarks practicalMarks totalMarks daysToComplete totalPages projectsCount projects chaptersCount chapters'
         });
         res.json(updatedCourse);
     } else {

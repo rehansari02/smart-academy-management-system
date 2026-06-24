@@ -159,6 +159,7 @@ app.use("/api/complains", require("./routes/complainRoutes")); // Complain Route
 app.use("/api/contact", require("./routes/contactRoutes")); // Contact Routes
 app.use("/api/admin-dashboard", require("./routes/adminDashboardRoutes")); // Admin Dashboard
 app.use("/api/team", require("./routes/teamRoutes")); // Team Routes
+app.use("/api/syllabus-logs", require("./routes/syllabusLogRoutes")); // Syllabus Progression Logs
 
 // Error Handler
 app.use(errorHandler);
