@@ -48,6 +48,7 @@ import { getBranches } from '../../../features/master/branchSlice';
 import { fetchBatches, fetchCourses } from '../../../features/master/masterSlice';
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
 import { useUserRights } from '../../../hooks/useUserRights';
+import StudentDetailView from './StudentDetailView';
 
 // Helper to shorten 24-char hex MongoDB ObjectID to a 16-char base64url string
 const encodeId = (hexId) => {
@@ -328,6 +329,19 @@ const SyllabusManagement = () => {
 
   // View progress modal state
   const [viewProgressStudent, setViewProgressStudent] = useState(null);
+
+  // Completion modal for theory/project
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [completionModalData, setCompletionModalData] = useState(null); // { student, chapter, type: 'theory' | 'project', projectObj: null, startDate: null }
+  const [completionStartDateInput, setCompletionStartDateInput] = useState('');
+  const [completionEndDate, setCompletionEndDate] = useState(moment().format('YYYY-MM-DD'));
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [completionSaving, setCompletionSaving] = useState(false);
+
+  // Detailed student progress view
+  const [activeDetailStudent, setActiveDetailStudent] = useState(null);
+  const [actionDate, setActionDate] = useState(moment().format('YYYY-MM-DD'));
+  const [actionNotes, setActionNotes] = useState('');
 
   // Edit-log form state
   const [editLogId, setEditLogId] = useState(null);
@@ -1894,408 +1908,107 @@ const SyllabusManagement = () => {
                   <Users size={48} className="mx-auto mb-2 text-slate-200" />
                   <p className="font-bold text-slate-400">No active students found.</p>
                 </div>
+              ) : activeDetailStudent ? (
+                                <StudentDetailView 
+                  studentId={activeDetailStudent}
+                  onClose={() => setActiveDetailStudent(null)}
+                  student={filteredStudents.find(s => s._id === activeDetailStudent)}
+                  selectedSubject={selectedSubject}
+                  subjectChapters={subjectChapters}
+                  subjectProjects={subjectProjects}
+                  batchId={batchId}
+                  courseId={courseId}
+                  branchId={branchId}
+                  getStudentStartDate={getStudentStartDate}
+                  getCourseEndDate={getCourseEndDate}
+                  getDaysRemainingText={getDaysRemainingText}
+                  holidays={holidays}
+                  user={user}
+                />
               ) : (
-                <div className="space-y-3">
-                  {filteredStudents.map((student, index) => {
-                    const startDate = getStudentStartDate(student);
-                    const endDate = getCourseEndDate(student, holidays, branchId);
-                    const remaining = getDaysRemainingText(student, holidays, branchId);
-                    const isExpanded = expandedLogStudent === student._id;
-                    const summary = batchSummaries[student._id];
-                    const studentLogData = logsByStudent[student._id];
-                    const isLoadingLogs = logLoadingFor === student._id;
-                    const subjectChapters = selectedSubject?.chapters || [];
-                    const subjectProjects = selectedSubject?.projects || [];
-
-                    return (
-                      <div
-                        key={student._id}
-                        className={`rounded-2xl border bg-white shadow-sm transition-all duration-200 ${
-                          isExpanded ? 'border-indigo-200 shadow-indigo-100/60 shadow-md' : 'border-slate-200'
-                        }`}
-                      >
-                        {/* Student row header */}
-                        <div
-                          className="flex cursor-pointer flex-col gap-2 p-4 sm:flex-row sm:items-center sm:gap-4"
-                          onClick={() => handleToggleLogPanel(student._id)}
-                        >
-                          {/* Index badge */}
-                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-indigo-600 font-black text-white text-sm">
-                            {index + 1}
-                          </div>
-
-                          {/* Name & enrollment */}
-                          <div className="flex-1 min-w-0">
-                            <p className="font-black text-slate-900 truncate">{student.name}</p>
-                            <p className="text-xs font-semibold text-slate-400">{student.enrollmentNo || '—'}</p>
-                          </div>
-
-                          {/* Mini-stats from batch summary */}
-                          <div className="flex flex-wrap gap-2">
-                            {summary ? (
-                              <>
-                                <span className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">
-                                  <BookMarked size={11} />
-                                  {summary.chaptersLogged}/{summary.totalChapters} Ch
-                                </span>
-                                <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
-                                  <FolderCheck size={11} />
-                                  {summary.projectsLogged}/{summary.totalProjects} Proj
-                                </span>
-                                <span className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">
-                                  <CalendarDays size={11} />
-                                  {summary.elapsedDays}d elapsed
-                                </span>
-                                {summary.projectsPending > 0 && (
-                                  <span className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-600">
-                                    <AlertCircle size={11} />
-                                    {summary.projectsPending} pending
-                                  </span>
-                                )}
-                              </>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">
-                                <PenLine size={11} /> No logs yet
+                <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-100/80 text-xs font-black uppercase tracking-wider text-slate-500">
+                        <th className="py-3.5 px-4">#</th>
+                        <th className="py-3.5 px-4">Student</th>
+                        <th className="py-3.5 px-4">Course Period</th>
+                        <th className="py-3.5 px-4">Status</th>
+                        <th className="py-3.5 px-4">Analytics</th>
+                        <th className="py-3.5 px-4 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredStudents.map((student, index) => {
+                        const startDate = getStudentStartDate(student);
+                        const endDate = getCourseEndDate(student, holidays, branchId);
+                        const remaining = getDaysRemainingText(student, holidays, branchId);
+                        const summary = batchSummaries[student._id];
+                        return (
+                          <tr key={student._id} className="hover:bg-indigo-50/30 transition-all cursor-pointer" onClick={() => setActiveDetailStudent(student._id)}>
+                            <td className="py-3.5 px-4">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 font-black text-indigo-700 text-xs">{index + 1}</span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <div className="font-extrabold text-slate-900">{student.name}</div>
+                              <div className="text-[11px] font-semibold text-slate-400">{student.enrollmentNo || '—'}</div>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className="text-sm font-bold text-slate-600 whitespace-nowrap">
+                                {startDate ? startDate.format('DD-MM-YY') : '—'} → {endDate ? endDate.format('DD-MM-YY') : '—'}
                               </span>
-                            )}
-                          </div>
-
-                          {/* Course duration */}
-                          <div className="hidden text-right text-xs font-semibold text-slate-400 sm:block">
-                            <p>{startDate ? startDate.format('DD-MM-YY') : '—'} → {endDate ? endDate.format('DD-MM-YY') : '—'}</p>
-                            <span className={`mt-0.5 inline-block rounded-md px-2 py-0.5 text-xs font-bold ${remaining.colorClass}`}>
-                              {remaining.text}
-                            </span>
-                          </div>
-
-                          {/* Actions: Eye button & Expand chevron */}
-                          <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenProgressModal(student)}
-                              title="View Syllabus Progress"
-                              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-all active:scale-95"
-                            >
-                              <Eye size={18} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleToggleLogPanel(student._id)}
-                              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all active:scale-95"
-                            >
-                              {isExpanded
-                                ? <ChevronUp size={18} className="text-indigo-500" />
-                                : <ChevronDown size={18} className="text-slate-400" />}
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* ── Expanded log panel ── */}
-                        {isExpanded && (
-                          <div className="border-t border-slate-100 bg-slate-50/60 p-4">
-                            {isLoadingLogs ? (
-                              <div className="flex items-center justify-center gap-2 py-8 text-indigo-600 font-bold">
-                                <RefreshCw size={16} className="animate-spin" /> Loading logs…
-                              </div>
-                            ) : (
-                              <div className="space-y-5">
-
-                                {/* Analytics cards */}
-                                {studentLogData && (
-                                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                    <div className="rounded-xl bg-white border border-slate-200 p-3 text-center shadow-sm">
-                                      <p className="text-2xl font-black text-indigo-700">{studentLogData.analytics.elapsedDays}</p>
-                                      <p className="mt-0.5 text-xs font-bold text-slate-500">Days Elapsed</p>
-                                      <p className="text-xs text-slate-400">(target: {studentLogData.analytics.daysToComplete})</p>
-                                    </div>
-                                    <div className="rounded-xl bg-white border border-violet-200 p-3 text-center shadow-sm">
-                                      <p className="text-2xl font-black text-violet-700">{studentLogData.analytics.chaptersLogged}<span className="text-base font-semibold text-slate-400">/{studentLogData.analytics.totalChapters}</span></p>
-                                      <p className="mt-0.5 text-xs font-bold text-slate-500">Chapters Done</p>
-                                    </div>
-                                    <div className="rounded-xl bg-white border border-amber-200 p-3 text-center shadow-sm">
-                                      <p className="text-2xl font-black text-amber-700">{studentLogData.analytics.projectsLogged}<span className="text-base font-semibold text-slate-400">/{studentLogData.analytics.totalProjects}</span></p>
-                                      <p className="mt-0.5 text-xs font-bold text-slate-500">Projects Done</p>
-                                    </div>
-                                    <div className="rounded-xl bg-white border border-rose-200 p-3 text-center shadow-sm">
-                                      <p className="text-2xl font-black text-rose-600">{studentLogData.analytics.projectsPending}</p>
-                                      <p className="mt-0.5 text-xs font-bold text-slate-500">Projects Pending</p>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Add log button */}
-                                {addLogFor !== student._id && (
-                                  <button
-                                    onClick={() => handleOpenAddLog(student._id)}
-                                    className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 transition"
-                                  >
-                                    <Plus size={15} /> Add Session Log
-                                  </button>
-                                )}
-
-                                {/* ── Add log form ── */}
-                                {addLogFor === student._id && (
-                                  <div className="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm space-y-4">
-                                    <div className="flex items-center justify-between">
-                                      <h4 className="font-black text-indigo-800 flex items-center gap-2"><PenLine size={15} /> New Session Log</h4>
-                                      <button onClick={() => setAddLogFor(null)} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                      {/* Date */}
-                                      <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-1">Session Date *</label>
-                                        <input
-                                          type="date"
-                                          value={logFormDate}
-                                          onChange={e => setLogFormDate(e.target.value)}
-                                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-400 focus:outline-none"
-                                        />
-                                      </div>
-
-                                      {/* Chapter */}
-                                      <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-1">Chapter Covered *</label>
-                                        <select
-                                          value={logFormChapterId}
-                                          onChange={e => setLogFormChapterId(e.target.value)}
-                                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-400 focus:outline-none"
-                                        >
-                                          <option value="">— Select Chapter —</option>
-                                          {subjectChapters.map(ch => (
-                                            <option key={ch._id} value={String(ch._id)}>{ch.name}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                    </div>
-
-                                    {/* Projects */}
-                                    {subjectProjects.length > 0 && (
-                                      <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-2">Projects Completed (select all that apply)</label>
-                                        <div className="flex flex-wrap gap-2">
-                                          {subjectProjects.map(proj => {
-                                            const pid = String(proj._id);
-                                            const checked = logFormProjectIds.includes(pid);
-                                            return (
-                                              <button
-                                                key={pid}
-                                                type="button"
-                                                onClick={() => toggleProjectInForm(pid, setLogFormProjectIds)}
-                                                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition ${
-                                                  checked
-                                                    ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
-                                                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
-                                                }`}
-                                              >
-                                                {checked ? <CheckCircle2 size={12} /> : <Circle size={12} />}
-                                                {proj.name}
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Notes */}
-                                    <div>
-                                      <label className="block text-xs font-bold text-slate-600 mb-1">Notes (optional)</label>
-                                      <textarea
-                                        rows={2}
-                                        value={logFormNotes}
-                                        onChange={e => setLogFormNotes(e.target.value)}
-                                        placeholder="Any remarks about this session…"
-                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 focus:border-indigo-400 focus:outline-none resize-none"
-                                      />
-                                    </div>
-
-                                    <div className="flex gap-2">
-                                      <button
-                                        onClick={() => handleSubmitAddLog(student)}
-                                        disabled={logFormSaving}
-                                        className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-60 transition"
-                                      >
-                                        {logFormSaving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
-                                        {logFormSaving ? 'Saving…' : 'Save Log'}
-                                      </button>
-                                      <button
-                                        onClick={() => setAddLogFor(null)}
-                                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 transition"
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* ── Log history table ── */}
-                                {studentLogData && studentLogData.logs.length > 0 ? (
-                                  <div>
-                                    <h4 className="mb-2 font-black text-slate-700 text-sm flex items-center gap-1.5"><ListTodo size={14} /> Session History ({studentLogData.logs.length})</h4>
-                                    <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                      <table className="w-full text-left text-xs">
-                                        <thead>
-                                          <tr className="border-b border-slate-200 bg-slate-100/70 text-xs font-black uppercase tracking-wider text-slate-400">
-                                            <th className="px-3 py-2.5">#</th>
-                                            <th className="px-3 py-2.5">Date</th>
-                                            <th className="px-3 py-2.5">Chapter</th>
-                                            <th className="px-3 py-2.5">Projects Done</th>
-                                            <th className="px-3 py-2.5">Logged By</th>
-                                            <th className="px-3 py-2.5">Notes</th>
-                                            <th className="px-3 py-2.5 text-center">Actions</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                          {studentLogData.logs.map((log, li) => (
-                                            <React.Fragment key={log._id}>
-                                              {editLogId === log._id ? (
-                                                /* ── Inline edit row ── */
-                                                <tr className="bg-indigo-50/60">
-                                                  <td className="px-3 py-2.5 font-mono font-bold text-slate-400">{li + 1}</td>
-                                                  <td className="px-3 py-2.5">
-                                                    <input
-                                                      type="date"
-                                                      value={editLogDate}
-                                                      onChange={e => setEditLogDate(e.target.value)}
-                                                      className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold focus:outline-none w-32"
-                                                    />
-                                                  </td>
-                                                  <td className="px-3 py-2.5">
-                                                    <select
-                                                      value={editLogChapterId}
-                                                      onChange={e => setEditLogChapterId(e.target.value)}
-                                                      className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold focus:outline-none max-w-[140px]"
-                                                    >
-                                                      <option value="">— Chapter —</option>
-                                                      {subjectChapters.map(ch => (
-                                                        <option key={ch._id} value={String(ch._id)}>{ch.name}</option>
-                                                      ))}
-                                                    </select>
-                                                  </td>
-                                                  <td className="px-3 py-2.5">
-                                                    <div className="flex flex-wrap gap-1">
-                                                      {subjectProjects.map(proj => {
-                                                        const pid = String(proj._id);
-                                                        const checked = editLogProjectIds.includes(pid);
-                                                        return (
-                                                          <button
-                                                            key={pid}
-                                                            type="button"
-                                                            onClick={() => toggleProjectInForm(pid, setEditLogProjectIds)}
-                                                            className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs font-bold transition ${
-                                                              checked ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                                                            }`}
-                                                          >
-                                                            {checked ? <CheckCircle2 size={10} /> : <Circle size={10} />} {proj.name}
-                                                          </button>
-                                                        );
-                                                      })}
-                                                    </div>
-                                                  </td>
-                                                  <td className="px-3 py-2.5 text-slate-400">{log.loggedByName || '—'}</td>
-                                                  <td className="px-3 py-2.5">
-                                                    <input
-                                                      type="text"
-                                                      value={editLogNotes}
-                                                      onChange={e => setEditLogNotes(e.target.value)}
-                                                      className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold focus:outline-none w-28"
-                                                      placeholder="Notes…"
-                                                    />
-                                                  </td>
-                                                  <td className="px-3 py-2.5">
-                                                    <div className="flex items-center justify-center gap-1">
-                                                      <button
-                                                        onClick={() => handleSubmitEditLog(student._id)}
-                                                        disabled={editLogSaving}
-                                                        className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-60"
-                                                      >
-                                                        {editLogSaving ? <RefreshCw size={10} className="animate-spin" /> : <Save size={10} />} Save
-                                                      </button>
-                                                      <button
-                                                        onClick={() => setEditLogId(null)}
-                                                        className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-slate-500 hover:bg-slate-50"
-                                                      >
-                                                        Cancel
-                                                      </button>
-                                                    </div>
-                                                  </td>
-                                                </tr>
-                                              ) : (
-                                                /* ── Normal row ── */
-                                                <tr className="hover:bg-slate-50/50 transition font-semibold text-slate-700">
-                                                  <td className="px-3 py-2.5 font-mono text-slate-400">{li + 1}</td>
-                                                  <td className="px-3 py-2.5 whitespace-nowrap">
-                                                    {moment(log.sessionDate).format('DD MMM YYYY')}
-                                                  </td>
-                                                  <td className="px-3 py-2.5">
-                                                    {log.chapterName ? (
-                                                      <span className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">
-                                                        <BookMarked size={10} /> {log.chapterName}
-                                                      </span>
-                                                    ) : '—'}
-                                                  </td>
-                                                  <td className="px-3 py-2.5">
-                                                    <div className="flex flex-wrap gap-1">
-                                                      {(log.projects || []).length > 0
-                                                        ? (log.projects || []).map((p, pi) => (
-                                                            <span key={pi} className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">
-                                                              <CheckCircle2 size={10} /> {p.projectName || '—'}
-                                                            </span>
-                                                          ))
-                                                        : <span className="text-slate-400">—</span>}
-                                                    </div>
-                                                  </td>
-                                                  <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{log.loggedByName || '—'}</td>
-                                                  <td className="px-3 py-2.5 text-slate-500 max-w-[140px] truncate" title={log.notes}>{log.notes || '—'}</td>
-                                                  <td className="px-3 py-2.5">
-                                                    <div className="flex items-center justify-center gap-1">
-                                                      <button
-                                                        onClick={() => handleOpenEditLog(log)}
-                                                        className="flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition"
-                                                      >
-                                                        <Edit3 size={11} /> Edit
-                                                      </button>
-                                                      <button
-                                                        onClick={() => handleDeleteLog(log._id, student._id)}
-                                                        className="flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition"
-                                                      >
-                                                        <Trash2 size={11} /> Del
-                                                      </button>
-                                                    </div>
-                                                  </td>
-                                                </tr>
-                                              )}
-                                            </React.Fragment>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  !isLoadingLogs && (
-                                    <div className="rounded-xl border border-dashed border-slate-200 bg-white py-8 text-center">
-                                      <CalendarDays size={32} className="mx-auto mb-2 text-slate-300" />
-                                      <p className="font-bold text-slate-400 text-sm">No session logs yet.</p>
-                                      <p className="text-xs text-slate-400">Click "Add Session Log" to record the first teaching session.</p>
-                                    </div>
-                                  )
-                                )}
-
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className={"inline-block rounded-lg px-2.5 py-1 text-xs font-extrabold " + remaining.colorClass}>
+                                {remaining.text}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              {summary ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  <span className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700 whitespace-nowrap">
+                                    <BookMarked size={11} />
+                                    {summary.chaptersLogged}/{summary.totalChapters} Ch
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 whitespace-nowrap">
+                                    <FolderCheck size={11} />
+                                    {summary.projectsLogged}/{summary.totalProjects} Proj
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 whitespace-nowrap">
+                                    <CalendarDays size={11} />
+                                    {summary.elapsedDays}d
+                                  </span>
+                                  {summary.projectsPending > 0 && (
+                                    <span className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-600 whitespace-nowrap">
+                                      <AlertCircle size={11} />
+                                      {summary.projectsPending} pending
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500">
+                                  <PenLine size={11} /> No logs yet
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setActiveDetailStudent(student._id); if (!logsByStudent[student._id]) fetchStudentLogs(student._id); }}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 active:scale-95 transition-all shadow-sm"
+                              >
+                                <Eye size={13} /> View Log
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* LEVEL 6: EDIT SUBJECT PARAMETERS */}
+              </div>
+            )}      {/* LEVEL 6: EDIT SUBJECT PARAMETERS */}
       {step === 6 && selectedSubject && (
         <div className="mx-auto w-full max-w-[1500px]">
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -3423,6 +3136,8 @@ const SyllabusManagement = () => {
         </div>
       </div>
     )}
+        </div>
+      </div>
     </div>
     </>
   );
