@@ -79,14 +79,41 @@ const ReferenceChart = () => {
       maximumFractionDigits: 0
     }).format(Number(value || 0));
 
+  // Check if a reference is external by looking at the separate external references list
+  // We identify external refs by checking against isExternal flag (set by backend)
+  const internalRefs = useMemo(() => {
+    return references.filter(r => !r.isExternal);
+  }, [references]);
+
+  const externalRefs = useMemo(() => {
+    return references.filter(r => r.isExternal);
+  }, [references]);
+
+  // Combined external reference entry
+  const externalCombined = useMemo(() => {
+    if (externalRefs.length === 0) return null;
+    return {
+      _id: 'External Reference',
+      isExternal: true,
+      studentCount: externalRefs.reduce((acc, r) => acc + (r.studentCount || 0), 0),
+      admissionCount: externalRefs.reduce((acc, r) => acc + (r.admissionCount || 0), 0),
+      totalIncentive: externalRefs.reduce((acc, r) => acc + (r.totalIncentive || 0), 0),
+      totalFees: externalRefs.reduce((acc, r) => acc + (r.totalFees || 0), 0),
+    };
+  }, [externalRefs]);
+
   const filteredRefs = useMemo(() => {
-    let list = [...references];
+    // Only show internal references individually + one combined external reference
+    let list = [...internalRefs];
+    if (externalCombined) {
+      list.push(externalCombined);
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(r => r._id.toLowerCase().includes(q));
     }
     return list.sort((a, b) => b.studentCount - a.studentCount);
-  }, [references, searchQuery]);
+  }, [internalRefs, externalCombined, searchQuery]);
 
   const topChartData = useMemo(() => {
     return filteredRefs.filter(r => r.studentCount > 0).slice(0, 15);
@@ -285,26 +312,39 @@ const ReferenceChart = () => {
                   <div 
                     key={ref._id} 
                     onClick={() => {
-                      navigate(`/reference-incentive`, { state: { autoSelectReference: ref._id } });
+                      if (ref.isExternal) {
+                        // For external combined entry, navigate to incentive page with a note
+                        toast.info('Showing all external references in incentive page');
+                        navigate(`/reference-incentive`);
+                      } else {
+                        navigate(`/reference-incentive`, { state: { autoSelectReference: ref._id } });
+                      }
                     }}
-                    className="flex cursor-pointer items-center justify-between p-3 hover:bg-indigo-50/40 transition group"
+                    className={`flex cursor-pointer items-center justify-between p-3 transition group ${
+                      ref.isExternal ? 'hover:bg-amber-50/60' : 'hover:bg-indigo-50/40'
+                    }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-xs font-black ${
+                        ref.isExternal ? 'bg-amber-100 text-amber-700' :
                         idx === 0 ? 'bg-amber-100 text-amber-700' :
                         idx === 1 ? 'bg-slate-200 text-slate-700' :
                         idx === 2 ? 'bg-orange-100 text-orange-700' :
                         'bg-slate-100 text-slate-500'
                       }`}>
-                        {idx + 1}
+                        {ref.isExternal ? 'E' : (idx + 1)}
                       </span>
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-800 truncate group-hover:text-primary transition-colors">{ref._id || 'Direct'}</p>
+                        <p className={`text-sm font-bold truncate transition-colors ${
+                          ref.isExternal ? 'text-amber-700 group-hover:text-amber-800' : 'text-slate-800 group-hover:text-primary'
+                        }`}>{ref._id || 'Direct'}</p>
                         <p className="text-[10px] font-semibold text-slate-400">{ref.studentCount} student(s) referred</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg">
+                      <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${
+                        ref.isExternal ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-600'
+                      }`}>
                         {formatMoney(ref.totalIncentive)}
                       </span>
                       <ChevronRight size={14} className="text-slate-300 group-hover:text-primary transition-all translate-x-0 group-hover:translate-x-0.5" />

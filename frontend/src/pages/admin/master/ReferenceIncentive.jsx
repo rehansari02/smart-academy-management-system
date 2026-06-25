@@ -167,12 +167,34 @@ const ReferenceIncentive = () => {
     setActiveReference(null);
   };
 
+  // Internal references (teachers/staff)
+  const internalRefs = useMemo(() => {
+    return refData?.internalReferences || [];
+  }, [refData]);
+
+  // External references (from Reference master data)
+  const externalRefs = useMemo(() => {
+    return refData?.externalReferences || [];
+  }, [refData]);
+
   const filteredRefs = useMemo(() => {
     const refs = refData?.references || [];
     if (!refSearch.trim()) return refs;
     const q = refSearch.toLowerCase();
     return refs.filter(r => r._id.toLowerCase().includes(q));
   }, [refData, refSearch]);
+
+  const filteredInternalRefs = useMemo(() => {
+    if (!refSearch.trim()) return internalRefs;
+    const q = refSearch.toLowerCase();
+    return internalRefs.filter(r => r._id.toLowerCase().includes(q));
+  }, [internalRefs, refSearch]);
+
+  const filteredExternalRefs = useMemo(() => {
+    if (!refSearch.trim()) return externalRefs;
+    const q = refSearch.toLowerCase();
+    return externalRefs.filter(r => r._id.toLowerCase().includes(q) || (r.contactName || '').toLowerCase().includes(q));
+  }, [externalRefs, refSearch]);
 
   const selectedData = refData?.selectedReference || null;
 
@@ -184,9 +206,11 @@ const ReferenceIncentive = () => {
       totalStudents: refs.reduce((s, r) => s + r.studentCount, 0),
       totalAdmissions: refs.reduce((s, r) => s + r.admissionCount, 0),
       totalFees: refs.reduce((s, r) => s + r.totalFees, 0),
-      totalIncentive: refs.reduce((s, r) => s + r.totalIncentive, 0)
+      totalIncentive: refs.reduce((s, r) => s + r.totalIncentive, 0),
+      totalExternalStudents: externalRefs.reduce((s, r) => s + r.studentCount, 0),
+      totalInternalStudents: internalRefs.reduce((s, r) => s + r.studentCount, 0)
     };
-  }, [refData]);
+  }, [refData, externalRefs, internalRefs]);
 
   return (
     <div className="min-h-screen bg-[#f3f6fb]">
@@ -344,7 +368,7 @@ const ReferenceIncentive = () => {
                     Teachers
                   </h3>
                   <span className="rounded-lg bg-white/15 px-2 py-0.5 text-[10px] font-black text-white/80">
-                    {refData?.references?.length || 0}
+                    {internalRefs.length}
                   </span>
                 </div>
                 <p className="mt-1 text-[11px] font-semibold text-white/70">Ranked by total earnings</p>
@@ -363,50 +387,103 @@ const ReferenceIncentive = () => {
                 </div>
               </div>
 
+              {/* Teachers Section */}
               <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
                 {loading && !refData ? (
                   <div className="flex items-center justify-center p-8 text-xs font-semibold text-slate-400">
                     <RefreshCw size={14} className="mr-2 animate-spin" /> Loading...
                   </div>
-                ) : filteredRefs.length === 0 ? (
-                  <div className="p-8 text-center text-xs font-semibold text-slate-400">No teachers found</div>
                 ) : (
-                  <div className="divide-y divide-slate-50">
-                    {filteredRefs.map((ref) => (
-                      <button
-                        key={ref._id}
-                        onClick={() => handleReferenceClick(ref._id)}
-                        className={`group flex w-full items-start gap-3 p-3 text-left transition hover:bg-indigo-50/60 ${
-                          activeReference === ref._id ? 'bg-indigo-50' : ''
-                        }`}
-                      >
-                        <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-xs font-black ${
-                          activeReference === ref._id
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-indigo-100 text-indigo-700 group-hover:bg-indigo-200'
-                        }`}>
-                          {ref._id.charAt(0).toUpperCase()}
+                  <>
+                    {/* Internal Teachers */}
+                    {filteredInternalRefs.length > 0 && (
+                      <div className="divide-y divide-slate-50">
+                        <div className="px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-400">
+                          Staff Teachers ({filteredInternalRefs.length})
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className={`truncate text-sm font-bold ${
-                            activeReference === ref._id ? 'text-indigo-700' : 'text-slate-800'
+                        {filteredInternalRefs.map((ref) => (
+                          <button
+                            key={ref._id}
+                            onClick={() => handleReferenceClick(ref._id)}
+                            className={`group flex w-full items-start gap-3 p-3 text-left transition hover:bg-indigo-50/60 ${
+                              activeReference === ref._id ? 'bg-indigo-50' : ''
+                            }`}
+                          >
+                            <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-xs font-black ${
+                              activeReference === ref._id
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-indigo-100 text-indigo-700 group-hover:bg-indigo-200'
+                            }`}>
+                              {ref._id.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className={`truncate text-sm font-bold ${
+                                activeReference === ref._id ? 'text-indigo-700' : 'text-slate-800'
+                              }`}>
+                                {ref._id}
+                              </p>
+                              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold text-slate-500">
+                                <span>{ref.studentCount} students</span>
+                                <span className="text-emerald-600">{ref.admissionCount} admitted</span>
+                              </div>
+                              <div className="mt-1 text-xs font-bold text-indigo-600">
+                                {formatMoney(ref.totalIncentive)}
+                              </div>
+                            </div>
+                            <ChevronRight size={14} className={`mt-2 shrink-0 ${
+                              activeReference === ref._id ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-500'
+                            }`} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* External References - Single Combined Entry */}
+                    {externalRefs.length > 0 && (
+                      <div className="border-t border-slate-100">
+                        <div className="px-3 py-2 bg-amber-50/50">
+                          <span className="text-[10px] font-black uppercase tracking-wide text-amber-700">
+                            External References ({externalRefs.length})
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleReferenceClick('External Reference')}
+                          className={`group flex w-full items-start gap-3 p-3 text-left transition hover:bg-amber-50/60 ${
+                            activeReference === 'External Reference' ? 'bg-amber-50' : ''
+                          }`}
+                        >
+                          <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-xs font-black ${
+                            activeReference === 'External Reference'
+                              ? 'bg-amber-600 text-white'
+                              : 'bg-amber-100 text-amber-700 group-hover:bg-amber-200'
                           }`}>
-                            {ref._id}
-                          </p>
-                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold text-slate-500">
-                            <span>{ref.studentCount} students</span>
-                            <span className="text-emerald-600">{ref.admissionCount} admitted</span>
+                            E
                           </div>
-                          <div className="mt-1 text-xs font-bold text-indigo-600">
-                            {formatMoney(ref.totalIncentive)}
+                          <div className="min-w-0 flex-1">
+                            <p className={`truncate text-sm font-bold ${
+                              activeReference === 'External Reference' ? 'text-amber-700' : 'text-slate-800'
+                            }`}>
+                              External Reference
+                            </p>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold text-slate-500">
+                              <span>{externalRefs.reduce((s, r) => s + r.studentCount, 0)} students</span>
+                              <span className="text-emerald-600">{externalRefs.reduce((s, r) => s + r.admissionCount, 0)} admitted</span>
+                            </div>
+                            <div className="mt-1 text-xs font-bold text-amber-600">
+                              {formatMoney(externalRefs.reduce((s, r) => s + r.totalIncentive, 0))}
+                            </div>
                           </div>
-                        </div>
-                        <ChevronRight size={14} className={`mt-2 shrink-0 ${
-                          activeReference === ref._id ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-500'
-                        }`} />
-                      </button>
-                    ))}
-                  </div>
+                          <ChevronRight size={14} className={`mt-2 shrink-0 ${
+                            activeReference === 'External Reference' ? 'text-amber-600' : 'text-slate-300 group-hover:text-slate-500'
+                          }`} />
+                        </button>
+                      </div>
+                    )}
+
+                    {filteredInternalRefs.length === 0 && filteredExternalRefs.length === 0 && (
+                      <div className="p-8 text-center text-xs font-semibold text-slate-400">No teachers found</div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -449,6 +526,7 @@ const ReferenceIncentive = () => {
                   }}
                   studentPage={studentPage}
                   onStudentPageChange={setStudentPage}
+                  isExternalView={activeReference === 'External Reference'}
                 />
               ) : (
                 <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
@@ -549,7 +627,8 @@ function TeacherPerformanceDetail({
   studentFilters,
   onStudentFiltersChange,
   studentPage,
-  onStudentPageChange
+  onStudentPageChange,
+  isExternalView
 }) {
   const summary = data.summary || {};
   const students = data.students || [];
@@ -697,7 +776,9 @@ function TeacherPerformanceDetail({
     <div className="space-y-5">
 
       {/* Teacher Header */}
-      <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-indigo-600 to-purple-600 p-5 shadow-sm">
+      <div className={`rounded-2xl border border-slate-200 p-5 shadow-sm ${
+        isExternalView ? 'bg-gradient-to-r from-amber-600 to-orange-600' : 'bg-gradient-to-r from-indigo-600 to-purple-600'
+      }`}>
         <button
           onClick={onBack}
           className="mb-3 inline-flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/25"
@@ -706,11 +787,11 @@ function TeacherPerformanceDetail({
         </button>
         <div className="flex items-start gap-4">
           <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/20 text-2xl font-black text-white">
-            {teacherName.charAt(0).toUpperCase()}
+            {isExternalView ? 'E' : teacherName.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h2 className="text-xl font-black text-white">{teacherName}</h2>
-            <p className="text-sm font-semibold text-white/70">Referral Performance</p>
+            <h2 className="text-xl font-black text-white">{isExternalView ? 'External Reference' : teacherName}</h2>
+            <p className="text-sm font-semibold text-white/70">{isExternalView ? 'All External Referrals Combined' : 'Referral Performance'}</p>
           </div>
         </div>
 
@@ -937,6 +1018,7 @@ function TeacherPerformanceDetail({
                 <th className="w-10 p-3 text-center font-black">#</th>
                 <th className="p-3 text-left font-black">Student</th>
                 <th className="p-3 text-left font-black">Admission Date</th>
+                {isExternalView && <th className="p-3 text-left font-black">Reference</th>}
                 <th className="p-3 text-left font-black">Branch</th>
                 <th className="p-3 text-left font-black">Course</th>
                 <th className="p-3 text-center font-black">Admission Fee</th>
@@ -962,6 +1044,13 @@ function TeacherPerformanceDetail({
                   <td className="p-3">
                     <div className="font-semibold text-slate-700">{formatDate(s.admissionDate)}</div>
                   </td>
+                  {isExternalView && (
+                    <td className="p-3">
+                      <span className="inline-flex items-center rounded-lg bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                        {s.reference || '-'}
+                      </span>
+                    </td>
+                  )}
                   <td className="p-3">
                     <div className="font-semibold text-slate-700">{s.branchId?.name || s.branchName || '-'}</div>
                   </td>
@@ -1027,7 +1116,7 @@ function TeacherPerformanceDetail({
                   </td>
                 </tr>
               )) : (
-                <tr><td colSpan={11} className="p-8 text-center font-semibold text-slate-400">No students found.</td></tr>
+                <tr><td colSpan={isExternalView ? 12 : 11} className="p-8 text-center font-semibold text-slate-400">No students found.</td></tr>
               )}
             </tbody>
           </table>

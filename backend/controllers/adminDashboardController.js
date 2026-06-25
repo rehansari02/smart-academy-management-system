@@ -4,6 +4,7 @@ const Student = require('../models/Student');
 const FeeReceipt = require('../models/FeeReceipt');
 const Visitor = require('../models/Visitor');
 const Expense = require('../models/Expense');
+const Reference = require('../models/Reference');
 const mongoose = require('mongoose');
 
 const RECENT_LIST_LIMIT = 5;
@@ -460,6 +461,18 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
         ...(dateMatch ? { admissionDate: dateMatch } : {})
     };
 
+    // Fetch external reference master data to classify references
+    const externalRefRecords = await Reference.find({ isDeleted: false })
+      .select('name mobile address')
+      .lean();
+    const externalRefNames = new Map();
+    externalRefRecords.forEach(ref => {
+      const key = ref.name.trim().toLowerCase();
+      if (!externalRefNames.has(key)) {
+        externalRefNames.set(key, { name: ref.name, mobile: ref.mobile, address: ref.address || '' });
+      }
+    });
+
     const allRefs = await Student.aggregate([
         {
             $match: {
@@ -519,6 +532,30 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
         { $sort: { totalIncentive: -1, studentCount: -1 } }
     ]);
 
+    // Classify references into internal (teachers) and external (Reference master data)
+    const internalReferences = [];
+    const externalReferences = [];
+    const classifiedRefs = allRefs.map(ref => {
+      const refKey = ref._id.trim().toLowerCase();
+      const extRef = externalRefNames.get(refKey);
+      const isExternal = !!extRef;
+      if (extRef) {
+        externalReferences.push({
+          ...ref,
+          isExternal: true,
+          contactName: extRef.name,
+          mobile: extRef.mobile,
+          address: extRef.address
+        });
+      } else {
+        internalReferences.push({
+          ...ref,
+          isExternal: false
+        });
+      }
+      return { ...ref, isExternal };
+    });
+
     // If a specific reference is selected, get detailed data
     let referenceDetail = null;
     
@@ -530,9 +567,17 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
     }
 
     if (selectedRef) {
-        // If not super admin, ensure they can only see their own details
+        // Handle combined 'External Reference' request - match ALL external reference names
+        let isExternalRefView = false;
         let finalReferenceMatch;
-        if (canViewReferenceOverview) {
+        if (canViewReferenceOverview && selectedRef === 'External Reference') {
+          isExternalRefView = true;
+          // Match all external reference names (use original case from Reference records)
+          const externalRefNameList = externalRefRecords.map(ref => ref.name.trim()).filter(Boolean);
+          finalReferenceMatch = externalRefNameList.length > 0
+            ? { $in: externalRefNameList }
+            : { $exists: false };
+        } else if (canViewReferenceOverview) {
             finalReferenceMatch = { $regex: `^\\s*${escapeRegex(selectedRef)}\\s*$`, $options: 'i' };
         } else {
             // Re-use the flexible referenceFilter for non-admins
@@ -547,6 +592,8 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
             ...(['Paid', 'Pending'].includes(incentiveStatus) ? { incentiveStatus } : {}),
             ...(branchObjectId ? { branchId: branchObjectId } : {})
         };
+
+        // If viewing external references, add the isExternalRefView flag to referenceDetail for frontend
 
         const [
             studentTotal,
@@ -762,8 +809,13 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
                 ...detailSummary,
                 totalPaid: feeSummary.totalPaid,
                 totalReceived: feeSummary.totalPaid
-            }
+            },
+            isExternalView: isExternalRefView
         };
+
+        if (isExternalRefView) {
+          referenceDetail.externalRefDetails = externalReferences;
+        }
     }
 
     res.json({
@@ -782,7 +834,9 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
             page: detailPage,
             limit: detailLimit
         },
-        references: allRefs,
+        references: classifiedRefs,
+        internalReferences,
+        externalReferences,
         selectedReference: referenceDetail
     });
 });
