@@ -4,7 +4,7 @@ import { fetchStudents } from '../../../features/student/studentSlice';
 import { fetchCourses, fetchBatches, fetchBranches } from '../../../features/master/masterSlice';
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
 import axios from 'axios';
-import { Search, Printer, FileText, RefreshCw } from 'lucide-react';
+import { Search, Printer, FileText, RefreshCw, Calendar } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import moment from 'moment';
 import logo from '../../../assets/logo2.png';
@@ -38,6 +38,9 @@ const StudentWiseOutstanding = () => {
 
     const [appliedFilters, setAppliedFilters] = useState(filters);
     const componentRef = useRef(null);
+    // Testing Date State (simulate future month)
+    const [testDate, setTestDate] = useState(new Date().toISOString().split('T')[0]);
+
     // Payment summary per student (outstandingAmount, dueAmount) from backend - same logic as FeeCollection
     const [paymentSummaryMap, setPaymentSummaryMap] = useState({});
     const [summaryLoading, setSummaryLoading] = useState(false);
@@ -73,7 +76,13 @@ const StudentWiseOutstanding = () => {
         });
         const ids = students.map((s) => s._id).filter(Boolean);
         axios
-            .post(`${API_URL}/transaction/students/payment-summaries`, { ids }, { withCredentials: true })
+            .post(`${API_URL}/transaction/students/payment-summaries`, 
+                { ids },
+                { 
+                    params: { testDate },
+                    withCredentials: true 
+                }
+            )
             .then((res) => {
             if (cancelled) return;
             setPaymentSummaryMap(res.data || {});
@@ -85,7 +94,7 @@ const StudentWiseOutstanding = () => {
                 setSummaryLoading(false);
             });
         return () => { cancelled = true; };
-    }, [students]);
+    }, [students, testDate]);
 
     const handleFilterChange = (e) => {
         setFilters({ ...filters, [e.target.name]: e.target.value });
@@ -172,17 +181,18 @@ const StudentWiseOutstanding = () => {
         return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
-    const getOutstandingTotal = (student) => {
+    const getMonthlyOutstanding = (student) => {
         const summary = paymentSummaryMap[student._id];
         if (!summary) return 0;
-        const dueAmount = Number(summary.dueAmount || 0);
-        const outstandingAmount = Number(summary.outstandingAmount !== undefined ? summary.outstandingAmount : dueAmount);
-        return Math.min(Math.max(0, outstandingAmount), dueAmount);
+        // Use monthlyOutstanding (can be negative = credit/advance)
+        const val = summary.monthlyOutstanding !== undefined ? summary.monthlyOutstanding : summary.outstandingAmount || 0;
+        return Number(val);
     };
 
     const getDueTotal = (student) => {
         const summary = paymentSummaryMap[student._id];
         if (!summary) return 0;
+        // dueAmount = total fees - total paid
         return Number(summary.dueAmount || 0);
     };
 
@@ -208,10 +218,10 @@ const StudentWiseOutstanding = () => {
 
     const reportTotals = outstandingStudents.reduce((acc, student) => {
         const summary = paymentSummaryMap[student._id] || {};
-        const outstandingAmount = getOutstandingTotal(student);
-        const dueAmount = Number(summary.dueAmount || 0);
+        const monthlyOutstanding = getMonthlyOutstanding(student);
+        const dueAmount = getDueTotal(student);
         acc.totalStudents += 1;
-        acc.totalOutstanding += outstandingAmount;
+        acc.totalOutstanding += monthlyOutstanding;
         acc.totalDue += dueAmount;
         return acc;
     }, {
@@ -225,6 +235,22 @@ const StudentWiseOutstanding = () => {
             <h1 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2 print:hidden">
                 <FileText className="text-primary" /> Student Wise Outstanding
             </h1>
+
+            {/* --- Testing Date Picker --- */}
+            <div className="bg-white p-4 rounded-lg shadow-md border border-gray-200 mb-4 print:hidden">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Calendar className="text-yellow-600" size={16}/>
+                        <span className="text-xs font-bold text-yellow-700">TESTING DATE (Simulate Future Month):</span>
+                    </div>
+                    <input 
+                        type="date" 
+                        value={testDate}
+                        onChange={(e) => setTestDate(e.target.value)}
+                        className="text-xs border border-yellow-300 rounded p-1 bg-white outline-none focus:ring-1 focus:ring-yellow-400"
+                    />
+                </div>
+            </div>
 
             {/* --- Filter Section (Hidden in Print) --- */}
             <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 mb-8 print:hidden">
@@ -361,11 +387,13 @@ const StudentWiseOutstanding = () => {
                                     <td className="border border-gray-300 px-2 py-1.5">{s.course?.shortName || s.course?.name || '-'}</td>
                                     <td className="border border-gray-300 px-2 py-1.5 text-center">{s.mobileParent || '-'}</td>
 
-                                    {/* Outstanding Amount: reg fees + upcoming EMI + admission pending - combined total */}
+                                    {/* Outstanding Amount: current month's net due (can be negative = credit) */}
                                     <td className="border border-gray-300 px-2 py-1.5 text-right font-semibold text-red-600">
                                         {summaryLoading ? '...' : (() => {
-                                            const total = getOutstandingTotal(s);
-                                            return total > 0 ? total.toLocaleString('en-IN') : '-';
+                                            const total = getMonthlyOutstanding(s);
+                                            if (total === 0) return '-';
+                                            const formatted = Math.abs(total).toLocaleString('en-IN');
+                                            return total < 0 ? `(${formatted})` : formatted;
                                         })()}
                                     </td>
 
@@ -414,7 +442,11 @@ const StudentWiseOutstanding = () => {
                                     {reportTotals.totalStudents}
                                 </td>
                                 <td className="border border-gray-300 px-3 py-2 text-right font-bold text-red-600">
-                                    {reportTotals.totalOutstanding > 0 ? formatAmount(reportTotals.totalOutstanding) : '-'}
+                                    {reportTotals.totalOutstanding !== 0 ? (() => {
+                                        const val = reportTotals.totalOutstanding;
+                                        const formatted = Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                        return val < 0 ? `(${formatted})` : formatted;
+                                    })() : '-'}
                                 </td>
                                 <td className="border border-gray-300 px-3 py-2 text-right font-bold text-blue-600">
                                     {reportTotals.totalDue > 0 ? formatAmount(reportTotals.totalDue) : '-'}

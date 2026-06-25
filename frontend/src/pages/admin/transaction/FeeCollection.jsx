@@ -402,7 +402,7 @@ const FeeCollection = () => {
                 {/* === NEW RECEIPT FORM (Takes 3/5 cols) === */}
                 <div className={`bg-white p-6 rounded-xl shadow-sm border border-gray-100 ${selectedStudent ? '' : ''}`}>
                     {/* Testing Date Picker - Only for testing outstanding logic */}
-                    {/* <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center justify-between">
+                    <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <Calendar className="text-yellow-600" size={16}/>
                             <span className="text-xs font-bold text-yellow-700">TESTING DATE (Simulate Future Month):</span>
@@ -413,7 +413,7 @@ const FeeCollection = () => {
                             onChange={(e) => setTestDate(e.target.value)}
                             className="text-xs border border-yellow-300 rounded p-1 bg-white outline-none focus:ring-1 focus:ring-yellow-400"
                         />
-                    </div> */}
+                    </div>
 
                     <h2 className="text-xl font-semibold text-gray-700 mb-4 flex items-center gap-2">
                         <Receipt className="text-indigo-600"/> {editingReceipt ? 'Edit Receipt' : 'New Receipt'}
@@ -521,7 +521,7 @@ const FeeCollection = () => {
                                     {paymentSummary.feesMethod === 'Monthly' && (
                                         <div className="flex justify-between">
                                             <span className="text-blue-700 font-semibold">Installment:</span>
-                                            <span>Current: ₹{paymentSummary.currentInstallmentDue?.toLocaleString('en-IN')} / Prev Out: ₹{paymentSummary.previousOutstanding?.toLocaleString('en-IN')}</span>
+                                            <span>Current: ₹{(paymentSummary.netInstallmentDue ?? paymentSummary.currentInstallmentDue)?.toLocaleString('en-IN')} / Prev Out: ₹{paymentSummary.previousOutstanding?.toLocaleString('en-IN')}</span>
                                         </div>
                                     )}
                                     {paymentSummary.installmentPrepaid > 0 && (
@@ -822,7 +822,7 @@ const FeeCollection = () => {
                                                 <div className="border-t border-blue-200 mt-2 pt-2 space-y-1">
                                                     <div className="flex justify-between">
                                                         <span className="text-blue-700 font-semibold">Current Installment Due:</span>
-                                                        <span className="font-bold text-blue-800">₹{paymentSummary.currentInstallmentDue?.toLocaleString('en-IN')}</span>
+                                                        <span className="font-bold text-blue-800">₹{(paymentSummary.netInstallmentDue ?? paymentSummary.currentInstallmentDue)?.toLocaleString('en-IN')}</span>
                                                     </div>
                                                     <div className="flex justify-between">
                                                         <span className="text-orange-700 font-semibold">Previous Outstanding:</span>

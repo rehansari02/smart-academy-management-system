@@ -2351,14 +2351,26 @@ const calculateStudentPaymentSummary = (student, receipts, customDate = null) =>
 
   const totalDue = currentInstallmentDue + registrationOutstanding + admissionOutstanding + previousOutstanding;
   const courseCompleted = isCourseDurationCompleted(student, customDate);
-  const outstandingAmount = courseCompleted && dueAmount > 0
+
+  // monthlyOutstanding: Can be negative (credit/advance).
+  // Shows current month's net due after applying any prepaid/advance.
+  const monthlyOutstanding = courseCompleted && dueAmount > 0
     ? dueAmount
-    : Math.max(0, totalDue - installmentPrepaid);
+    : totalDue - installmentPrepaid;
+
+  // outstandingAmount: Non-negative version for FeeCollection auto-fill compatibility
+  const outstandingAmount = Math.max(0, monthlyOutstanding);
+
+  // netInstallmentDue: Current installment minus any advance credit carried forward
+  // Shows what the student actually needs to pay this month after consuming advance
+  const netInstallmentDue = Math.max(0, currentInstallmentDue - Math.max(0, installmentPrepaid - previousOutstanding));
 
   return {
     totalReceived,
     dueAmount,
     outstandingAmount,
+    monthlyOutstanding,
+    netInstallmentDue,
     courseCompleted,
     admissionFee,
     admissionPaid,
@@ -2401,6 +2413,9 @@ const getStudentPaymentSummaries = asyncHandler(async (req, res) => {
     return res.json({});
   }
 
+  // Support testDate for simulating future months (same as getStudentPaymentSummary)
+  const testDate = req.query.testDate ? new Date(req.query.testDate) : undefined;
+
   const students = await Student.find({ _id: { $in: ids }, isDeleted: false })
     .populate("course")
     .lean();
@@ -2419,7 +2434,8 @@ const getStudentPaymentSummaries = asyncHandler(async (req, res) => {
   students.forEach(student => {
     summaries[student._id.toString()] = calculateStudentPaymentSummary(
       student,
-      receiptsByStudent[student._id.toString()] || []
+      receiptsByStudent[student._id.toString()] || [],
+      testDate
     );
   });
 
