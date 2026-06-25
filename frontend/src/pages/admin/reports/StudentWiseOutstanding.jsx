@@ -237,7 +237,7 @@ const StudentWiseOutstanding = () => {
             </h1>
 
             {/* --- Testing Date Picker --- */}
-            <div className="bg-white p-4 rounded-lg shadow-md border border-gray-200 mb-4 print:hidden">
+            {/* <div className="bg-white p-4 rounded-lg shadow-md border border-gray-200 mb-4 print:hidden">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <Calendar className="text-yellow-600" size={16}/>
@@ -250,7 +250,7 @@ const StudentWiseOutstanding = () => {
                         className="text-xs border border-yellow-300 rounded p-1 bg-white outline-none focus:ring-1 focus:ring-yellow-400"
                     />
                 </div>
-            </div>
+            </div> */}
 
             {/* --- Filter Section (Hidden in Print) --- */}
             <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 mb-8 print:hidden">
