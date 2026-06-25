@@ -187,6 +187,60 @@ const getDaysRemainingText = (student, holidaysList = [], studentBranchId = null
   }
 };
 
+const parseTimeToMinutes = (timeString) => {
+  if (!timeString) return null;
+  const time = timeString.toString().trim().toUpperCase();
+  const match = time.match(/^(\d+):(\d+)(?:\s*(AM|PM))?$/);
+  if (!match) return null;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const ampm = match[3];
+
+  if (ampm) {
+    if (ampm === 'PM' && hours < 12) hours += 12;
+    if (ampm === 'AM' && hours === 12) hours = 0;
+  }
+  return hours * 60 + minutes;
+};
+
+const getBatchStartMinutes = (batchItem) => {
+  if (!batchItem) return null;
+  return parseTimeToMinutes(batchItem.startTime);
+};
+
+const getBatchEndMinutes = (batchItem) => {
+  if (!batchItem) return null;
+  return parseTimeToMinutes(batchItem.endTime);
+};
+
+const getBatchSequenceNumber = (batchItem) => {
+  if (!batchItem?.name) return null;
+  const matches = String(batchItem.name).match(/\d+/g);
+  if (!matches?.length) return null;
+  const sequence = Number(matches[matches.length - 1]);
+  return Number.isFinite(sequence) ? sequence : null;
+};
+
+const compareBatchOrder = (a, b) => {
+  const aSequence = getBatchSequenceNumber(a);
+  const bSequence = getBatchSequenceNumber(b);
+  if (aSequence !== null && bSequence !== null && aSequence !== bSequence) {
+    return aSequence - bSequence;
+  }
+  if (aSequence !== null && bSequence === null) return -1;
+  if (aSequence === null && bSequence !== null) return 1;
+
+  const aTime = getBatchStartMinutes(a) ?? 9999;
+  const bTime = getBatchStartMinutes(b) ?? 9999;
+  if (aTime !== bTime) return aTime - bTime;
+
+  const aEndTime = getBatchEndMinutes(a) ?? 9999;
+  const bEndTime = getBatchEndMinutes(b) ?? 9999;
+  if (aEndTime !== bEndTime) return aEndTime - bEndTime;
+
+  return (a?.name || '').localeCompare(b?.name || '', undefined, { numeric: true });
+};
+
 const SyllabusManagement = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -196,6 +250,7 @@ const SyllabusManagement = () => {
   const batchId = decodeId(params.batchId);
   const courseId = decodeId(params.courseId);
   const subjectId = decodeId(params.subjectId);
+  const studentId = decodeId(params.studentId);
 
   // Redux state
   const { user } = useSelector((state) => state.auth);
@@ -340,6 +395,15 @@ const SyllabusManagement = () => {
 
   // Detailed student progress view
   const [activeDetailStudent, setActiveDetailStudent] = useState(null);
+
+  useEffect(() => {
+    if (studentId) {
+      setActiveDetailStudent(studentId);
+    } else {
+      setActiveDetailStudent(null);
+    }
+  }, [studentId]);
+
   const [actionDate, setActionDate] = useState(moment().format('YYYY-MM-DD'));
   const [actionNotes, setActionNotes] = useState('');
 
@@ -713,7 +777,9 @@ const SyllabusManagement = () => {
     if (allowedBranchIds) {
       list = list.filter(b => allowedBranchIds.has(b._id.toString()));
     }
-    return list.filter(b => b.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    return list
+      .filter(b => b.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   }, [branches, searchQuery, step, allowedBranchIds]);
 
   const filteredBatches = useMemo(() => {
@@ -722,7 +788,9 @@ const SyllabusManagement = () => {
     if (allowedBatchIds) {
       list = list.filter(b => allowedBatchIds.has(b._id.toString()));
     }
-    return list.filter(b => b.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    return list
+      .filter(b => b.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   }, [batches, searchQuery, step, allowedBatchIds]);
 
   const filteredCourses = useMemo(() => {
@@ -741,9 +809,9 @@ const SyllabusManagement = () => {
       list = list.filter(c => allowedCourseIds.has(c._id.toString()));
     }
 
-    return list.filter(c => 
-      c.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    return list
+      .filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   }, [courses, selectedBatch, searchQuery, step, allowedCourseIds]);
 
   const filteredSubjects = useMemo(() => {
@@ -773,7 +841,7 @@ const SyllabusManagement = () => {
         (s.enrollmentNo || '').toLowerCase().includes(q)
       );
     }
-    return list;
+    return list.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   }, [studentsList, selectedCourse, studentsSearchQuery, step]);
 
   const progressLogData = useMemo(() => {
@@ -820,11 +888,19 @@ const SyllabusManagement = () => {
     navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(sub.subject._id)}/edit`);
   };
 
+  const handleViewStudentLog = (studentId) => {
+    setActiveDetailStudent(studentId);
+    navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students/${encodeId(studentId)}`);
+  };
+
   // Back button navigation using Router
   const handleBack = () => {
     setSearchQuery('');
     if (step === 6) {
       navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
+    } else if (step === 5 && studentId) {
+      // If in student detail view, go back to students list
+      navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students`);
     } else if (step === 5) {
       navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
     } else if (step === 4) {
@@ -1411,8 +1487,26 @@ const SyllabusManagement = () => {
           {selectedSubject && step === 5 && (
             <>
               <ChevronRight size={14} className="text-slate-300" />
+              {activeDetailStudent ? (
+                <button
+                  onClick={() => navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students`)}
+                  className="hover:text-primary transition-all truncate max-w-[150px]"
+                >
+                  {selectedSubject.name} Students
+                </button>
+              ) : (
+                <span className="text-primary font-black truncate max-w-[150px]">
+                  {selectedSubject.name} Enrolled Students
+                </span>
+              )}
+            </>
+          )}
+
+          {selectedSubject && step === 5 && activeDetailStudent && (
+            <>
+              <ChevronRight size={14} className="text-slate-300" />
               <span className="text-primary font-black truncate max-w-[150px]">
-                {selectedSubject.name} Enrolled Students
+                {filteredStudents.find(s => s._id === activeDetailStudent)?.name || 'View Log'}
               </span>
             </>
           )}
@@ -1911,7 +2005,7 @@ const SyllabusManagement = () => {
               ) : activeDetailStudent ? (
                                 <StudentDetailView 
                   studentId={activeDetailStudent}
-                  onClose={() => setActiveDetailStudent(null)}
+                  onClose={() => navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students`)}
                   student={filteredStudents.find(s => s._id === activeDetailStudent)}
                   selectedSubject={selectedSubject}
                   subjectChapters={subjectChapters}
@@ -1945,7 +2039,7 @@ const SyllabusManagement = () => {
                         const remaining = getDaysRemainingText(student, holidays, branchId);
                         const summary = batchSummaries[student._id];
                         return (
-                          <tr key={student._id} className="hover:bg-indigo-50/30 transition-all cursor-pointer" onClick={() => setActiveDetailStudent(student._id)}>
+                          <tr key={student._id} className="hover:bg-indigo-50/30 transition-all cursor-pointer" onClick={() => handleViewStudentLog(student._id)}>
                             <td className="py-3.5 px-4">
                               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 font-black text-indigo-700 text-xs">{index + 1}</span>
                             </td>
@@ -1994,7 +2088,7 @@ const SyllabusManagement = () => {
                             <td className="py-3.5 px-4 text-center">
                               <button
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); setActiveDetailStudent(student._id); if (!logsByStudent[student._id]) fetchStudentLogs(student._id); }}
+                                onClick={(e) => { e.stopPropagation(); handleViewStudentLog(student._id); }}
                                 className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 active:scale-95 transition-all shadow-sm"
                               >
                                 <Eye size={13} /> View Log

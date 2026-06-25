@@ -377,6 +377,8 @@ const BatchWiseRegister = () => {
     };
 
     const getStudentCourseLabel = (student, group) => {
+        if (!student) return '';
+
         const studentCourseLabel = getCourseLabel(student?.course);
         if (studentCourseLabel) return studentCourseLabel;
 

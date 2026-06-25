@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Search, RefreshCw, ExternalLink, Clock, AlertCircle, CheckCircle, UserPlus, XCircle, BarChart3, Wallet, Users, CalendarDays, Building2, TrendingUp } from 'lucide-react';
 import { toast } from 'react-toastify';
+import * as XLSX from 'xlsx';
 import Swal from 'sweetalert2';
 
 const AdminHome = () => {
@@ -134,6 +135,51 @@ const AdminHome = () => {
 
     const formatAmount = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
     const formatDate = (date) => date ? new Date(date).toLocaleDateString('en-GB') : '-';
+
+  // Export current exam pending students to Excel
+  const exportToExcel = async () => {
+    // Build parameters from current filters
+    const params = { page: 1, pageSize: 10000, ...examFilters };
+    if (examFilters.courseId) params.courseId = examFilters.courseId;
+    if (examFilters.branchId) params.branchId = examFilters.branchId;
+    if (examFilters.minPendingDays) params.minPendingDays = examFilters.minPendingDays;
+
+    try {
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/students/exam-pending`, {
+        params,
+        withCredentials: true,
+      });
+      const allStudents = data.students || [];
+      if (allStudents.length === 0) {
+        toast.info('No exam pending data to export');
+        return;
+      }
+      const exportData = allStudents.map((student, idx) => {
+        const daysDiff = Math.ceil((new Date(student.courseEndDate) - new Date()) / (1000 * 60 * 60 * 24));
+        const pendingLabel = daysDiff < 0 ? `${daysDiff} Days` : `${daysDiff} Days Remaining`;
+        return {
+          'Sr No.': idx + 1,
+          'Admission Date': student.admissionDate ? new Date(student.admissionDate).toLocaleDateString('en-GB') : '-',
+          'Reg Number': student.regNo || '-',
+          'Student Name': `${student.firstName || ''} ${student.middleName ? student.middleName + ' ' : ''}${student.lastName || ''}`.trim(),
+          'Course': student.course?.name || '-',
+          'Contact Student': student.mobileStudent || '-',
+          'Contact Parent': student.mobileParent || '-',
+          'Contact Home': student.contactHome || '-',
+          'Course End Date': student.courseEndDate ? new Date(student.courseEndDate).toLocaleDateString('en-GB') : '-',
+          'Pending Days': pendingLabel,
+          'Status': student.isActive ? 'Active' : 'Inactive',
+          'Last Cancel Reason': student.cancellationReason || '-',
+        };
+      });
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'ExamPending');
+      XLSX.writeFile(wb, 'exam_pending_full.xlsx');
+    } catch (error) {
+      toast.error('Failed to export exam pending data');
+    }
+  };
 
     const handleTakeExam = (student) => {
         setConfirmModal({ show: true, student, bulk: false });
@@ -732,6 +778,9 @@ const AdminHome = () => {
                                 <button onClick={handleResetExamFilter} className="bg-gray-200 text-gray-700 p-2 rounded hover:bg-gray-300 transition-colors" title="Reset Filters">
                                     <RefreshCw size={18} />
                                 </button>
+                                <button onClick={exportToExcel} className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700 flex items-center gap-1 shadow-sm font-bold" title="Export to Excel">
+                                    Export Excel
+                                </button>
                                 <button onClick={handleExamFilter} className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-blue-700 flex items-center gap-1 shadow-sm font-bold">
                                     <Search size={16} /> Filter
                                 </button>
@@ -756,7 +805,8 @@ const AdminHome = () => {
                                     <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Reg Number</th>
                                     <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Student Name</th>
                                     <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Course</th>
-                                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Contact</th>
+                                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Contact (H/S/P)</th>
+                                    <th className="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase">Course End Date</th>
                                     <th className="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase">Pending Days</th>
                                     <th className="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase">Status</th>
                                     <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Last Cancel Reason</th>
@@ -764,7 +814,7 @@ const AdminHome = () => {
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {isExamLoading ? (
-                                    <tr><td colSpan="9" className="text-center py-10"><RefreshCw className="animate-spin inline-block mr-2" /> Loading students...</td></tr>
+                                    <tr><td colSpan="11" className="text-center py-10"><RefreshCw className="animate-spin inline-block mr-2" /> Loading students...</td></tr>
                                 ) : examPendingStudents.length > 0 ? examPendingStudents.map((student, index) => {
                                     const daysDiff = Math.ceil((new Date(student.courseEndDate) - new Date()) / (1000 * 60 * 60 * 24));
                                     const isOverdue = daysDiff < 0;
@@ -786,11 +836,32 @@ const AdminHome = () => {
                                                 {student.admissionDate ? new Date(student.admissionDate).toLocaleDateString('en-GB') : '-'}
                                             </td>
                                             <td className="px-6 py-4 text-sm font-mono font-bold text-gray-800">{student.regNo || '-'}</td>
-                                            <td className="px-6 py-4 text-sm font-semibold text-blue-900">{student.firstName} {student.lastName}</td>
+                                            <td className="px-6 py-4 text-sm font-semibold text-blue-900">
+                                                {student.firstName} {student.middleName ? student.middleName + ' ' : ''}{student.lastName}
+                                            </td>
                                             <td className="px-6 py-4 text-sm text-gray-600">{student.course?.name}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-600">{student.mobileStudent}</td>
+                                            <td className="p-0 border align-top">
+                                                <div className="flex border-b border-gray-200">
+                                                    <div className="w-5 border-r border-gray-200 p-0.5 font-bold text-gray-500 bg-gray-50 flex items-center justify-center text-[10px]">H</div>
+                                                    <div className="p-0.5 flex-1 text-gray-700 text-left px-1.5 text-xs font-medium">
+                                                        {student.contactHome || '-'}
+                                                    </div>
+                                                </div>
+                                                <div className="flex border-b border-gray-200">
+                                                    <div className="w-5 border-r border-gray-200 p-0.5 font-bold text-gray-500 bg-gray-50 flex items-center justify-center text-[10px]">S</div>
+                                                    <div className="p-0.5 flex-1 text-gray-700 text-left px-1.5 text-xs font-medium">
+                                                        {student.mobileStudent || '-'}
+                                                    </div>
+                                                </div>
+                                                <div className="flex">
+                                                    <div className="w-5 border-r border-gray-200 p-0.5 font-bold text-gray-500 bg-gray-50 flex items-center justify-center text-[10px]">P</div>
+                                                    <div className="p-0.5 flex-1 text-gray-700 text-left px-1.5 text-xs font-medium">
+                                                        {student.mobileParent || '-'}
+                                                    </div>
+                                                </div>
+                                            </td>
                                             <td className="px-6 py-4 text-center text-sm font-medium">
-                                                {new Date(student.courseEndDate).toLocaleDateString('en-GB')}
+                                                {student.courseEndDate ? new Date(student.courseEndDate).toLocaleDateString('en-GB') : '-'}
                                             </td>
                                             <td className="px-6 py-4 text-center">
                                                 <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${isOverdue ? 'bg-red-100 text-red-800 border border-red-200' : isVeryClose ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'
@@ -799,9 +870,16 @@ const AdminHome = () => {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-center">
+                                                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                                                    student.isActive ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'
+                                                }`}>
+                                                    {student.isActive ? 'Active' : 'Inactive'}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
                                                 {student.cancellationReason ? (
                                                     <button 
-                                                        onClick={() => setReasonModal({ show: true, reason: student.cancellationReason, studentName: `${student.firstName} ${student.lastName}` })}
+                                                        onClick={() => setReasonModal({ show: true, reason: student.cancellationReason, studentName: `${student.firstName} ${student.middleName ? student.middleName + ' ' : ''}${student.lastName}` })}
                                                         className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1 rounded-full text-[10px] font-bold border border-red-200 transition-all flex items-center gap-1 mx-auto"
                                                     >
                                                         <AlertCircle size={10} /> View Reason
@@ -813,7 +891,7 @@ const AdminHome = () => {
                                         </tr>
                                     );
                                 }) : (
-                                    <tr><td colSpan="9" className="text-center py-10 text-gray-500">No students matching exam pending criteria.</td></tr>
+                                    <tr><td colSpan="11" className="text-center py-10 text-gray-500">No students matching exam pending criteria.</td></tr>
                                 )}
                             </tbody>
                         </table>

@@ -297,17 +297,22 @@ const StudentDetailView = ({
     if (!student || !selectedSubject) return;
     const result = await Swal.fire({
       title: 'Stop/Reset Chapter?',
-      text: `Reset "${ch.name || ch}" back to Not Started? Logs will be preserved.`,
+      text: `Reset "${ch.name || ch}" back? Logs will be preserved.`,
       icon: 'warning',
       input: 'text',
-      inputLabel: 'Reason for stopping (optional)',
-      inputPlaceholder: 'e.g. Teacher on leave, need to revisit...',
+      inputLabel: 'Reason for stopping',
+      inputPlaceholder: 'e.g. Need to revisit this chapter...',
       showCancelButton: true,
       confirmButtonColor: '#dc2626',
       cancelButtonColor: '#6b7280',
       confirmButtonText: 'Yes, Reset',
       cancelButtonText: 'Cancel',
       reverseButtons: true,
+      inputValidator: (value) => {
+        if (!value || !value.trim()) {
+          return 'Please enter a reason for stopping.';
+        }
+      },
       customClass: { container: 'z-[9999]' },
     });
     if (!result.isConfirmed) return;
@@ -327,7 +332,7 @@ const StudentDetailView = ({
         },
         { withCredentials: true }
       );
-      toast.success(`"${ch.name || ch}" reset to Not Started.`);
+      toast.success(`"${ch.name || ch}" reset. You can restart it now.`);
       fetchChapterStatuses();
     } catch (e) {
       toast.error(e.response?.data?.message || 'Failed to stop chapter');
@@ -591,20 +596,20 @@ const StudentDetailView = ({
                       : isCompleted
                       ? 'border-emerald-200 bg-emerald-50/20'
                       : isRunning
-                      ? 'border-indigo-200 bg-indigo-50/10'
+                      ? 'border-emerald-200 bg-emerald-50/10'
                       : 'border-slate-200 bg-white'
                   }`}
                 >
                   {/* Chapter Header */}
                   <div className={`px-4 py-3 flex items-center justify-between gap-3 ${
-                    chData.isLocked ? 'bg-slate-100/50' : isCompleted ? 'bg-emerald-50/50' : isRunning ? 'bg-indigo-50/30' : 'bg-slate-50/50'
+                    chData.isLocked ? 'bg-slate-100/50' : isCompleted ? 'bg-emerald-50/50' : isRunning ? 'bg-emerald-50/40' : 'bg-slate-50/50'
                   }`}>
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
                         isCompleted
                           ? 'bg-emerald-100 text-emerald-700'
                           : isRunning
-                          ? 'bg-indigo-100 text-indigo-700'
+                          ? 'bg-emerald-100 text-emerald-700'
                           : 'bg-slate-100 text-slate-500'
                       }`}>
                                                 {chData.isLocked ? <Lock size={18} /> : isCompleted ? <Trophy size={18} /> : isRunning ? <Play size={18} /> : <BookMarked size={18} />}
@@ -627,8 +632,12 @@ const StudentDetailView = ({
                               <Clock size={10} /> Awaiting Approval
                             </span>
                           ) : isRunning ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-extrabold text-indigo-700">
-                              <Play size={10} /> In Progress
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">
+                              <Play size={10} /> Running
+                            </span>
+                          ) : chData.startedBy || (chData.activity && chData.activity.length > 0) ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold text-amber-700">
+                              <Clock size={10} /> Coming Soon
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-500">

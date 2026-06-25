@@ -475,7 +475,7 @@ const getChapterStatus = asyncHandler(async (req, res) => {
     // Track latest chapter status
     if (!chapterStatusMap[cid] || log.chapterStatus === 'Completed') {
       chapterStatusMap[cid] = {
-        status: log.chapterStatus || 'Running',
+        status: log.chapterStatus || null,
         startedAt: chapterStatusMap[cid]?.startedAt || log.sessionDate,
         completedAt: log.chapterStatus === 'Completed' ? log.sessionDate : null,
         startedBy: chapterStatusMap[cid]?.startedBy || log.loggedByName,
@@ -485,7 +485,7 @@ const getChapterStatus = asyncHandler(async (req, res) => {
 
     if (!chapterStatusMap[cid]) {
       chapterStatusMap[cid] = {
-        status: 'Running',
+        status: null,
         startedAt: log.sessionDate,
         completedAt: null,
         startedBy: log.loggedByName,
@@ -621,10 +621,10 @@ const stopChapter = asyncHandler(async (req, res) => {
       : '') ||
     'System';
 
-  // Reset all logs for this chapter - remove chapterStatus
+  // Reset all logs for this chapter - clear chapterStatus so it can be started again
   await SyllabusLog.updateMany(
     { studentId, subjectId, chapterId, isDeleted: false },
-    { chapterStatus: 'Running' }
+    { $unset: { chapterStatus: '' } }
   );
 
   // Create a log entry for the stop action
@@ -639,7 +639,6 @@ const stopChapter = asyncHandler(async (req, res) => {
     chapterName: req.body.chapterName || '',
     projects: [],
     notes: reason ? `Chapter stopped/reset: ${reason}` : 'Chapter stopped/reset',
-    chapterStatus: 'Running',
     loggedBy: req.user?.employeeId || req.user?._id || null,
     loggedByName,
   });

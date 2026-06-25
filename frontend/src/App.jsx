@@ -828,6 +828,16 @@ function App() {
                 }
               />
               <Route
+                path="/utility/syllabus-management/:branchId/:batchId/:courseId/:subjectId/students/:studentId"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <SyllabusManagement />
+                    </Suspense>
+                  </PrivateRoute>
+                }
+              />
+              <Route
                 path="/utility/syllabus-management/:branchId/:batchId/:courseId/:subjectId/edit"
                 element={
                   <PrivateRoute>
