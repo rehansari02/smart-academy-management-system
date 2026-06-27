@@ -44,8 +44,9 @@ const StudentDetailView = ({
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [projectDate, setProjectDate] = useState({});
-  const [activityLog, setActivityLog] = useState([]);
-  const [showActivity, setShowActivity] = useState(false);  const [changeRequests, setChangeRequests] = useState([]);
+  const [changeRequests, setChangeRequests] = useState([]);
+  const activityLog = [];
+  const showActivity = false;
   const [showChangeRequests, setShowChangeRequests] = useState(false);
   const [finalCompleteReason, setFinalCompleteReason] = useState('');
   const [showFinalCompleteModal, setShowFinalCompleteModal] = useState(false);
@@ -112,19 +113,6 @@ const StudentDetailView = ({
         { withCredentials: true }
       );
       setChapterStatuses(data.chapterStatuses || []);
-
-      // Also fetch activity log for super admin
-      if (isSuperAdmin) {
-        try {
-          const actRes = await axios.get(
-            `${import.meta.env.VITE_API_URL}/syllabus-logs/activity?subjectId=${selectedSubject._id}&days=30`,
-            { withCredentials: true }
-          );
-          setActivityLog(actRes.data.activities || []);
-        } catch (e) {
-          // silent
-        }
-      }
     } catch (e) {
       console.error('Failed to load chapter statuses', e);
       toast.error('Failed to load chapter data');
@@ -292,20 +280,20 @@ const StudentDetailView = ({
   };
 
 
-  // Stop/Reset a running chapter
+  // Stop a running chapter
   const handleStopChapter = async (ch, index) => {
     if (!student || !selectedSubject) return;
     const result = await Swal.fire({
-      title: 'Stop/Reset Chapter?',
-      text: `Reset "${ch.name || ch}" back? Logs will be preserved.`,
+      title: 'Stop Chapter?',
+      text: `Stop "${ch.name || ch}" for now? The start date and work history will stay visible.`,
       icon: 'warning',
       input: 'text',
       inputLabel: 'Reason for stopping',
-      inputPlaceholder: 'e.g. Need to revisit this chapter...',
+      inputPlaceholder: 'e.g. Teacher on leave, need to pause...',
       showCancelButton: true,
       confirmButtonColor: '#dc2626',
       cancelButtonColor: '#6b7280',
-      confirmButtonText: 'Yes, Reset',
+      confirmButtonText: 'Yes, Stop',
       cancelButtonText: 'Cancel',
       reverseButtons: true,
       inputValidator: (value) => {
@@ -332,10 +320,56 @@ const StudentDetailView = ({
         },
         { withCredentials: true }
       );
-      toast.success(`"${ch.name || ch}" reset. You can restart it now.`);
+      toast.success(`"${ch.name || ch}" stopped.`);
       fetchChapterStatuses();
     } catch (e) {
       toast.error(e.response?.data?.message || 'Failed to stop chapter');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleResetChapter = async (ch, index) => {
+    if (!student || !selectedSubject) return;
+    const result = await Swal.fire({
+      title: 'Reset Chapter?',
+      text: `Reset "${ch.name || ch}" back to not started? Progress entries for this chapter will be cleared.`,
+      icon: 'warning',
+      input: 'textarea',
+      inputLabel: 'Reason for reset',
+      inputPlaceholder: 'Why do you need to restart this chapter?',
+      showCancelButton: true,
+      confirmButtonColor: '#d97706',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, Reset',
+      cancelButtonText: 'Cancel',
+      reverseButtons: true,
+      inputValidator: (value) => {
+        if (!value || !value.trim()) return 'Please enter a reason for reset.';
+      },
+      customClass: { container: 'z-[9999]' },
+    });
+    if (!result.isConfirmed) return;
+    setActionLoading(`reset_${index}`);
+    try {
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/syllabus-logs/chapter/reset`,
+        {
+          studentId,
+          subjectId: selectedSubject._id,
+          batchId,
+          courseId,
+          branchId,
+          chapterId: ch._id,
+          chapterName: ch.name || ch,
+          reason: result.value || '',
+        },
+        { withCredentials: true }
+      );
+      toast.success(`"${ch.name || ch}" reset to not started.`);
+      fetchChapterStatuses();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to reset chapter');
     } finally {
       setActionLoading(null);
     }
@@ -410,7 +444,7 @@ const StudentDetailView = ({
         },
         { withCredentials: true }
       );
-      toast.success('Final completion request sent to Super Admin.');
+      toast.success('Chapter completed and locked.');
       fetchChapterStatuses();
     } catch (e) {
       toast.error(e.response?.data?.message || 'Failed to submit final completion');
@@ -425,7 +459,7 @@ const StudentDetailView = ({
   const fetchChangeRequests = async () => {
     try {
       const { data } = await axios.get(
-        `${import.meta.env.VITE_API_URL}/syllabus-logs/change-requests?status=pending`,
+        `${import.meta.env.VITE_API_URL}/syllabus-logs/change-requests`,
         { withCredentials: true }
       );
       setChangeRequests(data.requests || []);
@@ -476,6 +510,17 @@ const StudentDetailView = ({
   const remaining = student
     ? getDaysRemainingText(student, holidays, branchId)
     : { text: '-', colorClass: 'bg-slate-100 text-slate-500' };
+  const getActivityLabel = (text = '') => {
+    const value = String(text || '').toLowerCase();
+    if (value.includes('chapter stopped')) return 'Stop';
+    if (value.includes('chapter reset')) return 'Reset';
+    if (value.includes('all theory completed')) return 'Theory Complete';
+    if (value.includes('final chapter completed')) return 'Lock Chapter';
+    if (value.includes('chapter restarted')) return 'Restart';
+    if (value.includes('chapter started') || value.includes('chapter session started')) return 'Start Chapter';
+    if (value.includes('projects completed')) return 'Projects Done';
+    return text || 'Activity';
+  };
 
   const isLoading = loading;
 
@@ -520,15 +565,6 @@ const StudentDetailView = ({
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
               Refresh
             </button>
-            {isSuperAdmin && activityLog.length > 0 && (
-              <button
-                onClick={() => setShowActivity(!showActivity)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/25 transition"
-              >
-                <History size={14} />
-                {showActivity ? 'Hide Activity' : 'Activity'}
-              </button>
-            )}
             <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-bold text-white">
               {selectedSubject?.name || ''}
             </span>
@@ -581,10 +617,19 @@ const StudentDetailView = ({
               const status = chData.status;
               const isRunning = status === 'Running';
               const isCompleted = status === 'Completed';
+              const isStopped = status === 'Stopped';
               const notStarted = !status;
               const projects = chData.projects || [];
+              const chapterActivity = chData.activity || [];
+              const chapterRequests = changeRequests.filter(r => String(r.chapterId) === String(ch._id));
               const completedCount = projects.filter(p => p.completed).length;
               const totalCount = projects.length;
+              const canEditChapter = !chData.isLocked && (isRunning || isCompleted);
+              const startMoment = chData.startedAt ? moment(chData.startedAt) : null;
+              const completeMoment = chData.completedAt ? moment(chData.completedAt) : null;
+              const chapterDurationDays = startMoment && completeMoment
+                ? Math.max(1, completeMoment.clone().startOf('day').diff(startMoment.clone().startOf('day'), 'days') + 1)
+                : null;
               const isLoadingAction = actionLoading && (actionLoading.includes(`start_${chIndex}`) || actionLoading.includes(`complete_${chIndex}`) || actionLoading.includes(`allproj_${chIndex}`));
 
               return (
@@ -597,12 +642,14 @@ const StudentDetailView = ({
                       ? 'border-emerald-200 bg-emerald-50/20'
                       : isRunning
                       ? 'border-emerald-200 bg-emerald-50/10'
+                      : isStopped
+                      ? 'border-rose-200 bg-rose-50/10'
                       : 'border-slate-200 bg-white'
                   }`}
                 >
                   {/* Chapter Header */}
                   <div className={`px-4 py-3 flex items-center justify-between gap-3 ${
-                    chData.isLocked ? 'bg-slate-100/50' : isCompleted ? 'bg-emerald-50/50' : isRunning ? 'bg-emerald-50/40' : 'bg-slate-50/50'
+                    chData.isLocked ? 'bg-slate-100/50' : isCompleted ? 'bg-emerald-50/50' : isRunning ? 'bg-emerald-50/40' : isStopped ? 'bg-rose-50/50' : 'bg-slate-50/50'
                   }`}>
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
@@ -610,18 +657,20 @@ const StudentDetailView = ({
                           ? 'bg-emerald-100 text-emerald-700'
                           : isRunning
                           ? 'bg-emerald-100 text-emerald-700'
+                          : isStopped
+                          ? 'bg-rose-100 text-rose-700'
                           : 'bg-slate-100 text-slate-500'
                       }`}>
-                                                {chData.isLocked ? <Lock size={18} /> : isCompleted ? <Trophy size={18} /> : isRunning ? <Play size={18} /> : <BookMarked size={18} />}
+                                                {chData.isLocked ? <Lock size={18} /> : isCompleted ? <Trophy size={18} /> : isRunning ? <Play size={18} /> : isStopped ? <X size={18} /> : <BookMarked size={18} />}
                       </div>
                       <div className="min-w-0">
                         <h4 className="font-extrabold text-slate-900 text-base truncate">
                           {ch.name || `Chapter ${chIndex + 1}`}
                         </h4>
-                        <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex flex-wrap items-center gap-2 mt-0.5">
                           {chData.isLocked ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-extrabold text-slate-600">
-                              <CheckCircle2 size={10} /> Final Approved
+                              <CheckCircle2 size={10} /> Locked
                             </span>
                           ) : isCompleted ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">
@@ -635,6 +684,10 @@ const StudentDetailView = ({
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">
                               <Play size={10} /> Running
                             </span>
+                          ) : isStopped ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-extrabold text-rose-700">
+                              <X size={10} /> Stopped
+                            </span>
                           ) : chData.startedBy || (chData.activity && chData.activity.length > 0) ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold text-amber-700">
                               <Clock size={10} /> Coming Soon
@@ -647,13 +700,29 @@ const StudentDetailView = ({
                           {chData.startedBy && (
                             <span className="text-[10px] font-semibold text-slate-400">
                               Started by {chData.startedBy}
-                              {chData.startedAt && ` ${moment(chData.startedAt).format('DD MMM')}`}
+                              {startMoment && ` ${startMoment.format('DD MMM YYYY')}`}
+                            </span>
+                          )}
+                          {chData.stoppedAt && (
+                            <span className="text-[10px] font-semibold text-rose-600">
+                              Stopped {moment(chData.stoppedAt).format('DD MMM')} by {chData.stoppedBy || 'Teacher'}
+                            </span>
+                          )}
+                          {chData.stopReason && (
+                            <span className="text-[10px] font-semibold text-rose-500">
+                              Reason: {chData.stopReason}
                             </span>
                           )}
                           {chData.completedBy && (
                             <span className="text-[10px] font-semibold text-emerald-600">
                               · Completed by {chData.completedBy}
-                              {chData.completedAt && ` ${moment(chData.completedAt).format('DD MMM')}`}
+                              {completeMoment && ` ${completeMoment.format('DD MMM YYYY')}`}
+                            </span>
+                          )}
+                          {chapterDurationDays && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-extrabold text-indigo-700">
+                              <CalendarDays size={10} />
+                              {chapterDurationDays} {chapterDurationDays === 1 ? 'day' : 'days'}
                             </span>
                           )}
 
@@ -672,9 +741,9 @@ const StudentDetailView = ({
                           ) : (
                             <AlertCircle size={12} />
                           )}
-                          Incomplete Chapter
+                          Request Unlock
                         </button>
-                      ) : notStarted && (
+                      ) : (notStarted || isStopped) && (
                         <button
                           onClick={() => handleStartChapter(ch, chIndex)}
                           disabled={actionLoading !== null}
@@ -685,10 +754,10 @@ const StudentDetailView = ({
                           ) : (
                             <Play size={12} />
                           )}
-                          Start Chapter
+                          {isStopped ? 'Start Again' : 'Start Chapter'}
                         </button>
                       )}
-                      {!chData.isLocked && isRunning && completedCount === totalCount && (completedCount > 0 || totalCount === 0) && (
+                      {!chData.isLocked && isCompleted && completedCount === totalCount && (
                         <button
                           onClick={() => handleOpenFinalComplete(ch, chIndex)}
                           disabled={actionLoading !== null}
@@ -699,7 +768,7 @@ const StudentDetailView = ({
                           ) : (
                             <Trophy size={12} />
                           )}
-                          Final Complete
+                          Chapter All Completed
                         </button>
                       )}
                       {!chData.isLocked && isRunning && (
@@ -726,31 +795,76 @@ const StudentDetailView = ({
                             ) : (
                               <X size={12} />
                             )}
-                            Stop/Reset
+                            Stop
+                          </button>
+                          <button
+                            onClick={() => handleResetChapter(ch, chIndex)}
+                            disabled={actionLoading !== null}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50 transition active:scale-95"
+                          >
+                            {actionLoading === `reset_${chIndex}` ? (
+                              <RefreshCw size={12} className="animate-spin" />
+                            ) : (
+                              <RefreshCw size={12} />
+                            )}
+                            Reset
                           </button>
                         </>
                       )}
                       {/* ⚠️ Safety net: if chapter is Completed but NOT locked, show Stop/Reset so teacher can recover */}
-                      {!chData.isLocked && isCompleted && (
+                      {!chData.isLocked && (isCompleted || isStopped) && (
                         <button
-                          onClick={() => handleStopChapter(ch, chIndex)}
+                          onClick={() => handleResetChapter(ch, chIndex)}
                           disabled={actionLoading !== null}
                           className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50 transition active:scale-95"
                         >
-                          {actionLoading === `stop_${chIndex}` ? (
+                          {actionLoading === `reset_${chIndex}` ? (
                             <RefreshCw size={12} className="animate-spin" />
                           ) : (
-                            <X size={12} />
+                            <RefreshCw size={12} />
                           )}
-                          Reset Chapter (Unlock)
+                          Reset
                         </button>
                       )}
                     </div>
                   </div>
 
+                  <div className="grid gap-4 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+                    <div className="min-w-0">
+                      {(startMoment || completeMoment || chapterDurationDays) && (
+                        <div className="mb-3 grid gap-2 sm:grid-cols-3">
+                          <div className="rounded-lg bg-indigo-50 px-3 py-2">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-indigo-500">Started</p>
+                            <p className="mt-0.5 text-xs font-extrabold text-slate-800">
+                              {startMoment ? startMoment.format('DD MMM YYYY') : 'Not started'}
+                            </p>
+                            {chData.startedBy && (
+                              <p className="text-[10px] font-semibold text-slate-500">by {chData.startedBy}</p>
+                            )}
+                          </div>
+                          <div className="rounded-lg bg-emerald-50 px-3 py-2">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500">Completed</p>
+                            <p className="mt-0.5 text-xs font-extrabold text-slate-800">
+                              {completeMoment ? completeMoment.format('DD MMM YYYY') : 'Pending'}
+                            </p>
+                            {chData.completedBy && (
+                              <p className="text-[10px] font-semibold text-slate-500">by {chData.completedBy}</p>
+                            )}
+                          </div>
+                          <div className="rounded-lg bg-amber-50 px-3 py-2">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-amber-500">Time Taken</p>
+                            <p className="mt-0.5 text-xs font-extrabold text-slate-800">
+                              {chapterDurationDays
+                                ? `${chapterDurationDays} ${chapterDurationDays === 1 ? 'day' : 'days'}`
+                                : 'Pending'}
+                            </p>
+                            <p className="text-[10px] font-semibold text-slate-500">chapter completion</p>
+                          </div>
+                        </div>
+                      )}
                   {/* Projects Section */}
                   {totalCount > 0 && (
-                    <div className="px-4 py-3">
+                    <div>
                       <div className="flex items-center justify-between mb-2.5">
                         <div className="flex items-center gap-2">
                           <FolderCheck size={14} className="text-amber-600" />
@@ -758,7 +872,7 @@ const StudentDetailView = ({
                             Projects ({completedCount}/{totalCount})
                           </span>
                         </div>
-                        {isRunning && completedCount < totalCount && (
+                        {canEditChapter && completedCount < totalCount && (
                           <button
                             onClick={() => handleCompleteAllProjects(ch, chData, chIndex)}
                             disabled={actionLoading !== null}
@@ -783,7 +897,7 @@ const StudentDetailView = ({
                               <th className="px-3 py-2 text-center w-28">Status</th>
                               <th className="px-3 py-2 text-center w-36">Completed Date</th>
                               <th className="px-3 py-2 text-center w-28">Completed By</th>
-                              {isRunning && <th className="px-3 py-2 text-center w-40">Action</th>}
+                              {canEditChapter && <th className="px-3 py-2 text-center w-40">Action</th>}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -816,7 +930,7 @@ const StudentDetailView = ({
                                   <td className="px-3 py-2.5 text-center text-slate-500 font-semibold">
                                     {proj.completedBy || (proj.completed ? 'Teacher' : '—')}
                                   </td>
-                                  {isRunning && (
+                                  {canEditChapter && (
                                     <td className="px-3 py-2.5 text-center">
                                       {proj.completed ? (
                                         <div className="flex items-center justify-center gap-1">
@@ -866,7 +980,7 @@ const StudentDetailView = ({
                             })}
                             {projects.length === 0 && (
                               <tr>
-                                <td colSpan={isRunning ? 6 : 5} className="py-4 text-center text-slate-400 font-semibold text-xs">
+                                <td colSpan={canEditChapter ? 6 : 5} className="py-4 text-center text-slate-400 font-semibold text-xs">
                                   No projects for this chapter.
                                 </td>
                               </tr>
@@ -877,7 +991,118 @@ const StudentDetailView = ({
                     </div>
                   )}
 
+                    </div>
+
+                    {isSuperAdmin && (
+                      <aside className="rounded-lg border border-slate-200 bg-white/80 p-3 lg:self-start">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <History size={13} className="text-indigo-500" />
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                              Chapter Activity
+                            </span>
+                          </div>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                            {chapterActivity.length + (isCompleted && chData.completedBy ? 1 : 0)}
+                          </span>
+                        </div>
+
+                        <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
+                          {isCompleted && chData.completedBy && (
+                            <div className="rounded-md bg-emerald-50 px-2.5 py-2 text-[11px] leading-snug text-emerald-800">
+                              <div className="flex items-center gap-1 font-extrabold">
+                                <CheckCircle2 size={11} />
+                                Theory Completed
+                              </div>
+                              <div className="mt-0.5 font-semibold text-emerald-700">
+                                {moment(chData.completedAt).format('DD MMM YYYY')} by {chData.completedBy}
+                              </div>
+                            </div>
+                          )}
+
+                          {chapterActivity.map((act, aIdx) => (
+                            <div key={aIdx} className="rounded-md bg-slate-50 px-2.5 py-2 text-[11px] leading-snug text-slate-600">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-indigo-700">
+                                  {getActivityLabel(act.action)}
+                                </span>
+                                <span className="font-extrabold text-slate-700">{moment(act.date).format('DD MMM YYYY')}</span>
+                              </div>
+                              <div className="mt-0.5 text-[10px] font-semibold text-slate-500">
+                                by {act.by || 'Teacher'}
+                              </div>
+                              {act.projects?.length > 0 && (
+                                <div className="mt-1 font-semibold text-emerald-700">
+                                  {act.projects.map(p => p.projectName || p.projectId).join(', ')}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+
+                          {chapterActivity.length === 0 && !(isCompleted && chData.completedBy) && (
+                            <div className="rounded-md border border-dashed border-slate-200 px-2.5 py-3 text-center text-[11px] font-semibold text-slate-400">
+                              No activity yet
+                            </div>
+                          )}
+
+                          {chapterRequests.length > 0 && (
+                            <div className="mt-2 space-y-2 border-t border-slate-100 pt-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                  Requests / Approval
+                                </span>
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                                  {chapterRequests.length}
+                                </span>
+                              </div>
+                              {chapterRequests.map((req) => (
+                                <div key={req._id} className="rounded-md bg-violet-50 px-2.5 py-2 text-[11px] leading-snug text-slate-600">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-extrabold text-slate-700">
+                                      {req.type === 'modification' ? 'Unlock Request' : 'Final Complete'}
+                                    </span>
+                                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold ${
+                                      req.status === 'approved'
+                                        ? 'bg-emerald-100 text-emerald-700'
+                                        : req.status === 'rejected'
+                                        ? 'bg-rose-100 text-rose-700'
+                                        : 'bg-amber-100 text-amber-700'
+                                    }`}>
+                                      {req.status || 'pending'}
+                                    </span>
+                                  </div>
+                                  <div className="mt-0.5 text-[10px] text-slate-500">
+                                    by {req.requestedByName || 'Teacher'} {req.createdAt ? `on ${moment(req.createdAt).format('DD MMM YYYY')}` : ''}
+                                  </div>
+                                  {req.reason && (
+                                    <div className="mt-1 rounded bg-white/80 px-2 py-1 text-[10px] italic text-slate-600">
+                                      Teacher reason: {req.reason}
+                                    </div>
+                                  )}
+                                  {(req.reviewedBy || req.reviewNotes) && (
+                                    <div className="mt-1 text-[10px] text-slate-500">
+                                      {req.reviewedBy && <span className="font-semibold">Reviewed by {req.reviewedBy}</span>}
+                                      {req.reviewNotes && (
+                                        <span className="block italic text-slate-500">Note: {req.reviewNotes}</span>
+                                      )}
+                                    </div>
+                                  )}
+                                  {req.status && req.status !== 'pending' && (
+                                    <div className="mt-1 inline-flex items-center rounded-full bg-white px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-slate-600">
+                                      {req.status}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </aside>
+                    )}
+                  </div>
+
                   {/* Chapter Activity */}
+                  {false && isSuperAdmin && (
                   <div className="px-4 pb-3">
                     {(chData.activity.length > 0 || (isCompleted && chData.completedBy)) && (
                       <div className="flex items-center gap-1.5 mb-1.5">
@@ -904,6 +1129,7 @@ const StudentDetailView = ({
 
                     </div>
                   </div>
+                  )}
                 </div>
               );
             })}
@@ -960,9 +1186,9 @@ const StudentDetailView = ({
               <div className="bg-amber-100 p-3 rounded-full mb-3">
                 <AlertCircle size={28} className="text-amber-600" />
               </div>
-              <h3 className="text-lg font-black text-slate-900">Request Chapter Modification</h3>
+              <h3 className="text-lg font-black text-slate-900">Request Chapter Unlock</h3>
               <p className="text-sm text-slate-500 mt-1">
-                Request to make <span className="font-bold text-slate-800">{incompleteChapter?.name || ''}</span> incomplete so you can make changes.
+                Request to unlock <span className="font-bold text-slate-800">{incompleteChapter?.name || ''}</span> so you can make changes.
                 Super Admin must approve this request.
               </p>
             </div>
@@ -1005,11 +1231,11 @@ const StudentDetailView = ({
               <h3 className="text-lg font-black text-slate-900">Final Chapter Complete</h3>
               <p className="text-sm text-slate-500 mt-1">
                 All theory and projects for <span className="font-bold text-slate-800">{finalCompleteChapter?.name || ''}</span> are done.
-                This will send a request to Super Admin for approval.
+                This will lock the chapter. Future changes will need Super Admin unlock approval.
               </p>
             </div>
             <div className="mb-4">
-              <label className="block text-xs font-bold text-slate-600 mb-1.5">Reason for final completion *</label>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5">Completion note *</label>
               <textarea
                 value={finalCompleteReason}
                 onChange={e => setFinalCompleteReason(e.target.value)}
@@ -1029,7 +1255,7 @@ const StudentDetailView = ({
                 onClick={handleSubmitFinalComplete}
                 className="flex-1 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-700 transition active:scale-95"
               >
-                Send for Approval
+                Lock Chapter
               </button>
             </div>
           </div>
@@ -1039,7 +1265,7 @@ const StudentDetailView = ({
       {/* Super Admin: Pending Change Requests Panel */}
       {/* Super Admin Pending Approvals (final_complete) */}
       {isSuperAdmin && (() => {
-        const finalApprov = changeRequests.filter(r => r.type === 'final_complete');
+        const finalApprov = [];
         const modRequests = changeRequests.filter(r => r.type === 'modification');
         return (<>
         {finalApprov.length > 0 && (

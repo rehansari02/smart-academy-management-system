@@ -174,21 +174,19 @@ export const MENU_CONFIG = [
     path: '/utility',
     type: 'dropdown',
     isCustom: true,
-    subItems: [
-      { title: 'Branch', path: '/master/branch', restricted: true },
-      { title: 'Location', path: '/utility/location' },
-      {
-        title: 'External Reference',
-        type: 'nested',
-        subItems: [
-          { title: 'Reference List', path: '/utility/external-reference', permissionPage: 'External Reference' }
-        ]
-      },
-      { title: 'Manage Terms', path: '/master/manage-terms' },
-      { title: 'Cloudinary Management', path: '/utility/cloudinary-manager' },
-      { title: 'SMS Station', path: '/utility/sms-station' },
-      // { title: 'Downloads', path: '/utility/downloads' },
-    ]
+   subItems: [
+  { title: 'Branch', path: '/master/branch', restricted: true },
+  { title: 'Location', path: '/utility/location' },
+  {
+    title: 'External Reference',
+    path: '/utility/external-reference',
+    permissionPage: 'External Reference',
+  },
+  { title: 'Manage Terms', path: '/master/manage-terms' },
+  { title: 'Cloudinary Management', path: '/utility/cloudinary-manager' },
+  { title: 'SMS Station', path: '/utility/sms-station' },
+  // { title: 'Downloads', path: '/utility/downloads' },
+]
   }
 ];
 

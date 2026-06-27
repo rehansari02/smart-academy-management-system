@@ -13,6 +13,7 @@ const {
   getChapterStatus,
   getActivityLog,
   stopChapter,
+  resetChapter,
   undoProject,
   undoCompleteChapter,
   finalCompleteChapter,
@@ -54,6 +55,7 @@ router.delete('/:id', protect, deleteSyllabusLog);
 
 // POST   /api/syllabus-logs/chapter/stop  → stop/reset a running chapter
 router.post('/chapter/stop', protect, stopChapter);
+router.post('/chapter/reset', protect, resetChapter);
 
 // POST   /api/syllabus-logs/project/undo  → undo a project completion
 router.post('/project/undo', protect, undoProject);

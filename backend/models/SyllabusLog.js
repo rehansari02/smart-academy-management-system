@@ -102,8 +102,8 @@ const syllabusLogSchema = new mongoose.Schema(
 
     chapterStatus: {
       type: String,
-      enum: ['Running', 'Completed'],
-      default: 'Running',
+      enum: ['Running', 'Completed', 'Stopped'],
+      default: undefined,
     },
 
     // ── Soft-delete ───────────────────────────────────────────────

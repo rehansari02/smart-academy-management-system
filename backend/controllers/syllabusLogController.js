@@ -1,11 +1,11 @@
-const asyncHandler = require('express-async-handler');
+﻿const asyncHandler = require('express-async-handler');
 const SyllabusLog = require('../models/SyllabusLog');
 const Subject = require('../models/Subject');
 const ChapterChangeRequest = require('../models/ChapterChangeRequest');
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Helper: count working days between two dates (exclude Sundays)
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const countWorkingDays = (startDate, endDate) => {
   if (!startDate || !endDate) return 0;
   let count = 0;
@@ -20,11 +20,142 @@ const countWorkingDays = (startDate, endDate) => {
   return count;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+const getLoggedBy = (req) => req.user?.employeeId || req.user?._id || null;
+
+const getLoggedByName = (req, fallback = 'System') =>
+  req.user?.name ||
+  req.user?.fullName ||
+  (req.user?.firstName
+    ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
+    : '') ||
+  fallback;
+
+const buildStudentSubjectSummary = (logs = [], subject = {}) => {
+  const totalProjects = (subject?.projects || []).length;
+  const totalChapters = (subject?.chapters || []).length;
+  const targetDays = Number(subject?.daysToComplete || 0);
+
+  const chapterStateMap = {};
+  const projectIdSet = new Set();
+  let latestLog = null;
+
+  logs.forEach(log => {
+    if (!latestLog || new Date(log.sessionDate).getTime() > new Date(latestLog.sessionDate).getTime()) {
+      latestLog = log;
+    }
+
+    const cid = log.chapterId ? log.chapterId.toString() : null;
+    if (cid) {
+      if (!chapterStateMap[cid]) {
+        chapterStateMap[cid] = {
+          status: null,
+          startedAt: null,
+          stoppedAt: null,
+          completedAt: null,
+          startedBy: null,
+          stoppedBy: null,
+          completedBy: null,
+          stopReason: '',
+          firstActivityAt: null,
+          lastActivityAt: null,
+          chapterName: log.chapterName || '',
+        };
+      }
+
+      const state = chapterStateMap[cid];
+      const currentTime = new Date(log.sessionDate).getTime();
+      const firstTime = state.firstActivityAt ? new Date(state.firstActivityAt).getTime() : null;
+      const lastTime = state.lastActivityAt ? new Date(state.lastActivityAt).getTime() : null;
+
+      if (!state.firstActivityAt || currentTime < firstTime) {
+        state.firstActivityAt = log.sessionDate;
+      }
+      if (!state.lastActivityAt || currentTime > lastTime) {
+        state.lastActivityAt = log.sessionDate;
+      }
+      if (log.chapterName) {
+        state.chapterName = log.chapterName;
+      }
+
+      if (log.chapterStatus === 'Running') {
+        state.status = 'Running';
+        if (/chapter (started|restarted|session started)/i.test(log.notes || '') || !state.startedAt) {
+          state.startedAt = log.sessionDate;
+          state.startedBy = log.loggedByName;
+        }
+        state.stoppedAt = null;
+        state.stoppedBy = null;
+        state.stopReason = '';
+      }
+
+      if (log.chapterStatus === 'Stopped') {
+        state.status = 'Stopped';
+        state.stoppedAt = log.sessionDate;
+        state.stoppedBy = log.loggedByName;
+        state.stopReason = (log.notes || '').replace(/^Chapter stopped:\s*/i, '');
+      }
+
+      if (log.chapterStatus === 'Completed') {
+        state.status = 'Completed';
+        state.completedAt = log.sessionDate;
+        state.completedBy = log.loggedByName;
+      }
+    }
+
+    (log.projects || []).forEach(p => {
+      if (p.projectId) {
+        projectIdSet.add(p.projectId.toString());
+      }
+    });
+  });
+
+  const chapterStates = Object.entries(chapterStateMap);
+  const runningChapters = chapterStates
+    .filter(([, state]) => state.status === 'Running')
+    .sort((a, b) => new Date(a[1].lastActivityAt || a[1].startedAt || 0).getTime() - new Date(b[1].lastActivityAt || b[1].startedAt || 0).getTime());
+  const currentChapterState = runningChapters.length > 0 ? runningChapters[runningChapters.length - 1][1] : null;
+
+  const completedChapterStates = chapterStates.filter(([, state]) => state.status === 'Completed');
+  const subjectCompletedAt = totalChapters > 0 && completedChapterStates.length === totalChapters
+    ? completedChapterStates.reduce((latest, [, state]) => {
+        const time = new Date(state.completedAt || state.lastActivityAt || state.firstActivityAt || 0).getTime();
+        return time > latest ? time : latest;
+      }, 0)
+    : null;
+
+  const firstSessionDate = logs[0]?.sessionDate || null;
+  const summaryEndDate = subjectCompletedAt ? new Date(subjectCompletedAt) : new Date();
+  const elapsedDays = firstSessionDate ? countWorkingDays(firstSessionDate, summaryEndDate) : 0;
+
+  return {
+    totalLogs: logs.length,
+    daysToComplete: targetDays,
+    totalChapters,
+    totalProjects,
+    chaptersLogged: completedChapterStates.length,
+    projectsLogged: projectIdSet.size,
+    projectsPending: Math.max(0, totalProjects - projectIdSet.size),
+    firstSessionDate,
+    lastSessionDate: logs[logs.length - 1]?.sessionDate || null,
+    elapsedDays,
+    actualDaysTaken: elapsedDays,
+    subjectCompletedAt,
+    currentChapterName: currentChapterState?.chapterName || null,
+    currentChapterStatus: currentChapterState?.status || null,
+    currentTeacherName: latestLog?.loggedByName || currentChapterState?.startedBy || null,
+    currentTeacherId: latestLog?.loggedBy || null,
+    completedChapterIds: completedChapterStates.map(([chapterId]) => chapterId),
+    completedProjectIds: [...projectIdSet],
+    daysOverTarget: Math.max(elapsedDays - targetDays, 0),
+    daysRemainingToTarget: Math.max(targetDays - elapsedDays, 0),
+  };
+};
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Create a new syllabus log entry
 // @route POST /api/syllabus-logs
 // @access Private
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const createSyllabusLog = asyncHandler(async (req, res) => {
   const {
     studentId,
@@ -46,14 +177,8 @@ const createSyllabusLog = asyncHandler(async (req, res) => {
   }
 
   // Resolve teacher name from the logged-in user (employee or admin)
-  const loggedBy = req.user?.employeeId || req.user?._id || null;
-  const loggedByName =
-    req.user?.name ||
-    req.user?.fullName ||
-    (req.user?.firstName
-      ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
-      : '') ||
-    'System';
+  const loggedBy = getLoggedBy(req);
+  const loggedByName = getLoggedByName(req);
 
   const log = await SyllabusLog.create({
     studentId,
@@ -74,12 +199,12 @@ const createSyllabusLog = asyncHandler(async (req, res) => {
   res.status(201).json(log);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Get all logs for a specific student + subject combination
 //        Includes computed analytics
 // @route GET /api/syllabus-logs/student/:studentId/subject/:subjectId
 // @access Private
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const getLogsForStudentSubject = asyncHandler(async (req, res) => {
   const { studentId, subjectId } = req.params;
 
@@ -89,65 +214,12 @@ const getLogsForStudentSubject = asyncHandler(async (req, res) => {
     isDeleted: false,
   }).sort({ sessionDate: 1, createdAt: 1 });
 
-  // Fetch subject for analytics
   const subject = await Subject.findById(subjectId).lean();
-
-  // ── Compute analytics ──────────────────────────────────────────
-  let analytics = {
-    totalLogs: logs.length,
-    daysToComplete: subject?.daysToComplete || 0,
-    totalChapters: (subject?.chapters || []).length,
-    totalProjects: (subject?.projects || []).length,
-    chaptersLogged: 0,
-    projectsLogged: 0,
-    projectsPending: 0,
-    firstSessionDate: null,
-    lastSessionDate: null,
-    elapsedDays: 0,
-    completedChapterIds: [],
-    completedProjectIds: [],
-  };
-
-  if (logs.length > 0) {
-    analytics.firstSessionDate = logs[0].sessionDate;
-    analytics.lastSessionDate = logs[logs.length - 1].sessionDate;
-    analytics.elapsedDays = countWorkingDays(
-      analytics.firstSessionDate,
-      new Date()
-    );
-
-    // Unique chapter IDs covered
-    const chapterIdSet = new Set();
-    logs.forEach(l => {
-      if (l.chapterId && l.chapterStatus !== 'Running') chapterIdSet.add(l.chapterId.toString());
-    });
-    analytics.completedChapterIds = [...chapterIdSet];
-    analytics.chaptersLogged = chapterIdSet.size;
-
-    // Unique project IDs covered
-    const projectIdSet = new Set();
-    logs.forEach(l => {
-      (l.projects || []).forEach(p => {
-        if (p.projectId) projectIdSet.add(p.projectId.toString());
-      });
-    });
-    analytics.completedProjectIds = [...projectIdSet];
-    analytics.projectsLogged = projectIdSet.size;
-    analytics.projectsPending = Math.max(
-      0,
-      analytics.totalProjects - analytics.projectsLogged
-    );
-  }
+  const analytics = buildStudentSubjectSummary(logs, subject);
 
   res.json({ logs, analytics, subject });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @desc  Get summary logs for ALL students in a batch+course+subject
-//        Used to show per-student progress in the student list table
-// @route GET /api/syllabus-logs/subject/:subjectId/batch/:batchId
-// @access Private
-// ─────────────────────────────────────────────────────────────────────────────
 const getLogsForSubjectBatch = asyncHandler(async (req, res) => {
   const { subjectId, batchId } = req.params;
 
@@ -157,7 +229,6 @@ const getLogsForSubjectBatch = asyncHandler(async (req, res) => {
     isDeleted: false,
   }).sort({ sessionDate: 1 });
 
-  // Group by studentId
   const grouped = {};
   logs.forEach(l => {
     const sid = l.studentId.toString();
@@ -166,49 +237,14 @@ const getLogsForSubjectBatch = asyncHandler(async (req, res) => {
   });
 
   const subject = await Subject.findById(subjectId).lean();
-  const totalProjects = (subject?.projects || []).length;
-  const totalChapters = (subject?.chapters || []).length;
-
-  // Build per-student summary
-  const summaries = Object.entries(grouped).map(([sid, sLogs]) => {
-    const chapterIdSet = new Set();
-    const projectIdSet = new Set();
-    sLogs.forEach(l => {
-      if (l.chapterId && l.chapterStatus !== 'Running') chapterIdSet.add(l.chapterId.toString());
-      (l.projects || []).forEach(p => {
-        if (p.projectId) projectIdSet.add(p.projectId.toString());
-      });
-    });
-
-    const firstSession = sLogs[0].sessionDate;
-    const lastSession = sLogs[sLogs.length - 1].sessionDate;
-    const elapsedDays = countWorkingDays(firstSession, new Date());
-
-    return {
-      studentId: sid,
-      totalLogs: sLogs.length,
-      chaptersLogged: chapterIdSet.size,
-      totalChapters,
-      projectsLogged: projectIdSet.size,
-      projectsPending: Math.max(0, totalProjects - projectIdSet.size),
-      totalProjects,
-      firstSessionDate: firstSession,
-      lastSessionDate: lastSession,
-      elapsedDays,
-      daysToComplete: subject?.daysToComplete || 0,
-      completedChapterIds: [...chapterIdSet],
-      completedProjectIds: [...projectIdSet],
-    };
-  });
+  const summaries = Object.entries(grouped).map(([sid, sLogs]) => ({
+    studentId: sid,
+    ...buildStudentSubjectSummary(sLogs, subject),
+  }));
 
   res.json({ summaries, logs });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @desc  Update a log entry (notes, chapter, projects, sessionDate)
-// @route PUT /api/syllabus-logs/:id
-// @access Private
-// ─────────────────────────────────────────────────────────────────────────────
 const updateSyllabusLog = asyncHandler(async (req, res) => {
   const log = await SyllabusLog.findById(req.params.id);
   if (!log || log.isDeleted) {
@@ -229,11 +265,11 @@ const updateSyllabusLog = asyncHandler(async (req, res) => {
   res.json(updated);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Soft-delete a log entry
 // @route DELETE /api/syllabus-logs/:id
 // @access Private
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const deleteSyllabusLog = asyncHandler(async (req, res) => {
   const log = await SyllabusLog.findById(req.params.id);
   if (!log || log.isDeleted) {
@@ -247,11 +283,11 @@ const deleteSyllabusLog = asyncHandler(async (req, res) => {
   res.json({ message: 'Log deleted successfully.' });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Start a chapter (creates a log marking chapter as started)
 // @route POST /api/syllabus-logs/chapter/start
 // @access Private
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const startChapter = asyncHandler(async (req, res) => {
   const {
     studentId,
@@ -269,16 +305,32 @@ const startChapter = asyncHandler(async (req, res) => {
     throw new Error('studentId, subjectId, batchId, courseId, branchId, and chapterId are required.');
   }
 
-  const loggedBy = req.user?.employeeId || req.user?._id || null;
-  const loggedByName =
-    req.user?.name ||
-    req.user?.fullName ||
-    (req.user?.firstName
-      ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
-      : '') ||
-    'System';
+  const loggedBy = getLoggedBy(req);
+  const loggedByName = getLoggedByName(req);
 
-  // Check if chapter already started
+  const approvedUnlock = await ChapterChangeRequest.findOne({
+    studentId,
+    subjectId,
+    chapterId,
+    type: 'modification',
+    status: 'approved',
+  }).sort({ reviewedAt: -1, updatedAt: -1 });
+
+  const finalLock = await ChapterChangeRequest.findOne({
+    studentId,
+    subjectId,
+    chapterId,
+    type: 'final_complete',
+    status: 'approved',
+    ...(approvedUnlock?.reviewedAt ? { updatedAt: { $gt: approvedUnlock.reviewedAt } } : {}),
+  });
+
+  if (finalLock) {
+    res.status(400);
+    throw new Error('Chapter is locked. Request unlock before making changes.');
+  }
+
+  // Check if chapter already has active logs
   const existing = await SyllabusLog.findOne({
     studentId,
     subjectId,
@@ -298,8 +350,8 @@ const startChapter = asyncHandler(async (req, res) => {
       chapterId,
       chapterName: chapterName || '',
       projects: [],
-      notes: 'Chapter session started',
-      chapterStatus: existing.chapterStatus || 'Running',
+      notes: existing.chapterStatus === 'Stopped' ? 'Chapter restarted' : 'Chapter session started',
+      chapterStatus: 'Running',
       loggedBy,
       loggedByName,
     });
@@ -326,11 +378,11 @@ const startChapter = asyncHandler(async (req, res) => {
   res.status(201).json(log);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Complete a chapter (marks chapter as Completed)
 // @route POST /api/syllabus-logs/chapter/complete
 // @access Private
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const completeChapter = asyncHandler(async (req, res) => {
   const {
     studentId,
@@ -347,14 +399,8 @@ const completeChapter = asyncHandler(async (req, res) => {
     throw new Error('studentId, subjectId, and chapterId are required.');
   }
 
-  const loggedBy = req.user?.employeeId || req.user?._id || null;
-  const loggedByName =
-    req.user?.name ||
-    req.user?.fullName ||
-    (req.user?.firstName
-      ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
-      : '') ||
-    'System';
+  const loggedBy = getLoggedBy(req);
+  const loggedByName = getLoggedByName(req);
 
   // Create a completion log entry
   const log = await SyllabusLog.create({
@@ -387,11 +433,11 @@ const completeChapter = asyncHandler(async (req, res) => {
   res.status(201).json({ message: 'Chapter completed successfully', log });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Complete projects for a chapter on a specific date
 // @route POST /api/syllabus-logs/project/complete
 // @access Private
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const completeProjects = asyncHandler(async (req, res) => {
   const {
     studentId,
@@ -410,14 +456,8 @@ const completeProjects = asyncHandler(async (req, res) => {
     throw new Error('studentId, subjectId, chapterId, and projects are required.');
   }
 
-  const loggedBy = req.user?.employeeId || req.user?._id || null;
-  const loggedByName =
-    req.user?.name ||
-    req.user?.fullName ||
-    (req.user?.firstName
-      ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
-      : '') ||
-    'System';
+  const loggedBy = getLoggedBy(req);
+  const loggedByName = getLoggedByName(req);
 
   const log = await SyllabusLog.create({
     studentId,
@@ -438,11 +478,11 @@ const completeProjects = asyncHandler(async (req, res) => {
   res.status(201).json(log);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Get chapter status for a student+subject
 // @route GET /api/syllabus-logs/student/:studentId/subject/:subjectId/status
 // @access Private
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const getChapterStatus = asyncHandler(async (req, res) => {
   const { studentId, subjectId } = req.params;
 
@@ -450,7 +490,7 @@ const getChapterStatus = asyncHandler(async (req, res) => {
     studentId,
     subjectId,
     isDeleted: false,
-  }).sort({ sessionDate: -1 });
+  }).sort({ sessionDate: 1, createdAt: 1 });
 
   const subject = await Subject.findById(subjectId).lean();
   const chapters = subject?.chapters || [];
@@ -472,25 +512,44 @@ const getChapterStatus = asyncHandler(async (req, res) => {
     const cid = log.chapterId ? log.chapterId.toString() : null;
     if (!cid) return;
 
-    // Track latest chapter status
-    if (!chapterStatusMap[cid] || log.chapterStatus === 'Completed') {
-      chapterStatusMap[cid] = {
-        status: log.chapterStatus || null,
-        startedAt: chapterStatusMap[cid]?.startedAt || log.sessionDate,
-        completedAt: log.chapterStatus === 'Completed' ? log.sessionDate : null,
-        startedBy: chapterStatusMap[cid]?.startedBy || log.loggedByName,
-        completedBy: log.chapterStatus === 'Completed' ? log.loggedByName : null,
-      };
-    }
-
     if (!chapterStatusMap[cid]) {
       chapterStatusMap[cid] = {
         status: null,
-        startedAt: log.sessionDate,
+        startedAt: null,
+        stoppedAt: null,
         completedAt: null,
-        startedBy: log.loggedByName,
+        startedBy: null,
+        stoppedBy: null,
         completedBy: null,
+        stopReason: '',
+        firstActivityAt: null,
       };
+    }
+
+    if (!chapterStatusMap[cid].firstActivityAt) {
+      chapterStatusMap[cid].firstActivityAt = log.sessionDate;
+    }
+
+    if (log.chapterStatus === 'Running' && /chapter (started|restarted|session started)/i.test(log.notes || '')) {
+      chapterStatusMap[cid].status = 'Running';
+      chapterStatusMap[cid].startedAt = log.sessionDate;
+      chapterStatusMap[cid].startedBy = log.loggedByName;
+      chapterStatusMap[cid].stoppedAt = null;
+      chapterStatusMap[cid].stoppedBy = null;
+      chapterStatusMap[cid].stopReason = '';
+    }
+
+    if (log.chapterStatus === 'Stopped') {
+      chapterStatusMap[cid].status = 'Stopped';
+      chapterStatusMap[cid].stoppedAt = log.sessionDate;
+      chapterStatusMap[cid].stoppedBy = log.loggedByName;
+      chapterStatusMap[cid].stopReason = (log.notes || '').replace(/^Chapter stopped:\s*/i, '');
+    }
+
+    if (log.chapterStatus === 'Completed') {
+      chapterStatusMap[cid].status = 'Completed';
+      chapterStatusMap[cid].completedAt = log.sessionDate;
+      chapterStatusMap[cid].completedBy = log.loggedByName;
     }
 
     // Track completed projects for this chapter
@@ -519,14 +578,37 @@ const getChapterStatus = asyncHandler(async (req, res) => {
   });
 
   
-  // Check if chapters have been final-approved (locked)
+  // Check if chapters have been final-completed after the latest approved unlock.
   const approvedFinalRequests = await ChapterChangeRequest.find({
     studentId,
     subjectId,
     type: 'final_complete',
     status: 'approved',
   }).lean();
-  const lockedChapterIds = new Set(approvedFinalRequests.map(r => r.chapterId.toString()));
+  const approvedUnlockRequests = await ChapterChangeRequest.find({
+    studentId,
+    subjectId,
+    type: 'modification',
+    status: 'approved',
+  }).lean();
+  const latestUnlockByChapter = new Map();
+  approvedUnlockRequests.forEach(r => {
+    const cid = r.chapterId?.toString();
+    if (!cid) return;
+    const time = new Date(r.reviewedAt || r.updatedAt || r.createdAt).getTime();
+    if (!latestUnlockByChapter.has(cid) || latestUnlockByChapter.get(cid) < time) {
+      latestUnlockByChapter.set(cid, time);
+    }
+  });
+  const lockedChapterIds = new Set(
+    approvedFinalRequests
+      .filter(r => {
+        const cid = r.chapterId?.toString();
+        const finalTime = new Date(r.reviewedAt || r.updatedAt || r.createdAt).getTime();
+        return cid && finalTime > (latestUnlockByChapter.get(cid) || 0);
+      })
+      .map(r => r.chapterId.toString())
+  );
 
   // Build response for each chapterpter
   const chapterStatuses = chapters.map(ch => {
@@ -542,10 +624,13 @@ const getChapterStatus = asyncHandler(async (req, res) => {
     return {
       chapter: ch,
       status: status?.status || null,
-      startedAt: status?.startedAt || null,
+      startedAt: status?.startedAt || status?.firstActivityAt || null,
+      stoppedAt: status?.stoppedAt || null,
       completedAt: status?.completedAt || null,
       startedBy: status?.startedBy || null,
+      stoppedBy: status?.stoppedBy || null,
       completedBy: status?.completedBy || null,
+      stopReason: status?.stopReason || '',
       projects: chapterProjects.map(p => ({
         ...p,
         completed: completedProjects[String(p._id)] ? true : false,
@@ -561,11 +646,11 @@ const getChapterStatus = asyncHandler(async (req, res) => {
   res.json({ chapterStatuses });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Get activity log for super admin
 // @route GET /api/syllabus-logs/activity
 // @access Private (Super Admin)
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const getActivityLog = asyncHandler(async (req, res) => {
   const { subjectId, batchId, days } = req.query;
   
@@ -600,34 +685,19 @@ const getActivityLog = asyncHandler(async (req, res) => {
 });
 
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Stop/Reset a running chapter (set back to Not Started)
 // @route POST /api/syllabus-logs/chapter/stop
 // @access Private
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const stopChapter = asyncHandler(async (req, res) => {
   const { studentId, subjectId, chapterId, reason } = req.body;
 
-  if (!studentId || !subjectId || !chapterId) {
+  if (!studentId || !subjectId || !chapterId || !reason) {
     res.status(400);
-    throw new Error('studentId, subjectId, and chapterId are required.');
+    throw new Error('studentId, subjectId, chapterId, and reason are required.');
   }
 
-  const loggedByName =
-    req.user?.name ||
-    req.user?.fullName ||
-    (req.user?.firstName
-      ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
-      : '') ||
-    'System';
-
-  // Reset all logs for this chapter - clear chapterStatus so it can be started again
-  await SyllabusLog.updateMany(
-    { studentId, subjectId, chapterId, isDeleted: false },
-    { $unset: { chapterStatus: '' } }
-  );
-
-  // Create a log entry for the stop action
   await SyllabusLog.create({
     studentId,
     subjectId,
@@ -638,19 +708,59 @@ const stopChapter = asyncHandler(async (req, res) => {
     chapterId,
     chapterName: req.body.chapterName || '',
     projects: [],
-    notes: reason ? `Chapter stopped/reset: ${reason}` : 'Chapter stopped/reset',
-    loggedBy: req.user?.employeeId || req.user?._id || null,
-    loggedByName,
+    notes: `Chapter stopped: ${reason}`,
+    chapterStatus: 'Stopped',
+    loggedBy: getLoggedBy(req),
+    loggedByName: getLoggedByName(req),
   });
 
-  res.json({ message: 'Chapter reset to Not Started.' });
+  res.json({ message: 'Chapter stopped.' });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+const resetChapter = asyncHandler(async (req, res) => {
+  const { studentId, subjectId, chapterId, reason } = req.body;
+
+  if (!studentId || !subjectId || !chapterId || !reason) {
+    res.status(400);
+    throw new Error('studentId, subjectId, chapterId, and reason are required.');
+  }
+
+  await SyllabusLog.updateMany(
+    { studentId, subjectId, chapterId, isDeleted: false },
+    { isDeleted: true }
+  );
+
+  await ChapterChangeRequest.deleteMany({
+    studentId,
+    subjectId,
+    chapterId,
+    type: 'final_complete',
+    status: 'approved',
+  });
+
+  await SyllabusLog.create({
+    studentId,
+    subjectId,
+    batchId: req.body.batchId,
+    courseId: req.body.courseId,
+    branchId: req.body.branchId,
+    sessionDate: new Date(),
+    chapterId,
+    chapterName: req.body.chapterName || '',
+    projects: [],
+    notes: `Chapter reset: ${reason}`,
+    loggedBy: getLoggedBy(req),
+    loggedByName: getLoggedByName(req),
+  });
+
+  res.json({ message: 'Chapter reset to not started.' });
+});
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Undo a single project completion (soft-deletes the log containing it)
 // @route POST /api/syllabus-logs/project/undo
 // @access Private
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const undoProject = asyncHandler(async (req, res) => {
   const { studentId, subjectId, chapterId, projectId } = req.body;
 
@@ -686,11 +796,11 @@ const undoProject = asyncHandler(async (req, res) => {
   res.json({ message: 'Project undone successfully.' });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @desc  Undo "All Theory Completed" — reset chapter back to Running
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// @desc  Undo "All Theory Completed" â€” reset chapter back to Running
 // @route POST /api/syllabus-logs/chapter/undo-complete
 // @access Private
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const undoCompleteChapter = asyncHandler(async (req, res) => {
   const { studentId, subjectId, chapterId } = req.body;
 
@@ -722,12 +832,12 @@ const undoCompleteChapter = asyncHandler(async (req, res) => {
   res.json({ message: 'Chapter theory completion undone.' });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// @desc  Final complete a chapter — theory + all projects done, asks for reason
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// @desc  Final complete a chapter â€” theory + all projects done, asks for reason
 //        Creates a change request for super admin approval
 // @route POST /api/syllabus-logs/chapter/final-complete
 // @access Private
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const finalCompleteChapter = asyncHandler(async (req, res) => {
   const {
     studentId, subjectId, batchId, courseId, branchId,
@@ -739,17 +849,30 @@ const finalCompleteChapter = asyncHandler(async (req, res) => {
     throw new Error('studentId, subjectId, chapterId, and reason are required.');
   }
 
-  const loggedByName =
-    req.user?.name ||
-    req.user?.fullName ||
-    (req.user?.firstName
-      ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
-      : '') ||
-    'System';
+  const loggedByName = getLoggedByName(req);
+  const loggedBy = getLoggedBy(req);
 
-  const requestedBy = req.user?.employeeId || req.user?._id || null;
+  await SyllabusLog.create({
+    studentId,
+    subjectId,
+    batchId,
+    courseId,
+    branchId,
+    sessionDate: new Date(),
+    chapterId,
+    chapterName: chapterName || '',
+    projects: [],
+    notes: `Final chapter completed. Reason: ${reason}`,
+    chapterStatus: 'Completed',
+    loggedBy,
+    loggedByName,
+  });
 
-  // Create a change request for super admin
+  await SyllabusLog.updateMany(
+    { studentId, subjectId, chapterId, isDeleted: false },
+    { chapterStatus: 'Completed' }
+  );
+
   const changeRequest = await ChapterChangeRequest.create({
     studentId,
     subjectId,
@@ -760,22 +883,24 @@ const finalCompleteChapter = asyncHandler(async (req, res) => {
     chapterName: chapterName || '',
     type: 'final_complete',
     reason,
-    requestedBy,
+    requestedBy: loggedBy,
     requestedByName: loggedByName,
-    status: 'pending',
+    status: 'approved',
+    reviewedBy: loggedByName,
+    reviewedAt: new Date(),
   });
 
   res.status(201).json({
-    message: 'Final completion request sent to Super Admin for approval.',
+    message: 'Chapter final completed and locked.',
     changeRequest,
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Get all pending/approved change requests for super admin
 // @route GET /api/syllabus-logs/change-requests
 // @access Private (Super Admin)
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const getChangeRequests = asyncHandler(async (req, res) => {
   const { status, subjectId } = req.query;
   const filter = {};
@@ -790,11 +915,11 @@ const getChangeRequests = asyncHandler(async (req, res) => {
   res.json({ requests });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Approve or reject a change request (Super Admin)
 // @route POST /api/syllabus-logs/change-requests/:id/approve
 // @access Private (Super Admin)
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const approveChangeRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { action, reviewNotes } = req.body; // action: 'approved' | 'rejected'
@@ -810,62 +935,12 @@ const approveChangeRequest = asyncHandler(async (req, res) => {
     throw new Error('Change request not found.');
   }
 
-  const reviewerName =
-    req.user?.name ||
-    req.user?.fullName ||
-    (req.user?.firstName
-      ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
-      : '') ||
-    'Super Admin';
+  const reviewerName = getLoggedByName(req, 'Super Admin');
 
-  // ⚠️ Process action LOGIC FIRST before saving status.
+  // âš ï¸ Process action LOGIC FIRST before saving status.
   // If the logic fails, the request stays 'pending' so teacher can retry.
-  if (action === 'approved' && request.type === 'final_complete') {
-    const loggedByName =
-      req.user?.name ||
-      req.user?.fullName ||
-      (req.user?.firstName
-        ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
-        : '') ||
-      'System';
-
-    await SyllabusLog.create({
-      studentId: request.studentId,
-      subjectId: request.subjectId,
-      batchId: request.batchId,
-      courseId: request.courseId,
-      branchId: request.branchId,
-      sessionDate: new Date(),
-      chapterId: request.chapterId,
-      chapterName: request.chapterName,
-      projects: [],
-      notes: `Final chapter completed. Reason: ${request.reason}`,
-      chapterStatus: 'Completed',
-      loggedBy: req.user?.employeeId || req.user?._id || null,
-      loggedByName,
-    });
-
-    await SyllabusLog.updateMany(
-      {
-        studentId: request.studentId,
-        subjectId: request.subjectId,
-        chapterId: request.chapterId,
-        isDeleted: false,
-      },
-      { chapterStatus: 'Completed' }
-    );
-  }
-
-  // If modification request approved, remove the lock (delete approved final_complete requests)
+  // Final completion locks immediately. Super Admin approval is only for unlock/change requests.
   if (action === 'approved' && request.type === 'modification') {
-    await ChapterChangeRequest.deleteMany({
-      studentId: request.studentId,
-      subjectId: request.subjectId,
-      chapterId: request.chapterId,
-      type: 'final_complete',
-      status: 'approved',
-    });
-    // Update all logs for this chapter back to Running
     await SyllabusLog.updateMany(
       {
         studentId: request.studentId,
@@ -877,7 +952,7 @@ const approveChangeRequest = asyncHandler(async (req, res) => {
     );
   }
 
-  // ✅ Now save the request status only after logic succeeds
+  // âœ… Now save the request status only after logic succeeds
   request.status = action;
   request.reviewedBy = reviewerName;
   request.reviewedAt = new Date();
@@ -889,11 +964,11 @@ const approveChangeRequest = asyncHandler(async (req, res) => {
 
 
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // @desc  Request to make a locked chapter incomplete (modification request)
 // @route POST /api/syllabus-logs/chapter/incomplete
 // @access Private
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const requestIncompleteChapter = asyncHandler(async (req, res) => {
   const {
     studentId, subjectId, batchId, courseId, branchId,
@@ -934,6 +1009,7 @@ module.exports = {
   getChapterStatus,
   getActivityLog,
   stopChapter,
+  resetChapter,
   undoProject,
   undoCompleteChapter,
   finalCompleteChapter,
@@ -941,3 +1017,4 @@ module.exports = {
   approveChangeRequest,
   requestIncompleteChapter,
 };
+

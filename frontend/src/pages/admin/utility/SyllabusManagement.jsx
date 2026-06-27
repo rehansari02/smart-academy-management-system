@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+﻿import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
@@ -152,6 +152,34 @@ const getCourseEndDate = (student, holidaysList = [], studentBranchId = null) =>
   }
 
   return currentDate;
+};
+
+const addTeachingDays = (startDate, teachingDays = 0, holidaysList = [], studentBranchId = null) => {
+  if (!startDate) return null;
+  const totalDays = Number(teachingDays || 0);
+  if (!totalDays) return moment(startDate).startOf('day');
+
+  let currentDate = moment(startDate).startOf('day');
+  let countedDays = 0;
+
+  while (countedDays < totalDays) {
+    if (!isClosedDay(currentDate, holidaysList, studentBranchId)) {
+      countedDays++;
+    }
+    if (countedDays < totalDays) {
+      currentDate.add(1, 'day');
+    }
+  }
+
+  return currentDate;
+};
+
+const getSubjectTargetEndDate = (student, summary, selectedSubject, holidaysList = [], studentBranchId = null) => {
+  const startDate = summary?.firstSessionDate
+    ? moment(summary.firstSessionDate)
+    : getStudentStartDate(student);
+  const daysToComplete = Number(summary?.daysToComplete || selectedSubject?.daysToComplete || 0);
+  return addTeachingDays(startDate, daysToComplete, holidaysList, studentBranchId);
 };
 
 const getDaysRemainingText = (student, holidaysList = [], studentBranchId = null) => {
@@ -341,7 +369,7 @@ const SyllabusManagement = () => {
   const [newProjectNames, setNewProjectNames] = useState({});
   const [saveLoading, setSaveLoading] = useState(false);
 
-  // ── Teacher Management Modal state (per-subject, from subject list row) ─────
+  // â”€â”€ Teacher Management Modal state (per-subject, from subject list row) â”€â”€â”€â”€â”€
   const [teacherModalOpen, setTeacherModalOpen] = useState(false);
   const [teacherModalSubject, setTeacherModalSubject] = useState(null);
   const [assignedTeachers, setAssignedTeachers] = useState([]);
@@ -349,7 +377,7 @@ const SyllabusManagement = () => {
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
   const [teacherSaving, setTeacherSaving] = useState(false);
 
-  // ── STANDALONE Teacher Access Modal state (from header button) ──────────────
+  // â”€â”€ STANDALONE Teacher Access Modal state (from header button) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [saOpen, setSaOpen] = useState(false);               // standalone modal open
   const [saTeacherId, setSaTeacherId] = useState('');        // selected teacher
   const [saBatchId, setSaBatchId] = useState('');            // selected batch
@@ -368,7 +396,7 @@ const SyllabusManagement = () => {
   const [studentsSearchQuery, setStudentsSearchQuery] = useState('');
   const [holidays, setHolidays] = useState([]);
 
-  // ── Syllabus Log state (Level 5 – per student panel) ──────────────────────
+  // â”€â”€ Syllabus Log state (Level 5 â€“ per student panel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [expandedLogStudent, setExpandedLogStudent] = useState(null); // studentId whose log panel is open
   const [logsByStudent, setLogsByStudent] = useState({}); // { [studentId]: { logs, analytics, subject } }
   const [logLoadingFor, setLogLoadingFor] = useState(null); // studentId currently loading
@@ -1231,7 +1259,7 @@ const SyllabusManagement = () => {
     }
   };
 
-  // ── Active teachers: filter employees who are Teachers / Faculty ────────────
+  // â”€â”€ Active teachers: filter employees who are Teachers / Faculty â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const activeTeachers = useMemo(() => {
     return employees.filter(
       e => e.isActive && !e.isDeleted &&
@@ -1240,7 +1268,7 @@ const SyllabusManagement = () => {
     );
   }, [employees]);
 
-  // ── Open the Teacher Management modal for a subject ──────────────────────────
+  // â”€â”€ Open the Teacher Management modal for a subject â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleOpenTeacherModal = useCallback(async (sub) => {
     const subjectObj = sub.subject;
     if (!subjectObj) return;
@@ -1262,7 +1290,7 @@ const SyllabusManagement = () => {
     }
   }, []);
 
-  // ── Assign selected teacher to this subject ──────────────────────────────────
+  // â”€â”€ Assign selected teacher to this subject â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleAssignTeacher = async () => {
     if (!selectedTeacherId) { toast.warn('Please select a teacher first.'); return; }
     if (!teacherModalSubject || !batchId || !courseId) {
@@ -1291,7 +1319,7 @@ const SyllabusManagement = () => {
     }
   };
 
-  // ── Remove a teacher's assignment from this subject ──────────────────────────
+  // â”€â”€ Remove a teacher's assignment from this subject â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleRemoveTeacherAssignment = async (teacherAssignment) => {
     if (!window.confirm(`Remove ${teacherAssignment.employeeName} from this subject?`)) return;
     try {
@@ -1314,7 +1342,7 @@ const SyllabusManagement = () => {
     }
   };
 
-  // ── Standalone modal: courses filtered by selected batch ─────────────────────
+  // â”€â”€ Standalone modal: courses filtered by selected batch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const saFilteredCourses = useMemo(() => {
     if (!saBatchId) return [];
     const batch = allBatches.find(b => b._id === saBatchId);
@@ -1325,7 +1353,7 @@ const SyllabusManagement = () => {
     return courses.filter(c => activeCourseIds.has(c._id.toString()));
   }, [saBatchId, allBatches, courses]);
 
-  // ── Standalone modal: subjects filtered by selected course ────────────────────
+  // â”€â”€ Standalone modal: subjects filtered by selected course â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const saFilteredSubjects = useMemo(() => {
     if (!saCourseId) return [];
     const course = courses.find(c => c._id === saCourseId);
@@ -1333,7 +1361,7 @@ const SyllabusManagement = () => {
     return (course.subjects || []).filter(s => s.subject).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
   }, [saCourseId, courses]);
 
-  // ── Standalone modal: load existing assignments when subject changes ──────────
+  // â”€â”€ Standalone modal: load existing assignments when subject changes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!saSubjectId) { setSaAssignments([]); return; }
     setSaLoading(true);
@@ -1343,7 +1371,7 @@ const SyllabusManagement = () => {
       .finally(() => setSaLoading(false));
   }, [saSubjectId]);
 
-  // ── Standalone modal: assign teacher ─────────────────────────────────────────
+  // â”€â”€ Standalone modal: assign teacher â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleSaAssign = async () => {
     if (!saTeacherId || !saBatchId || !saCourseId || !saSubjectId) {
       toast.warn('Please select Teacher, Batch, Course and Subject.');
@@ -1371,7 +1399,7 @@ const SyllabusManagement = () => {
     }
   };
 
-  // ── Standalone modal: remove assignment ───────────────────────────────────────
+  // â”€â”€ Standalone modal: remove assignment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleSaRemove = async (t) => {
     if (!window.confirm(`Remove ${t.employeeName} from this subject?`)) return;
     try {
@@ -1426,7 +1454,7 @@ const SyllabusManagement = () => {
                 <p className="mt-1 text-sm text-slate-300">Browse branches, batches, courses, and syllabus details</p>
               </div>
             </div>
-            {/* ── Manage Teacher Access button ─ only visible if permitted ── */}
+            {/* â”€â”€ Manage Teacher Access button â”€ only visible if permitted â”€â”€ */}
             {showTeacher && (
               <button
                 onClick={() => navigate('/master/teacher-subject-management')}
@@ -1671,7 +1699,7 @@ const SyllabusManagement = () => {
                       </div>
                       <div>
                         <p className="text-[10px] uppercase text-slate-400">Total Fees</p>
-                        <p className="mt-0.5 text-emerald-600 font-extrabold">₹{course.courseFees}</p>
+                        <p className="mt-0.5 text-emerald-600 font-extrabold">â‚¹{course.courseFees}</p>
                       </div>
                     </div>
 
@@ -1950,13 +1978,13 @@ const SyllabusManagement = () => {
                     </h3>
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                       <span className="font-bold text-slate-600">
-                        Course: <span className="text-emerald-700 font-extrabold">{selectedCourse?.name || '—'}</span>
+                        Course: <span className="text-emerald-700 font-extrabold">{selectedCourse?.name || 'â€”'}</span>
                       </span>
                       <span className="font-bold text-slate-600">
-                        Subject: <span className="text-indigo-700 font-extrabold">{selectedSubject?.name || '—'}</span>
+                        Subject: <span className="text-indigo-700 font-extrabold">{selectedSubject?.name || 'â€”'}</span>
                       </span>
                       <span className="font-semibold text-slate-400">
-                        Batch: {selectedBatch?.name || '—'}
+                        Batch: {selectedBatch?.name || 'â€”'}
                       </span>
                     </div>
                   </div>
@@ -1985,7 +2013,7 @@ const SyllabusManagement = () => {
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input
                   type="text"
-                  placeholder="Search student name or enrollment no…"
+                  placeholder="Search student name or enrollment noâ€¦"
                   value={studentsSearchQuery}
                   onChange={e => setStudentsSearchQuery(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold text-slate-700 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
@@ -1995,7 +2023,7 @@ const SyllabusManagement = () => {
               {studentsLoading || (step === 5 && !selectedBatch) ? (
                 <div className="rounded-2xl border border-slate-100 bg-white py-16 text-center">
                   <RefreshCw className="mx-auto mb-3 animate-spin text-indigo-500" size={28} />
-                  <p className="font-bold text-slate-500">Loading students…</p>
+                  <p className="font-bold text-slate-500">Loading studentsâ€¦</p>
                 </div>
               ) : filteredStudents.length === 0 ? (
                 <div className="rounded-2xl border border-slate-100 bg-white py-16 text-center">
@@ -2028,7 +2056,11 @@ const SyllabusManagement = () => {
                         <th className="py-3.5 px-4">Student</th>
                         <th className="py-3.5 px-4">Course Period</th>
                         <th className="py-3.5 px-4">Status</th>
-                        <th className="py-3.5 px-4">Analytics</th>
+                        <th className="py-3.5 px-4">Completed On</th>
+                        <th className="py-3.5 px-4">Teacher</th>
+                        <th className="py-3.5 px-4">Current Chapter</th>
+                        <th className="py-3.5 px-4">Days Taken</th>
+                        <th className="py-3.5 px-4">Days Left / Extra</th>
                         <th className="py-3.5 px-4 text-center">Actions</th>
                       </tr>
                     </thead>
@@ -2045,44 +2077,93 @@ const SyllabusManagement = () => {
                             </td>
                             <td className="py-3.5 px-4">
                               <div className="font-extrabold text-slate-900">{student.name}</div>
-                              <div className="text-[11px] font-semibold text-slate-400">{student.enrollmentNo || '—'}</div>
+                              <div className="text-[11px] font-semibold text-slate-400">{student.enrollmentNo || 'â€”'}</div>
                             </td>
                             <td className="py-3.5 px-4">
                               <span className="text-sm font-bold text-slate-600 whitespace-nowrap">
-                                {startDate ? startDate.format('DD-MM-YY') : '—'} → {endDate ? endDate.format('DD-MM-YY') : '—'}
+                                {startDate ? startDate.format('DD-MM-YY') : 'â€”'}
+                                {' '}to{' '}
+                                {endDate ? endDate.format('DD-MM-YY') : 'â€”'}
                               </span>
+                              <div className="mt-1 text-[11px] font-bold text-slate-400">
+                                Course window
+                              </div>
                             </td>
                             <td className="py-3.5 px-4">
                               <span className={"inline-block rounded-lg px-2.5 py-1 text-xs font-extrabold " + remaining.colorClass}>
                                 {remaining.text}
                               </span>
                             </td>
-                            <td className="py-3.5 px-4">
-                              {summary ? (
-                                <div className="flex flex-wrap gap-1.5">
-                                  <span className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700 whitespace-nowrap">
-                                    <BookMarked size={11} />
-                                    {summary.chaptersLogged}/{summary.totalChapters} Ch
+                                                        <td className="py-3.5 px-4 align-top">
+                              {summary?.subjectCompletedAt ? (
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-sm font-extrabold text-emerald-700">
+                                    {moment(summary.subjectCompletedAt).format('DD MMM YYYY')}
                                   </span>
-                                  <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 whitespace-nowrap">
-                                    <FolderCheck size={11} />
-                                    {summary.projectsLogged}/{summary.totalProjects} Proj
+                                  <span className="text-[11px] font-bold text-slate-400">
+                                    Subject completed
                                   </span>
-                                  <span className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700 whitespace-nowrap">
-                                    <CalendarDays size={11} />
-                                    {summary.elapsedDays}d
-                                  </span>
-                                  {summary.projectsPending > 0 && (
-                                    <span className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-600 whitespace-nowrap">
-                                      <AlertCircle size={11} />
-                                      {summary.projectsPending} pending
-                                    </span>
-                                  )}
                                 </div>
                               ) : (
-                                <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500">
-                                  <PenLine size={11} /> No logs yet
-                                </span>
+                                <span className="text-sm font-bold text-slate-400">In progress</span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 align-top">
+                              {summary ? (
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-sm font-extrabold text-slate-900">
+                                    {summary.currentTeacherName || '—'}
+                                  </span>
+                                  <span className="text-[11px] font-bold text-slate-400">
+                                    Latest syllabus activity
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-sm font-bold text-slate-400">No logs yet</span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 align-top">
+                              {summary ? (
+                                <div className="flex flex-col gap-1">
+                                  <span className="max-w-[220px] truncate text-sm font-extrabold text-slate-900" title={summary.currentChapterName || '—'}>
+                                    {summary.currentChapterName || '—'}
+                                  </span>
+                                  <span className="text-[11px] font-bold text-slate-400">
+                                    Current running chapter
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-sm font-bold text-slate-400">No chapter yet</span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 align-top">
+                              {summary ? (
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-sm font-extrabold text-sky-700">
+                                    {summary.actualDaysTaken ?? summary.elapsedDays ?? 0} day(s)
+                                  </span>
+                                  <span className="text-[11px] font-bold text-slate-400">
+                                    Started to completion
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-sm font-bold text-slate-400">—</span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 align-top">
+                              {summary ? (
+                                <div className="flex flex-col gap-1">
+                                  <span className={"text-sm font-extrabold " + (summary.daysOverTarget > 0 ? 'text-rose-700' : 'text-emerald-700')}>
+                                    {summary.daysOverTarget > 0
+                                      ? `${summary.daysOverTarget} extra day(s)`
+                                      : `${summary.daysRemainingToTarget ?? summary.daysToComplete ?? selectedSubject?.daysToComplete ?? 0} day(s) left`}
+                                  </span>
+                                  <span className="text-[11px] font-bold text-slate-400">
+                                    Target {summary.daysToComplete || selectedSubject?.daysToComplete || 0} days
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-sm font-bold text-slate-400">—</span>
                               )}
                             </td>
                             <td className="py-3.5 px-4 text-center">
@@ -2106,7 +2187,7 @@ const SyllabusManagement = () => {
       {step === 6 && selectedSubject && (
         <div className="mx-auto w-full max-w-[1500px]">
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            {/* ── Header Section ── */}
+            {/* â”€â”€ Header Section â”€â”€ */}
             <div className="border-b border-slate-100 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-6 py-5">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
@@ -2200,10 +2281,10 @@ const SyllabusManagement = () => {
               </div>
             </div>
 
-            {/* ── Main Content Grid ── */}
+            {/* â”€â”€ Main Content Grid â”€â”€ */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 bg-slate-50/20">
               
-              {/* ═══ Left Column: Parameters, Index & Unassigned ═══ */}
+              {/* â•â•â• Left Column: Parameters, Index & Unassigned â•â•â• */}
               <div className="lg:col-span-4 space-y-6">
                 
                 {/* Syllabus Parameters Card */}
@@ -2429,7 +2510,7 @@ const SyllabusManagement = () => {
 
               </div>
 
-              {/* ═══ Right Column: Syllabus Workspace Builder ═══ */}
+              {/* â•â•â• Right Column: Syllabus Workspace Builder â•â•â• */}
               <div className="lg:col-span-8 space-y-6">
                 
                 {/* Add New Chapter Form Card */}
@@ -2580,7 +2661,7 @@ const SyllabusManagement = () => {
                                   </h5>
                                   <div className="flex flex-wrap items-center gap-1.5 mt-1">
                                     <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase bg-indigo-50/70 text-indigo-755 rounded px-1.5 py-0.5">
-                                      <BookOpen size={9} /> Pages {chap.startPage !== undefined ? `${chap.startPage} – ${chap.endPage}` : '0 – 0'}
+                                      <BookOpen size={9} /> Pages {chap.startPage !== undefined ? `${chap.startPage} â€“ ${chap.endPage}` : '0 â€“ 0'}
                                     </span>
                                     <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase bg-emerald-100/60 text-emerald-800 rounded px-1.5 py-0.5">
                                       <ListTodo size={9} /> {chapProjects.length} Project{chapProjects.length !== 1 ? 's' : ''}
@@ -2766,9 +2847,9 @@ const SyllabusManagement = () => {
         </div>
       )}
 
-    {/* ══════════════════════════════════════════════════════════════════════
+    {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         TEACHER MANAGEMENT MODAL
-        ══════════════════════════════════════════════════════════════════════ */}
+        â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
     {teacherModalOpen && teacherModalSubject && (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background: 'rgba(15,23,42,0.65)'}}>
         <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
@@ -2796,12 +2877,12 @@ const SyllabusManagement = () => {
           <div className="flex flex-wrap gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3 text-xs font-bold text-slate-500">
             <span className="flex items-center gap-1.5">
               <Layers size={12} className="text-indigo-400" />
-              Batch: <span className="text-slate-800">{selectedBatch?.name || '—'}</span>
+              Batch: <span className="text-slate-800">{selectedBatch?.name || 'â€”'}</span>
             </span>
             <span className="text-slate-200">|</span>
             <span className="flex items-center gap-1.5">
               <GraduationCap size={12} className="text-emerald-500" />
-              Course: <span className="text-slate-800">{selectedCourse?.name || '—'}</span>
+              Course: <span className="text-slate-800">{selectedCourse?.name || 'â€”'}</span>
             </span>
             <span className="text-slate-200">|</span>
             <span className="flex items-center gap-1.5">
@@ -2813,7 +2894,7 @@ const SyllabusManagement = () => {
           {/* Scrollable body */}
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
-            {/* ── Assign New Teacher ── */}
+            {/* â”€â”€ Assign New Teacher â”€â”€ */}
             <div>
               <h4 className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Assign Teacher</h4>
               <div className="flex gap-3">
@@ -2823,7 +2904,7 @@ const SyllabusManagement = () => {
                     onChange={e => setSelectedTeacherId(e.target.value)}
                     className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 pl-4 pr-10 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-400 focus:bg-white transition"
                   >
-                    <option value="">— Select Active Teacher —</option>
+                    <option value="">â€” Select Active Teacher â€”</option>
                     {activeTeachers.length === 0 && (
                       <option disabled>No teachers found (check employee type)</option>
                     )}
@@ -2846,7 +2927,7 @@ const SyllabusManagement = () => {
               </div>
             </div>
 
-            {/* ── Current Assignments ── */}
+            {/* â”€â”€ Current Assignments â”€â”€ */}
             <div>
               <div className="mb-3 flex items-center justify-between">
                 <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">Assigned Teachers</h4>
@@ -2937,7 +3018,7 @@ const SyllabusManagement = () => {
               <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-1.5">1. Select Active Teacher</label>
               <select value={saTeacherId} onChange={e => setSaTeacherId(e.target.value)}
                 className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-400 focus:bg-white transition">
-                <option value="">— Select Teacher —</option>
+                <option value="">â€” Select Teacher â€”</option>
                 {activeTeachers.length === 0 && <option disabled>No Faculty employees found (check employee type = Faculty)</option>}
                 {activeTeachers.map(t => <option key={t._id} value={t._id}>{t.name} ({t.type})</option>)}
               </select>
@@ -2948,7 +3029,7 @@ const SyllabusManagement = () => {
               <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-1.5">2. Select Batch</label>
               <select value={saBatchId} onChange={e => { setSaBatchId(e.target.value); setSaCourseId(''); setSaSubjectId(''); setSaAssignments([]); }}
                 className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-400 focus:bg-white transition">
-                <option value="">— Select Batch —</option>
+                <option value="">â€” Select Batch â€”</option>
                 {allBatches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
               </select>
             </div>
@@ -2958,7 +3039,7 @@ const SyllabusManagement = () => {
               <label className={`block text-xs font-black uppercase tracking-wider mb-1.5 ${!saBatchId ? 'text-slate-300' : 'text-slate-500'}`}>3. Select Course</label>
               <select value={saCourseId} onChange={e => { setSaCourseId(e.target.value); setSaSubjectId(''); setSaAssignments([]); }} disabled={!saBatchId}
                 className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-400 focus:bg-white transition disabled:opacity-50 disabled:cursor-not-allowed">
-                <option value="">— Select Course —</option>
+                <option value="">â€” Select Course â€”</option>
                 {saFilteredCourses.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
               </select>
               {saBatchId && saFilteredCourses.length === 0 && (
@@ -2971,7 +3052,7 @@ const SyllabusManagement = () => {
               <label className={`block text-xs font-black uppercase tracking-wider mb-1.5 ${!saCourseId ? 'text-slate-300' : 'text-slate-500'}`}>4. Select Subject</label>
               <select value={saSubjectId} onChange={e => setSaSubjectId(e.target.value)} disabled={!saCourseId}
                 className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-400 focus:bg-white transition disabled:opacity-50 disabled:cursor-not-allowed">
-                <option value="">— Select Subject —</option>
+                <option value="">â€” Select Subject â€”</option>
                 {saFilteredSubjects.map(s => <option key={s.subject._id} value={s.subject._id}>{s.subject.name}</option>)}
               </select>
             </div>
@@ -3042,9 +3123,9 @@ const SyllabusManagement = () => {
                 {viewProgressStudent.name}
               </h3>
               <p className="text-xs text-slate-300 mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                <span>Enrollment No: <strong className="text-white">{viewProgressStudent.enrollmentNo || '—'}</strong></span>
-                <span>Course: <strong className="text-white">{selectedCourse?.name || '—'}</strong></span>
-                <span>Subject: <strong className="text-white">{selectedSubject?.name || '—'}</strong></span>
+                <span>Enrollment No: <strong className="text-white">{viewProgressStudent.enrollmentNo || 'â€”'}</strong></span>
+                <span>Course: <strong className="text-white">{selectedCourse?.name || 'â€”'}</strong></span>
+                <span>Subject: <strong className="text-white">{selectedSubject?.name || 'â€”'}</strong></span>
               </p>
             </div>
             <button
@@ -3136,7 +3217,7 @@ const SyllabusManagement = () => {
                                 <td className="px-3 py-3 font-mono font-bold text-slate-400">{idx + 1}</td>
                                 <td className="px-3 py-3 font-bold">{ch.name}</td>
                                 <td className="px-3 py-3 text-slate-500">
-                                  {ch.startPage || ch.endPage ? `p. ${ch.startPage || 0} - ${ch.endPage || 0}` : '—'}
+                                  {ch.startPage || ch.endPage ? `p. ${ch.startPage || 0} - ${ch.endPage || 0}` : 'â€”'}
                                 </td>
                                 <td className="px-3 py-3 text-center">
                                   {isDone ? (
@@ -3238,3 +3319,4 @@ const SyllabusManagement = () => {
 };
 
 export default SyllabusManagement;
+
