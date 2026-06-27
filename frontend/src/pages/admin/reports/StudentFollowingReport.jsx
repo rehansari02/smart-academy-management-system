@@ -24,7 +24,9 @@ const StudentFollowingReport = () => {
         branchId: '',
         studentName: '',
         referenceBy: '',
-        source: 'DSR', //Default to DSR as per request
+        source: 'DSR',
+        sortBy: 'inquiryDate',
+        sortOrder: 'desc',
         page: 1,
         limit: 10
     });
@@ -78,6 +80,8 @@ const StudentFollowingReport = () => {
             studentName: '',
             referenceBy: '',
             source: 'DSR',
+            sortBy: 'inquiryDate',
+            sortOrder: 'desc',
             page: 1,
             limit: 10
         };

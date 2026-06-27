@@ -208,11 +208,7 @@ const createStudent = asyncHandler(async (req, res) => {
     }
     
     if (process.env.NODE_ENV === 'development') {
-        console.log("Create Student Request Body:", { 
-            paymentPlan,
-            feeDetails,
-            branchId: req.body.branchId
-        });
+        console.log("Create Student Request Body (full):", JSON.stringify(req.body, null, 2));
     }    
     let pendingFees = totalFees;
     let isAdmissionFeesPaid = false;
@@ -295,35 +291,55 @@ const createStudent = asyncHandler(async (req, res) => {
             throw new Error(`Selected batch is full for this course. Capacity ${batchCapacity.batchSize}, already filled ${batchCapacity.activeCount}.`);
         }
 
-        const student = await Student.create(studentData);
+        let student;
+        try {
+            student = await Student.create(studentData);
+        } catch (validationError) {
+            if (validationError.name === 'ValidationError') {
+                const fields = Object.keys(validationError.errors).join(', ');
+                const messages = Object.values(validationError.errors).map(e => e.message).join('; ');
+                res.status(400);
+                throw new Error(`Validation failed - Missing/invalid fields: [${fields}] → ${messages}`);
+            }
+            throw validationError;
+        }
 
         if (feeDetails && feeDetails.amount > 0) {
-            let nextNum = 1;
-            if (lastReceipt && lastReceipt.receiptNo && !isNaN(lastReceipt.receiptNo)) {
-                nextNum = Number(lastReceipt.receiptNo) + 1;
+            let receiptCreated = false;
+            for (let attempt = 0; attempt < 5 && !receiptCreated; attempt++) {
+                const lastReceipt = await FeeReceipt.findOne({ branch: finalBranchId })
+                    .sort({ receiptNo: -1 })
+                    .collation({ locale: "en_US", numericOrdering: true })
+                    .lean();
+                const receiptNo = lastReceipt && !isNaN(lastReceipt.receiptNo)
+                    ? String(Number(lastReceipt.receiptNo) + 1)
+                    : "1";
+                try {
+                    await FeeReceipt.create({
+                        receiptNo,
+                        student: student._id,
+                        course: student.course,
+                        branch: finalBranchId,
+                        amountPaid: feeDetails.amount,
+                        paymentMode: feeDetails.paymentMode,
+                        remarks: feeDetails.remarks || 'Admission Fee',
+                        date: feeDetails.date || new Date(),
+                        createdBy: req.user._id,
+                        bankName: feeDetails.bankName,
+                        chequeNumber: feeDetails.chequeNumber,
+                        chequeDate: feeDetails.chequeDate,
+                        transactionId: feeDetails.transactionId,
+                        transactionDate: feeDetails.transactionDate,
+                        onlinePaymentType: feeDetails.onlinePaymentType,
+                        paymentProviderName: feeDetails.paymentProviderName,
+                        paymentDetails: feeDetails.paymentDetails
+                    });
+                    receiptCreated = true;
+                } catch (receiptErr) {
+                    if (receiptErr?.code === 11000 && receiptErr?.keyPattern?.receiptNo !== undefined) continue;
+                    throw receiptErr;
+                }
             }
-            const receiptNo = String(nextNum);
-            const receiptRemarks = feeDetails.remarks || 'Admission Fee';
-
-            await FeeReceipt.create({
-                receiptNo,
-                student: student._id,
-                course: student.course,
-                branch: finalBranchId, // CRITICAL: needed for branch-scoped filtering in AllReceipts
-                amountPaid: feeDetails.amount,
-                paymentMode: feeDetails.paymentMode,
-                remarks: receiptRemarks,
-                date: feeDetails.date || new Date(),
-                createdBy: req.user._id,
-                bankName: feeDetails.bankName,
-                chequeNumber: feeDetails.chequeNumber,
-                chequeDate: feeDetails.chequeDate,
-                transactionId: feeDetails.transactionId,
-                transactionDate: feeDetails.transactionDate,
-                onlinePaymentType: feeDetails.onlinePaymentType,
-                paymentProviderName: feeDetails.paymentProviderName,
-                paymentDetails: feeDetails.paymentDetails
-            });
         }
 
         const courseDoc = await Course.findById(student.course);
@@ -367,8 +383,10 @@ const createStudent = asyncHandler(async (req, res) => {
             }
         });
     } catch (error) {
-        res.status(400);
-        throw new Error('Invalid Student Data: ' + error.message);
+        if (!res.headersSent) {
+            res.status(400);
+        }
+        throw new Error(error.message);
     }
 });
 

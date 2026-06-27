@@ -90,7 +90,7 @@ const ExamResult = () => {
       showPermissionDenied("You don't have authority to delete exam results.");
       return;
     }
-    if (window.confirm(`Are you sure you want to delete the result for ${result.student?.firstName} ${result.student?.lastName}?`)) {
+    if (window.confirm(`Are you sure you want to delete the result for ${[result.student?.firstName, result.student?.middleName, result.student?.lastName].filter(Boolean).join(' ')}?`)) {
       dispatch(deleteExamResult(result._id));
     }
   };
@@ -238,7 +238,7 @@ const ExamResult = () => {
                       >
                           <span className={filters.studentId ? 'text-gray-900 font-medium' : 'text-gray-400'}>
                               {studentsWithResultsFiltered.find(s => s._id === filters.studentId)
-                                  ? `${studentsWithResultsFiltered.find(s => s._id === filters.studentId)?.firstName} ${studentsWithResultsFiltered.find(s => s._id === filters.studentId)?.lastName} (${studentsWithResultsFiltered.find(s => s._id === filters.studentId)?.regNo})`
+                                  ? (() => { const s = studentsWithResultsFiltered.find(s => s._id === filters.studentId); return `${[s?.firstName, s?.middleName, s?.lastName].filter(Boolean).join(' ')} (${s?.regNo})`; })()
                                   : '-- All Students --'}
                           </span>
                           <span className="text-gray-400 text-xs">▼</span>
@@ -281,7 +281,7 @@ const ExamResult = () => {
                                           }}
                                           className="p-2 text-xs hover:bg-blue-50 text-gray-700 cursor-pointer rounded font-bold"
                                       >
-                                          {student.firstName} {student.lastName} ({student.regNo})
+                                          {[student.firstName, student.middleName, student.lastName].filter(Boolean).join(' ')} ({student.regNo})
                                       </div>
                                   ))}
                               </div>
@@ -329,7 +329,7 @@ const ExamResult = () => {
                             </td>
                             <td className="px-6 py-4">
                                 <div className="text-sm font-black text-gray-800 uppercase tracking-tight">
-                                    {res.student?.firstName} {res.student?.lastName}
+                                    {[res.student?.firstName, res.student?.middleName, res.student?.lastName].filter(Boolean).join(' ')}
                                 </div>
                                 <div className="text-[10px] text-gray-500">{res.batch}</div>
                             </td>

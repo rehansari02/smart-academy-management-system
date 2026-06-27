@@ -385,7 +385,7 @@ const AllReceipts = () => {
                                         <td className="p-2 border whitespace-nowrap">{moment(receipt.date).format('DD/MM/YYYY')}</td>
                                         <td className="p-2 border font-mono text-blue-600">{receipt.receiptNo}</td>
                                         <td className="p-2 border font-medium text-gray-900">
-                                            {receipt.student?.firstName} {receipt.student?.lastName}
+                                            {[receipt.student?.firstName, receipt.student?.middleName, receipt.student?.lastName].filter(Boolean).join(' ')}
                                         </td>
                                         <td className="p-2 border font-medium">
                                             {receipt.course?.name}

@@ -660,6 +660,8 @@ const getInquiries = asyncHandler(async (req, res) => {
     ? { followUpDate: 1, createdAt: -1, _id: 1 }
     : isCallingDateFilter
       ? { "followUpHistory.createdAt": -1, createdAt: -1, _id: 1 }
+    : req.query.sortBy === "inquiryDate"
+      ? { inquiryDate: req.query.sortOrder === "asc" ? 1 : -1, _id: -1 }
     : { createdAt: -1, _id: 1 };
 
   let inquiryQuery = Inquiry.find(query)
@@ -1971,53 +1973,60 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
       branchId = req.user.branchId;
   }
 
-  // 3. Generate Branch-Scoped Receipt No
-  // Find max existing receipt number for THIS BRANCH
-  let receiptNo = "1";
-  const lastReceipt = await FeeReceipt.findOne({ branch: branchId })
-    .sort({ receiptNo: -1 })
-    .collation({ locale: "en_US", numericOrdering: true });
-    
-  if (lastReceipt && lastReceipt.receiptNo && !isNaN(lastReceipt.receiptNo)) {
-      receiptNo = String(Number(lastReceipt.receiptNo) + 1);
-  }
-
   const receiptPurpose = resolveReceiptPurposeForPayment(student, existingReceipts, remarks);
 
-  // branchId is already determined above
-
-  // 3. Create Receipt
+  // 3. Create Receipt with auto-retry on duplicate receiptNo (race condition safe)
   let receipt;
-  try {
-    receipt = await FeeReceipt.create({
-      receiptNo,
-      student: studentId,
-      course: courseId,
-      branch: branchId, // Assign Branch
-      amountPaid,
-      paymentMode,
-      remarks: receiptPurpose.remarks,
-      date: date || Date.now(),
-      createdBy: req.user._id,
-      installmentNumber: receiptPurpose.installmentNumber,
-      bankName,
-      chequeNumber,
-      chequeDate,
-      transactionId,
-      transactionDate,
-      onlinePaymentType,
-      paymentProviderName,
-      paymentDetails,
-      ...(requestKey ? { idempotencyKey: requestKey } : {})
-    });
-  } catch (error) {
-    if (requestKey && error?.code === 11000) {
-      const existingReceipt = await FeeReceipt.findOne({ idempotencyKey: requestKey }).populate(receiptPopulate);
-      if (existingReceipt) {
-        return res.status(200).json(existingReceipt);
+  let retries = 0;
+  while (retries < 5) {
+    // Always re-fetch max receiptNo just before insert to stay fresh
+    const lastReceipt = await FeeReceipt.findOne({ branch: branchId })
+      .sort({ receiptNo: -1 })
+      .collation({ locale: "en_US", numericOrdering: true })
+      .lean();
+    const receiptNo = lastReceipt && !isNaN(lastReceipt.receiptNo)
+      ? String(Number(lastReceipt.receiptNo) + 1)
+      : "1";
+
+    try {
+      receipt = await FeeReceipt.create({
+        receiptNo,
+        student: studentId,
+        course: courseId,
+        branch: branchId,
+        amountPaid,
+        paymentMode,
+        remarks: receiptPurpose.remarks,
+        date: date || Date.now(),
+        createdBy: req.user._id,
+        installmentNumber: receiptPurpose.installmentNumber,
+        bankName,
+        chequeNumber,
+        chequeDate,
+        transactionId,
+        transactionDate,
+        onlinePaymentType,
+        paymentProviderName,
+        paymentDetails,
+        ...(requestKey ? { idempotencyKey: requestKey } : {})
+      });
+      break; // success
+    } catch (error) {
+      if (requestKey && error?.code === 11000 && error?.keyPattern?.idempotencyKey) {
+        const existingReceipt = await FeeReceipt.findOne({ idempotencyKey: requestKey }).populate(receiptPopulate);
+        if (existingReceipt) return res.status(200).json(existingReceipt);
       }
+      // Duplicate receiptNo — retry with fresh number
+      if (error?.code === 11000 && error?.keyPattern?.receiptNo !== undefined) {
+        retries++;
+        continue;
+      }
+      throw error;
     }
-    throw error;
+  }
+  if (!receipt) {
+    res.status(500);
+    throw new Error("Failed to generate unique receipt number after retries. Please try again.");
   }
 
   // 4. Update Student Pending Fees & Status
