@@ -20,7 +20,7 @@ const ExamResultPrint = () => {
   const formatSomNumber = (value) => {
     const somNumber = String(value || "").trim();
     if (!somNumber) return "SOM-G0035";
-    return `SOM-${somNumber.replace(/^(SOM-)+/i, "")}`;
+    return `SOM-${somNumber.replace(/^(SOM-)+/i, "").replace(/^(LEGACY-)+/i, "")}`;
   };
 
   const formatCertificateNumber = (somNumber) =>

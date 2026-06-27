@@ -14,7 +14,7 @@ const getBranchName = (result) => result?.student?.branchId?.name || result?.stu
 const formatSomNumber = (value) => {
     const number = String(value || '').trim();
     if (!number) return '-';
-    return `SOM-${number.replace(/^(SOM-)+/i, '')}`;
+    return `SOM-${number.replace(/^(SOM-)+/i, '').replace(/^(LEGACY-)+/i, '')}`;
 };
 
 const formatCsrNumber = (result) => {
@@ -26,7 +26,7 @@ const formatCsrNumber = (result) => {
         return som === '-' ? '-' : som.replace(/^SOM-/i, 'CSR-');
     }
 
-    return `CSR-${rawCsr.replace(/^(CSR-|SOM-)+/i, '')}`;
+    return `CSR-${rawCsr.replace(/^(CSR-|SOM-)+/i, '').replace(/^(LEGACY-)+/i, '')}`;
 };
 
 const getResultSortTime = (result) => {

@@ -12,6 +12,21 @@ import { Search, RefreshCw, Edit, Printer, Award, Trash2, Plus } from 'lucide-re
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
 
+const formatSomNumber = (value) => {
+  const number = String(value || '').trim();
+  if (!number) return '-';
+  return `SOM-${number.replace(/^(SOM-)+/i, '').replace(/^(LEGACY-)+/i, '')}`;
+};
+
+const formatCsrNumber = (result) => {
+  const rawCsr = String(result?.csrNumber || result?.certificateNumber || '').trim();
+  if (!rawCsr || rawCsr.startsWith('SOM-') || /^CSR-LEGACY-/i.test(rawCsr) || /^CERT-LEGACY-/i.test(rawCsr)) {
+    const som = formatSomNumber(result?.somNumber);
+    return som === '-' ? '-' : som.replace(/^SOM-/i, 'CSR-');
+  }
+  return `CSR-${rawCsr.replace(/^(CSR-|SOM-)+/i, '').replace(/^(LEGACY-)+/i, '')}`;
+};
+
 const ExamResult = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -324,8 +339,8 @@ const ExamResult = () => {
                                 <div className="text-[10px] font-mono text-gray-400">{res.student?.regNo}</div>
                             </td>
                             <td className="px-6 py-4">
-                                <div className="text-sm font-medium text-blue-600">{res.somNumber}</div>
-                                <div className="text-[10px] text-gray-400">{res.csrNumber}</div>
+                                <div className="text-sm font-medium text-blue-600">{formatSomNumber(res.somNumber)}</div>
+                                <div className="text-[10px] text-gray-400">{formatCsrNumber(res)}</div>
                             </td>
                             <td className="px-6 py-4">
                                 <div className="text-sm font-black text-gray-800 uppercase tracking-tight">

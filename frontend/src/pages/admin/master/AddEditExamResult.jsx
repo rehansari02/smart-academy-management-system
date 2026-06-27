@@ -23,6 +23,12 @@ const toDateInputValue = (date) => {
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString().split('T')[0] : parsed.toISOString().split('T')[0];
 };
 
+const csrFromSomNumber = (value) => {
+  const somNumber = String(value || '').trim();
+  if (!somNumber) return '';
+  return `CSR-${somNumber.replace(/^(SOM-|CSR-)+/i, '').replace(/^(LEGACY-)+/i, '')}`;
+};
+
 const AddEditExamResult = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -127,17 +133,12 @@ const AddEditExamResult = () => {
     }
   }, [dispatch, id, isEditMode, setValue, navigate]);
 
-  // Mirror CSR number and Certificate number to SOM number with proper prefix conversion
+  // Mirror CSR number and certificate number to the SOM serial.
   useEffect(() => {
     if (somNumberValue) {
-      const convertedCsr = somNumberValue.startsWith('SOM-') 
-        ? somNumberValue.replace('SOM-', 'CSR-') 
-        : `CSR-${somNumberValue}`;
+      const convertedCsr = csrFromSomNumber(somNumberValue);
       setValue('csrNumber', convertedCsr);
-
-      if (somNumberValue.startsWith('SOM-G')) {
-        setValue('certificateNumber', somNumberValue.replace('SOM-G', ''));
-      }
+      setValue('certificateNumber', convertedCsr);
     }
   }, [somNumberValue, setValue]);
 
@@ -559,7 +560,7 @@ const AddEditExamResult = () => {
               </div>
               <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Certificate Number</label>
-                  <input {...register('certificateNumber')} className="border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-3.5 rounded-xl w-full bg-white font-bold text-slate-800 outline-none transition-all" placeholder="00007" />
+                  <input {...register('certificateNumber')} className="border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-3.5 rounded-xl w-full bg-white font-bold text-slate-800 outline-none transition-all" placeholder="CSR-G00007" />
               </div>
               <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Date of Issue</label>

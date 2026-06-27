@@ -8,10 +8,28 @@ const StudentAttendance = require('../models/StudentAttendance');
 const normalizeSomNumber = (value) => {
     const somNumber = String(value || '').trim();
     if (!somNumber) return '';
-    return `SOM-${somNumber.replace(/^(SOM-)+/i, '')}`;
+    return `SOM-${somNumber.replace(/^(SOM-)+/i, '').replace(/^(LEGACY-)+/i, '')}`;
 };
 
 const csrFromSomNumber = (somNumber) => normalizeSomNumber(somNumber).replace(/^SOM-/i, 'CSR-');
+
+const normalizeCsrNumber = (csrNumber, somNumber) => {
+    const rawCsr = String(csrNumber || '').trim();
+    if (!rawCsr || rawCsr.startsWith('SOM-') || /^CSR-LEGACY-/i.test(rawCsr) || /^CERT-LEGACY-/i.test(rawCsr)) {
+        return csrFromSomNumber(somNumber);
+    }
+    return `CSR-${rawCsr.replace(/^(CSR-|SOM-)+/i, '').replace(/^(LEGACY-)+/i, '')}`;
+};
+
+const normalizeResultNumbers = (result) => {
+    const output = typeof result.toObject === 'function' ? result.toObject() : result;
+    output.somNumber = normalizeSomNumber(output.somNumber);
+    output.csrNumber = normalizeCsrNumber(output.csrNumber, output.somNumber);
+    if (!output.certificateNumber || /^(CERT|CSR)-LEGACY-/i.test(output.certificateNumber)) {
+        output.certificateNumber = output.csrNumber;
+    }
+    return output;
+};
 
 const getAttendanceCutoffDate = (exam) => {
     const examDates = (exam?.timeTable || [])
@@ -114,7 +132,7 @@ const getExamResults = asyncHandler(async (req, res) => {
         .populate('subjectMarks.subject', 'name')
         .sort({ createdAt: -1 });
 
-    res.json(results);
+    res.json(results.map(normalizeResultNumbers));
 });
 
 // @desc    Create Exam Result
@@ -140,13 +158,11 @@ const createExamResult = asyncHandler(async (req, res) => {
         finalSom = `SOM-G${counter.seq.toString().padStart(5, '0')}`;
     }
 
-    if (!finalCsr || finalCsr.startsWith('SOM-') || /^CSR-LEGACY-/i.test(finalCsr)) {
-        finalCsr = csrFromSomNumber(finalSom);
-    }
+    finalCsr = normalizeCsrNumber(finalCsr, finalSom);
 
     let finalCert = certificateNumber;
     if (!finalCert || /^(CERT|CSR)-LEGACY-/i.test(finalCert)) {
-        finalCert = csrFromSomNumber(finalSom);
+        finalCert = finalCsr;
     }
 
     // Calculate totals from subjects
@@ -180,7 +196,7 @@ const createExamResult = asyncHandler(async (req, res) => {
         .populate('exam', 'examName')
         .populate('subjectMarks.subject', 'name');
 
-    res.status(201).json(populated);
+    res.status(201).json(normalizeResultNumbers(populated));
 });
 
 // @desc    Update Exam Result
@@ -192,13 +208,10 @@ const updateExamResult = asyncHandler(async (req, res) => {
         let finalCsr = req.body.csrNumber || result.csrNumber;
         let finalCert = req.body.certificateNumber || result.certificateNumber;
 
-        // Auto-correct to CSR- prefix if empty or starting with SOM-
-        if (!finalCsr || finalCsr.startsWith('SOM-') || /^CSR-LEGACY-/i.test(finalCsr)) {
-            finalCsr = csrFromSomNumber(finalSom);
-        }
+        finalCsr = normalizeCsrNumber(finalCsr, finalSom);
 
         if (!finalCert || /^(CERT|CSR)-LEGACY-/i.test(finalCert)) {
-            finalCert = csrFromSomNumber(finalSom);
+            finalCert = finalCsr;
         }
 
         result.somNumber = finalSom;
@@ -228,7 +241,7 @@ const updateExamResult = asyncHandler(async (req, res) => {
              .populate('exam', 'examName')
              .populate('subjectMarks.subject', 'name');
              
-        res.json(populated);
+        res.json(normalizeResultNumbers(populated));
     } else {
         res.status(404); throw new Error('Result not found');
     }
@@ -270,7 +283,7 @@ const getExamResultById = asyncHandler(async (req, res) => {
             : '0.00';
 
         res.json({
-            ...result.toObject(),
+            ...normalizeResultNumbers(result),
             attendanceSummary,
             totalPresentsText: attendanceSummary.totalPresentsText,
             attendancePercentage: attendanceSummary.percentage,
@@ -293,7 +306,7 @@ const getNextResultNumbers = asyncHandler(async (req, res) => {
     const nextSom = `SOM-G${nextSeq.toString().padStart(5, '0')}`;
     res.json({
         somNumber: nextSom,
-        csrNumber: nextSom.startsWith('SOM-') ? nextSom.replace('SOM-', 'CSR-') : `CSR-${nextSom}`
+        csrNumber: csrFromSomNumber(nextSom)
     });
 });
 
@@ -370,13 +383,15 @@ const verifyExamResult = asyncHandler(async (req, res) => {
     }
 
     // Return the results in a simplified format for public view
-    const publicResults = results.map(res => ({
+    const publicResults = results.map(res => {
+        const normalized = normalizeResultNumbers(res);
+        return ({
         _id: res._id,
         examName: res.exam?.examName,
         courseName: res.course?.name,
-        somNumber: res.somNumber,
-        csrNumber: res.csrNumber,
-        certificateNumber: res.certificateNumber,
+        somNumber: normalized.somNumber,
+        csrNumber: normalized.csrNumber,
+        certificateNumber: normalized.certificateNumber,
         grade: res.grade,
         percentage: res.percentage,
         marksObtained: res.marksObtained,
@@ -388,7 +403,8 @@ const verifyExamResult = asyncHandler(async (req, res) => {
             practical: sm.practical,
             total: sm.total
         }))
-    }));
+    });
+    });
 
     res.json({
         student: {
