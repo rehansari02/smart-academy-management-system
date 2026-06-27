@@ -48,6 +48,14 @@ export const MENU_CONFIG = [
           { title: 'Free Learning', path: '/master/free-learning' }
         ]
       },
+      {
+        title: 'Syllabus',
+        type: 'nested',
+        subItems: [
+          { title: 'Syllabus Management', path: '/master/syllabus-management', permissionPage: 'Syllabus Management' },
+          { title: 'Teacher Subject Management', path: '/master/teacher-subject-management', permissionPage: 'Teacher Subject Management' }
+        ]
+      },
       { title: 'Manage News', path: '/master/manage-news' },
       { title: 'Topper Result', path: '/master/manage-toppers' },
       { title: 'Our Team', path: '/master/manage-team' }
@@ -154,7 +162,7 @@ export const MENU_CONFIG = [
     path: '/connect',
     type: 'dropdown',
     subItems: [
-      { title: 'Video Call', path: '/connect/video-call' },
+      // { title: 'Video Call', path: '/connect/video-call' },
       // { title: 'Inquiry List', path: '/connect/inquiry-list' },
       { title: 'Feedback & Support', path: '/master/feedback' },
       { title: 'Manage Contacts', path: '/utility/contacts' },
@@ -165,11 +173,17 @@ export const MENU_CONFIG = [
     title: 'Utility',
     path: '/utility',
     type: 'dropdown',
+    isCustom: true,
     subItems: [
       { title: 'Branch', path: '/master/branch', restricted: true },
       { title: 'Location', path: '/utility/location' },
-      { title: 'Syllabus Management', path: '/utility/syllabus-management' },
-      { title: 'Teacher Subject Management', path: '/utility/teacher-subject-management' },
+      {
+        title: 'External Reference',
+        type: 'nested',
+        subItems: [
+          { title: 'Reference List', path: '/utility/external-reference', permissionPage: 'External Reference' }
+        ]
+      },
       { title: 'Manage Terms', path: '/master/manage-terms' },
       { title: 'Cloudinary Management', path: '/utility/cloudinary-manager' },
       { title: 'SMS Station', path: '/utility/sms-station' },
@@ -195,7 +209,7 @@ export const getMenuSections = () => {
                     // Flatten nested items: "Inquiry - Online"
                     sub.subItems.forEach(nestedSub => {
                         if (nestedSub.restricted) return;
-                        pageNames.push(`${sub.title} - ${nestedSub.title}`);
+                        pageNames.push(nestedSub.permissionPage || `${sub.title} - ${nestedSub.title}`);
                     });
                 } else {
                     pageNames.push(sub.title);

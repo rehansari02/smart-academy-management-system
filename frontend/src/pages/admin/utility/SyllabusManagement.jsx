@@ -865,50 +865,50 @@ const SyllabusManagement = () => {
   // Handle drill-down clicks (navigating via URL parameters)
   const handleBranchClick = (branch) => {
     setSearchQuery('');
-    navigate(`/utility/syllabus-management/${encodeId(branch._id)}`);
+    navigate(`/master/syllabus-management/${encodeId(branch._id)}`);
   };
 
   const handleBatchClick = (batch) => {
     setSearchQuery('');
-    navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batch._id)}`);
+    navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batch._id)}`);
   };
 
   const handleCourseClick = (course) => {
     setSearchQuery('');
-    navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(course._id)}`);
+    navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(course._id)}`);
   };
 
   const handleStudentsPageClick = (sub) => {
     setSearchQuery('');
-    navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(sub.subject._id)}/students`);
+    navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(sub.subject._id)}/students`);
   };
 
   const handleEditPageClick = (sub) => {
     setSearchQuery('');
-    navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(sub.subject._id)}/edit`);
+    navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(sub.subject._id)}/edit`);
   };
 
   const handleViewStudentLog = (studentId) => {
     setActiveDetailStudent(studentId);
-    navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students/${encodeId(studentId)}`);
+    navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students/${encodeId(studentId)}`);
   };
 
   // Back button navigation using Router
   const handleBack = () => {
     setSearchQuery('');
     if (step === 6) {
-      navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
+      navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
     } else if (step === 5 && studentId) {
       // If in student detail view, go back to students list
-      navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students`);
+      navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students`);
     } else if (step === 5) {
-      navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
+      navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
     } else if (step === 4) {
-      navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}`);
+      navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}`);
     } else if (step === 3) {
-      navigate(`/utility/syllabus-management/${encodeId(branchId)}`);
+      navigate(`/master/syllabus-management/${encodeId(branchId)}`);
     } else if (step === 2) {
-      navigate('/utility/syllabus-management');
+      navigate('/master/syllabus-management');
     } else {
       navigate('/home');
     }
@@ -918,13 +918,13 @@ const SyllabusManagement = () => {
   const navigateToStep = (targetStep) => {
     setSearchQuery('');
     if (targetStep === 1) {
-      navigate('/utility/syllabus-management');
+      navigate('/master/syllabus-management');
     } else if (targetStep === 2) {
-      navigate(`/utility/syllabus-management/${encodeId(branchId)}`);
+      navigate(`/master/syllabus-management/${encodeId(branchId)}`);
     } else if (targetStep === 3) {
-      navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}`);
+      navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}`);
     } else if (targetStep === 4) {
-      navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
+      navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
     }
   };
 
@@ -1219,7 +1219,7 @@ const SyllabusManagement = () => {
 
       if (step === 6) {
         // Navigate back to the subject list (Level 4)
-        navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
+        navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
       } else {
         setEditingSubject(null);
       }
@@ -1429,7 +1429,7 @@ const SyllabusManagement = () => {
             {/* ── Manage Teacher Access button ─ only visible if permitted ── */}
             {showTeacher && (
               <button
-                onClick={() => navigate('/utility/teacher-subject-management')}
+                onClick={() => navigate('/master/teacher-subject-management')}
                 className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-black text-white shadow-lg hover:bg-emerald-400 active:scale-95 transition-all"
               >
                 <UserCheck size={16} />
@@ -1489,7 +1489,7 @@ const SyllabusManagement = () => {
               <ChevronRight size={14} className="text-slate-300" />
               {activeDetailStudent ? (
                 <button
-                  onClick={() => navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students`)}
+                  onClick={() => navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students`)}
                   className="hover:text-primary transition-all truncate max-w-[150px]"
                 >
                   {selectedSubject.name} Students
@@ -2005,7 +2005,7 @@ const SyllabusManagement = () => {
               ) : activeDetailStudent ? (
                                 <StudentDetailView 
                   studentId={activeDetailStudent}
-                  onClose={() => navigate(`/utility/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students`)}
+                  onClose={() => navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students`)}
                   student={filteredStudents.find(s => s._id === activeDetailStudent)}
                   selectedSubject={selectedSubject}
                   subjectChapters={subjectChapters}

@@ -333,8 +333,81 @@ const getReferences = asyncHandler(async (req, res) => {
 });
 
 const createReference = asyncHandler(async (req, res) => {
-    const reference = await Reference.create(req.body);
+    const { name, mobile, address } = req.body;
+    const cleanName = String(name || '').trim();
+    const cleanMobile = String(mobile || '').trim();
+
+    if (!cleanName || !cleanMobile) {
+        res.status(400);
+        throw new Error('Reference name and mobile number are required');
+    }
+
+    const exists = await Reference.findOne({
+        name: { $regex: new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        isDeleted: false
+    });
+
+    if (exists) {
+        res.status(400);
+        throw new Error('Reference already exists');
+    }
+
+    const reference = await Reference.create({
+        name: cleanName,
+        mobile: cleanMobile,
+        address: String(address || '').trim()
+    });
     res.status(201).json(reference);
+});
+
+const updateReference = asyncHandler(async (req, res) => {
+    const reference = await Reference.findOne({ _id: req.params.id, isDeleted: false });
+
+    if (!reference) {
+        res.status(404);
+        throw new Error('Reference not found');
+    }
+
+    const { name, mobile, address } = req.body;
+    const cleanName = String(name || '').trim();
+    const cleanMobile = String(mobile || '').trim();
+
+    if (!cleanName || !cleanMobile) {
+        res.status(400);
+        throw new Error('Reference name and mobile number are required');
+    }
+
+    const exists = await Reference.findOne({
+        _id: { $ne: req.params.id },
+        name: { $regex: new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        isDeleted: false
+    });
+
+    if (exists) {
+        res.status(400);
+        throw new Error('Reference already exists');
+    }
+
+    reference.name = cleanName;
+    reference.mobile = cleanMobile;
+    reference.address = String(address || '').trim();
+
+    const updated = await reference.save();
+    res.json(updated);
+});
+
+const deleteReference = asyncHandler(async (req, res) => {
+    const reference = await Reference.findOne({ _id: req.params.id, isDeleted: false });
+
+    if (!reference) {
+        res.status(404);
+        throw new Error('Reference not found');
+    }
+
+    reference.isDeleted = true;
+    await reference.save();
+
+    res.json({ id: req.params.id, message: 'Reference deleted successfully' });
 });
 
 // --- EDUCATION CONTROLLERS ---
@@ -595,7 +668,7 @@ module.exports = {
     getBatches, createBatch, updateBatch, deleteBatch,
     getSubjects, createSubject, updateSubject, deleteSubject,
     createEmployee, getEmployees, getPublicEmployeeReferences,
-    getReferences, createReference,
+    getReferences, createReference, updateReference, deleteReference,
     getEducations, createEducation,
     getEmployeeRoles, createEmployeeRole, updateEmployeeRole, deleteEmployeeRole,
     getExams, createExam,

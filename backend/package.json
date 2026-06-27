@@ -28,11 +28,11 @@
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^4.0.0",
+    "pdfjs-dist": "^6.0.227",
     "winston": "^3.19.0",
-    "xlsx": "^0.18.5",
-    "pdfjs-dist": "^6.0.227"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11"
+    "nodemon": "^3.1.14"
   }
 }

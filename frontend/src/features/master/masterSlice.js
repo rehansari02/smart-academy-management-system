@@ -263,7 +263,21 @@ export const createReference = createAsyncThunk('master/createReference', async 
     try {
         const response = await axios.post(API_URL + 'reference', data);
         return response.data;
-    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const updateReference = createAsyncThunk('master/updateReference', async ({ id, data }, thunkAPI) => {
+    try {
+        const response = await axios.put(API_URL + 'reference/' + id, data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const deleteReference = createAsyncThunk('master/deleteReference', async (id, thunkAPI) => {
+    try {
+        const response = await axios.delete(API_URL + 'reference/' + id);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
 });
 
 // --- Education Thunks ---
@@ -725,6 +739,17 @@ const masterSlice = createSlice({
                 state.references.unshift(action.payload);
                 state.isSuccess = true;
                 state.message = 'Reference Added Successfully';
+            })
+            .addCase(updateReference.fulfilled, (state, action) => {
+                const index = state.references.findIndex(r => r._id === action.payload._id);
+                if (index !== -1) state.references[index] = action.payload;
+                state.isSuccess = true;
+                state.message = 'Reference Updated Successfully';
+            })
+            .addCase(deleteReference.fulfilled, (state, action) => {
+                state.references = state.references.filter(r => r._id !== action.payload.id);
+                state.isSuccess = true;
+                state.message = 'Reference Deleted Successfully';
             })
             
             // --- Educations ---

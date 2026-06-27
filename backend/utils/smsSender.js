@@ -19,7 +19,8 @@ const sendSMS = async (mobileNumber, message, category = 'General') => {
                 isAdmissionEnabled: true,
                 isFeesEnabled: true,
                 isAttendanceEnabled: true,
-                isInquiryEnabled: true
+                isInquiryEnabled: true,
+                isExamScheduleEnabled: true
             });
         }
 
@@ -42,6 +43,7 @@ const sendSMS = async (mobileNumber, message, category = 'General') => {
         else if (category === 'Fees') isCategoryEnabled = setting.isFeesEnabled ?? true;
         else if (category === 'Attendance') isCategoryEnabled = setting.isAttendanceEnabled ?? true;
         else if (category === 'Inquiry') isCategoryEnabled = setting.isInquiryEnabled ?? true;
+        else if (category === 'ExamSchedule' || category === 'Exam Schedule') isCategoryEnabled = setting.isExamScheduleEnabled ?? true;
 
         if (!isCategoryEnabled) {
             console.log(`SMS Skipped: SMS sending is disabled for category: ${category}`);

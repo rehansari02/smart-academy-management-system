@@ -170,6 +170,13 @@ const SmsStation = () => {
                         onToggle={() => handleToggleSms('isInquiryEnabled', data?.setting?.isInquiryEnabled)}
                         disabled={updating || !data?.setting?.isGlobalEnabled}
                     />
+                    <ControlCard 
+                        title="Exam Schedule SMS" 
+                        description="Exam date alerts to parents"
+                        isEnabled={data?.setting?.isExamScheduleEnabled}
+                        onToggle={() => handleToggleSms('isExamScheduleEnabled', data?.setting?.isExamScheduleEnabled)}
+                        disabled={updating || !data?.setting?.isGlobalEnabled}
+                    />
                 </div>
 
                 {/* Stats Grid */}
@@ -344,6 +351,10 @@ const SmsStation = () => {
                                 <TemplateItem 
                                     title="Attendance" 
                                     text="Dear, {name} is Absent in class on today {date} for {time}, Batch Time-{batch}. Regards, Smart Institute"
+                                />
+                                <TemplateItem 
+                                    title="Exam Schedule" 
+                                    text="Dear, {name}. Your exam has been scheduled from {fromDate} to {toDate}, for any other details contact your {branch} Branch. Regards, Smart Institute"
                                 />
                             </div>
                         </div>

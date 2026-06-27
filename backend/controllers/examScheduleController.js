@@ -5,6 +5,7 @@ const Student = require('../models/Student');
 const ExamRequest = require('../models/ExamRequest');
 const Course = require('../models/Course');
 const sendSMS = require('../utils/smsSender');
+const { getParentSmsRecipients } = require('../utils/smsRecipients');
 
 const formatDate = (value) => {
     if (!value) return '';
@@ -81,10 +82,10 @@ const queueExamScheduleSms = (scheduleId) => {
             if (!students.length) return;
 
             await Promise.allSettled(students.map(async (student) => {
-                const mobile = student.mobileStudent || student.mobileParent;
+                const mobile = getParentSmsRecipients(student)[0];
                 if (!mobile) return;
                 const message = buildExamScheduleMessage(student, schedule);
-                await sendSMS(mobile, message, 'General');
+                await sendSMS(mobile, message, 'Exam Schedule');
             }));
         } catch (error) {
             console.error('Exam schedule SMS failed:', error.message);

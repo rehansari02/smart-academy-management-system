@@ -10,6 +10,7 @@ const Employee = require('../models/Employee');
 const ExamResult = require('../models/ExamResult');
 const ExamRequest = require('../models/ExamRequest');
 const sendSMS = require('../utils/smsSender');
+const { getParentSmsRecipients } = require('../utils/smsRecipients');
 const asyncHandler = require('express-async-handler');
 const Counter = require('../models/Counter');
 const generateEnrollmentNumber = require('../utils/enrollmentGenerator');
@@ -349,7 +350,8 @@ const createStudent = asyncHandler(async (req, res) => {
         const batchTime = batchDoc ? `${batchDoc.startTime} to ${batchDoc.endTime}` : 'N/A';
         const fullName = `${student.firstName} ${student.lastName}`;
 
-        const smsMessage = `Welcome to Smart Institute, Dear, ${fullName}. your admission has been successfully completed. Enrollment No. ${student.enrollmentNo}, course ${courseName}, Batch Time ${batchTime}`;        const contacts = [...new Set([student.mobileStudent, student.mobileParent, student.contactHome].filter(Boolean))]; 
+        const smsMessage = `Welcome to Smart Institute, Dear, ${fullName}. your admission has been successfully completed. Enrollment No. ${student.enrollmentNo}, course ${courseName}, Batch Time ${batchTime}`;
+        const contacts = getParentSmsRecipients(student);
 
         // Remove from Admin "Online Admission" list when admission fee paid (student created from inquiry)
         if (student.inquiryId && isAdmissionFeesPaid) {
@@ -573,14 +575,14 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
             }
             await student.save();
         
-            const contacts = [...new Set([student.mobileStudent, student.mobileParent, student.contactHome].filter(Boolean))];
+            const contacts = getParentSmsRecipients(student);
 
             setImmediate(async () => {
                 try {
                     // 1. Send Registration Welcome SMS
-                    if (student.mobileStudent) {
+                    if (contacts.length > 0) {
                         const regMessage = `Dear, ${student.firstName} ${student.lastName}. Your Registration process has been successfully completed. Reg.No. ${finalRegNo}, User ID-${username}, Password-${password}, smart institute.`;
-                        await sendSMS(student.mobileStudent, regMessage, 'Admission');
+                        await Promise.all(contacts.map(num => sendSMS(num, regMessage, 'Admission')));
                         console.log('Registration Welcome SMS sent');
                     }
 
@@ -883,9 +885,10 @@ const resetStudentLogin = asyncHandler(async (req, res) => {
         throw saveError;
     }
 
-    if (student.mobileStudent) {
+    const contacts = getParentSmsRecipients(student);
+    if (contacts.length > 0) {
         const msg = `Dear ${student.firstName}, your login details have been updated. User ID: ${user.username}, Password: ${password || '(Unchanged)'}. Smart Institute.`;
-        sendSMS(student.mobileStudent, msg, 'General').catch(err => console.error('Reset Login SMS failed', err));
+        Promise.all(contacts.map(num => sendSMS(num, msg, 'General'))).catch(err => console.error('Reset Login SMS failed', err));
     }
 
     res.json({ message: 'Login details updated successfully', username: user.username });
@@ -1085,19 +1088,28 @@ const getUniqueReferences = asyncHandler(async (req, res) => {
         studentReferences,
         inquiryReferences,
         referenceMasters,
-        employeeReferences
+        employeeReferences,
+        deletedReferenceMasters
     ] = await Promise.all([
         Student.distinct('reference', studentQuery),
         Inquiry.distinct('referenceBy', inquiryQuery),
         Reference.find({ isDeleted: false }).select('name').lean(),
-        Employee.find(employeeQuery).select('name').lean()
+        Employee.find(employeeQuery).select('name').lean(),
+        Reference.find({ isDeleted: true }).select('name').lean()
     ]);
+
+    const deletedReferenceNames = new Set(
+        deletedReferenceMasters
+            .map(ref => String(ref.name || '').trim().toLowerCase())
+            .filter(Boolean)
+    );
 
     const referenceMap = new Map();
     const addReference = (value) => {
         const name = typeof value === 'string' ? value.trim() : '';
         if (!name) return;
         const key = name.toLowerCase();
+        if (deletedReferenceNames.has(key)) return;
         if (!referenceMap.has(key)) referenceMap.set(key, name);
     };
 

@@ -5,6 +5,7 @@ const Employee = require('../models/Employee');
 const ExamSchedule = require('../models/ExamSchedule');
 const AttendanceCalendar = require('../models/AttendanceCalendar');
 const sendSMS = require('../utils/smsSender');
+const { getParentSmsRecipients } = require('../utils/smsRecipients');
 
 const getObjectIdString = (value) => {
     if (!value) return null;
@@ -536,7 +537,7 @@ exports.saveStudentAttendance = async (req, res) => {
             for (const record of records) {
                 if (!record.isPresent) {
                     const studentName = record.studentName || record.name || 'Student';
-                    const parentMobile = record.contactParent;
+                    const parentMobile = getParentSmsRecipients({ mobileParent: record.contactParent })[0];
                     
                     if (parentMobile) {
                         const message = `Dear, ${studentName} is Absent in class on today ${date} for ${startTime}-${endTime}, Batch Time-${batchName}. Regards, Smart Institute`;

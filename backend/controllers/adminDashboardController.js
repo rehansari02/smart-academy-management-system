@@ -460,16 +460,17 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
         reference: referenceFilter,
         ...(dateMatch ? { admissionDate: dateMatch } : {})
     };
-
-    // Fetch external reference master data to classify references
-    const externalRefRecords = await Reference.find({ isDeleted: false })
-      .select('name mobile address')
+    // Include deleted reference masters here only for historical reports/charts.
+    // The active External Reference list still uses getReferences(), which filters isDeleted:false.
+    const externalRefRecords = await Reference.find({})
+      .select('name mobile address isDeleted')
+      .sort({ isDeleted: 1, updatedAt: -1 })
       .lean();
     const externalRefNames = new Map();
     externalRefRecords.forEach(ref => {
       const key = ref.name.trim().toLowerCase();
       if (!externalRefNames.has(key)) {
-        externalRefNames.set(key, { name: ref.name, mobile: ref.mobile, address: ref.address || '' });
+        externalRefNames.set(key, { name: ref.name, mobile: ref.mobile, address: ref.address || '', isDeleted: ref.isDeleted === true });
       }
     });
 
@@ -545,7 +546,8 @@ const getReferenceIncentive = asyncHandler(async (req, res) => {
           isExternal: true,
           contactName: extRef.name,
           mobile: extRef.mobile,
-          address: extRef.address
+          address: extRef.address,
+          isReferenceDeleted: extRef.isDeleted
         });
       } else {
         internalReferences.push({

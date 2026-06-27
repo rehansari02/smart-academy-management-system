@@ -13,6 +13,7 @@ const InquiryImportHistory = require("../models/InquiryImportHistory");
 const asyncHandler = require("express-async-handler");
 const generateEnrollmentNumber = require("../utils/enrollmentGenerator");
 const sendSMS = require("../utils/smsSender"); // Moved to top for global use
+const { getParentSmsRecipients } = require("../utils/smsRecipients");
 const XLSX = require("xlsx");
 const mongoose = require("mongoose");
 const moment = require("moment");
@@ -299,15 +300,6 @@ const allocateReceiptPayments = (student, receipts = []) => {
       receiptAllocations.set(receipt._id.toString(), allocation);
     }
   });
-
-  admissionPaid = Math.max(
-    admissionPaid,
-    Math.min(Number(student?.admissionFeeAmount || 0), admissionFee)
-  );
-  registrationPaid = Math.max(
-    registrationPaid,
-    Math.min(Number(student?.registrationFeeAmount || 0), registrationFee)
-  );
 
   return { admissionPaid, registrationPaid, installmentPaid, receiptAllocations };
 };
@@ -2082,11 +2074,7 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
       // ALWAYS include Reg.No. to match the approved DLT template exactly
       const smsMessage = `Dear, ${var1}. Your Course fees ${var2} has been deposited for ${var3}, Reg.No. ${var4}. Thank you, Smart Institute`;
 
-      const contacts = [...new Set([
-          student.mobileStudent,
-          student.mobileParent,
-          student.contactHome
-      ].filter(Boolean))];
+      const contacts = getParentSmsRecipients(student);
 
       // SMS Diagnostic Logging
       console.log('=== SMS DIAGNOSTIC ===');
@@ -2099,7 +2087,7 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
       
       if (contacts.length === 0) {
           console.warn('!!! SMS NOT SENT: No valid mobile numbers found for this student !!!');
-          console.warn('Student fields - mobileStudent:', student.mobileStudent, 'mobileParent:', student.mobileParent, 'contactHome:', student.contactHome);
+          console.warn('Student parent mobile:', student.mobileParent);
       } else {
           console.log(`Sending Fees SMS to: ${contacts.join(', ')} | Msg: ${smsMessage}`);
 

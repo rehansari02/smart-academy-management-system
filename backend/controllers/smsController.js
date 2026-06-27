@@ -15,8 +15,12 @@ const getSmsStationData = asyncHandler(async (req, res) => {
             isAdmissionEnabled: true,
             isFeesEnabled: true,
             isAttendanceEnabled: true,
-            isInquiryEnabled: true
+            isInquiryEnabled: true,
+            isExamScheduleEnabled: true
         });
+    } else if (setting.isExamScheduleEnabled === undefined) {
+        setting.isExamScheduleEnabled = true;
+        await setting.save();
     }
 
     const stats = {
@@ -72,7 +76,8 @@ const updateSmsSettings = asyncHandler(async (req, res) => {
         isAdmissionEnabled, 
         isFeesEnabled, 
         isAttendanceEnabled, 
-        isInquiryEnabled 
+        isInquiryEnabled,
+        isExamScheduleEnabled
     } = req.body;
     
     let setting = await SmsSetting.findOne();
@@ -82,6 +87,7 @@ const updateSmsSettings = asyncHandler(async (req, res) => {
         if (isFeesEnabled !== undefined) setting.isFeesEnabled = isFeesEnabled;
         if (isAttendanceEnabled !== undefined) setting.isAttendanceEnabled = isAttendanceEnabled;
         if (isInquiryEnabled !== undefined) setting.isInquiryEnabled = isInquiryEnabled;
+        if (isExamScheduleEnabled !== undefined) setting.isExamScheduleEnabled = isExamScheduleEnabled;
         
         setting.updatedBy = req.user._id;
         await setting.save();
@@ -92,6 +98,7 @@ const updateSmsSettings = asyncHandler(async (req, res) => {
             isFeesEnabled: isFeesEnabled ?? true,
             isAttendanceEnabled: isAttendanceEnabled ?? true,
             isInquiryEnabled: isInquiryEnabled ?? true,
+            isExamScheduleEnabled: isExamScheduleEnabled ?? true,
             updatedBy: req.user._id
         });
     }

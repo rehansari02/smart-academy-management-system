@@ -21,6 +21,10 @@ const smsSettingSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    isExamScheduleEnabled: {
+        type: Boolean,
+        default: true
+    },
     updatedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'

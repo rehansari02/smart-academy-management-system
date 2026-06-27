@@ -7,7 +7,7 @@ const {
     getBatches, createBatch, updateBatch, deleteBatch, 
     createEmployee, getEmployees, getPublicEmployeeReferences,
     getSubjects, createSubject, updateSubject, deleteSubject,
-    getReferences, createReference,
+    getReferences, createReference, updateReference, deleteReference,
     getEducations, createEducation,
     getEmployeeRoles, createEmployeeRole, updateEmployeeRole, deleteEmployeeRole,
     getExams, createExam,
@@ -97,6 +97,10 @@ router.route('/employee')
 router.route('/reference')
     .get(getReferences) // Public Access
     .post(protect, createReference);
+
+router.route('/reference/:id')
+    .put(protect, checkPermission('External Reference', 'edit'), updateReference)
+    .delete(protect, checkPermission('External Reference', 'delete'), deleteReference);
 
 // --- Education Routes ---
 router.route('/education')

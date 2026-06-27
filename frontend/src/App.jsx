@@ -99,6 +99,7 @@ const ManageContact = lazy(() => import("./pages/admin/utility/ManageContact"));
 const ComplainManagement = lazy(() => import("./pages/admin/utility/ComplainManagement"));
 const SyllabusManagement = lazy(() => import("./pages/admin/utility/SyllabusManagement"));
 const TeacherSubjectManagement = lazy(() => import("./pages/admin/utility/TeacherSubjectManagement"));
+const ExternalReference = lazy(() => import("./pages/admin/utility/ExternalReference"));
 
 // Transaction Pages
 const InquiryPage = lazy(() => import("./pages/admin/transaction/InquiryPage"));
@@ -778,7 +779,7 @@ function App() {
               />
               
               <Route
-                path="/utility/syllabus-management"
+                path="/master/syllabus-management"
                 element={
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
@@ -788,7 +789,7 @@ function App() {
                 }
               />
               <Route
-                path="/utility/syllabus-management/:branchId"
+                path="/master/syllabus-management/:branchId"
                 element={
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
@@ -798,7 +799,7 @@ function App() {
                 }
               />
               <Route
-                path="/utility/syllabus-management/:branchId/:batchId"
+                path="/master/syllabus-management/:branchId/:batchId"
                 element={
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
@@ -808,7 +809,7 @@ function App() {
                 }
               />
               <Route
-                path="/utility/syllabus-management/:branchId/:batchId/:courseId"
+                path="/master/syllabus-management/:branchId/:batchId/:courseId"
                 element={
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
@@ -818,7 +819,7 @@ function App() {
                 }
               />
               <Route
-                path="/utility/syllabus-management/:branchId/:batchId/:courseId/:subjectId/students"
+                path="/master/syllabus-management/:branchId/:batchId/:courseId/:subjectId/students"
                 element={
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
@@ -828,7 +829,7 @@ function App() {
                 }
               />
               <Route
-                path="/utility/syllabus-management/:branchId/:batchId/:courseId/:subjectId/students/:studentId"
+                path="/master/syllabus-management/:branchId/:batchId/:courseId/:subjectId/students/:studentId"
                 element={
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
@@ -838,7 +839,7 @@ function App() {
                 }
               />
               <Route
-                path="/utility/syllabus-management/:branchId/:batchId/:courseId/:subjectId/edit"
+                path="/master/syllabus-management/:branchId/:batchId/:courseId/:subjectId/edit"
                 element={
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
@@ -848,7 +849,7 @@ function App() {
                 }
               />
               <Route
-                path="/utility/teacher-subject-management"
+                path="/master/teacher-subject-management"
                 element={
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
@@ -856,6 +857,14 @@ function App() {
                     </Suspense>
                   </PrivateRoute>
                 }
+              />
+              <Route
+                path="/utility/syllabus-management/*"
+                element={<Navigate to="/master/syllabus-management" replace />}
+              />
+              <Route
+                path="/utility/teacher-subject-management"
+                element={<Navigate to="/master/teacher-subject-management" replace />}
               />
               <Route
                 path="/utility/cloudinary-manager"
@@ -873,6 +882,16 @@ function App() {
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
                         <LocationMaster />
+                    </Suspense>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/utility/external-reference"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <ExternalReference />
                     </Suspense>
                   </PrivateRoute>
                 }

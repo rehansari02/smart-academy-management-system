@@ -99,7 +99,7 @@ const Navbar = () => {
              // Check if ANY of the nested items are permitted. 
              // Ideally we filter the nested items themselves too.
              const visibleNested = sub.subItems.filter(nested => {
-                 const pageName = `${sub.title} - ${nested.title}`;
+                 const pageName = nested.permissionPage || `${sub.title} - ${nested.title}`;
                  const perm = myPermissions.find(p => p.page === pageName);
                  return perm && normalizePermissionFlags(perm).view === true;
              });
