@@ -38,6 +38,19 @@ const studentSyllabusResponseSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    comments: [
+      {
+        comment: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        commentedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
     respondedAt: {
       type: Date,
       default: Date.now,

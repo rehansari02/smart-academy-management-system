@@ -862,7 +862,7 @@ const StudentDetailView = ({
                           </div>
                         </div>
                       )}
-                  {(chData.theoryResponse?.understood || chData.chapterResponse?.understood || chData.commentResponse?.comment) && (
+                  {(chData.theoryResponse?.understood || chData.chapterResponse?.understood || chData.commentResponse?.comment || chData.commentResponse?.comments?.length > 0) && (
                     <div className="mb-3 rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2">
                       <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Student Feedback</p>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold">
@@ -877,11 +877,19 @@ const StudentDetailView = ({
                           </span>
                         )}
                       </div>
-                      {chData.commentResponse?.comment && (
-                        <div className="mt-2 rounded-md bg-white px-2.5 py-2 text-[11px] font-semibold leading-snug text-slate-700 ring-1 ring-emerald-100">
-                          {chData.commentResponse.comment}
+                      {(chData.commentResponse?.comments?.length > 0
+                        ? chData.commentResponse.comments
+                        : chData.commentResponse?.comment
+                          ? [{ comment: chData.commentResponse.comment, commentedAt: chData.commentResponse.respondedAt }]
+                          : []
+                      ).map((item, commentIndex) => (
+                        <div key={`${item.commentedAt || commentIndex}-${commentIndex}`} className="mt-2 rounded-md bg-white px-2.5 py-2 text-[11px] font-semibold leading-snug text-slate-700 ring-1 ring-emerald-100">
+                          <p>{item.comment}</p>
+                          <p className="mt-1 text-[10px] font-bold text-slate-400">
+                            {item.commentedAt ? moment(item.commentedAt).format('DD MMM YYYY, hh:mm A') : 'Date not available'}
+                          </p>
                         </div>
-                      )}
+                      ))}
                     </div>
                   )}
                   {/* Projects Section */}

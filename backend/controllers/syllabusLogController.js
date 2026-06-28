@@ -628,9 +628,20 @@ const getChapterStatus = asyncHandler(async (req, res) => {
       response.chapterId?.toString() || '',
       response.projectId ? response.projectId.toString() : '',
     ].join(':');
+    const comments = (response.comments || []).map(item => ({
+      comment: item.comment || '',
+      commentedAt: item.commentedAt || item.createdAt || response.respondedAt || response.updatedAt || response.createdAt,
+    })).filter(item => item.comment);
+    if (response.comment && comments.length === 0) {
+      comments.push({
+        comment: response.comment,
+        commentedAt: response.respondedAt || response.updatedAt || response.createdAt,
+      });
+    }
     studentResponseMap[key] = {
       understood: Boolean(response.understood),
       comment: response.comment || '',
+      comments,
       respondedAt: response.respondedAt || response.updatedAt || response.createdAt,
     };
   });

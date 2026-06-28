@@ -84,10 +84,21 @@ const buildChapterProgress = (subject, logs, responses) => {
 
         const getResponse = (type, projectId = '') => {
             const response = responseMap[[type, cid, projectId ? String(projectId) : ''].join(':')];
+            const comments = (response?.comments || []).map((item) => ({
+                comment: item.comment || '',
+                commentedAt: item.commentedAt || item.createdAt || response.respondedAt || response.updatedAt || response.createdAt,
+            })).filter((item) => item.comment);
+            if (response?.comment && comments.length === 0) {
+                comments.push({
+                    comment: response.comment,
+                    commentedAt: response.respondedAt || response.updatedAt || response.createdAt,
+                });
+            }
             return response
                 ? {
                     understood: Boolean(response.understood),
                     comment: response.comment || '',
+                    comments,
                     respondedAt: response.respondedAt || response.updatedAt || response.createdAt,
                 }
                 : null;
@@ -751,28 +762,42 @@ const saveStudentSyllabusComment = async (req, res) => {
         }
 
         const trimmedComment = String(comment || '').trim().slice(0, 1000);
+        if (!trimmedComment) {
+            return res.status(400).json({ message: 'Comment is required' });
+        }
         const student = await getActiveStudentForUser(req.user._id, false);
         if (!student) return res.status(404).json({ message: 'Student not found' });
 
-        const response = await StudentSyllabusResponse.findOneAndUpdate(
-            {
+        const now = new Date();
+        let response = await StudentSyllabusResponse.findOne({
+            studentId: student._id,
+            subjectId,
+            chapterId,
+            projectId: null,
+            type: 'comment',
+        });
+
+        if (!response) {
+            response = new StudentSyllabusResponse({
                 studentId: student._id,
                 subjectId,
                 chapterId,
                 projectId: null,
                 type: 'comment',
-            },
-            {
-                studentId: student._id,
-                subjectId,
-                chapterId,
-                projectId: null,
-                type: 'comment',
-                comment: trimmedComment,
-                respondedAt: new Date(),
-            },
-            { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
+            });
+        }
+
+        if (response.comment && (!response.comments || response.comments.length === 0)) {
+            response.comments = [{
+                comment: response.comment,
+                commentedAt: response.respondedAt || response.updatedAt || response.createdAt || now,
+            }];
+        }
+
+        response.comment = trimmedComment;
+        response.respondedAt = now;
+        response.comments.push({ comment: trimmedComment, commentedAt: now });
+        await response.save();
 
         res.json(response);
     } catch (error) {
