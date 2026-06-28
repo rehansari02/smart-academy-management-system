@@ -70,11 +70,8 @@ const TeacherSubjectManagement = () => {
 
   // ── Active Faculty/Teachers ────────────────────────────────────────────────
   const activeTeachers = useMemo(() =>
-    employees.filter(e =>
-      e.isActive && !e.isDeleted &&
-      (e.type === 'Teacher' || e.type === 'Faculty' ||
-       (e.role && (e.role.toLowerCase().includes('teacher') || e.role.toLowerCase().includes('faculty'))))
-    ), [employees]
+    employees.filter(e => e.isActive !== false && !e.isDeleted),
+    [employees]
   );
 
   const filteredTeachers = useMemo(() => {
@@ -262,7 +259,7 @@ const TeacherSubjectManagement = () => {
               >
                 <option value="">-- Select Teacher --</option>
                 {activeTeachers.length === 0 && (
-                  <option disabled>No Faculty employees found</option>
+                  <option disabled>No active employees found</option>
                 )}
                 {activeTeachers.map(t => (
                   <option key={t._id} value={t._id}>

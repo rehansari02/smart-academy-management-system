@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchFeeReceipts, deleteFeeReceipt } from '../../../features/transaction/transactionSlice';
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
@@ -8,9 +8,9 @@ import { Search, Printer, Edit2, Trash2, RefreshCw, FileText, X, CheckSquare, Sq
 import moment from 'moment';
 import { TableSkeleton } from '../../../components/common/SkeletonLoader';
 import EditReceiptModal from '../../../components/transaction/EditReceiptModal';
-import { useReactToPrint } from 'react-to-print';
 import ReceiptPrintTemplate from '../../../components/ReceiptPrintTemplate';
 import StudentSearch from '../../../components/StudentSearch';
+import { receiptPrintPageStyle, useReceiptPrinter } from '../../../hooks/useReceiptPrinter';
 // Assuming you might want to reuse the Edit Modal from FeeCollection or create a new one. 
 // For now, I will implement the table first. If Edit needs a modal, I might need to copy that logic or refactor it into a shared component.
 // Given the user request, I will implement the Edit/Delete actions.
@@ -37,8 +37,7 @@ const AllReceipts = () => {
         limit: 10
     });
 
-    const [printingReceipt, setPrintingReceipt] = useState(null);
-    const receiptRef = useRef();
+    const { printingReceipt, triggerPrintReceipt } = useReceiptPrinter();
 
     // Edit Modal State
     const [showEditModal, setShowEditModal] = useState(false);
@@ -161,47 +160,13 @@ const AllReceipts = () => {
         setShowEditModal(false);
         setEditingReceipt(null);
     };
-
-     // Print Handler
-    const handlePrintReceipt = useReactToPrint({
-        contentRef: receiptRef,
-        onAfterPrint: () => setPrintingReceipt(null)
-    });
-
-    const triggerPrintReceipt = (receipt) => {
-        setPrintingReceipt(receipt);
-        setTimeout(() => {
-            const printBtn = document.getElementById('hidden-print-trigger');
-            if (printBtn) {
-                printBtn.click();
-            } else {
-                handlePrintReceipt();
-            }
-        }, 300);
-    };
-
     return (
-        <div className="container mx-auto p-4">
-             {/* Hidden button to trigger print-to-react properly on mobile */}
-             <button id="hidden-print-trigger" onClick={handlePrintReceipt} className="hidden" />
-             
-             {/* Hidden Print Specific Component - Use off-screen instead of display:none for mobile print support */}
-             <div style={{
-                position: 'fixed',
-                left: '-9999px',
-                top: 0,
-                width: '210mm',
-                height: '297mm',
-                overflow: 'hidden',
-                backgroundColor: 'white',
-                zIndex: -1,
-                opacity: 0,
-                pointerEvents: 'none'
-            }}>
+        <div className="receipt-page-shell container mx-auto p-4">
+            <style>{receiptPrintPageStyle}</style>
+            <div className="receipt-print-host" aria-hidden={!printingReceipt}>
                 {printingReceipt && (
-                    <ReceiptPrintTemplate 
-                        ref={receiptRef} 
-                        receipt={printingReceipt} 
+                    <ReceiptPrintTemplate
+                        receipt={printingReceipt}
                     />
                 )}
             </div>

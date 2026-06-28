@@ -119,6 +119,41 @@ export const fetchStudentExamSchedules = createAsyncThunk(
     }
 );
 
+export const fetchStudentSyllabus = createAsyncThunk(
+    'studentPortal/fetchStudentSyllabus',
+    async (_, thunkAPI) => {
+        try {
+            const response = await axios.get(`${API_URL}syllabus`);
+            return response.data;
+        } catch (error) {
+            return thunkAPI.rejectWithValue(error.response?.data?.message || error.message);
+        }
+    }
+);
+
+export const submitSyllabusAck = createAsyncThunk(
+    'studentPortal/submitSyllabusAck',
+    async (payload, thunkAPI) => {
+        try {
+            const response = await axios.post(`${API_URL}syllabus/ack`, payload);
+            return response.data;
+        } catch (error) {
+            return thunkAPI.rejectWithValue(error.response?.data?.message || error.message);
+        }
+    }
+);
+
+export const submitSyllabusComment = createAsyncThunk(
+    'studentPortal/submitSyllabusComment',
+    async (payload, thunkAPI) => {
+        try {
+            const response = await axios.post(`${API_URL}syllabus/comment`, payload);
+            return response.data;
+        } catch (error) {
+            return thunkAPI.rejectWithValue(error.response?.data?.message || error.message);
+        }
+    }
+);
 const studentPortalSlice = createSlice({
     name: 'studentPortal',
     initialState: {
@@ -131,6 +166,7 @@ const studentPortalSlice = createSlice({
         fees: [], // Added fees state
         examSchedules: [],
         examStudent: null,
+        syllabus: null,
         isLoading: false,
         isError: false,
         message: '',
@@ -236,9 +272,22 @@ const studentPortalSlice = createSlice({
                 state.isLoading = false;
                 state.isError = true;
                 state.message = action.payload;
+            })
+            .addCase(fetchStudentSyllabus.pending, (state) => { state.isLoading = true; state.isError = false; })
+            .addCase(fetchStudentSyllabus.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.syllabus = action.payload;
+            })
+            .addCase(fetchStudentSyllabus.rejected, (state, action) => {
+                state.isLoading = false;
+                state.isError = true;
+                state.message = action.payload;
             });
     },
 });
 
 export const { resetPortalState, resetQuizResult } = studentPortalSlice.actions;
 export default studentPortalSlice.reducer;
+
+
+

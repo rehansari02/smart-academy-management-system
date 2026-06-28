@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useForm, Controller } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
@@ -6,13 +6,13 @@ import { collectFees, fetchFeeReceipts, updateFeeReceipt, deleteFeeReceipt, rese
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { RotateCcw, FileText, Printer, Edit2, Eye, Save, DollarSign, Calendar, Receipt } from 'lucide-react';
-import { useReactToPrint } from 'react-to-print';
 import StudentSearch from '../../../components/StudentSearch';
 import ReceiptPrintTemplate from '../../../components/ReceiptPrintTemplate';
 import moment from 'moment';
 import EditReceiptModal from '../../../components/transaction/EditReceiptModal';
 import { useLocation } from 'react-router-dom';
 import { getMediaUrl } from '../../../utils/mediaUrl';
+import { receiptPrintPageStyle, useReceiptPrinter } from '../../../hooks/useReceiptPrinter';
 
 const POPULAR_INDIAN_BANKS = [
     "State Bank of India",
@@ -85,7 +85,7 @@ const FeeCollection = () => {
     const { user } = useSelector((state) => state.auth);
     
     const [editingReceipt, setEditingReceipt] = useState(null);
-    const [printingReceipt, setPrintingReceipt] = useState(null);
+    const { printingReceipt, triggerPrintReceipt } = useReceiptPrinter();
     
     // Testing Date State
     const [testDate, setTestDate] = useState(new Date().toISOString().split('T')[0]);
@@ -95,7 +95,6 @@ const FeeCollection = () => {
     const [paymentSummary, setPaymentSummary] = useState(null);
     const [paymentHistory, setPaymentHistory] = useState([]);
     
-    const receiptRef = useRef();
 
     const { register, handleSubmit, reset, setValue, control, watch, formState: { errors } } = useForm({
         defaultValues: {
@@ -336,62 +335,9 @@ const FeeCollection = () => {
 
     // --- Filter & Report Handlers Removed (Moved to AllReceipts) ---
 
-    // === Printing ===
-    const handlePrintReceipt = useReactToPrint({
-        contentRef: receiptRef,
-        onBeforePrint: async () => {
-            // Ensure the receipt is set before printing
-            return new Promise((resolve) => {
-                setTimeout(resolve, 500);
-            });
-        },
-        onAfterPrint: () => {
-            setPrintingReceipt(null);
-        },
-        documentTitle: `Receipt-${printingReceipt?.receiptNo || 'print'}`,
-        pageStyle: ` 
-          @page { 
-            margin: 0; 
-            size: A4 portrait; 
-          } 
-          @media print { 
-            html, body { 
-              margin: 0 !important; 
-              padding: 0 !important; 
-              background: #fff !important; 
-              -webkit-print-color-adjust: exact !important; 
-              print-color-adjust: exact !important; 
-            } 
-            .print-only-container { 
-              width: 210mm !important; 
-              height: 297mm !important; 
-              page-break-after: avoid !important; 
-              page-break-inside: avoid !important; 
-            } 
-          } 
-          * { 
-            -webkit-print-color-adjust: exact !important; 
-            print-color-adjust: exact !important; 
-            color-adjust: exact !important; 
-          } 
-        `
-    });
-
-    const triggerPrintReceipt = (receipt) => {
-        setPrintingReceipt(receipt);
-        // Add a small delay to ensure the template has rendered with the new receipt data
-        setTimeout(() => {
-            const printBtn = document.getElementById('hidden-print-trigger-collection');
-            if (printBtn) {
-                printBtn.click();
-            } else {
-                handlePrintReceipt();
-            }
-        }, 500);
-    };
-
     return (
-        <div className="container mx-auto p-4 md:p-6 bg-gray-50 min-h-screen">
+        <div className="receipt-page-shell container mx-auto p-4 md:p-6 bg-gray-50 min-h-screen">
+            <style>{receiptPrintPageStyle}</style>
 
             <h1 className="text-3xl font-bold text-gray-800 mb-6 flex items-center gap-2">
                 <FileText className="text-blue-600"/> Fees Receipt Management
@@ -947,26 +893,10 @@ const FeeCollection = () => {
                 )}
             </div>
 
-            {/* Hidden button to trigger print-to-react properly on mobile */}
-            <button id="hidden-print-trigger-collection" onClick={handlePrintReceipt} className="hidden" />
-
-            {/* Hidden Print Specific Component - Use off-screen instead of display:none for mobile print support */}
-            <div style={{
-                position: 'fixed',
-                left: '-9999px',
-                top: 0,
-                width: '210mm',
-                height: '297mm',
-                overflow: 'hidden',
-                backgroundColor: 'white',
-                zIndex: -1,
-                opacity: 0,
-                pointerEvents: 'none'
-            }}>
+            <div className="receipt-print-host" aria-hidden={!printingReceipt}>
                 {printingReceipt && (
-                    <ReceiptPrintTemplate 
-                        ref={receiptRef} 
-                        receipt={printingReceipt} 
+                    <ReceiptPrintTemplate
+                        receipt={printingReceipt}
                     />
                 )}
             </div>

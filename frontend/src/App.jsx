@@ -51,6 +51,7 @@ const StudentFreeLearningReport = lazy(() => import("./pages/student/FreeLearnin
 const StudentFees = lazy(() => import("./pages/student/StudentFees"));
 const StudentExamSchedule = lazy(() => import("./pages/student/ExamSchedule"));
 const StudentComplain = lazy(() => import("./pages/student/Complain"));
+const StudentSyllabus = lazy(() => import("./pages/student/Syllabus"));
 
 
 // Master Pages
@@ -212,6 +213,7 @@ function App() {
                  <Route path="home" element={<StudentHome />} />
                  <Route path="course-detail" element={<StudentCourseDetail />} />
                  <Route path="course-feedback" element={<StudentCourseFeedback />} />
+                 <Route path="syllabus" element={<StudentSyllabus />} />
                  
                  {/* Study Section */}
                  <Route path="study/materials" element={<StudentFreeStudyMaterial />} />
@@ -1015,3 +1017,4 @@ function App() {
 }
 
 export default App;
+

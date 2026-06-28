@@ -1,11 +1,12 @@
-﻿const asyncHandler = require('express-async-handler');
+const asyncHandler = require('express-async-handler');
 const SyllabusLog = require('../models/SyllabusLog');
 const Subject = require('../models/Subject');
 const ChapterChangeRequest = require('../models/ChapterChangeRequest');
+const StudentSyllabusResponse = require('../models/StudentSyllabusResponse');
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // Helper: count working days between two dates (exclude Sundays)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const countWorkingDays = (startDate, endDate) => {
   if (!startDate || !endDate) return 0;
   let count = 0;
@@ -18,6 +19,15 @@ const countWorkingDays = (startDate, endDate) => {
     cur.setDate(cur.getDate() + 1);
   }
   return count;
+};
+const countCalendarDaysInclusive = (startDate, endDate) => {
+  if (!startDate || !endDate) return 0;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
+  return Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
 };
 
 const getLoggedBy = (req) => req.user?.employeeId || req.user?._id || null;
@@ -125,7 +135,7 @@ const buildStudentSubjectSummary = (logs = [], subject = {}) => {
 
   const firstSessionDate = logs[0]?.sessionDate || null;
   const summaryEndDate = subjectCompletedAt ? new Date(subjectCompletedAt) : new Date();
-  const elapsedDays = firstSessionDate ? countWorkingDays(firstSessionDate, summaryEndDate) : 0;
+  const elapsedDays = firstSessionDate ? countCalendarDaysInclusive(firstSessionDate, summaryEndDate) : 0;
 
   return {
     totalLogs: logs.length,
@@ -151,11 +161,11 @@ const buildStudentSubjectSummary = (logs = [], subject = {}) => {
   };
 };
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Create a new syllabus log entry
 // @route POST /api/syllabus-logs
 // @access Private
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const createSyllabusLog = asyncHandler(async (req, res) => {
   const {
     studentId,
@@ -199,12 +209,12 @@ const createSyllabusLog = asyncHandler(async (req, res) => {
   res.status(201).json(log);
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Get all logs for a specific student + subject combination
 //        Includes computed analytics
 // @route GET /api/syllabus-logs/student/:studentId/subject/:subjectId
 // @access Private
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const getLogsForStudentSubject = asyncHandler(async (req, res) => {
   const { studentId, subjectId } = req.params;
 
@@ -265,11 +275,11 @@ const updateSyllabusLog = asyncHandler(async (req, res) => {
   res.json(updated);
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Soft-delete a log entry
 // @route DELETE /api/syllabus-logs/:id
 // @access Private
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const deleteSyllabusLog = asyncHandler(async (req, res) => {
   const log = await SyllabusLog.findById(req.params.id);
   if (!log || log.isDeleted) {
@@ -283,11 +293,11 @@ const deleteSyllabusLog = asyncHandler(async (req, res) => {
   res.json({ message: 'Log deleted successfully.' });
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Start a chapter (creates a log marking chapter as started)
 // @route POST /api/syllabus-logs/chapter/start
 // @access Private
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const startChapter = asyncHandler(async (req, res) => {
   const {
     studentId,
@@ -378,11 +388,11 @@ const startChapter = asyncHandler(async (req, res) => {
   res.status(201).json(log);
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Complete a chapter (marks chapter as Completed)
 // @route POST /api/syllabus-logs/chapter/complete
 // @access Private
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const completeChapter = asyncHandler(async (req, res) => {
   const {
     studentId,
@@ -433,11 +443,11 @@ const completeChapter = asyncHandler(async (req, res) => {
   res.status(201).json({ message: 'Chapter completed successfully', log });
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Complete projects for a chapter on a specific date
 // @route POST /api/syllabus-logs/project/complete
 // @access Private
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const completeProjects = asyncHandler(async (req, res) => {
   const {
     studentId,
@@ -478,11 +488,11 @@ const completeProjects = asyncHandler(async (req, res) => {
   res.status(201).json(log);
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Get chapter status for a student+subject
 // @route GET /api/syllabus-logs/student/:studentId/subject/:subjectId/status
 // @access Private
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const getChapterStatus = asyncHandler(async (req, res) => {
   const { studentId, subjectId } = req.params;
 
@@ -610,6 +620,21 @@ const getChapterStatus = asyncHandler(async (req, res) => {
       .map(r => r.chapterId.toString())
   );
 
+  const studentResponses = await StudentSyllabusResponse.find({ studentId, subjectId }).lean();
+  const studentResponseMap = {};
+  studentResponses.forEach(response => {
+    const key = [
+      response.type,
+      response.chapterId?.toString() || '',
+      response.projectId ? response.projectId.toString() : '',
+    ].join(':');
+    studentResponseMap[key] = {
+      understood: Boolean(response.understood),
+      comment: response.comment || '',
+      respondedAt: response.respondedAt || response.updatedAt || response.createdAt,
+    };
+  });
+
   // Build response for each chapterpter
   const chapterStatuses = chapters.map(ch => {
     const cid = ch._id ? ch._id.toString() : null;
@@ -619,6 +644,10 @@ const getChapterStatus = asyncHandler(async (req, res) => {
 
     const chapterProjects = (subject?.projects || []).filter(
       p => String(p.chapterId) === cid
+    );
+
+    const getStudentResponse = (type, projectId = '') => (
+      studentResponseMap[[type, cid || '', projectId ? String(projectId) : ''].join(':')] || null
     );
 
     return {
@@ -631,11 +660,15 @@ const getChapterStatus = asyncHandler(async (req, res) => {
       stoppedBy: status?.stoppedBy || null,
       completedBy: status?.completedBy || null,
       stopReason: status?.stopReason || '',
+      theoryResponse: getStudentResponse('theory'),
+      chapterResponse: getStudentResponse('chapter'),
+      commentResponse: getStudentResponse('comment'),
       projects: chapterProjects.map(p => ({
         ...p,
         completed: completedProjects[String(p._id)] ? true : false,
         completedAt: completedProjects[String(p._id)]?.completedAt || null,
         completedBy: completedProjects[String(p._id)]?.completedBy || null,
+        studentResponse: getStudentResponse('project', p._id),
       })),
       activity,
       changeRequestPending: cid ? pendingChapterIds.has(cid) : false,
@@ -646,11 +679,11 @@ const getChapterStatus = asyncHandler(async (req, res) => {
   res.json({ chapterStatuses });
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Get activity log for super admin
 // @route GET /api/syllabus-logs/activity
 // @access Private (Super Admin)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const getActivityLog = asyncHandler(async (req, res) => {
   const { subjectId, batchId, days } = req.query;
   
@@ -685,11 +718,11 @@ const getActivityLog = asyncHandler(async (req, res) => {
 });
 
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Stop/Reset a running chapter (set back to Not Started)
 // @route POST /api/syllabus-logs/chapter/stop
 // @access Private
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const stopChapter = asyncHandler(async (req, res) => {
   const { studentId, subjectId, chapterId, reason } = req.body;
 
@@ -756,11 +789,11 @@ const resetChapter = asyncHandler(async (req, res) => {
   res.json({ message: 'Chapter reset to not started.' });
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Undo a single project completion (soft-deletes the log containing it)
 // @route POST /api/syllabus-logs/project/undo
 // @access Private
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const undoProject = asyncHandler(async (req, res) => {
   const { studentId, subjectId, chapterId, projectId } = req.body;
 
@@ -796,11 +829,11 @@ const undoProject = asyncHandler(async (req, res) => {
   res.json({ message: 'Project undone successfully.' });
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// @desc  Undo "All Theory Completed" â€” reset chapter back to Running
+// ─────────────────────────────────────────────────────────────────────────────
+// @desc  Undo "All Theory Completed" — reset chapter back to Running
 // @route POST /api/syllabus-logs/chapter/undo-complete
 // @access Private
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const undoCompleteChapter = asyncHandler(async (req, res) => {
   const { studentId, subjectId, chapterId } = req.body;
 
@@ -832,12 +865,12 @@ const undoCompleteChapter = asyncHandler(async (req, res) => {
   res.json({ message: 'Chapter theory completion undone.' });
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// @desc  Final complete a chapter â€” theory + all projects done, asks for reason
+// ─────────────────────────────────────────────────────────────────────────────
+// @desc  Final complete a chapter — theory + all projects done, asks for reason
 //        Creates a change request for super admin approval
 // @route POST /api/syllabus-logs/chapter/final-complete
 // @access Private
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const finalCompleteChapter = asyncHandler(async (req, res) => {
   const {
     studentId, subjectId, batchId, courseId, branchId,
@@ -896,11 +929,11 @@ const finalCompleteChapter = asyncHandler(async (req, res) => {
   });
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Get all pending/approved change requests for super admin
 // @route GET /api/syllabus-logs/change-requests
 // @access Private (Super Admin)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const getChangeRequests = asyncHandler(async (req, res) => {
   const { status, subjectId } = req.query;
   const filter = {};
@@ -915,11 +948,11 @@ const getChangeRequests = asyncHandler(async (req, res) => {
   res.json({ requests });
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Approve or reject a change request (Super Admin)
 // @route POST /api/syllabus-logs/change-requests/:id/approve
 // @access Private (Super Admin)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const approveChangeRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { action, reviewNotes } = req.body; // action: 'approved' | 'rejected'
@@ -937,7 +970,7 @@ const approveChangeRequest = asyncHandler(async (req, res) => {
 
   const reviewerName = getLoggedByName(req, 'Super Admin');
 
-  // âš ï¸ Process action LOGIC FIRST before saving status.
+  // ⚠️ Process action LOGIC FIRST before saving status.
   // If the logic fails, the request stays 'pending' so teacher can retry.
   // Final completion locks immediately. Super Admin approval is only for unlock/change requests.
   if (action === 'approved' && request.type === 'modification') {
@@ -952,7 +985,7 @@ const approveChangeRequest = asyncHandler(async (req, res) => {
     );
   }
 
-  // âœ… Now save the request status only after logic succeeds
+  // ✅ Now save the request status only after logic succeeds
   request.status = action;
   request.reviewedBy = reviewerName;
   request.reviewedAt = new Date();
@@ -964,11 +997,11 @@ const approveChangeRequest = asyncHandler(async (req, res) => {
 
 
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // @desc  Request to make a locked chapter incomplete (modification request)
 // @route POST /api/syllabus-logs/chapter/incomplete
 // @access Private
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 const requestIncompleteChapter = asyncHandler(async (req, res) => {
   const {
     studentId, subjectId, batchId, courseId, branchId,
@@ -1017,4 +1050,7 @@ module.exports = {
   approveChangeRequest,
   requestIncompleteChapter,
 };
+
+
+
 

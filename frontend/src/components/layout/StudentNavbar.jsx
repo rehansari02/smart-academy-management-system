@@ -26,6 +26,7 @@ const StudentNavbar = () => {
 
     const MENU_ITEMS = [
         { title: 'Home', path: '/student/home' },
+        { title: 'Syllabus', path: '/student/syllabus' },
         { 
             title: 'Course', 
             path: '#', 
@@ -198,3 +199,5 @@ const StudentNavbar = () => {
 };
 
 export default StudentNavbar;
+
+

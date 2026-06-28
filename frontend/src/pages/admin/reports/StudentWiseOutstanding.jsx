@@ -222,11 +222,13 @@ const StudentWiseOutstanding = () => {
         const dueAmount = getDueTotal(student);
         acc.totalStudents += 1;
         acc.totalOutstanding += monthlyOutstanding;
+        if (monthlyOutstanding < 0) acc.totalAdvance += monthlyOutstanding;
         acc.totalDue += dueAmount;
         return acc;
     }, {
         totalStudents: 0,
         totalOutstanding: 0,
+        totalAdvance: 0,
         totalDue: 0
     });
 
@@ -392,8 +394,7 @@ const StudentWiseOutstanding = () => {
                                         {summaryLoading ? '...' : (() => {
                                             const total = getMonthlyOutstanding(s);
                                             if (total === 0) return '-';
-                                            const formatted = Math.abs(total).toLocaleString('en-IN');
-                                            return total < 0 ? `(${formatted})` : formatted;
+                                            return total.toLocaleString('en-IN');
                                         })()}
                                     </td>
 
@@ -430,6 +431,7 @@ const StudentWiseOutstanding = () => {
                                 <th className="border border-gray-300 px-3 py-2 text-left" colSpan="2">Footer Totals</th>
                                 <th className="border border-gray-300 px-3 py-2 text-right">Students</th>
                                 <th className="border border-gray-300 px-3 py-2 text-right">Outstanding</th>
+                                <th className="border border-gray-300 px-3 py-2 text-right">Advance</th>
                                 <th className="border border-gray-300 px-3 py-2 text-right">Due Amount</th>
                             </tr>
                         </thead>
@@ -444,9 +446,11 @@ const StudentWiseOutstanding = () => {
                                 <td className="border border-gray-300 px-3 py-2 text-right font-bold text-red-600">
                                     {reportTotals.totalOutstanding !== 0 ? (() => {
                                         const val = reportTotals.totalOutstanding;
-                                        const formatted = Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                                        return val < 0 ? `(${formatted})` : formatted;
+                                        return val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                     })() : '-'}
+                                </td>
+                                <td className="border border-gray-300 px-3 py-2 text-right font-bold text-orange-600">
+                                    {reportTotals.totalAdvance !== 0 ? formatAmount(reportTotals.totalAdvance) : '-'}
                                 </td>
                                 <td className="border border-gray-300 px-3 py-2 text-right font-bold text-blue-600">
                                     {reportTotals.totalDue > 0 ? formatAmount(reportTotals.totalDue) : '-'}

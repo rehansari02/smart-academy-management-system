@@ -862,6 +862,28 @@ const StudentDetailView = ({
                           </div>
                         </div>
                       )}
+                  {(chData.theoryResponse?.understood || chData.chapterResponse?.understood || chData.commentResponse?.comment) && (
+                    <div className="mb-3 rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Student Feedback</p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold">
+                        {chData.theoryResponse?.understood && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-emerald-700 ring-1 ring-emerald-100">
+                            <CheckCircle2 size={11} /> Theory understood
+                          </span>
+                        )}
+                        {chData.chapterResponse?.understood && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-violet-700 ring-1 ring-violet-100">
+                            <CheckCircle2 size={11} /> Chapter understood
+                          </span>
+                        )}
+                      </div>
+                      {chData.commentResponse?.comment && (
+                        <div className="mt-2 rounded-md bg-white px-2.5 py-2 text-[11px] font-semibold leading-snug text-slate-700 ring-1 ring-emerald-100">
+                          {chData.commentResponse.comment}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {/* Projects Section */}
                   {totalCount > 0 && (
                     <div>
@@ -897,6 +919,7 @@ const StudentDetailView = ({
                               <th className="px-3 py-2 text-center w-28">Status</th>
                               <th className="px-3 py-2 text-center w-36">Completed Date</th>
                               <th className="px-3 py-2 text-center w-28">Completed By</th>
+                              <th className="px-3 py-2 text-center w-32">Student</th>
                               {canEditChapter && <th className="px-3 py-2 text-center w-40">Action</th>}
                             </tr>
                           </thead>
@@ -929,6 +952,22 @@ const StudentDetailView = ({
                                   </td>
                                   <td className="px-3 py-2.5 text-center text-slate-500 font-semibold">
                                     {proj.completedBy || (proj.completed ? 'Teacher' : '—')}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center">
+                                    {proj.studentResponse?.understood ? (
+                                      <div className="flex flex-col items-center gap-0.5">
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700">
+                                          <CheckCircle2 size={11} /> Understood
+                                        </span>
+                                        {proj.studentResponse.respondedAt && (
+                                          <span className="text-[9px] font-semibold text-slate-400">
+                                            {moment(proj.studentResponse.respondedAt).format('DD MMM')}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-slate-400">Pending</span>
+                                    )}
                                   </td>
                                   {canEditChapter && (
                                     <td className="px-3 py-2.5 text-center">
@@ -980,7 +1019,7 @@ const StudentDetailView = ({
                             })}
                             {projects.length === 0 && (
                               <tr>
-                                <td colSpan={canEditChapter ? 6 : 5} className="py-4 text-center text-slate-400 font-semibold text-xs">
+                                <td colSpan={canEditChapter ? 7 : 6} className="py-4 text-center text-slate-400 font-semibold text-xs">
                                   No projects for this chapter.
                                 </td>
                               </tr>
@@ -1383,3 +1422,7 @@ const StudentDetailView = ({
 };
 
 export default StudentDetailView;
+
+
+
+

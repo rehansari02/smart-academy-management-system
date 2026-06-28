@@ -4,6 +4,118 @@ const Course = require('../models/Course');
 const CourseFeedback = require('../models/CourseFeedback');
 const moment = require('moment');
 const ExamSchedule = require('../models/ExamSchedule');
+const SyllabusLog = require('../models/SyllabusLog');
+const StudentSyllabusResponse = require('../models/StudentSyllabusResponse');
+
+const getActiveStudentForUser = async (userId, populateCourse = false) => {
+    const query = Student.findOne({ userId, isDeleted: false });
+    if (populateCourse) {
+        query.populate({
+            path: 'course',
+            populate: {
+                path: 'subjects.subject',
+                model: 'Subject'
+            }
+        });
+    }
+    return query.lean();
+};
+
+const buildChapterProgress = (subject, logs, responses) => {
+    const chapters = subject?.chapters || [];
+    const projects = subject?.projects || [];
+    const chapterStatusMap = {};
+    const chapterProjectMap = {};
+
+    logs.forEach((log) => {
+        const cid = log.chapterId ? String(log.chapterId) : null;
+        if (!cid) return;
+
+        if (!chapterStatusMap[cid]) {
+            chapterStatusMap[cid] = {
+                status: null,
+                startedAt: null,
+                completedAt: null,
+                startedBy: null,
+                completedBy: null,
+                firstActivityAt: null,
+            };
+        }
+
+        const state = chapterStatusMap[cid];
+        if (!state.firstActivityAt) state.firstActivityAt = log.sessionDate;
+
+        if (log.chapterStatus === 'Running' && /chapter (started|restarted|session started)/i.test(log.notes || '')) {
+            state.status = 'Running';
+            state.startedAt = log.sessionDate;
+            state.startedBy = log.loggedByName;
+        }
+
+        if (log.chapterStatus === 'Completed') {
+            state.status = 'Completed';
+            state.completedAt = log.sessionDate;
+            state.completedBy = log.loggedByName;
+        }
+
+        (log.projects || []).forEach((p) => {
+            if (!p.projectId) return;
+            if (!chapterProjectMap[cid]) chapterProjectMap[cid] = {};
+            chapterProjectMap[cid][String(p.projectId)] = {
+                completedAt: log.sessionDate,
+                completedBy: log.loggedByName,
+            };
+        });
+    });
+
+    const responseMap = {};
+    responses.forEach((response) => {
+        const key = [
+            response.type,
+            String(response.chapterId),
+            response.projectId ? String(response.projectId) : '',
+        ].join(':');
+        responseMap[key] = response;
+    });
+
+    return chapters.map((chapter) => {
+        const cid = chapter._id ? String(chapter._id) : '';
+        const status = chapterStatusMap[cid] || {};
+        const chapterProjects = projects.filter((project) => String(project.chapterId || '') === cid);
+
+        const getResponse = (type, projectId = '') => {
+            const response = responseMap[[type, cid, projectId ? String(projectId) : ''].join(':')];
+            return response
+                ? {
+                    understood: Boolean(response.understood),
+                    comment: response.comment || '',
+                    respondedAt: response.respondedAt || response.updatedAt || response.createdAt,
+                }
+                : null;
+        };
+
+        return {
+            chapter,
+            status: status.status || null,
+            startedAt: status.startedAt || status.firstActivityAt || null,
+            completedAt: status.completedAt || null,
+            startedBy: status.startedBy || null,
+            completedBy: status.completedBy || null,
+            theoryResponse: getResponse('theory'),
+            chapterResponse: getResponse('chapter'),
+            commentResponse: getResponse('comment'),
+            projects: chapterProjects.map((project) => {
+                const completedInfo = chapterProjectMap[cid]?.[String(project._id)];
+                return {
+                    ...project,
+                    completed: Boolean(completedInfo),
+                    completedAt: completedInfo?.completedAt || null,
+                    completedBy: completedInfo?.completedBy || null,
+                    studentResponse: getResponse('project', project._id),
+                };
+            }),
+        };
+    });
+};
 
 // @desc    Get Student Dashboard Stats (Attendance)
 // @route   GET /api/student-portal/dashboard
@@ -513,6 +625,161 @@ const getStudentExamSchedules = async (req, res) => {
     }
 };
 
+
+// @desc    Get student syllabus progression
+// @route   GET /api/student-portal/syllabus
+// @access  Private (Student)
+const getStudentSyllabus = async (req, res) => {
+    try {
+        const student = await getActiveStudentForUser(req.user._id, true);
+        if (!student || !student.course) {
+            return res.status(404).json({ message: 'Course details not found' });
+        }
+
+        const subjects = (student.course.subjects || [])
+            .map((item) => item.subject)
+            .filter(Boolean);
+
+        const subjectIds = subjects.map((subject) => subject._id);
+        const [logs, responses] = await Promise.all([
+            SyllabusLog.find({
+                studentId: student._id,
+                subjectId: { $in: subjectIds },
+                isDeleted: false,
+            }).sort({ sessionDate: 1, createdAt: 1 }).lean(),
+            StudentSyllabusResponse.find({
+                studentId: student._id,
+                subjectId: { $in: subjectIds },
+            }).lean(),
+        ]);
+
+        const logsBySubject = new Map();
+        logs.forEach((log) => {
+            const key = String(log.subjectId);
+            if (!logsBySubject.has(key)) logsBySubject.set(key, []);
+            logsBySubject.get(key).push(log);
+        });
+
+        const responsesBySubject = new Map();
+        responses.forEach((response) => {
+            const key = String(response.subjectId);
+            if (!responsesBySubject.has(key)) responsesBySubject.set(key, []);
+            responsesBySubject.get(key).push(response);
+        });
+
+        res.json({
+            student: {
+                _id: student._id,
+                name: `${student.firstName || ''} ${student.middleName || ''} ${student.lastName || ''}`.replace(/\s+/g, ' ').trim(),
+                enrollmentNo: student.enrollmentNo || student.regNo || '',
+                courseName: student.course.name || '',
+            },
+            course: {
+                _id: student.course._id,
+                name: student.course.name,
+                shortName: student.course.shortName,
+            },
+            subjects: subjects.map((subject) => ({
+                _id: subject._id,
+                name: subject.name,
+                printedName: subject.printedName,
+                daysToComplete: subject.daysToComplete || 0,
+                chapters: buildChapterProgress(
+                    subject,
+                    logsBySubject.get(String(subject._id)) || [],
+                    responsesBySubject.get(String(subject._id)) || []
+                ),
+            })),
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Save student syllabus understanding response
+// @route   POST /api/student-portal/syllabus/ack
+// @access  Private (Student)
+const saveStudentSyllabusAck = async (req, res) => {
+    try {
+        const { subjectId, chapterId, projectId, type } = req.body;
+        if (!subjectId || !chapterId || !['project', 'theory', 'chapter'].includes(type)) {
+            return res.status(400).json({ message: 'Invalid syllabus response request' });
+        }
+        if (type === 'project' && !projectId) {
+            return res.status(400).json({ message: 'projectId is required for project response' });
+        }
+
+        const student = await getActiveStudentForUser(req.user._id, false);
+        if (!student) return res.status(404).json({ message: 'Student not found' });
+
+        const response = await StudentSyllabusResponse.findOneAndUpdate(
+            {
+                studentId: student._id,
+                subjectId,
+                chapterId,
+                projectId: type === 'project' ? projectId : null,
+                type,
+            },
+            {
+                studentId: student._id,
+                subjectId,
+                chapterId,
+                projectId: type === 'project' ? projectId : null,
+                type,
+                understood: true,
+                respondedAt: new Date(),
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
+        res.json(response);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Save student chapter comment/review
+// @route   POST /api/student-portal/syllabus/comment
+// @access  Private (Student)
+const saveStudentSyllabusComment = async (req, res) => {
+    try {
+        const { subjectId, chapterId, comment } = req.body;
+        if (!subjectId || !chapterId) {
+            return res.status(400).json({ message: 'Invalid chapter comment request' });
+        }
+
+        const trimmedComment = String(comment || '').trim().slice(0, 1000);
+        const student = await getActiveStudentForUser(req.user._id, false);
+        if (!student) return res.status(404).json({ message: 'Student not found' });
+
+        const response = await StudentSyllabusResponse.findOneAndUpdate(
+            {
+                studentId: student._id,
+                subjectId,
+                chapterId,
+                projectId: null,
+                type: 'comment',
+            },
+            {
+                studentId: student._id,
+                subjectId,
+                chapterId,
+                projectId: null,
+                type: 'comment',
+                comment: trimmedComment,
+                respondedAt: new Date(),
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
+        res.json(response);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
 module.exports = {
     getDashboardStats,
     getCourseDetails,
@@ -522,5 +789,11 @@ module.exports = {
     submitFreeLearning,
     getFreeLearningReport,
     getStudentFees,
-    getStudentExamSchedules
+    getStudentExamSchedules,
+    getStudentSyllabus,
+    saveStudentSyllabusAck,
+    saveStudentSyllabusComment
 };
+
+
+
