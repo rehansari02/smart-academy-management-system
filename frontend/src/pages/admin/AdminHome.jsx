@@ -5,8 +5,9 @@ import { createExamRequest } from '../../features/master/masterSlice';
 import { fetchExamPendingStudents } from '../../features/student/studentSlice';
 import { getBranches } from '../../features/master/branchSlice';
 import EmployeeDashboard from './EmployeeDashboard';
+import TeacherDashboard from './TeacherDashboard';
 import { useUserRights } from '../../hooks/useUserRights';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { Search, RefreshCw, ExternalLink, Clock, AlertCircle, CheckCircle, UserPlus, XCircle, BarChart3, Wallet, Users, CalendarDays, Building2, TrendingUp } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -16,6 +17,7 @@ import Swal from 'sweetalert2';
 const AdminHome = () => {
     const dispatch = useDispatch();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     // Redux Data
     const { inquiries } = useSelector((state) => state.transaction);
@@ -30,8 +32,9 @@ const AdminHome = () => {
     const { view: canViewOnlineAdmissions } = useUserRights('Admin Home - Online Admissions');
     const { view: canViewExamList } = useUserRights('Admin Home - Exam Pending List');
     const { view: canViewDashboard } = useUserRights('Dashboard');
+    const { view: canViewTeacherDashboard } = useUserRights('Teacher Dashboard');
 
-    const [activeTab, setActiveTab] = useState('inquiry');
+    const [activeTab, setActiveTab] = useState(searchParams.get('tab') === 'teacher-dashboard' ? 'teacher-dashboard' : 'inquiry');
     const [confirmModal, setConfirmModal] = useState({ show: false, student: null, bulk: false });
     const [reasonModal, setReasonModal] = useState({ show: false, reason: '', studentName: '' });
     const [selectedStudents, setSelectedStudents] = useState([]);
@@ -118,6 +121,35 @@ const AdminHome = () => {
             fetchDashboardData();
         }
     }, [activeTab]);
+
+    useEffect(() => {
+        if (searchParams.get('tab') === 'teacher-dashboard') {
+            setActiveTab('teacher-dashboard');
+        }
+    }, [searchParams]);
+
+    const openTab = (tab) => {
+        setActiveTab(tab);
+        if (tab === 'teacher-dashboard') {
+            setSearchParams({ tab: 'teacher-dashboard' });
+        } else if (searchParams.has('tab')) {
+            setSearchParams({});
+        }
+    };
+
+    useEffect(() => {
+        const isAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
+        if (isAdmin) return;
+        const canUseCurrentTab =
+            (activeTab === 'inquiry' && canViewInquiryList) ||
+            (activeTab === 'online-admission' && canViewOnlineAdmissions) ||
+            (activeTab === 'exam' && canViewExamList) ||
+            (activeTab === 'teacher-dashboard' && canViewTeacherDashboard);
+
+        if (!canUseCurrentTab && canViewTeacherDashboard) {
+            openTab('teacher-dashboard');
+        }
+    }, [activeTab, canViewInquiryList, canViewOnlineAdmissions, canViewExamList, canViewTeacherDashboard, user]);
 
     const handleDashboardFilterChange = (key, value) => {
         setDashboardFilters(prev => ({ ...prev, [key]: value }));
@@ -259,7 +291,7 @@ const AdminHome = () => {
 
     // Conditionally Render Fallback
     // If user is logged in, NOT a Super Admin, and does NOT have 'Admin Home' view rights
-    if (user && user.type !== 'Super Admin' && user.role !== 'Super Admin' && !hasDashboardAccess) {
+    if (user && user.type !== 'Super Admin' && user.role !== 'Super Admin' && !hasDashboardAccess && !canViewTeacherDashboard) {
         return <EmployeeDashboard />;
     }
 
@@ -279,6 +311,14 @@ const AdminHome = () => {
                     >
                         <TrendingUp size={18} /> Reference Incentive
                     </button>
+                    {(canViewTeacherDashboard || (user && user.role === 'Super Admin')) && (
+                        <button
+                            onClick={() => openTab('teacher-dashboard')}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100"
+                        >
+                            <Users size={18} /> Teacher Dashboard
+                        </button>
+                    )}
                     {(canViewDashboard || (user && user.role === 'Super Admin')) && (
                         <button
                             onClick={() => navigate('/dashboard')}
@@ -295,7 +335,7 @@ const AdminHome = () => {
                 <div className="bg-white p-1 rounded-full shadow-md inline-flex border">
                     {(canViewInquiryList || (user && user.role === 'Super Admin')) && (
                         <button
-                            onClick={() => setActiveTab('inquiry')}
+                            onClick={() => openTab('inquiry')}
                             className={`px-8 py-2 rounded-full font-medium transition-all ${activeTab === 'inquiry'
                                     ? 'bg-primary text-white shadow-sm'
                                     : 'text-gray-600 hover:bg-gray-50'
@@ -307,7 +347,7 @@ const AdminHome = () => {
 
                     {(canViewOnlineAdmissions || (user && user.role === 'Super Admin')) && (
                         <button
-                            onClick={() => setActiveTab('online-admission')}
+                            onClick={() => openTab('online-admission')}
                             className={`px-8 py-2 rounded-full font-medium transition-all ${activeTab === 'online-admission'
                                     ? 'bg-primary text-white shadow-sm'
                                     : 'text-gray-600 hover:bg-gray-50'
@@ -319,7 +359,7 @@ const AdminHome = () => {
 
                     {(canViewExamList || (user && user.role === 'Super Admin')) && (
                         <button
-                            onClick={() => setActiveTab('exam')}
+                            onClick={() => openTab('exam')}
                             className={`px-8 py-2 rounded-full font-medium transition-all ${activeTab === 'exam'
                                     ? 'bg-primary text-white shadow-sm'
                                     : 'text-gray-600 hover:bg-gray-50'
@@ -328,8 +368,23 @@ const AdminHome = () => {
                             Student Exam Pending List
                         </button>
                     )}
+                    {(canViewTeacherDashboard || (user && user.role === 'Super Admin')) && (
+                        <button
+                            onClick={() => openTab('teacher-dashboard')}
+                            className={`px-8 py-2 rounded-full font-medium transition-all ${activeTab === 'teacher-dashboard'
+                                    ? 'bg-primary text-white shadow-sm'
+                                    : 'text-gray-600 hover:bg-gray-50'
+                                }`}
+                        >
+                            Teacher Dashboard
+                        </button>
+                    )}
                 </div>
             </div>
+
+            {activeTab === 'teacher-dashboard' && (canViewTeacherDashboard || (user && user.role === 'Super Admin')) && (
+                <TeacherDashboard />
+            )}
 
             {activeTab === 'overview' && (
                 <div className="space-y-6 animate-fadeIn">

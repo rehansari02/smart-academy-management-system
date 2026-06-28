@@ -5,6 +5,7 @@ export const MENU_CONFIG = [
     type: 'dropdown',
     subItems: [
       { title: 'Admin Home', path: '/home' },
+      { title: 'Teacher Dashboard', path: '/home?tab=teacher-dashboard' },
       { title: 'Dashboard', path: '/dashboard' },
       { title: 'Banner Home', path: '/master/manage-banners' },
       { title: 'Home Sub-Sections', path: '/master/home-sections' },

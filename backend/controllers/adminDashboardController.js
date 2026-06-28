@@ -5,6 +5,10 @@ const FeeReceipt = require('../models/FeeReceipt');
 const Visitor = require('../models/Visitor');
 const Expense = require('../models/Expense');
 const Reference = require('../models/Reference');
+const Employee = require('../models/Employee');
+const TeacherSubjectAccess = require('../models/TeacherSubjectAccess');
+const SyllabusLog = require('../models/SyllabusLog');
+const StudentSyllabusResponse = require('../models/StudentSyllabusResponse');
 const mongoose = require('mongoose');
 
 const RECENT_LIST_LIMIT = 5;
@@ -56,6 +60,46 @@ const buildRange = ({ period = 'today', fromDate, toDate }) => {
             } else {
                 const customEnd = new Date(toDate);
                 end.setTime(Date.UTC(customEnd.getUTCFullYear(), customEnd.getUTCMonth(), customEnd.getUTCDate(), 23, 59, 59, 999));
+            }
+        }
+    }
+
+    return { start, end };
+};
+
+const buildTeacherRange = ({ period = 'today', fromDate, toDate }) => {
+    const start = new Date();
+    const end = new Date();
+
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    if (period === 'all') {
+        return { start: null, end: null };
+    }
+
+    if (period === 'yesterday') {
+        start.setDate(start.getDate() - 1);
+        end.setDate(end.getDate() - 1);
+    } else if (period === 'week') {
+        start.setDate(start.getDate() - start.getDay());
+    } else if (period === 'month') {
+        start.setDate(1);
+    } else if (period === 'year') {
+        start.setMonth(0, 1);
+    } else if (period === 'custom') {
+        if (fromDate) {
+            const from = new Date(fromDate);
+            if (!Number.isNaN(from.getTime())) {
+                start.setTime(from.getTime());
+                start.setHours(0, 0, 0, 0);
+            }
+        }
+        if (toDate) {
+            const to = new Date(toDate);
+            if (!Number.isNaN(to.getTime())) {
+                end.setTime(to.getTime());
+                end.setHours(23, 59, 59, 999);
             }
         }
     }
@@ -145,6 +189,98 @@ const sortReceiptsChronologically = (receipts = []) => [...receipts].sort((a, b)
     if (aTime !== bTime) return aTime - bTime;
     return Number(a.receiptNo || 0) - Number(b.receiptNo || 0);
 });
+
+const uniqueObjectIds = (values = []) => {
+    const seen = new Set();
+    return values
+        .filter(Boolean)
+        .map(value => value.toString())
+        .filter(value => mongoose.Types.ObjectId.isValid(value))
+        .filter(value => {
+            if (seen.has(value)) return false;
+            seen.add(value);
+            return true;
+        })
+        .map(value => new mongoose.Types.ObjectId(value));
+};
+
+const getTeacherList = async () => {
+    const [records, activeTeachers] = await Promise.all([
+        TeacherSubjectAccess.find({})
+        .populate('employeeId', 'name type role email mobile photo isActive branchId userAccount')
+        .sort({ updatedAt: -1 })
+            .lean(),
+        Employee.find({
+            isDeleted: false,
+            isActive: true,
+        })
+            .select('name type role email mobile photo isActive branchId userAccount')
+            .sort({ name: 1 })
+            .lean(),
+    ]);
+
+    const assignedTeachers = records
+        .filter(record => record.employeeId && record.employeeId.isActive !== false)
+        .map(record => ({
+            _id: record.employeeId._id,
+            name: record.employeeId.name,
+            type: record.employeeId.type,
+            role: record.employeeId.role,
+            email: record.employeeId.email,
+            mobile: record.employeeId.mobile,
+            photo: record.employeeId.photo,
+            assignmentCount: record.assignments?.length || 0,
+        }));
+
+    const assignmentCountByTeacher = new Map(assignedTeachers.map(item => [item._id.toString(), item.assignmentCount]));
+    const merged = [...activeTeachers, ...assignedTeachers].reduce((map, teacher) => {
+        const id = teacher._id.toString();
+        if (!map.has(id)) {
+            map.set(id, {
+                _id: teacher._id,
+                name: teacher.name,
+                type: teacher.type,
+                role: teacher.role,
+                email: teacher.email,
+                mobile: teacher.mobile,
+                photo: teacher.photo,
+                assignmentCount: assignmentCountByTeacher.get(id) || teacher.assignmentCount || 0,
+            });
+        } else {
+            map.get(id).assignmentCount = Math.max(map.get(id).assignmentCount || 0, assignmentCountByTeacher.get(id) || teacher.assignmentCount || 0);
+        }
+        return map;
+    }, new Map());
+
+    return [...merged.values()].sort((a, b) => {
+        if ((b.assignmentCount || 0) !== (a.assignmentCount || 0)) {
+            return (b.assignmentCount || 0) - (a.assignmentCount || 0);
+        }
+        return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+};
+
+const resolveTeacherEmployee = async (req, teacherId) => {
+    if (req.user.role === 'Super Admin') {
+        if (!teacherId) return null;
+        if (!mongoose.Types.ObjectId.isValid(teacherId)) {
+            const error = new Error('Invalid teacher selected');
+            error.statusCode = 400;
+            throw error;
+        }
+        return Employee.findOne({ _id: teacherId, isDeleted: false }).lean();
+    }
+
+    const employee = await Employee.findOne({ userAccount: req.user._id, isDeleted: false }).lean();
+    return employee || {
+        _id: req.user._id,
+        userAccount: req.user._id,
+        name: req.user.name || req.user.username || 'Teacher',
+        role: req.user.role,
+        type: req.user.role,
+        branchId: req.user.branchId,
+    };
+};
 
 const getReceiptLifecycleInfo = (receipts = []) => {
     const receiptInfo = new Map();
@@ -376,6 +512,333 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
             visitors: recentVisitors,
             expenses: recentExpenses
         }
+    });
+});
+
+// @desc    Get Teacher Dashboard Data
+// @route   GET /api/admin-dashboard/teacher-dashboard
+const getTeacherDashboard = asyncHandler(async (req, res) => {
+    const { period = 'today', fromDate, toDate, teacherId = '' } = req.query;
+    const teachers = req.user.role === 'Super Admin' ? await getTeacherList() : [];
+    const teacher = await resolveTeacherEmployee(req, teacherId);
+
+    if (req.user.role === 'Super Admin' && !teacher) {
+        return res.json({
+            filters: { period, fromDate, toDate, teacherId: '', start: null, end: null },
+            teachers,
+            teacher: null,
+            cards: {},
+            charts: { activityTrend: [], subjectWorkload: [], syllabusStatus: [], responseStatus: [] },
+            lists: { assignments: [], recentLogs: [], recentResponses: [], runningChapters: [] },
+        });
+    }
+
+    if (!teacher) {
+        res.status(404);
+        throw new Error('Teacher profile not found');
+    }
+
+    const { start, end } = buildTeacherRange({ period, fromDate, toDate });
+    const dateMatch = start && end ? { $gte: start, $lte: end } : null;
+    const teacherIds = uniqueObjectIds([teacher._id, teacher.userAccount, req.user._id]);
+
+    const assignmentRecord = await TeacherSubjectAccess.findOne({ employeeId: teacher._id })
+        .populate({
+            path: 'assignments.batchId',
+            select: 'name startTime endTime branchId startDate endDate',
+            populate: { path: 'branchId', select: 'name' },
+        })
+        .populate('assignments.courseId', 'name shortName')
+        .populate('assignments.subjectId', 'name printedName chapters projects daysToComplete')
+        .lean();
+
+    const assignments = (assignmentRecord?.assignments || [])
+        .filter(item => item.subjectId)
+        .map(item => ({
+            branchId: item.batchId?.branchId?._id || item.batchId?.branchId || teacher.branchId || null,
+            branchName: item.batchId?.branchId?.name || teacher.branchName || 'Branch',
+            batchId: item.batchId?._id || item.batchId,
+            batchName: item.batchId?.name || 'Batch',
+            batchTime: item.batchId?.startTime && item.batchId?.endTime ? `${item.batchId.startTime} - ${item.batchId.endTime}` : '',
+            courseId: item.courseId?._id || item.courseId,
+            courseName: item.courseId?.name || 'Course',
+            subjectId: item.subjectId?._id || item.subjectId,
+            subjectName: item.subjectId?.name || 'Subject',
+            chapters: item.subjectId?.chapters || [],
+            projects: item.subjectId?.projects || [],
+            daysToComplete: item.subjectId?.daysToComplete || 0,
+        }));
+
+    const subjectIds = uniqueObjectIds(assignments.map(item => item.subjectId));
+    const batchIds = uniqueObjectIds(assignments.map(item => item.batchId));
+    const courseIds = uniqueObjectIds(assignments.map(item => item.courseId));
+
+    const baseLogQuery = {
+        isDeleted: false,
+        loggedBy: { $in: teacherIds },
+    };
+    const periodLogQuery = {
+        ...baseLogQuery,
+        ...(dateMatch ? { sessionDate: dateMatch } : {}),
+    };
+
+    const responseQuery = {
+        ...(subjectIds.length ? { subjectId: { $in: subjectIds } } : {}),
+        ...(dateMatch ? { respondedAt: dateMatch } : {}),
+    };
+
+    const [
+        periodLogs,
+        allTeacherLogs,
+        responses,
+        recentResponses,
+    ] = await Promise.all([
+        SyllabusLog.find(periodLogQuery)
+            .populate('studentId', 'firstName middleName lastName regNo')
+            .populate('subjectId', 'name')
+            .populate('batchId', 'name')
+            .populate('courseId', 'name shortName')
+            .sort({ sessionDate: -1, createdAt: -1 })
+            .lean(),
+        SyllabusLog.find(baseLogQuery)
+            .select('subjectId batchId courseId chapterId chapterName chapterStatus sessionDate projects notes studentId')
+            .lean(),
+        StudentSyllabusResponse.find(responseQuery).lean(),
+        StudentSyllabusResponse.find(responseQuery)
+            .populate('studentId', 'firstName middleName lastName regNo')
+            .populate('subjectId', 'name')
+            .sort({ respondedAt: -1, updatedAt: -1 })
+            .limit(8)
+            .lean(),
+    ]);
+
+    const comboKey = (item) => [
+        item.batchId?._id || item.batchId || '',
+        item.courseId?._id || item.courseId || '',
+        item.subjectId?._id || item.subjectId || '',
+    ].map(value => value?.toString()).join(':');
+
+    const assignmentByCombo = new Map(assignments.map(item => [comboKey(item), item]));
+    const syllabusStats = assignments.reduce((summary, assignment) => {
+        summary.totalChapters += assignment.chapters.length;
+        summary.totalProjects += assignment.projects.length;
+        return summary;
+    }, { totalChapters: 0, completedChapters: 0, runningChapters: 0, totalProjects: 0, completedProjects: 0 });
+
+    const chapterState = new Map();
+    const completedProjectSet = new Set();
+
+    allTeacherLogs.forEach(log => {
+        const assignment = assignmentByCombo.get(comboKey(log));
+        if (!assignment) return;
+
+        const chapterId = log.chapterId?.toString();
+        if (chapterId) {
+            const key = `${comboKey(log)}:${chapterId}`;
+            const existing = chapterState.get(key);
+            const logTime = new Date(log.sessionDate || 0).getTime();
+            const existingTime = existing ? new Date(existing.sessionDate || 0).getTime() : 0;
+            if (!existing || logTime >= existingTime) {
+                chapterState.set(key, {
+                    status: log.chapterStatus,
+                    chapterName: log.chapterName,
+                    subjectName: assignment.subjectName,
+                    batchName: assignment.batchName,
+                    courseName: assignment.courseName,
+                    sessionDate: log.sessionDate,
+                });
+            }
+        }
+
+        (log.projects || []).forEach(project => {
+            if (project.projectId) {
+                completedProjectSet.add(`${comboKey(log)}:${project.projectId}`);
+            }
+        });
+    });
+
+    chapterState.forEach(state => {
+        if (state.status === 'Completed') syllabusStats.completedChapters += 1;
+        if (state.status === 'Running') syllabusStats.runningChapters += 1;
+    });
+    syllabusStats.completedProjects = completedProjectSet.size;
+
+    const uniqueStudents = new Set(periodLogs.map(log => log.studentId?._id || log.studentId).filter(Boolean).map(String));
+    const uniqueChaptersTaught = new Set(periodLogs.map(log => log.chapterId).filter(Boolean).map(String));
+    const projectSessions = periodLogs.reduce((total, log) => total + (log.projects?.length || 0), 0);
+    const completedSessions = periodLogs.filter(log => log.chapterStatus === 'Completed').length;
+
+    const activityByDay = {};
+    periodLogs.forEach(log => {
+        const key = new Date(log.sessionDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        if (!activityByDay[key]) activityByDay[key] = { name: key, Sessions: 0, Students: new Set(), Completed: 0 };
+        activityByDay[key].Sessions += 1;
+        if (log.studentId?._id || log.studentId) activityByDay[key].Students.add(String(log.studentId?._id || log.studentId));
+        if (log.chapterStatus === 'Completed') activityByDay[key].Completed += 1;
+    });
+
+    const activityTrend = Object.values(activityByDay).map(item => ({
+        name: item.name,
+        Sessions: item.Sessions,
+        Students: item.Students.size,
+        Completed: item.Completed,
+    }));
+
+    const subjectMap = {};
+    periodLogs.forEach(log => {
+        const name = log.subjectId?.name || log.chapterName || 'Subject';
+        if (!subjectMap[name]) subjectMap[name] = { name, Sessions: 0, Students: new Set(), Completed: 0 };
+        subjectMap[name].Sessions += 1;
+        if (log.studentId?._id || log.studentId) subjectMap[name].Students.add(String(log.studentId?._id || log.studentId));
+        if (log.chapterStatus === 'Completed') subjectMap[name].Completed += 1;
+    });
+
+    const subjectWorkload = Object.values(subjectMap).map(item => ({
+        name: item.name,
+        Sessions: item.Sessions,
+        Students: item.Students.size,
+        Completed: item.Completed,
+    })).sort((a, b) => b.Sessions - a.Sessions).slice(0, 8);
+
+    const understoodCount = responses.filter(item => item.understood).length;
+    const commentCount = responses.reduce((total, item) => total + (item.comments?.length || (item.comment ? 1 : 0)), 0);
+    const pendingResponseCount = Math.max((syllabusStats.completedChapters * 2) + syllabusStats.completedProjects - understoodCount, 0);
+
+    const fullName = (student) => [student?.firstName, student?.middleName, student?.lastName].filter(Boolean).join(' ').trim() || 'Student';
+    const runningChapters = [...chapterState.values()]
+        .filter(item => item.status === 'Running')
+        .sort((a, b) => new Date(b.sessionDate || 0) - new Date(a.sessionDate || 0))
+        .slice(0, 6);
+
+    const assignmentProgress = assignments.map(assignment => {
+        const key = comboKey(assignment);
+        const chapterCounts = assignment.chapters.reduce((summary, chapter) => {
+            const state = chapterState.get(`${key}:${chapter._id?.toString()}`);
+            if (state?.status === 'Completed') summary.completed += 1;
+            else if (state?.status === 'Running') summary.running += 1;
+            else summary.pending += 1;
+            return summary;
+        }, { completed: 0, running: 0, pending: 0 });
+
+        const completedProjectsForAssignment = assignment.projects.filter(project =>
+            completedProjectSet.has(`${key}:${project._id?.toString()}`)
+        ).length;
+
+        return {
+            branchName: assignment.branchName,
+            batchName: assignment.batchName,
+            batchTime: assignment.batchTime,
+            courseName: assignment.courseName,
+            subjectName: assignment.subjectName,
+            chapters: assignment.chapters.length,
+            completedChapters: chapterCounts.completed,
+            runningChapters: chapterCounts.running,
+            pendingChapters: chapterCounts.pending,
+            projects: assignment.projects.length,
+            completedProjects: completedProjectsForAssignment,
+            daysToComplete: assignment.daysToComplete,
+            progress: assignment.chapters.length ? Math.round((chapterCounts.completed / assignment.chapters.length) * 100) : 0,
+        };
+    });
+
+    const assignmentTree = assignmentProgress.reduce((branches, assignment) => {
+        let branch = branches.find(item => item.name === assignment.branchName);
+        if (!branch) {
+            branch = { name: assignment.branchName, batches: [] };
+            branches.push(branch);
+        }
+
+        let batch = branch.batches.find(item => item.name === assignment.batchName);
+        if (!batch) {
+            batch = { name: assignment.batchName, time: assignment.batchTime, courses: [] };
+            branch.batches.push(batch);
+        }
+
+        let course = batch.courses.find(item => item.name === assignment.courseName);
+        if (!course) {
+            course = { name: assignment.courseName, subjects: [] };
+            batch.courses.push(course);
+        }
+
+        course.subjects.push(assignment);
+        return branches;
+    }, []);
+
+    res.json({
+        filters: {
+            period,
+            fromDate,
+            toDate,
+            teacherId: teacher._id?.toString(),
+            start,
+            end,
+        },
+        teachers,
+        teacher: {
+            _id: teacher._id,
+            name: teacher.name,
+            role: teacher.role || teacher.type,
+            type: teacher.type,
+            email: teacher.email,
+            mobile: teacher.mobile,
+            photo: teacher.photo,
+        },
+        cards: {
+            assignedSubjects: new Set(assignments.map(item => item.subjectId?.toString())).size,
+            assignedBatches: new Set(assignments.map(item => item.batchId?.toString())).size,
+            assignedCourses: new Set(assignments.map(item => item.courseId?.toString())).size,
+            sessions: periodLogs.length,
+            studentsTaught: uniqueStudents.size,
+            chaptersTaught: uniqueChaptersTaught.size,
+            completedSessions,
+            projectSessions,
+            understoodCount,
+            commentCount,
+            pendingResponseCount,
+            ...syllabusStats,
+        },
+        charts: {
+            activityTrend,
+            subjectWorkload,
+            syllabusStatus: [
+                { name: 'Completed', value: syllabusStats.completedChapters, color: '#10b981' },
+                { name: 'Running', value: syllabusStats.runningChapters, color: '#2563eb' },
+                { name: 'Pending', value: Math.max(syllabusStats.totalChapters - syllabusStats.completedChapters - syllabusStats.runningChapters, 0), color: '#e5e7eb' },
+            ].filter(item => item.value > 0),
+            responseStatus: [
+                { name: 'Understood', value: understoodCount, color: '#10b981' },
+                { name: 'Comments', value: commentCount, color: '#f59e0b' },
+                { name: 'Pending', value: pendingResponseCount, color: '#ef4444' },
+            ].filter(item => item.value > 0),
+        },
+        lists: {
+            assignments: assignmentProgress.slice(0, 12),
+            assignmentTree,
+            recentLogs: periodLogs.slice(0, 8).map(log => ({
+                _id: log._id,
+                studentName: fullName(log.studentId),
+                regNo: log.studentId?.regNo,
+                subjectName: log.subjectId?.name || 'Subject',
+                courseName: log.courseId?.shortName || log.courseId?.name || 'Course',
+                batchName: log.batchId?.name || 'Batch',
+                chapterName: log.chapterName || 'Chapter',
+                status: log.chapterStatus || 'Session',
+                projectCount: log.projects?.length || 0,
+                sessionDate: log.sessionDate,
+                notes: log.notes,
+            })),
+            recentResponses: recentResponses.map(item => ({
+                _id: item._id,
+                studentName: fullName(item.studentId),
+                regNo: item.studentId?.regNo,
+                subjectName: item.subjectId?.name || 'Subject',
+                type: item.type,
+                understood: item.understood,
+                comment: item.comment || item.comments?.[item.comments.length - 1]?.comment || '',
+                respondedAt: item.respondedAt || item.updatedAt,
+            })),
+            runningChapters,
+        },
     });
 });
 
@@ -888,4 +1351,4 @@ const updateIncentiveStatus = asyncHandler(async (req, res) => {
     res.json({ message: `Incentive status updated to ${status} for ${result.modifiedCount} students` });
 });
 
-module.exports = { getAdminDashboard, getReferenceIncentive, updateIncentiveStatus };
+module.exports = { getAdminDashboard, getTeacherDashboard, getReferenceIncentive, updateIncentiveStatus };
