@@ -50,6 +50,8 @@ const StudentFreeLearning = lazy(() => import("./pages/student/FreeLearning"));
 const StudentFreeLearningReport = lazy(() => import("./pages/student/FreeLearningReport"));
 const StudentFees = lazy(() => import("./pages/student/StudentFees"));
 const StudentExamSchedule = lazy(() => import("./pages/student/ExamSchedule"));
+const StudentExamConduct = lazy(() => import("./pages/student/ExamConduct"));
+const StudentExamAttempt = lazy(() => import("./pages/student/ExamAttempt"));
 const StudentComplain = lazy(() => import("./pages/student/Complain"));
 const StudentSyllabus = lazy(() => import("./pages/student/Syllabus"));
 
@@ -226,6 +228,8 @@ function App() {
                  
                  <Route path="fees" element={<StudentFees />} />
                  <Route path="exam-schedule" element={<StudentExamSchedule />} />
+                 <Route path="exam" element={<StudentExamConduct />} />
+                 <Route path="exam/:scheduleId/:subjectId" element={<StudentExamAttempt />} />
                  <Route path="complain" element={<StudentComplain />} />
 
                  <Route path="*" element={<Navigate to="home" replace />} />

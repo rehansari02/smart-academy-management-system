@@ -50,7 +50,8 @@ const StudentNavbar = () => {
             title: 'Exam',
             path: '#',
             subItems: [
-                { title: 'Exam Time Table', path: '/student/exam-schedule' }
+                { title: 'Exam Time Table', path: '/student/exam-schedule' },
+                { title: 'Exam Conduct', path: '/student/exam' }
             ]
         },
         { title: 'Complain', path: '/student/complain' },

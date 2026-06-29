@@ -421,6 +421,42 @@ const TeacherDashboard = () => {
 
         <div className="space-y-3">
           <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+            <h3 className="flex items-center gap-2 text-sm font-black text-gray-900">
+              <CalendarDays size={16} className="text-blue-600" /> Exam Schedules
+            </h3>
+            <div className="mt-3 space-y-2 max-h-72 overflow-auto pr-1">
+              {(lists.examSchedules || []).map((schedule) => (
+                <div key={schedule._id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-black text-gray-900">{schedule.examName}</p>
+                      <p className="truncate text-[11px] font-semibold text-gray-500">{schedule.courseName}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${schedule.conductPasswordEnabled ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                      {schedule.conductPasswordEnabled ? 'Password' : 'Open'}
+                    </span>
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {(schedule.subjects || []).slice(0, 3).map((subject) => (
+                      <div key={`${schedule._id}-${subject.subjectId}`} className="rounded bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 ring-1 ring-gray-100">
+                        {subject.subjectName} {subject.startTime ? `- ${subject.startTime} to ${subject.endTime}` : ''}
+                      </div>
+                    ))}
+                    {(schedule.subjects || []).length > 3 && (
+                      <p className="text-[10px] font-bold text-gray-400">+{schedule.subjects.length - 3} more subjects</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {!(lists.examSchedules || []).length && (
+                <p className="rounded-lg border border-dashed p-4 text-xs font-bold text-gray-400">
+                  No exam schedule assigned to this teacher.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
             <h3 className="flex items-center gap-2 text-sm font-black text-gray-900"><Users size={16} className="text-blue-600" /> Subject Progress</h3>
             <div className="mt-3 max-h-64 space-y-2 overflow-auto pr-1">
               {(lists.assignments || []).map((item, index) => (

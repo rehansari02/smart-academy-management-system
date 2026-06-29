@@ -11,6 +11,10 @@ const {
     getFreeLearningReport,
     getStudentFees,
     getStudentExamSchedules,
+    getStudentExamConduct,
+    openStudentExamConduct,
+    saveStudentExamConduct,
+    submitStudentExamConduct,
     getStudentSyllabus,
     saveStudentSyllabusAck,
     saveStudentSyllabusComment
@@ -21,6 +25,10 @@ router.get('/course', protect, getCourseDetails);
 router.post('/feedback', protect, submitFeedback);
 router.get('/fees', protect, getStudentFees);
 router.get('/exam-schedules', protect, getStudentExamSchedules);
+router.get('/exam-conduct', protect, getStudentExamConduct);
+router.post('/exam-conduct/:scheduleId/:subjectId/open', protect, openStudentExamConduct);
+router.post('/exam-conduct/:scheduleId/:subjectId/save', protect, saveStudentExamConduct);
+router.post('/exam-conduct/:scheduleId/:subjectId/submit', protect, submitStudentExamConduct);
 router.get('/syllabus', protect, getStudentSyllabus);
 router.post('/syllabus/ack', protect, saveStudentSyllabusAck);
 router.post('/syllabus/comment', protect, saveStudentSyllabusComment);

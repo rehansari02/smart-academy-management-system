@@ -4,6 +4,9 @@ const Course = require('../models/Course');
 const CourseFeedback = require('../models/CourseFeedback');
 const moment = require('moment');
 const ExamSchedule = require('../models/ExamSchedule');
+const ExamAttempt = require('../models/ExamAttempt');
+const FinalExamQuestionPaper = require('../models/FinalExamQuestionPaper');
+const bcrypt = require('bcryptjs');
 const SyllabusLog = require('../models/SyllabusLog');
 const StudentSyllabusResponse = require('../models/StudentSyllabusResponse');
 
@@ -127,6 +130,150 @@ const buildChapterProgress = (subject, logs, responses) => {
         };
     });
 };
+
+const parseExamTime = (dateValue, timeValue) => {
+    if (!dateValue) return null;
+    const date = moment(dateValue);
+    if (!date.isValid()) return null;
+
+    const time = String(timeValue || '').trim();
+    const match = time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!match) return date.toDate();
+
+    let hour = Number(match[1]);
+    const minute = Number(match[2]);
+    const period = match[3].toUpperCase();
+    if (period === 'PM' && hour < 12) hour += 12;
+    if (period === 'AM' && hour === 12) hour = 0;
+
+    return date.clone().hour(hour).minute(minute).second(0).millisecond(0).toDate();
+};
+
+const getScheduleSubjectWindow = (row) => {
+    const startAt = parseExamTime(row?.date, row?.startTime);
+    const endAt = parseExamTime(row?.date, row?.endTime);
+    if (!startAt || !endAt) {
+        return { startAt: null, endAt: null, status: 'upcoming', canOpen: false };
+    }
+
+    const now = moment();
+    const start = moment(startAt);
+    const end = moment(endAt).add(59, 'seconds').add(999, 'milliseconds');
+
+    if (now.isBefore(start)) {
+        return { startAt, endAt: end.toDate(), status: 'upcoming', canOpen: false };
+    }
+    if (now.isAfter(end)) {
+        return { startAt, endAt: end.toDate(), status: 'ended', canOpen: false };
+    }
+    return { startAt, endAt: end.toDate(), status: 'live', canOpen: true };
+};
+
+const getStudentCourseSubjects = (student) => {
+    return (student.course?.subjects || [])
+        .map((item) => item?.subject || item)
+        .filter(Boolean);
+};
+
+const isStudentInSchedule = (schedule, studentId) => {
+    const attendeeIds = (schedule.attendees || []).map((id) => String(id));
+    return attendeeIds.length === 0 || attendeeIds.includes(String(studentId));
+};
+
+const getScheduleSubjectRow = (schedule, subjectId) => {
+    return (schedule.timeTable || []).find((row) =>
+        String(row.subject?._id || row.subject) === String(subjectId)
+    ) || null;
+};
+
+const validateSchedulePassword = async (schedule, password) => {
+    const trimmedPassword = String(password || '').trim();
+    const storedHash = String(schedule?.conductPasswordHash || '').trim();
+    const storedText = String(schedule?.conductPasswordText || '').trim();
+
+    if (!trimmedPassword) {
+        return { valid: false, message: 'Password is required' };
+    }
+
+    if (storedHash) {
+        const valid = await bcrypt.compare(trimmedPassword, storedHash);
+        return {
+            valid,
+            message: valid ? '' : 'Incorrect password'
+        };
+    }
+
+    if (storedText) {
+        const valid = trimmedPassword === storedText;
+        return {
+            valid,
+            message: valid ? '' : 'Incorrect password'
+        };
+    }
+
+    return {
+        valid: false,
+        message: 'No password configured for this exam schedule'
+    };
+};
+
+const getEffectiveConductPassword = (row, schedule) => ({
+    enabled: Boolean(row?.conductPasswordEnabled || schedule?.conductPasswordEnabled),
+    hash: String(row?.conductPasswordHash || schedule?.conductPasswordHash || '').trim(),
+    text: String(row?.conductPasswordText || schedule?.conductPasswordText || '').trim()
+});
+
+const getSchedulePaper = async (courseId, subjectId) => {
+    return FinalExamQuestionPaper.findOne({
+        isDeleted: false,
+        isActive: true,
+        course: courseId,
+        'subjects.subject': subjectId
+    })
+        .populate('course', 'name shortName')
+        .populate('subjects.subject', 'name printedName');
+};
+
+const serializeQuestionPaperSubject = (paper, subjectId) => {
+    const subjectRow = (paper?.subjects || []).find((row) =>
+        String(row.subject?._id || row.subject) === String(subjectId)
+    );
+    if (!subjectRow) return null;
+
+    return {
+        subject: subjectRow.subject,
+        duration: subjectRow.duration || '',
+        mcqs: (subjectRow.mcqs || []).map((mcq, index) => ({
+            questionId: `mcq-${index + 1}`,
+            question: mcq.question || '',
+            options: mcq.options || [],
+            marks: Number(mcq.marks) || 1
+        })),
+        questionAnswers: (subjectRow.questionAnswers || []).map((qa, index) => ({
+            questionId: `qa-${index + 1}`,
+            question: qa.question || '',
+            marks: Number(qa.marks) || 1
+        }))
+    };
+};
+
+const buildAttemptPayload = (attempt) => ({
+    _id: attempt._id,
+    schedule: attempt.schedule,
+    subject: attempt.subject,
+    student: attempt.student,
+    answers: attempt.answers || [],
+    totalMcq: attempt.totalMcq || 0,
+    totalQa: attempt.totalQa || 0,
+    totalQuestions: attempt.totalQuestions || 0,
+    answeredCount: attempt.answeredCount || 0,
+    isSubmitted: Boolean(attempt.isSubmitted),
+    startedAt: attempt.startedAt || null,
+    lastSavedAt: attempt.lastSavedAt || null,
+    submittedAt: attempt.submittedAt || null,
+    expiresAt: attempt.expiresAt || null,
+    passwordVerifiedAt: attempt.passwordVerifiedAt || null
+});
 
 // @desc    Get Student Dashboard Stats (Attendance)
 // @route   GET /api/student-portal/dashboard
@@ -636,6 +783,403 @@ const getStudentExamSchedules = async (req, res) => {
     }
 };
 
+// @desc    Get Student Exam Conduct list
+// @route   GET /api/student-portal/exam-conduct
+// @access  Private (Student)
+const getStudentExamConduct = async (req, res) => {
+    try {
+        const student = await Student.findOne({ userId: req.user._id, isDeleted: { $ne: true } })
+            .populate({
+                path: 'course',
+                populate: {
+                    path: 'subjects.subject',
+                    model: 'Subject'
+                }
+            });
+
+        if (!student) {
+            return res.status(404).json({ message: 'Student not found' });
+        }
+
+        if (!student.course?._id) {
+            return res.json({
+                student: {
+                    _id: student._id,
+                    name: `${student.firstName} ${student.lastName}`.trim(),
+                    courseName: ''
+                },
+                schedules: []
+            });
+        }
+
+        const schedules = await ExamSchedule.find({
+            isDeleted: false,
+            isActive: true,
+            course: student.course._id
+        })
+            .populate('course', 'name shortName')
+            .populate('examiner', 'name designation role')
+            .populate('timeTable.subject', 'name printedName')
+            .sort({ createdAt: -1 });
+
+        const visibleSchedules = schedules.filter((schedule) => isStudentInSchedule(schedule, student._id));
+        const courseSubjects = getStudentCourseSubjects(student);
+        const activeNow = moment();
+
+        const payload = visibleSchedules.map((schedule) => ({
+            _id: schedule._id,
+            examName: schedule.examName,
+            remarks: schedule.remarks,
+            isActive: schedule.isActive,
+            examiner: schedule.examiner,
+            conductPasswordEnabled: Boolean(schedule.conductPasswordEnabled),
+            hasConductPassword: Boolean(schedule.conductPasswordHash || schedule.conductPasswordText),
+            course: schedule.course,
+            timeTable: (schedule.timeTable || []).map((row) => {
+                const window = getScheduleSubjectWindow(row);
+                const subjectId = row.subject?._id || row.subject;
+                const isCourseSubject = courseSubjects.some((subject) => String(subject?._id || subject) === String(subjectId));
+                return {
+                    subject: row.subject,
+                    date: row.date,
+                    startTime: row.startTime,
+                    endTime: row.endTime,
+                    theory: row.theory,
+                    practical: row.practical,
+                    total: row.total,
+                    status: window.status,
+                    canOpen: window.canOpen && isCourseSubject,
+                    isCourseSubject,
+                    conductPasswordEnabled: Boolean(row.conductPasswordEnabled || schedule.conductPasswordEnabled),
+                    hasConductPassword: Boolean(
+                        row.conductPasswordHash ||
+                        row.conductPasswordText ||
+                        schedule.conductPasswordHash ||
+                        schedule.conductPasswordText
+                    )
+                };
+            }),
+            currentStatus: (() => {
+                const liveRow = (schedule.timeTable || []).find((row) => getScheduleSubjectWindow(row).status === 'live');
+                if (liveRow) return 'live';
+                const upcomingRow = (schedule.timeTable || []).find((row) => getScheduleSubjectWindow(row).status === 'upcoming');
+                if (upcomingRow) return 'upcoming';
+                return 'ended';
+            })(),
+            currentTime: activeNow.toISOString()
+        }));
+
+        res.json({
+            student: {
+                _id: student._id,
+                name: `${student.firstName} ${student.lastName}`.trim(),
+                courseName: student.course?.name || ''
+            },
+            schedules: payload
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Open student exam paper after password verification
+// @route   POST /api/student-portal/exam-conduct/:scheduleId/:subjectId/open
+// @access  Private (Student)
+const openStudentExamConduct = async (req, res) => {
+    try {
+        const { scheduleId, subjectId } = req.params;
+        const password = String(req.body.password || '').trim();
+        const student = await Student.findOne({ userId: req.user._id, isDeleted: { $ne: true } })
+            .populate({
+                path: 'course',
+                populate: {
+                    path: 'subjects.subject',
+                    model: 'Subject'
+                }
+            });
+
+        if (!student || !student.course?._id) {
+            return res.status(404).json({ message: 'Student not found' });
+        }
+
+        const schedule = await ExamSchedule.findOne({
+            _id: scheduleId,
+            isDeleted: false,
+            isActive: true,
+            course: student.course._id
+        })
+            .populate('course', 'name shortName')
+            .populate('examiner', 'name designation role')
+            .populate('timeTable.subject', 'name printedName');
+
+        if (!schedule) {
+            return res.status(404).json({ message: 'Exam schedule not found' });
+        }
+
+        if (!isStudentInSchedule(schedule, student._id)) {
+            return res.status(403).json({ message: 'This exam is not assigned to you' });
+        }
+
+        const row = getScheduleSubjectRow(schedule, subjectId);
+        if (!row) {
+            return res.status(404).json({ message: 'Subject not found in schedule' });
+        }
+
+        const window = getScheduleSubjectWindow(row);
+        const conductPassword = getEffectiveConductPassword(row, schedule);
+        const existingAttempt = await ExamAttempt.findOne({
+            schedule: schedule._id,
+            subject: subjectId,
+            student: student._id
+        });
+
+        if (!window.canOpen && !existingAttempt) {
+            return res.status(400).json({
+                message: window.status === 'ended'
+                    ? 'This exam time has ended'
+                    : 'This exam is not live yet'
+            });
+        }
+
+        if (conductPassword.enabled && Boolean(conductPassword.hash || conductPassword.text)) {
+            const passwordCheck = await validateSchedulePassword({
+                conductPasswordHash: conductPassword.hash,
+                conductPasswordText: conductPassword.text
+            }, password);
+            if (!passwordCheck.valid) {
+                return res.status(passwordCheck.message === 'Password is required' ? 400 : 401).json({ message: passwordCheck.message });
+            }
+        }
+
+        const paper = await getSchedulePaper(student.course._id, subjectId);
+        if (!paper) {
+            return res.status(404).json({ message: 'Question paper not found for this subject' });
+        }
+
+        const subjectPaper = serializeQuestionPaperSubject(paper, subjectId);
+        if (!subjectPaper) {
+            return res.status(404).json({ message: 'Question paper subject data not found' });
+        }
+
+        const totalMcq = subjectPaper.mcqs.length;
+        const totalQa = subjectPaper.questionAnswers.length;
+        const totalQuestions = totalMcq + totalQa;
+
+        const attempt = await ExamAttempt.findOneAndUpdate(
+            {
+                schedule: schedule._id,
+                subject: subjectId,
+                student: student._id
+            },
+            {
+                $setOnInsert: {
+                    schedule: schedule._id,
+                    course: student.course._id,
+                    subject: subjectId,
+                    student: student._id,
+                    examName: schedule.examName,
+                    startedAt: new Date()
+                },
+                $set: {
+                    totalMcq,
+                    totalQa,
+                    totalQuestions,
+                    passwordVerifiedAt: new Date(),
+                    expiresAt: window.endAt || null
+                }
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
+        res.json({
+            schedule: {
+                _id: schedule._id,
+                examName: schedule.examName,
+                course: schedule.course,
+                examiner: schedule.examiner,
+                conductPasswordEnabled: Boolean(schedule.conductPasswordEnabled),
+                hasConductPassword: Boolean(schedule.conductPasswordHash || schedule.conductPasswordText),
+                timeRow: {
+                    subject: row.subject,
+                    date: row.date,
+                    startTime: row.startTime,
+                    endTime: row.endTime,
+                    theory: row.theory,
+                    practical: row.practical,
+                    total: row.total,
+                    status: window.status,
+                    canOpen: window.canOpen,
+                    startAt: window.startAt,
+                    endAt: window.endAt
+                }
+            },
+            paper: {
+                _id: paper._id,
+                title: paper.title,
+                examName: paper.examName,
+                course: paper.course,
+                subject: subjectPaper.subject,
+                duration: subjectPaper.duration,
+                mcqs: subjectPaper.mcqs,
+                questionAnswers: subjectPaper.questionAnswers
+            },
+            attempt: buildAttemptPayload(attempt),
+            canEdit: window.canOpen && !attempt.isSubmitted,
+            status: window.status,
+            window
+        });
+    } catch (error) {
+        console.error(error);
+        if (error.message === 'Incorrect password') {
+            return res.status(401).json({ message: error.message });
+        }
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Save student exam draft
+// @route   POST /api/student-portal/exam-conduct/:scheduleId/:subjectId/save
+// @access  Private (Student)
+const saveStudentExamConduct = async (req, res) => {
+    try {
+        const { scheduleId, subjectId } = req.params;
+        const { answers = [] } = req.body;
+
+        const student = await Student.findOne({ userId: req.user._id, isDeleted: { $ne: true } })
+            .populate('course', 'name shortName');
+
+        if (!student) {
+            return res.status(404).json({ message: 'Student not found' });
+        }
+
+        const schedule = await ExamSchedule.findOne({
+            _id: scheduleId,
+            isDeleted: false,
+            isActive: true,
+            course: student.course?._id
+        });
+        if (!schedule) {
+            return res.status(404).json({ message: 'Exam schedule not found' });
+        }
+
+        if (!isStudentInSchedule(schedule, student._id)) {
+            return res.status(403).json({ message: 'This exam is not assigned to you' });
+        }
+
+        const row = getScheduleSubjectRow(schedule, subjectId);
+        if (!row) {
+            return res.status(404).json({ message: 'Subject not found in schedule' });
+        }
+
+        const window = getScheduleSubjectWindow(row);
+        if (!window.canOpen) {
+            return res.status(400).json({ message: 'Exam time is over or not started yet' });
+        }
+
+        const attempt = await ExamAttempt.findOne({
+            schedule: schedule._id,
+            subject: subjectId,
+            student: student._id
+        });
+
+        if (!attempt) {
+            return res.status(404).json({ message: 'Exam attempt not found. Open the exam first.' });
+        }
+        if (attempt.isSubmitted) {
+            return res.status(400).json({ message: 'Exam already submitted' });
+        }
+
+        const cleanedAnswers = Array.isArray(answers)
+            ? answers
+                .filter((item) => item && (item.type === 'mcq' || item.type === 'qa'))
+                .map((item) => ({
+                    type: item.type,
+                    questionIndex: Number(item.questionIndex) || 0,
+                    selectedOption: String(item.selectedOption || ''),
+                    answerText: String(item.answerText || ''),
+                    marks: Number(item.marks) || 0,
+                    savedAt: new Date()
+                }))
+            : [];
+
+        attempt.answers = cleanedAnswers;
+        attempt.totalQuestions = Number(attempt.totalQuestions) || cleanedAnswers.length;
+        attempt.answeredCount = cleanedAnswers.filter((item) =>
+            item.type === 'mcq' ? Boolean(item.selectedOption) : Boolean(item.answerText.trim())
+        ).length;
+        attempt.lastSavedAt = new Date();
+        attempt.expiresAt = window.endAt || attempt.expiresAt;
+
+        await attempt.save();
+
+        res.json({
+            message: 'Draft saved',
+            attempt: buildAttemptPayload(attempt)
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Submit student exam
+// @route   POST /api/student-portal/exam-conduct/:scheduleId/:subjectId/submit
+// @access  Private (Student)
+const submitStudentExamConduct = async (req, res) => {
+    try {
+        const { scheduleId, subjectId } = req.params;
+
+        const student = await Student.findOne({ userId: req.user._id, isDeleted: { $ne: true } })
+            .populate('course', 'name shortName');
+        if (!student) {
+            return res.status(404).json({ message: 'Student not found' });
+        }
+
+        const schedule = await ExamSchedule.findOne({
+            _id: scheduleId,
+            isDeleted: false,
+            isActive: true,
+            course: student.course?._id
+        });
+        if (!schedule) {
+            return res.status(404).json({ message: 'Exam schedule not found' });
+        }
+
+        if (!isStudentInSchedule(schedule, student._id)) {
+            return res.status(403).json({ message: 'This exam is not assigned to you' });
+        }
+
+        const row = getScheduleSubjectRow(schedule, subjectId);
+        if (!row) {
+            return res.status(404).json({ message: 'Subject not found in schedule' });
+        }
+
+        const attempt = await ExamAttempt.findOne({
+            schedule: schedule._id,
+            subject: subjectId,
+            student: student._id
+        });
+
+        if (!attempt) {
+            return res.status(404).json({ message: 'Exam attempt not found. Open the exam first.' });
+        }
+
+        attempt.isSubmitted = true;
+        attempt.submittedAt = new Date();
+        attempt.lastSavedAt = new Date();
+        await attempt.save();
+
+        res.json({
+            message: 'Exam submitted successfully',
+            attempt: buildAttemptPayload(attempt)
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
 
 // @desc    Get student syllabus progression
 // @route   GET /api/student-portal/syllabus
@@ -815,6 +1359,10 @@ module.exports = {
     getFreeLearningReport,
     getStudentFees,
     getStudentExamSchedules,
+    getStudentExamConduct,
+    openStudentExamConduct,
+    saveStudentExamConduct,
+    submitStudentExamConduct,
     getStudentSyllabus,
     saveStudentSyllabusAck,
     saveStudentSyllabusComment

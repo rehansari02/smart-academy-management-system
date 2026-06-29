@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchCourses, fetchExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, resetMasterStatus, fetchExams, createExam, updateExam, deleteExam, fetchBranches } from '../../../features/master/masterSlice';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { Plus, Search, RefreshCw, Edit, Trash2, Eye, X, Save, AlertCircle, Pencil, Check } from 'lucide-react';
+import { Plus, Search, RefreshCw, Edit, Trash2, Eye, X, Save, AlertCircle, Pencil, Check, ShieldCheck } from 'lucide-react';
 import axios from 'axios'; // For direct detail fetch
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
@@ -59,6 +59,7 @@ const ExamSchedule = () => {
   const [filters, setFilters] = useState({ courseId: '', examName: '', branchId: '' });
   const [detailView, setDetailView] = useState(null); // ID of schedule to show details
   const [detailData, setDetailData] = useState([]);
+  const [conductData, setConductData] = useState(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
 
   // Local State for Exam Search & Quick Add
@@ -91,6 +92,8 @@ const ExamSchedule = () => {
   const [pendingRequests, setPendingRequests] = useState([]);
   const [selectedAttendees, setSelectedAttendees] = useState([]);
   const [isRequestsLoading, setIsRequestsLoading] = useState(false);
+  const [employees, setEmployees] = useState([]);
+  const [examinerId, setExaminerId] = useState('');
 
   // Time Table State
   const [timeTableData, setTimeTableData] = useState([]);
@@ -259,6 +262,8 @@ const ExamSchedule = () => {
             ...item,
             subject: item.subject?._id || item.subject,
             name: item.subject?.name || item.name || 'Subject',
+            conductPasswordEnabled: Boolean(item.conductPasswordEnabled),
+            conductPassword: '',
             total: Number(item.total) || (Number(item.theory) || 0) + (Number(item.practical) || 0)
         }));
     }
@@ -277,6 +282,8 @@ const ExamSchedule = () => {
             endTime: saved?.endTime || '01:00 PM',
             theory,
             practical,
+            conductPasswordEnabled: Boolean(saved?.conductPasswordEnabled),
+            conductPassword: '',
             total: Number(saved?.total) || Number(subject.totalMarks) || ((Number(theory) || 0) + (Number(practical) || 0))
         };
     });
@@ -354,6 +361,12 @@ const ExamSchedule = () => {
   }, [dispatch]);
 
   useEffect(() => {
+    axios.get(`${import.meta.env.VITE_API_URL}/master/employee`, { withCredentials: true })
+      .then((res) => setEmployees(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setEmployees([]));
+  }, []);
+
+  useEffect(() => {
     if (isSuccess && message) {
         toast.success(message);
         dispatch(resetMasterStatus());
@@ -361,6 +374,7 @@ const ExamSchedule = () => {
         setEditMode(null);
         setSelectedAttendees([]);
         setTimeTableData([]);
+        setExaminerId('');
         reset();
     }
   }, [isSuccess, message, dispatch, showForm, reset]);
@@ -455,10 +469,13 @@ const ExamSchedule = () => {
   useEffect(() => {
     if (detailView) {   
         setIsDetailLoading(true);
-        axios.get(`${import.meta.env.VITE_API_URL}/master/exam-schedule/${detailView}/details`, { withCredentials: true })
-            .then(res => {
-                // Now returns { attendees, timeTable }
-                setDetailData(res.data);
+        Promise.all([
+          axios.get(`${import.meta.env.VITE_API_URL}/master/exam-schedule/${detailView}/details`, { withCredentials: true }),
+          axios.get(`${import.meta.env.VITE_API_URL}/master/exam-schedule/${detailView}/conduct`, { withCredentials: true })
+        ])
+            .then(([detailsRes, conductRes]) => {
+                setDetailData(detailsRes.data);
+                setConductData(conductRes.data);
             })
             .catch(err => toast.error("Failed to load details"))
             .finally(() => setIsDetailLoading(false));
@@ -481,6 +498,7 @@ const ExamSchedule = () => {
     }
     const finalData = { 
         ...data, 
+        examiner: examinerId || undefined,
         attendees: selectedAttendees,
         timeTable: timeTableData.map(item => ({
             subject: item.subject,
@@ -489,7 +507,9 @@ const ExamSchedule = () => {
             endTime: item.endTime,
             theory: item.theory,
             practical: item.practical,
-            total: item.total || ((Number(item.theory) || 0) + (Number(item.practical) || 0))
+            total: item.total || ((Number(item.theory) || 0) + (Number(item.practical) || 0)),
+            conductPasswordEnabled: Boolean(item.conductPasswordEnabled),
+            conductPassword: String(item.conductPassword || '').trim()
         }))
     };
     if (editMode) {
@@ -526,6 +546,7 @@ const ExamSchedule = () => {
     setValue('examName', schedule.examName);
     setValue('remarks', schedule.remarks);
     setValue('isActive', schedule.isActive);
+    setExaminerId(schedule.examiner?._id || schedule.examiner || '');
     setSelectedAttendees(schedule.attendees || []);
     
     // Map existing timeTable with names from course
@@ -554,7 +575,7 @@ const ExamSchedule = () => {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Exam Schedule</h2>
         {!showForm && !detailView && (
-            <button onClick={() => { setShowForm(true); reset(); setEditMode(null); }} className="bg-primary text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700">
+            <button onClick={() => { setShowForm(true); reset(); setEditMode(null); setExaminerId(''); }} className="bg-primary text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700">
                 <Plus size={18} /> Add New Exam Schedule
             </button>
         )}
@@ -710,6 +731,21 @@ const ExamSchedule = () => {
                     <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Remarks</label>
                     <textarea {...register('remarks')} className="border p-2 rounded w-full" rows="2"></textarea>
                 </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Examiner</label>
+                    <select
+                        value={examinerId}
+                        onChange={(e) => setExaminerId(e.target.value)}
+                        className="border p-2 rounded w-full text-sm"
+                    >
+                        <option value="">Select Examiner</option>
+                        {employees.map((employee) => (
+                            <option key={employee._id} value={employee._id}>
+                                {employee.name || [employee.firstName, employee.lastName].filter(Boolean).join(' ') || 'Employee'}
+                            </option>
+                        ))}
+                    </select>
+                </div>
                 <div className="flex items-center gap-2">
                     <input type="checkbox" {...register('isActive')} id="isActive" className="h-4 w-4" defaultChecked />
                     <label htmlFor="isActive" className="text-sm font-medium">Is Active</label>
@@ -778,16 +814,17 @@ const ExamSchedule = () => {
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-blue-100 text-blue-900 uppercase text-[10px] font-bold border-b border-blue-200">
-                                    <tr>
-                                        <th className="px-4 py-2 border-r border-blue-200 text-center w-16">Sr. No.</th>
-                                        <th className="px-4 py-2 border-r border-blue-200">Subject</th>
-                                        <th className="px-4 py-2 border-r border-blue-200 w-32">Date</th>
-                                        <th className="px-4 py-2 border-r border-blue-200">Time</th>
-                                        <th className="px-4 py-2 border-r border-blue-200 text-center w-24">Theory</th>
-                                        <th className="px-4 py-2 border-r border-blue-200 text-center w-24">Practical</th>
-                                        <th className="px-4 py-2 text-center w-24">Total</th>
-                                    </tr>
-                                </thead>
+                                        <tr>
+                                            <th className="px-4 py-2 border-r border-blue-200 text-center w-16">Sr. No.</th>
+                                            <th className="px-4 py-2 border-r border-blue-200">Subject</th>
+                                            <th className="px-4 py-2 border-r border-blue-200 w-32">Date</th>
+                                            <th className="px-4 py-2 border-r border-blue-200">Time</th>
+                                            <th className="px-4 py-2 border-r border-blue-200 text-center w-56">Password</th>
+                                            <th className="px-4 py-2 border-r border-blue-200 text-center w-24">Theory</th>
+                                            <th className="px-4 py-2 border-r border-blue-200 text-center w-24">Practical</th>
+                                            <th className="px-4 py-2 text-center w-24">Total</th>
+                                        </tr>
+                                    </thead>
                                 <tbody>
                                     {timeTableData.length > 0 ? (
                                         timeTableData.map((item, index) => (
@@ -888,6 +925,27 @@ const ExamSchedule = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-3 py-2 border-r border-blue-100">
+                                                    <div className="space-y-2">
+                                                        <label className="flex items-center gap-2 text-[10px] font-bold text-gray-600">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={Boolean(item.conductPasswordEnabled)}
+                                                                onChange={(e) => updateTimeTableField(index, 'conductPasswordEnabled', e.target.checked)}
+                                                                className="h-3.5 w-3.5"
+                                                            />
+                                                            Password required
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={item.conductPassword || ''}
+                                                            onChange={(e) => updateTimeTableField(index, 'conductPassword', e.target.value)}
+                                                            disabled={!item.conductPasswordEnabled}
+                                                            placeholder={item.conductPasswordEnabled ? 'Set subject password' : 'Enable first'}
+                                                            className="w-full text-xs border rounded p-1 disabled:bg-gray-100"
+                                                        />
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2 border-r border-blue-100">
                                                     <input 
                                                         type="number" 
                                                         placeholder="0"
@@ -912,7 +970,7 @@ const ExamSchedule = () => {
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan="7" className="px-4 py-8 text-center text-gray-400 italic">
+                                            <td colSpan="8" className="px-4 py-8 text-center text-gray-400 italic">
                                                 Select a course to populate subjects...
                                             </td>
                                         </tr>
@@ -927,7 +985,7 @@ const ExamSchedule = () => {
                 </div>
                 
                 <div className="md:col-span-2 flex gap-2 justify-end mt-2">
-                    <button type="button" onClick={() => setShowForm(false)} className="border px-4 py-2 rounded hover:bg-gray-100">Cancel</button>
+                    <button type="button" onClick={() => { setShowForm(false); setExaminerId(''); }} className="border px-4 py-2 rounded hover:bg-gray-100">Cancel</button>
                     <button type="submit" disabled={isLoading} className="bg-green-600 text-white px-6 py-2 rounded flex items-center gap-2 hover:bg-green-700 disabled:opacity-70 disabled:cursor-not-allowed">
                         {isLoading ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />} 
                         {isLoading ? 'Saving...' : 'Save'}
@@ -1232,7 +1290,7 @@ const ExamSchedule = () => {
           <div className="bg-white w-full max-w-4xl rounded-xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="bg-blue-600 text-white p-4 flex justify-between items-center shrink-0">
                 <h3 className="text-lg font-bold">Exam Schedule Details</h3>
-                <button onClick={() => setDetailView(null)} className="bg-white/20 hover:bg-white/30 p-1 rounded-full transition-colors">
+                <button onClick={() => { setDetailView(null); setConductData(null); }} className="bg-white/20 hover:bg-white/30 p-1 rounded-full transition-colors">
                     <X size={20}/>
                 </button>
             </div>
@@ -1319,12 +1377,92 @@ const ExamSchedule = () => {
                                 </table>
                             </div>
                         </section>
+
+                        <section>
+                            <h4 className="text-sm font-bold text-blue-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <ShieldCheck size={16} className="text-blue-500"/>
+                                Conduct Summary
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                                <div className="border rounded-lg p-4 bg-gray-50">
+                                    <div className="text-[10px] uppercase text-gray-500 font-bold">Examiner</div>
+                                    <div className="text-sm font-bold text-gray-900 mt-1">
+                                        {conductData?.schedule?.examiner?.name || 'Not Assigned'}
+                                    </div>
+                                </div>
+                                <div className="border rounded-lg p-4 bg-gray-50">
+                                    <div className="text-[10px] uppercase text-gray-500 font-bold">Password</div>
+                                    <div className="text-sm font-bold text-gray-900 mt-1">
+                                        {conductData?.schedule?.hasConductPassword ? 'Enabled' : 'Disabled'}
+                                    </div>
+                                </div>
+                                <div className="border rounded-lg p-4 bg-gray-50">
+                                    <div className="text-[10px] uppercase text-gray-500 font-bold">Attempts</div>
+                                    <div className="text-sm font-bold text-gray-900 mt-1">
+                                        {conductData?.attempts?.length || 0}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="border rounded-lg overflow-hidden shadow-sm">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50 text-[10px] font-bold text-gray-500 uppercase">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left">Student</th>
+                                            <th className="px-4 py-3 text-left">Subject</th>
+                                            <th className="px-4 py-3 text-center">Status</th>
+                                            <th className="px-4 py-3 text-center">Answered</th>
+                                            <th className="px-4 py-3 text-center">Right / Wrong</th>
+                                            <th className="px-4 py-3 text-center">Marks</th>
+                                            <th className="px-4 py-3 text-center">Submitted</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 text-sm">
+                                        {conductData?.attendees?.length > 0 ? conductData.attendees.flatMap((student) =>
+                                            (student.rows || []).map((row, index) => (
+                                                <tr key={`${student._id}-${String(row.subjectId || index)}`} className="hover:bg-blue-50/30">
+                                                    <td className="px-4 py-3 font-bold text-primary">
+                                                        {student.name}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-gray-700">
+                                                        {row.subjectName}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <span className="text-xs font-bold px-2 py-1 rounded-full bg-gray-100 text-gray-700">
+                                                            {row.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center font-medium">
+                                                        {row.answeredCount || 0} / {row.totalQuestions || 0}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center font-medium">
+                                                        {(row.mcqCorrectCount || 0)} / {(row.mcqWrongCount || 0)}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center font-medium">
+                                                        {(row.totalMarksObtained || 0)} / {(row.totalMarksPossible || 0)}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center font-medium">
+                                                        {row.isSubmitted ? 'Yes' : 'No'}
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan="7" className="text-center py-4 text-gray-400 italic">
+                                                    No conduct data found.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
                     </div>
                 )}
             </div>
             
             <div className="bg-gray-50 p-4 border-t flex justify-end shrink-0">
-                <button onClick={() => setDetailView(null)} className="bg-white border border-gray-300 text-gray-700 px-6 py-2 rounded-lg font-bold shadow-sm hover:bg-gray-100 transition-all">
+                <button onClick={() => { setDetailView(null); setConductData(null); }} className="bg-white border border-gray-300 text-gray-700 px-6 py-2 rounded-lg font-bold shadow-sm hover:bg-gray-100 transition-all">
                     Close Details
                 </button>
             </div>

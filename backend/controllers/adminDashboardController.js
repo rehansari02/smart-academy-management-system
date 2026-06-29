@@ -6,6 +6,7 @@ const Visitor = require('../models/Visitor');
 const Expense = require('../models/Expense');
 const Reference = require('../models/Reference');
 const Employee = require('../models/Employee');
+const ExamSchedule = require('../models/ExamSchedule');
 const TeacherSubjectAccess = require('../models/TeacherSubjectAccess');
 const SyllabusLog = require('../models/SyllabusLog');
 const StudentSyllabusResponse = require('../models/StudentSyllabusResponse');
@@ -552,6 +553,35 @@ const getTeacherDashboard = asyncHandler(async (req, res) => {
         .populate('assignments.subjectId', 'name printedName chapters projects daysToComplete')
         .lean();
 
+    const examSchedules = await ExamSchedule.find({
+        isDeleted: false,
+        isActive: true,
+        examiner: teacher._id
+    })
+        .populate('course', 'name shortName')
+        .populate('timeTable.subject', 'name printedName')
+        .sort({ createdAt: -1 })
+        .lean();
+
+    const examScheduleCards = examSchedules.map((schedule) => ({
+        _id: schedule._id,
+        examName: schedule.examName,
+        courseName: schedule.course?.name || 'Course',
+        remarks: schedule.remarks || '',
+        conductPasswordEnabled: Boolean(schedule.conductPasswordEnabled),
+        hasConductPassword: Boolean(schedule.conductPasswordHash || schedule.conductPasswordText),
+        subjects: (schedule.timeTable || []).map((row) => ({
+            subjectId: row.subject?._id || row.subject,
+            subjectName: row.subject?.name || row.subject?.printedName || 'Subject',
+            date: row.date || null,
+            startTime: row.startTime || '',
+            endTime: row.endTime || '',
+            theory: row.theory || 0,
+            practical: row.practical || 0,
+            total: row.total || 0
+        }))
+    }));
+
     const assignments = (assignmentRecord?.assignments || [])
         .filter(item => item.subjectId)
         .map(item => ({
@@ -814,6 +844,7 @@ const getTeacherDashboard = asyncHandler(async (req, res) => {
         lists: {
             assignments: assignmentProgress.slice(0, 12),
             assignmentTree,
+            examSchedules: examScheduleCards,
             recentLogs: periodLogs.slice(0, 8).map(log => ({
                 _id: log._id,
                 studentName: fullName(log.studentId),
