@@ -825,6 +825,20 @@ const getStudentExamConduct = async (req, res) => {
         const visibleSchedules = schedules.filter((schedule) => isStudentInSchedule(schedule, student._id));
         const courseSubjects = getStudentCourseSubjects(student);
         const activeNow = moment();
+        const scheduleIds = visibleSchedules.map((schedule) => schedule._id);
+        const attempts = await ExamAttempt.find({
+            schedule: { $in: scheduleIds },
+            student: student._id
+        })
+            .populate('subject', 'name printedName')
+            .lean();
+
+        const attemptMap = new Map(
+            attempts.map((attempt) => [
+                `${String(attempt.schedule)}:${String(attempt.subject?._id || attempt.subject)}`,
+                attempt
+            ])
+        );
 
         const payload = visibleSchedules.map((schedule) => ({
             _id: schedule._id,
@@ -838,6 +852,7 @@ const getStudentExamConduct = async (req, res) => {
             timeTable: (schedule.timeTable || []).map((row) => {
                 const window = getScheduleSubjectWindow(row);
                 const subjectId = row.subject?._id || row.subject;
+                const attempt = attemptMap.get(`${String(schedule._id)}:${String(subjectId)}`);
                 const isCourseSubject = courseSubjects.some((subject) => String(subject?._id || subject) === String(subjectId));
                 return {
                     subject: row.subject,
@@ -856,7 +871,12 @@ const getStudentExamConduct = async (req, res) => {
                         row.conductPasswordText ||
                         schedule.conductPasswordHash ||
                         schedule.conductPasswordText
-                    )
+                    ),
+                    answeredCount: attempt?.answeredCount || 0,
+                    totalQuestions: attempt?.totalQuestions || 0,
+                    isSubmitted: Boolean(attempt?.isSubmitted),
+                    submittedAt: attempt?.submittedAt || null,
+                    lastSavedAt: attempt?.lastSavedAt || null
                 };
             }),
             currentStatus: (() => {

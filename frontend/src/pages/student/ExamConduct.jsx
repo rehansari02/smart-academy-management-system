@@ -47,6 +47,8 @@ const ExamConduct = () => {
   );
 
   const liveRows = allRows.filter(({ row }) => row.status === 'live' && row.canOpen);
+  const upcomingRows = allRows.filter(({ row }) => row.status === 'upcoming');
+  const submittedRows = allRows.filter(({ row }) => row.isSubmitted);
 
   if (loading) {
     return <Loading />;
@@ -89,13 +91,31 @@ const ExamConduct = () => {
         </section>
       ) : (
         <>
+          {submittedRows.length > 0 && liveRows.length === 0 && (
+            <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 flex items-center gap-3">
+              <Lock size={20} className="text-gray-400" />
+              <div>
+                <h2 className="text-base font-bold text-gray-800">Thanks for giving the exam</h2>
+                <p className="text-sm text-gray-500">
+                  You have submitted your paper. Result will be available soon.
+                </p>
+              </div>
+            </section>
+          )}
+
           {liveRows.length === 0 && (
             <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 flex items-center gap-3">
               <Lock size={20} className="text-gray-400" />
               <div>
-                <h2 className="text-base font-bold text-gray-800">Coming soon</h2>
+                <h2 className="text-base font-bold text-gray-800">
+                  {submittedRows.length > 0 ? 'Thanks for giving the exam' : upcomingRows.length > 0 ? 'Coming soon' : 'All the best'}
+                </h2>
                 <p className="text-sm text-gray-500">
-                  No exam is currently live for your course.
+                  {submittedRows.length > 0
+                    ? 'You have already submitted this exam. Result will be available soon.'
+                    : upcomingRows.length > 0
+                    ? 'No exam is currently live for your course.'
+                    : 'Thanks for giving the exam. Result will be available soon.'}
                 </p>
               </div>
             </section>
@@ -136,10 +156,17 @@ const ExamConduct = () => {
                         const isLive = item.status === 'live' && item.canOpen;
                         const isUpcoming = item.status === 'upcoming';
                         const isEnded = item.status === 'ended';
+                        const isSubmitted = Boolean(item.isSubmitted);
+                        const rowMuted = !isLive;
                         return (
-                          <tr key={`${schedule._id}-${index}`} className="border-b border-gray-100 hover:bg-blue-50/50 text-sm">
+                          <tr
+                            key={`${schedule._id}-${index}`}
+                            className={`border-b border-gray-100 text-sm ${rowMuted ? 'opacity-60' : 'hover:bg-blue-50/50'}`}
+                          >
                             <td className="p-3 text-center text-gray-500 font-medium">{index + 1}</td>
-                            <td className="p-3 font-semibold text-gray-900">{item.subject?.name || item.subject?.printedName || 'Subject'}</td>
+                            <td className="p-3 font-semibold text-gray-900">
+                              {item.subject?.name || item.subject?.printedName || 'Subject'}
+                            </td>
                             <td className="p-3 text-gray-600">
                               {item.date ? moment(item.date).format('DD/MM/YYYY') : '-'}
                             </td>
@@ -151,22 +178,24 @@ const ExamConduct = () => {
                             </td>
                             <td className="p-3 text-center">
                               <span className={`inline-flex items-center px-2 py-1 rounded-full text-[11px] font-bold border ${statusStyles[item.status] || statusStyles.ended}`}>
-                                {isLive ? 'Live' : isUpcoming ? 'Coming Soon' : 'Closed'}
+                                {isSubmitted ? 'Submitted' : isLive ? 'Live' : isUpcoming ? 'Coming Soon' : 'All the best'}
                               </span>
                             </td>
                             <td className="p-3 text-center">
                               <button
                                 type="button"
-                                disabled={!isLive}
+                                disabled={!isLive || isSubmitted}
                                 onClick={() => navigate(`/student/exam/${schedule._id}/${item.subject?._id || item.subject}`)}
                                 className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-                                  isLive
+                                  isSubmitted
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'
+                                    : isLive
                                     ? 'bg-primary text-white hover:bg-blue-800'
-                                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'
                                 }`}
                               >
-                                {isLive ? <PlayCircle size={14} /> : <Lock size={14} />}
-                                {isLive ? 'Open Exam' : isUpcoming ? 'Coming Soon' : 'Closed'}
+                                {isSubmitted ? <Lock size={14} /> : isLive ? <PlayCircle size={14} /> : <Lock size={14} />}
+                                {isSubmitted ? 'Submitted' : isLive ? 'Open Exam' : isUpcoming ? 'Coming Soon' : 'All the best'}
                               </button>
                             </td>
                           </tr>
