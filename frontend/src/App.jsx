@@ -75,6 +75,10 @@ const ExamRequestList = lazy(() =>
   import("./pages/admin/master/ExamRequestList")
 );
 const ExamSchedule = lazy(() => import("./pages/admin/master/ExamSchedule"));
+const FinalExamQuestionPaper = lazy(() => import("./pages/admin/master/FinalExamQuestionPaper"));
+const AddFinalExamQuestionPaper = lazy(() => import("./pages/admin/master/AddFinalExamQuestionPaper"));
+const FinalExamQuestionPaperSubjects = lazy(() => import("./pages/admin/master/FinalExamQuestionPaperSubjects"));
+const ViewFinalExamQuestionPaper = lazy(() => import("./pages/admin/master/ViewFinalExamQuestionPaper"));
 const ExamResult = lazy(() => import("./pages/admin/master/ExamResult"));
 const AddEditExamResult = lazy(() => import("./pages/admin/master/AddEditExamResult"));
 const ManageNews = lazy(() => import('./pages/admin/master/ManageNews'));
@@ -340,6 +344,38 @@ function App() {
                 element={
                   <PrivateRoute>
                     <ExamSchedule />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/final-exam-question-paper"
+                element={
+                  <PrivateRoute>
+                    <FinalExamQuestionPaper />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/final-exam-question-paper/add"
+                element={
+                  <PrivateRoute>
+                    <AddFinalExamQuestionPaper />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/final-exam-question-paper/subjects/:id"
+                element={
+                  <PrivateRoute>
+                    <FinalExamQuestionPaperSubjects />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/final-exam-question-paper/view/:id"
+                element={
+                  <PrivateRoute>
+                    <ViewFinalExamQuestionPaper />
                   </PrivateRoute>
                 }
               />

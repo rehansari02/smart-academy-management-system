@@ -37,6 +37,7 @@ export const MENU_CONFIG = [
         subItems: [
           { title: 'Exam Request List', path: '/master/exam-request-list' },
           { title: 'Exam Schedule', path: '/master/exam-schedule' },
+          { title: 'Final Exam Question Paper', path: '/master/final-exam-question-paper', permissionPage: 'Final Exam Question Paper' },
           { title: 'Exam Result', path: '/master/exam-result' }
         ]
       },

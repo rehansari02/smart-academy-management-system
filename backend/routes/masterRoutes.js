@@ -20,6 +20,13 @@ const { getExamRequests, getExamRequestBranches, cancelExamRequest, createExamRe
 const { getExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, getExamScheduleDetails, getMyExamSchedules } = require('../controllers/examScheduleController');
 const { getExamResults, createExamResult, updateExamResult, deleteExamResult, getExamResultById, getNextResultNumbers, verifyExamResult } = require('../controllers/examResultController');
 const {
+    getFinalExamQuestionPapers,
+    getFinalExamQuestionPaperById,
+    createFinalExamQuestionPaper,
+    updateFinalExamQuestionPaper,
+    deleteFinalExamQuestionPaper
+} = require('../controllers/finalExamQuestionPaperController');
+const {
     createQuestion,
     getQuestions,
     updateQuestion,
@@ -145,6 +152,16 @@ router.route('/exam-schedule/:id')
 
 router.get('/exam-schedule/:id/details', protect, getExamScheduleDetails);
 router.get('/exam-schedule/my', protect, getMyExamSchedules);
+
+// --- Final Exam Question Paper Routes ---
+router.route('/final-exam-question-paper')
+    .get(protect, checkPermission('Final Exam Question Paper', 'view'), getFinalExamQuestionPapers)
+    .post(protect, checkPermission('Final Exam Question Paper', 'add'), createFinalExamQuestionPaper);
+
+router.route('/final-exam-question-paper/:id')
+    .get(protect, checkPermission('Final Exam Question Paper', 'view'), getFinalExamQuestionPaperById)
+    .put(protect, checkPermission('Final Exam Question Paper', 'edit'), updateFinalExamQuestionPaper)
+    .delete(protect, checkPermission('Final Exam Question Paper', 'delete'), deleteFinalExamQuestionPaper);
 
 // --- Exam Results ---
 router.post('/exam-result/verify', verifyExamResult); // Public Access

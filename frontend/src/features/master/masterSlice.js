@@ -251,6 +251,35 @@ export const fetchNextResultNumbers = createAsyncThunk('master/fetchNextResultNu
     } catch (error) { return thunkAPI.rejectWithValue(error.message); }
 });
 
+// --- Final Exam Question Paper Thunks ---
+export const fetchFinalExamQuestionPapers = createAsyncThunk('master/fetchFinalExamQuestionPapers', async (params, thunkAPI) => {
+    try {
+        const response = await axios.get(API_URL + 'final-exam-question-paper', { params });
+        return Array.isArray(response.data) ? response.data : [];
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const createFinalExamQuestionPaper = createAsyncThunk('master/createFinalExamQuestionPaper', async (data, thunkAPI) => {
+    try {
+        const response = await axios.post(API_URL + 'final-exam-question-paper', data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const updateFinalExamQuestionPaper = createAsyncThunk('master/updateFinalExamQuestionPaper', async ({ id, data }, thunkAPI) => {
+    try {
+        const response = await axios.put(`${API_URL}final-exam-question-paper/${id}`, data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const deleteFinalExamQuestionPaper = createAsyncThunk('master/deleteFinalExamQuestionPaper', async (id, thunkAPI) => {
+    try {
+        const response = await axios.delete(`${API_URL}final-exam-question-paper/${id}`);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
 // --- Reference Thunks ---
 export const fetchReferences = createAsyncThunk('master/fetchReferences', async (_, thunkAPI) => {
     try {
@@ -539,6 +568,7 @@ const masterSlice = createSlice({
         cities: [],
         examRequestBranches: [],
         nextResultNumbers: { somNumber: '', csrNumber: '' },
+        finalExamQuestionPapers: [],
         popularCourses: [],
         popularCategories: [],
         isLoading: false,
@@ -726,6 +756,32 @@ const masterSlice = createSlice({
             })
             .addCase(fetchNextResultNumbers.fulfilled, (state, action) => {
                 state.nextResultNumbers = action.payload;
+            })
+
+            // --- Final Exam Question Papers ---
+            .addCase(fetchFinalExamQuestionPapers.pending, (state) => { state.isLoading = true; })
+            .addCase(fetchFinalExamQuestionPapers.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.finalExamQuestionPapers = action.payload;
+            })
+            .addCase(fetchFinalExamQuestionPapers.rejected, (state) => {
+                state.isLoading = false;
+            })
+            .addCase(createFinalExamQuestionPaper.fulfilled, (state, action) => {
+                state.finalExamQuestionPapers.unshift(action.payload);
+                state.isSuccess = true;
+                state.message = 'Final Exam Question Paper Added Successfully';
+            })
+            .addCase(updateFinalExamQuestionPaper.fulfilled, (state, action) => {
+                const index = state.finalExamQuestionPapers.findIndex(p => p._id === action.payload._id);
+                if (index !== -1) state.finalExamQuestionPapers[index] = action.payload;
+                state.isSuccess = true;
+                state.message = 'Final Exam Question Paper Updated Successfully';
+            })
+            .addCase(deleteFinalExamQuestionPaper.fulfilled, (state, action) => {
+                state.finalExamQuestionPapers = state.finalExamQuestionPapers.filter(p => p._id !== action.payload.id);
+                state.isSuccess = true;
+                state.message = 'Final Exam Question Paper Deleted Successfully';
             })
             
             // --- Dashboard/Pending ---
