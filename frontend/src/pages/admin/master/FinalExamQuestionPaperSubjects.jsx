@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { ArrowLeft, Edit, Eye, Loader } from 'lucide-react';
 import { fetchFinalExamQuestionPapers } from '../../../features/master/masterSlice';
+import FinalExamQuestionPaperAccessGate from '../../../components/master/FinalExamQuestionPaperAccessGate';
 
 const getSubjectId = (row) => row?.subject?._id || row?.subject;
 const getSubjectName = (row) => row?.subject?.name || row?.subject?.printedName || 'Subject';
@@ -46,6 +47,7 @@ const FinalExamQuestionPaperSubjects = () => {
   }
 
   return (
+    <FinalExamQuestionPaperAccessGate requiredAction="view">
     <div className="container mx-auto p-4">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
         <div>
@@ -100,6 +102,7 @@ const FinalExamQuestionPaperSubjects = () => {
         </table>
       </div>
     </div>
+    </FinalExamQuestionPaperAccessGate>
   );
 };
 

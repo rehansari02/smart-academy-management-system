@@ -1,6 +1,8 @@
 const asyncHandler = require('express-async-handler');
 const FinalExamQuestionPaper = require('../models/FinalExamQuestionPaper');
 const Course = require('../models/Course');
+const FinalExamQuestionPaperAccess = require('../models/FinalExamQuestionPaperAccess');
+const bcrypt = require('bcryptjs');
 
 const normalizeMcqs = (mcqs = []) => mcqs
     .filter((item) => String(item?.question || '').trim())
@@ -134,10 +136,98 @@ const deleteFinalExamQuestionPaper = asyncHandler(async (req, res) => {
     res.json({ id: req.params.id, message: 'Question paper deleted successfully' });
 });
 
+const getFinalExamQuestionPaperAccess = asyncHandler(async (req, res) => {
+    if (!req.user || (req.user.role !== 'Super Admin' && req.user.type !== 'Super Admin')) {
+        res.status(403);
+        throw new Error('Access denied. Only Super Admin can view final exam password.');
+    }
+
+    const access = await FinalExamQuestionPaperAccess.findOne({ key: 'final-exam-question-paper' }).lean();
+
+    res.json({
+        hasPassword: Boolean(access?.passwordHash || access?.passwordText),
+        isEnabled: Boolean(access?.isEnabled),
+        password: access?.passwordText || '',
+        updatedAt: access?.updatedAt || null
+    });
+});
+
+const getFinalExamQuestionPaperAccessMeta = asyncHandler(async (req, res) => {
+    const access = await FinalExamQuestionPaperAccess.findOne({ key: 'final-exam-question-paper' }).lean();
+
+    res.json({
+        hasPassword: Boolean(access?.passwordHash || access?.passwordText),
+        isEnabled: Boolean(access?.isEnabled)
+    });
+});
+
+const setFinalExamQuestionPaperAccess = asyncHandler(async (req, res) => {
+    if (!req.user || (req.user.role !== 'Super Admin' && req.user.type !== 'Super Admin')) {
+        res.status(403);
+        throw new Error('Access denied. Only Super Admin can set final exam password.');
+    }
+
+    const isEnabled = req.body.isEnabled !== undefined ? Boolean(req.body.isEnabled) : true;
+    const password = String(req.body.password || '').trim();
+
+    if (isEnabled && !password) {
+        res.status(400);
+        throw new Error('Password is required');
+    }
+
+    const passwordHash = password ? await bcrypt.hash(password, 10) : '';
+    const access = await FinalExamQuestionPaperAccess.findOneAndUpdate(
+        { key: 'final-exam-question-paper' },
+        {
+            $set: {
+                key: 'final-exam-question-paper',
+                passwordText: password,
+                passwordHash,
+                isEnabled,
+                updatedBy: req.user._id
+            }
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+    ).populate('updatedBy', 'name role');
+
+    res.json({
+        hasPassword: Boolean(access.passwordHash || access.passwordText),
+        isEnabled: Boolean(access.isEnabled),
+        password: access.passwordText,
+        updatedAt: access.updatedAt
+    });
+});
+
+const verifyFinalExamQuestionPaperAccess = asyncHandler(async (req, res) => {
+    const password = String(req.body.password || '').trim();
+    if (!password) {
+        res.status(400);
+        throw new Error('Password is required');
+    }
+
+    const access = await FinalExamQuestionPaperAccess.findOne({ key: 'final-exam-question-paper' }).lean();
+    if (!access || !access.isEnabled || !(access.passwordHash || access.passwordText)) {
+        res.json({ valid: true, hasPassword: false, isEnabled: Boolean(access?.isEnabled) });
+        return;
+    }
+
+    const valid = await bcrypt.compare(password, access.passwordHash);
+    if (!valid) {
+        res.status(401);
+        throw new Error('Incorrect password');
+    }
+
+    res.json({ valid: true, hasPassword: true, isEnabled: true });
+});
+
 module.exports = {
     getFinalExamQuestionPapers,
     getFinalExamQuestionPaperById,
     createFinalExamQuestionPaper,
     updateFinalExamQuestionPaper,
-    deleteFinalExamQuestionPaper
+    deleteFinalExamQuestionPaper,
+    getFinalExamQuestionPaperAccess,
+    getFinalExamQuestionPaperAccessMeta,
+    setFinalExamQuestionPaperAccess,
+    verifyFinalExamQuestionPaperAccess
 };

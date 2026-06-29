@@ -12,6 +12,7 @@ import {
 } from '../../../features/master/masterSlice';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
+import FinalExamQuestionPaperAccessGate from '../../../components/master/FinalExamQuestionPaperAccessGate';
 
 const emptyMcq = () => ({ question: '', options: ['', '', '', ''], correctAnswer: '', marks: 1 });
 const emptyQuestionAnswer = () => ({ question: '', answer: '', marks: 1 });
@@ -74,6 +75,14 @@ const AddFinalExamQuestionPaper = () => {
     () => finalExamQuestionPapers.find((paper) => String(paper.course?._id || paper.course) === String(form.course)),
     [finalExamQuestionPapers, form.course]
   );
+
+  const availableSubjectOptions = useMemo(() => {
+    const savedSubjectIds = new Set(
+      (existingCoursePaper?.subjects || []).map((row) => String(row.subject?._id || row.subject))
+    );
+
+    return subjectOptions.filter((subject) => !savedSubjectIds.has(String(subject._id)));
+  }, [existingCoursePaper, subjectOptions]);
 
   const linkedSubjectCourses = useMemo(() => {
     if (!form.subject) return [];
@@ -340,6 +349,7 @@ const AddFinalExamQuestionPaper = () => {
   };
 
   return (
+    <FinalExamQuestionPaperAccessGate requiredAction="add">
     <div className="container mx-auto p-4">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
         <div>
@@ -370,7 +380,7 @@ const AddFinalExamQuestionPaper = () => {
               <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Subject *</label>
               <select value={form.subject} onChange={(e) => handleSubjectChange(e.target.value)} disabled={!form.course} className="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-100">
                 <option value="">{form.course ? 'Select Subject' : 'Select Course First'}</option>
-                {subjectOptions.map((subject) => <option key={subject._id} value={subject._id}>{subject.name}</option>)}
+                {availableSubjectOptions.map((subject) => <option key={subject._id} value={subject._id}>{subject.name}</option>)}
               </select>
             </div>
 
@@ -380,9 +390,9 @@ const AddFinalExamQuestionPaper = () => {
             </div>
           </div>
 
-          {form.course && subjectOptions.length === 0 && (
+          {form.course && availableSubjectOptions.length === 0 && (
             <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded text-sm">
-              Is course me subject linked nahi hai. Pehle Course Master me subject add karein.
+              Is course ke sabhi subjects ke paper already ban chuke hain. Naya subject nahi bacha.
             </div>
           )}
 
@@ -540,6 +550,7 @@ const AddFinalExamQuestionPaper = () => {
         </div>
       </form>
     </div>
+    </FinalExamQuestionPaperAccessGate>
   );
 };
 

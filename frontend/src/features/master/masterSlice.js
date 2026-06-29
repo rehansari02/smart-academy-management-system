@@ -280,6 +280,34 @@ export const deleteFinalExamQuestionPaper = createAsyncThunk('master/deleteFinal
     } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
 });
 
+export const fetchFinalExamQuestionPaperAccess = createAsyncThunk('master/fetchFinalExamQuestionPaperAccess', async (_, thunkAPI) => {
+    try {
+        const response = await axios.get(`${API_URL}final-exam-question-paper/access`);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const fetchFinalExamQuestionPaperAccessMeta = createAsyncThunk('master/fetchFinalExamQuestionPaperAccessMeta', async (_, thunkAPI) => {
+    try {
+        const response = await axios.get(`${API_URL}final-exam-question-paper/access/meta`);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const saveFinalExamQuestionPaperAccess = createAsyncThunk('master/saveFinalExamQuestionPaperAccess', async (data, thunkAPI) => {
+    try {
+        const response = await axios.put(`${API_URL}final-exam-question-paper/access`, data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
+export const verifyFinalExamQuestionPaperAccess = createAsyncThunk('master/verifyFinalExamQuestionPaperAccess', async (data, thunkAPI) => {
+    try {
+        const response = await axios.post(`${API_URL}final-exam-question-paper/access/verify`, data);
+        return response.data;
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
+});
+
 // --- Reference Thunks ---
 export const fetchReferences = createAsyncThunk('master/fetchReferences', async (_, thunkAPI) => {
     try {
@@ -569,6 +597,12 @@ const masterSlice = createSlice({
         examRequestBranches: [],
         nextResultNumbers: { somNumber: '', csrNumber: '' },
         finalExamQuestionPapers: [],
+        finalExamQuestionPaperAccess: {
+            hasPassword: false,
+            isEnabled: false,
+            password: '',
+            updatedAt: null
+        },
         popularCourses: [],
         popularCategories: [],
         isLoading: false,
@@ -782,6 +816,21 @@ const masterSlice = createSlice({
                 state.finalExamQuestionPapers = state.finalExamQuestionPapers.filter(p => p._id !== action.payload.id);
                 state.isSuccess = true;
                 state.message = 'Final Exam Question Paper Deleted Successfully';
+            })
+            .addCase(fetchFinalExamQuestionPaperAccess.fulfilled, (state, action) => {
+                state.finalExamQuestionPaperAccess = action.payload;
+            })
+            .addCase(fetchFinalExamQuestionPaperAccessMeta.fulfilled, (state, action) => {
+                state.finalExamQuestionPaperAccess = {
+                    ...state.finalExamQuestionPaperAccess,
+                    hasPassword: Boolean(action.payload?.hasPassword),
+                    isEnabled: Boolean(action.payload?.isEnabled)
+                };
+            })
+            .addCase(saveFinalExamQuestionPaperAccess.fulfilled, (state, action) => {
+                state.finalExamQuestionPaperAccess = action.payload;
+                state.isSuccess = true;
+                state.message = 'Final exam password saved successfully';
             })
             
             // --- Dashboard/Pending ---

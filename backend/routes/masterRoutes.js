@@ -24,7 +24,11 @@ const {
     getFinalExamQuestionPaperById,
     createFinalExamQuestionPaper,
     updateFinalExamQuestionPaper,
-    deleteFinalExamQuestionPaper
+    deleteFinalExamQuestionPaper,
+    getFinalExamQuestionPaperAccess,
+    getFinalExamQuestionPaperAccessMeta,
+    setFinalExamQuestionPaperAccess,
+    verifyFinalExamQuestionPaperAccess
 } = require('../controllers/finalExamQuestionPaperController');
 const {
     createQuestion,
@@ -157,6 +161,14 @@ router.get('/exam-schedule/my', protect, getMyExamSchedules);
 router.route('/final-exam-question-paper')
     .get(protect, checkPermission('Final Exam Question Paper', 'view'), getFinalExamQuestionPapers)
     .post(protect, checkPermission('Final Exam Question Paper', 'add'), createFinalExamQuestionPaper);
+
+router.route('/final-exam-question-paper/access')
+    .get(protect, getFinalExamQuestionPaperAccess)
+    .put(protect, setFinalExamQuestionPaperAccess);
+
+router.get('/final-exam-question-paper/access/meta', protect, getFinalExamQuestionPaperAccessMeta);
+
+router.post('/final-exam-question-paper/access/verify', protect, verifyFinalExamQuestionPaperAccess);
 
 router.route('/final-exam-question-paper/:id')
     .get(protect, checkPermission('Final Exam Question Paper', 'view'), getFinalExamQuestionPaperById)

@@ -836,15 +836,32 @@ const ExamResultPrint = () => {
                         subj.name ||
                         "";
                       const harms = subjectName !== "---" && subjectName !== "";
+                      const hasTheoryPracticalMarks =
+                        subj.theory !== "-" &&
+                        subj.theory !== undefined &&
+                        subj.theory !== null &&
+                        subj.theory !== "" &&
+                        subj.practical !== "-" &&
+                        subj.practical !== undefined &&
+                        subj.practical !== null &&
+                        subj.practical !== "";
                       const totalVal = harms
-                        ? subj.total !== "-"
-                          ? subj.total
-                          : (Number(subj.theory) || 0) +
+                        ? hasTheoryPracticalMarks
+                          ? (Number(subj.theory) || 0) +
                             (Number(subj.practical) || 0)
+                          : subj.total !== "-"
+                          ? subj.total
+                          : ""
                         : "";
+                      const isProjectOrDisciplineName =
+                        (subjectName || "").toUpperCase().includes("PROJECT") ||
+                        (subjectName || "").toUpperCase().includes("DISCIPLINE") ||
+                        (subjectName || "").toUpperCase().includes("DESCIPLINE");
                       const maxMarksVal = harms
-                        ? subj.maxMarks ||
-                          getMaxMarks(subjectName, index, marksData.length)
+                        ? isProjectOrDisciplineName
+                          ? getMaxMarks(subjectName, index, marksData.length)
+                          : subj.maxMarks ||
+                            getMaxMarks(subjectName, index, marksData.length)
                         : "";
                       const gradeVal = harms
                         ? getSubjectGrade(totalVal, maxMarksVal)
@@ -862,6 +879,11 @@ const ExamResultPrint = () => {
                       const displaySubtext = harms
                         ? subjectDetails.subtext
                         : "";
+                      const isMergedMarksSubject =
+                        harms &&
+                        (displaySubjectName === "PROJECT" ||
+                          displaySubjectName === "DISCIPLINE" ||
+                          displaySubjectName === "DESCIPLINE");
 
                       return (
                         <tr key={index} style={{ height: rowHeight }}>
@@ -899,15 +921,34 @@ const ExamResultPrint = () => {
                           <td style={{ border: "1px solid #000" }}>
                             {harms ? maxMarksVal : ""}
                           </td>
-                          <td style={{ border: "1px solid #000" }}>
-                            {harms ? formatMark(subj.theory) : ""}
-                          </td>
-                          <td style={{ border: "1px solid #000" }}>
-                            {harms ? formatMark(subj.practical) : ""}
-                          </td>
-                          <td style={{ border: "1px solid #000" }}>
-                            {harms ? formatMark(totalVal) : ""}
-                          </td>
+                          {isMergedMarksSubject ? (
+                            <>
+                              <td
+                                colSpan="2"
+                                style={{
+                                  border: "1px solid #000",
+                                  textAlign: "center",
+                                }}
+                              >
+                                {formatMark(totalVal)}
+                              </td>
+                              <td style={{ border: "1px solid #000" }}>
+                                {harms ? formatMark(totalVal) : ""}
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td style={{ border: "1px solid #000" }}>
+                                {harms ? formatMark(subj.theory) : ""}
+                              </td>
+                              <td style={{ border: "1px solid #000" }}>
+                                {harms ? formatMark(subj.practical) : ""}
+                              </td>
+                              <td style={{ border: "1px solid #000" }}>
+                                {harms ? formatMark(totalVal) : ""}
+                              </td>
+                            </>
+                          )}
                           <td
                             style={{
                               border: "1px solid #000",

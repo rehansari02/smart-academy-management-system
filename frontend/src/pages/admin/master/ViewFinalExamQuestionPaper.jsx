@@ -4,6 +4,7 @@ import axios from 'axios';
 import { ArrowLeft, Loader, Printer } from 'lucide-react';
 import logo from '../../../assets/logo2.png';
 import bannerImage from '../../../assets/18year.png';
+import FinalExamQuestionPaperAccessGate from '../../../components/master/FinalExamQuestionPaperAccessGate';
 
 const getSubjectName = (row) => row?.subject?.name || row?.subject?.printedName || 'Subject';
 const taglineStart = '\u0938\u092a\u0928\u0947 \u091c\u094b';
@@ -67,12 +68,13 @@ const ViewFinalExamQuestionPaper = () => {
   const firstSubject = visibleSubjects[0] || paper.subjects?.[0];
 
   return (
+    <FinalExamQuestionPaperAccessGate requiredAction="view">
     <div className="bg-gray-100 min-h-screen print:bg-white">
       <style>{`
         @media print {
-          @page { size: A4 portrait; margin: 10mm; }
-          html, body { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .print-page { box-shadow: none !important; margin: 0 !important; width: 100% !important; max-width: none !important; border: 0 !important; }
+          @page { size: A4 portrait; margin: 0; }
+          html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .print-page { box-shadow: none !important; margin: 0 !important; padding: 10mm !important; width: 210mm !important; min-height: 297mm !important; max-width: none !important; border: 0 !important; box-sizing: border-box !important; }
           .print-header { padding: 8px 0 12px !important; border-bottom: 2px solid #1d4ed8 !important; }
           .print-brand { min-height: 74px !important; align-items: flex-start !important; }
           .print-logo { height: 54px !important; }
@@ -207,6 +209,7 @@ const ViewFinalExamQuestionPaper = () => {
         </section>
       </main>
     </div>
+    </FinalExamQuestionPaperAccessGate>
   );
 };
 
