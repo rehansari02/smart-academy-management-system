@@ -16,6 +16,9 @@ import {
 import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { ArrowLeft, Save, RefreshCw } from 'lucide-react';
+import axios from 'axios';
+
+const API_URL = `${import.meta.env.VITE_API_URL}/master/`;
 
 const toDateInputValue = (date) => {
   if (!date) return new Date().toISOString().split('T')[0];
@@ -70,7 +73,7 @@ const AddEditExamResult = () => {
     }
   });
 
-  const { fields, setValue: setFieldArrayValue } = useFieldArray({
+  const { fields, replace } = useFieldArray({
     control,
     name: "subjectMarks"
   });
@@ -115,7 +118,7 @@ const AddEditExamResult = () => {
 
           // Load subject marks
           if (result.subjectMarks) {
-            const marks = result.subjectMarks.map(s => ({
+          const marks = result.subjectMarks.map(s => ({
               subjectId: s.subject?._id || s.subject,
               subjectName: s.subject?.name || 'Subject',
               theory: s.theory || 0,
@@ -123,7 +126,7 @@ const AddEditExamResult = () => {
               total: s.total || 0,
               maxMarks: s.maxMarks || 100
             }));
-            setValue('subjectMarks', marks);
+            replace(marks);
           }
         })
         .catch((err) => {
@@ -176,11 +179,11 @@ const AddEditExamResult = () => {
             total: 0,
             maxMarks: item.total || 100
           }));
-          setValue('subjectMarks', initialMarks);
+          replace(initialMarks);
         }
       }
     }
-  }, [selectedExamId, examSchedules, setValue, isEditMode, dispatch]);
+  }, [selectedExamId, examSchedules, isEditMode, dispatch, replace]);
 
   // Update subjectMarks when full exam details are loaded (handles 7+ subjects case)
   useEffect(() => {
@@ -194,10 +197,58 @@ const AddEditExamResult = () => {
           total: 0,
           maxMarks: item.total || 100
         }));
-        setValue('subjectMarks', initialMarks);
+        replace(initialMarks);
       }
     }
-  }, [examScheduleDetails, isEditMode, setValue, selectedExamId]);
+  }, [examScheduleDetails, isEditMode, replace, selectedExamId]);
+
+  useEffect(() => {
+    if (isEditMode || !selectedExamId || !selectedStudentId || !selectedExamNameForm || !selectedCourseIdForm) return;
+
+    let cancelled = false;
+    const loadAttemptMarks = async () => {
+      try {
+        const { data } = await axios.get(`${API_URL}exam-result/attempt-marks`, {
+          params: {
+            examId: selectedExamId,
+            examName: selectedExamNameForm,
+            courseId: selectedCourseIdForm,
+            studentId: selectedStudentId
+          }
+        });
+
+        if (cancelled) return;
+
+        const marks = (data.subjects || []).map((subject) => ({
+          subjectId: subject.subjectId,
+          subjectName: subject.subjectName || 'Subject',
+          theory: Number(subject.theory) || 0,
+          practical: Number(subject.practical) || 0,
+          total: Number(subject.total) || 0,
+          maxMarks: Number(subject.maxMarks) || 100,
+          attempted: Boolean(subject.attempted)
+        }));
+
+        if (marks.length > 0) {
+          replace(marks);
+          if (marks.some((item) => item.attempted)) {
+            toast.success('Student online exam marks loaded in theory column.');
+          } else {
+            toast.info('Subjects loaded. No submitted online marks found for this student.');
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error.response?.data?.message || 'Failed to load online exam marks.');
+        }
+      }
+    };
+
+    loadAttemptMarks();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditMode, selectedExamId, selectedStudentId, selectedExamNameForm, selectedCourseIdForm, replace]);
 
   const activeExamSchedules = useMemo(() => {
     return examSchedules.filter(e => e.isActive && !e.isDeleted && e.course && e.examName && e.attendees && e.attendees.length > 0);
@@ -510,6 +561,11 @@ const AddEditExamResult = () => {
                                   <td className="px-4 py-4 text-center font-black text-slate-500">{index + 1}</td>
                                   <td className="px-6 py-4 font-semibold text-slate-700">
                                       {subjectMarksValues[index]?.subjectName}
+                                      {subjectMarksValues[index]?.attempted && (
+                                          <span className="ml-2 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700">
+                                              Online marks
+                                          </span>
+                                      )}
                                       <input type="hidden" {...register(`subjectMarks.${index}.subjectId`)} />
                                       <input type="hidden" {...register(`subjectMarks.${index}.subjectName`)} />
                                   </td>

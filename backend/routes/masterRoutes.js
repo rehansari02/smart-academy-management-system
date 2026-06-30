@@ -18,7 +18,7 @@ const {
 } = require('../controllers/masterController');
 const { getExamRequests, getExamRequestBranches, cancelExamRequest, createExamRequest, getPendingExams } = require('../controllers/examController');
 const { getExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, getExamScheduleDetails, getExamScheduleConductSummary, getMyExamSchedules, getExamStudentMarks, getExamStudentMarksDetail, getAbsentExamStudents, createAbsentReExamSchedules } = require('../controllers/examScheduleController');
-const { getExamResults, createExamResult, updateExamResult, deleteExamResult, getExamResultById, getNextResultNumbers, verifyExamResult } = require('../controllers/examResultController');
+const { getExamResults, createExamResult, updateExamResult, deleteExamResult, getExamResultById, getNextResultNumbers, getExamAttemptMarksForResult, verifyExamResult } = require('../controllers/examResultController');
 const {
     getFinalExamQuestionPapers,
     getFinalExamQuestionPaperById,
@@ -184,6 +184,7 @@ router.route('/final-exam-question-paper/:id')
 // --- Exam Results ---
 router.post('/exam-result/verify', verifyExamResult); // Public Access
 router.get('/exam-result/next-numbers', protect, getNextResultNumbers);
+router.get('/exam-result/attempt-marks', protect, getExamAttemptMarksForResult);
 router.route('/exam-result')
     .get(protect, getExamResults) 
     .post(protect, createExamResult); 

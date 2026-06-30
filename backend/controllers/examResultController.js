@@ -4,6 +4,8 @@ const Student = require('../models/Student');
 const Counter = require('../models/Counter');
 const ExamSchedule = require('../models/ExamSchedule');
 const StudentAttendance = require('../models/StudentAttendance');
+const ExamAttempt = require('../models/ExamAttempt');
+const FinalExamQuestionPaper = require('../models/FinalExamQuestionPaper');
 
 const normalizeSomNumber = (value) => {
     const somNumber = String(value || '').trim();
@@ -29,6 +31,53 @@ const normalizeResultNumbers = (result) => {
         output.certificateNumber = output.csrNumber;
     }
     return output;
+};
+
+const normalizeAnswerText = (value) => String(value || '').trim().toLowerCase();
+
+const getMcqCorrectOptionLetter = (mcq) => {
+    const correct = normalizeAnswerText(mcq?.correctAnswer);
+    if (!correct) return '';
+
+    const optionIndex = (mcq?.options || []).findIndex((option) => normalizeAnswerText(option) === correct);
+    if (optionIndex >= 0) return String.fromCharCode(65 + optionIndex);
+    if (/^[a-d]$/i.test(correct)) return correct.toUpperCase();
+    return '';
+};
+
+const scoreAttemptAgainstPaper = (attempt, subjectPaper) => {
+    const answers = Array.isArray(attempt?.answers) ? attempt.answers : [];
+    const mcqs = Array.isArray(subjectPaper?.mcqs) ? subjectPaper.mcqs : [];
+    const questionAnswers = Array.isArray(subjectPaper?.questionAnswers) ? subjectPaper.questionAnswers : [];
+
+    const mcqAnswerMap = new Map(
+        answers
+            .filter((item) => item.type === 'mcq')
+            .map((item) => [Number(item.questionIndex) || 0, item.selectedOption || ''])
+    );
+
+    let mcqMarksObtained = 0;
+    mcqs.forEach((mcq, index) => {
+        const selected = normalizeAnswerText(mcqAnswerMap.get(index + 1));
+        const correctLetter = normalizeAnswerText(getMcqCorrectOptionLetter(mcq));
+        if (selected && correctLetter && selected === correctLetter) {
+            mcqMarksObtained += Number(mcq.marks) || 0;
+        }
+    });
+
+    const qaMarksObtained = answers
+        .filter((item) => item.type === 'qa')
+        .reduce((sum, item) => sum + (Number(item.marks) || 0), 0);
+
+    const totalMarksPossible = mcqs.reduce((sum, mcq) => sum + (Number(mcq.marks) || 0), 0)
+        + questionAnswers.reduce((sum, qa) => sum + (Number(qa.marks) || 0), 0);
+
+    return {
+        mcqMarksObtained,
+        qaMarksObtained,
+        totalMarksObtained: mcqMarksObtained + qaMarksObtained,
+        totalMarksPossible
+    };
 };
 
 const getAttendanceCutoffDate = (exam) => {
@@ -418,4 +467,109 @@ const verifyExamResult = asyncHandler(async (req, res) => {
     });
 });
 
-module.exports = { getExamResults, createExamResult, updateExamResult, deleteExamResult, getExamResultById, getNextResultNumbers, verifyExamResult };
+// @desc    Get online exam attempt marks to prefill exam result
+// @route   GET /api/master/exam-result/attempt-marks
+const getExamAttemptMarksForResult = asyncHandler(async (req, res) => {
+    const { examId, examName, courseId, studentId } = req.query;
+
+    if (!studentId || (!examId && (!examName || !courseId))) {
+        res.status(400);
+        throw new Error('Exam, course and student are required');
+    }
+
+    const selectedSchedule = examId
+        ? await ExamSchedule.findById(examId).populate('timeTable.subject', 'name printedName')
+        : null;
+
+    const resolvedExamName = selectedSchedule?.examName || examName;
+    const resolvedCourseId = selectedSchedule?.course?._id || selectedSchedule?.course || courseId;
+
+    const scheduleQuery = {
+        examName: resolvedExamName,
+        course: resolvedCourseId,
+        isDeleted: false
+    };
+
+    const schedules = await ExamSchedule.find(scheduleQuery).populate('timeTable.subject', 'name printedName').lean();
+    const baseSchedule = selectedSchedule ? selectedSchedule.toObject() : schedules.find((item) => !item.isReExam) || schedules[0];
+
+    if (!baseSchedule) {
+        res.status(404);
+        throw new Error('Exam schedule not found');
+    }
+
+    const subjectRows = (baseSchedule.timeTable || []).map((row) => ({
+        subjectId: String(row.subject?._id || row.subject),
+        subjectName: row.subject?.name || row.subject?.printedName || 'Subject',
+        maxMarks: Number(row.total) || ((Number(row.theory) || 0) + (Number(row.practical) || 0)) || 100
+    }));
+
+    const attempts = await ExamAttempt.find({
+        examName: resolvedExamName,
+        course: resolvedCourseId,
+        student: studentId,
+        isSubmitted: true
+    })
+        .populate('subject', 'name printedName')
+        .sort({ submittedAt: -1, updatedAt: -1 })
+        .lean();
+
+    const paper = await FinalExamQuestionPaper.findOne({
+        examName: resolvedExamName,
+        course: resolvedCourseId,
+        isActive: true,
+        isDeleted: false
+    }).lean();
+
+    const paperBySubject = new Map(
+        (paper?.subjects || []).map((subjectPaper) => [String(subjectPaper.subject), subjectPaper])
+    );
+
+    const attemptMarksBySubject = new Map();
+    attempts.forEach((attempt) => {
+        const subjectId = String(attempt.subject?._id || attempt.subject);
+        if (attemptMarksBySubject.has(subjectId)) return;
+        const score = scoreAttemptAgainstPaper(attempt, paperBySubject.get(subjectId));
+        attemptMarksBySubject.set(subjectId, {
+            theory: score.totalMarksObtained,
+            attempted: true,
+            submittedAt: attempt.submittedAt || attempt.updatedAt,
+            possibleMarks: score.totalMarksPossible
+        });
+    });
+
+    attempts.forEach((attempt) => {
+        const subjectId = String(attempt.subject?._id || attempt.subject);
+        if (!subjectRows.some((row) => row.subjectId === subjectId)) {
+            const score = attemptMarksBySubject.get(subjectId) || scoreAttemptAgainstPaper(attempt, paperBySubject.get(subjectId));
+            subjectRows.push({
+                subjectId,
+                subjectName: attempt.subject?.name || attempt.subject?.printedName || 'Subject',
+                maxMarks: score.possibleMarks || 100
+            });
+        }
+    });
+
+    const subjects = subjectRows.map((row) => {
+        const attemptScore = attemptMarksBySubject.get(row.subjectId);
+        return {
+            subjectId: row.subjectId,
+            subjectName: row.subjectName,
+            theory: Number(attemptScore?.theory) || 0,
+            practical: 0,
+            total: Number(attemptScore?.theory) || 0,
+            maxMarks: Number(row.maxMarks) || Number(attemptScore?.possibleMarks) || 100,
+            attempted: Boolean(attemptScore?.attempted),
+            submittedAt: attemptScore?.submittedAt || null
+        };
+    });
+
+    res.json({
+        examName: resolvedExamName,
+        courseId: resolvedCourseId,
+        studentId,
+        subjects
+    });
+});
+
+module.exports = { getExamResults, createExamResult, updateExamResult, deleteExamResult, getExamResultById, getNextResultNumbers, getExamAttemptMarksForResult, verifyExamResult };
