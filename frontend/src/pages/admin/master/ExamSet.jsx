@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { BookOpenCheck, CalendarDays, GraduationCap, Loader, Lock, RefreshCw, Save, Search, ShieldCheck, Users } from 'lucide-react';
+import { BookOpenCheck, CalendarDays, CheckSquare, GraduationCap, Loader, Lock, RefreshCw, Save, Search, ShieldCheck, Users, X } from 'lucide-react';
 import { fetchEmployees, fetchExamSchedules, fetchExams, updateExamSchedule } from '../../../features/master/masterSlice';
 
 const getStudentName = (student) => [student?.firstName, student?.lastName].filter(Boolean).join(' ') || 'Student';
@@ -57,6 +58,7 @@ const buildTimeTablePayload = (schedule, dateKey, current) => {
 
 const ExamSet = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { exams, examSchedules, employees, isLoading } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
   const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
@@ -64,6 +66,20 @@ const ExamSet = () => {
   const [testingDate, setTestingDate] = useState('');
   const [dateSettings, setDateSettings] = useState({});
   const [savingDate, setSavingDate] = useState('');
+  const [absentModalOpen, setAbsentModalOpen] = useState(false);
+  const [absentLoading, setAbsentLoading] = useState(false);
+  const [absentRows, setAbsentRows] = useState([]);
+  const [selectedAbsentRows, setSelectedAbsentRows] = useState({});
+  const [creatingReExam, setCreatingReExam] = useState(false);
+  const [reExamForm, setReExamForm] = useState({
+    reExamName: '',
+    date: '',
+    startTime: '',
+    endTime: '',
+    examiner: '',
+    conductPasswordEnabled: true,
+    conductPassword: ''
+  });
 
   useEffect(() => {
     dispatch(fetchExams());
@@ -185,6 +201,59 @@ const ExamSet = () => {
     dispatch(fetchExamSchedules(selectedExamName ? { examName: selectedExamName } : undefined));
   };
 
+  const loadAbsentStudents = async () => {
+    if (!selectedExamName) {
+      toast.error('Select exam name first.');
+      return;
+    }
+    navigate(`/master/exam-set/absent?examName=${encodeURIComponent(selectedExamName)}`);
+  };
+
+  const toggleAbsentRow = (rowKey) => {
+    setSelectedAbsentRows((prev) => ({ ...prev, [rowKey]: !prev[rowKey] }));
+  };
+
+  const selectedAbsentList = absentRows.filter((row) => selectedAbsentRows[row.key]);
+
+  const createAbsentReExam = async () => {
+    if (selectedAbsentList.length === 0) {
+      toast.error('Select at least one absent student.');
+      return;
+    }
+    if (!reExamForm.date || !reExamForm.startTime || !reExamForm.endTime) {
+      toast.error('Re-exam date and time are required.');
+      return;
+    }
+    if (reExamForm.conductPasswordEnabled && !String(reExamForm.conductPassword || '').trim()) {
+      toast.error('Password is required for re-exam.');
+      return;
+    }
+
+    setCreatingReExam(true);
+    try {
+      const payload = {
+        examName: selectedExamName,
+        ...reExamForm,
+        selectedRows: selectedAbsentList.map((row) => ({
+          scheduleId: row.scheduleId,
+          subjectId: row.subject?._id || row.subject,
+          studentId: row.student?._id
+        }))
+      };
+      const res = await axios.post(`${API_URL}exam-schedule/absent-reexam`, payload);
+      toast.success(res.data?.message || 'Re-exam schedule created');
+      setAbsentModalOpen(false);
+      setAbsentRows([]);
+      setSelectedAbsentRows({});
+      setReExamForm((prev) => ({ ...prev, conductPassword: '' }));
+      dispatch(fetchExamSchedules(selectedExamName ? { examName: selectedExamName } : undefined));
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to create re-exam schedule');
+    } finally {
+      setCreatingReExam(false);
+    }
+  };
+
   const updateDateSetting = (dateKey, field, value) => {
     setDateSettings((prev) => ({ ...prev, [dateKey]: { ...(prev[dateKey] || {}), [field]: value } }));
   };
@@ -236,9 +305,14 @@ const ExamSet = () => {
           <h2 className="text-2xl font-bold text-gray-800">Exam Set</h2>
           <p className="mt-1 text-sm text-gray-500">Set one examiner and one day password for all subjects scheduled on the same date.</p>
         </div>
-        <button type="button" onClick={handleRefresh} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50">
-          <RefreshCw size={16} /> Refresh
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={loadAbsentStudents} disabled={!selectedExamName} className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">
+            <Users size={16} /> Absent Student Exam
+          </button>
+          <button type="button" onClick={handleRefresh} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50">
+            <RefreshCw size={16} /> Refresh
+          </button>
+        </div>
       </div>
 
       <div className="mb-6 rounded-lg border-t-4 border-primary bg-white p-4 shadow">
@@ -396,6 +470,88 @@ const ExamSet = () => {
                 </div>
               </section>
             ))}
+          </div>
+        </div>
+      )}
+
+      {absentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between bg-amber-600 px-5 py-4 text-white">
+              <div>
+                <h3 className="text-lg font-black">Absent Student Re-Exam</h3>
+                <p className="text-xs font-semibold text-amber-100">{selectedExamName} | {absentRows.length} absent subject rows</p>
+              </div>
+              <button type="button" onClick={() => setAbsentModalOpen(false)} className="rounded-full bg-white/20 p-1 hover:bg-white/30"><X size={20} /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              <div className="mb-4 grid grid-cols-1 gap-3 rounded-lg border bg-slate-50 p-4 lg:grid-cols-6">
+                <div className="lg:col-span-2">
+                  <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Re-Exam Name</label>
+                  <input type="text" value={reExamForm.reExamName} onChange={(e) => setReExamForm((prev) => ({ ...prev, reExamName: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Date</label>
+                  <input type="date" value={reExamForm.date} onChange={(e) => setReExamForm((prev) => ({ ...prev, date: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Start Time</label>
+                  <input type="text" value={reExamForm.startTime} onChange={(e) => setReExamForm((prev) => ({ ...prev, startTime: e.target.value }))} placeholder="10:00 AM" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-gray-600">End Time</label>
+                  <input type="text" value={reExamForm.endTime} onChange={(e) => setReExamForm((prev) => ({ ...prev, endTime: e.target.value }))} placeholder="12:00 PM" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Examiner</label>
+                  <select value={reExamForm.examiner} onChange={(e) => setReExamForm((prev) => ({ ...prev, examiner: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+                    <option value="">Select</option>
+                    {(employees || []).map((employee) => <option key={employee._id} value={employee._id}>{getEmployeeName(employee)}</option>)}
+                  </select>
+                </div>
+                <label className="flex h-10 items-center gap-2 rounded-lg border bg-white px-3 text-xs font-bold text-gray-700 lg:col-span-1">
+                  <input type="checkbox" checked={Boolean(reExamForm.conductPasswordEnabled)} onChange={(e) => setReExamForm((prev) => ({ ...prev, conductPasswordEnabled: e.target.checked }))} className="h-4 w-4" />
+                  <Lock size={14} /> Password
+                </label>
+                <div className="lg:col-span-2">
+                  <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Re-Exam Password</label>
+                  <input type="text" value={reExamForm.conductPassword} onChange={(e) => setReExamForm((prev) => ({ ...prev, conductPassword: e.target.value }))} disabled={!reExamForm.conductPasswordEnabled} placeholder="Enter password" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-gray-100" />
+                </div>
+                <div className="flex items-end lg:col-span-3">
+                  <button type="button" onClick={createAbsentReExam} disabled={creatingReExam || selectedAbsentList.length === 0} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 text-sm font-bold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60">
+                    {creatingReExam ? <RefreshCw className="animate-spin" size={16} /> : <CheckSquare size={16} />} Create Re-Exam For Selected ({selectedAbsentList.length})
+                  </button>
+                </div>
+              </div>
+
+              {absentLoading ? (
+                <div className="flex min-h-[220px] items-center justify-center text-gray-500"><Loader className="mr-2 animate-spin" size={20} /> Loading absent students...</div>
+              ) : absentRows.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-10 text-center text-gray-500">No absent students found for ended exam subjects.</div>
+              ) : (
+                <div className="overflow-auto rounded-lg border">
+                  <table className="min-w-full text-sm">
+                    <thead className="sticky top-0 bg-gray-50 text-left text-[10px] font-bold uppercase text-gray-500">
+                      <tr><th className="px-3 py-2 text-center">Select</th><th className="px-3 py-2">Reg No</th><th className="px-3 py-2">Student</th><th className="px-3 py-2">Course</th><th className="px-3 py-2">Subject</th><th className="px-3 py-2">Original Date</th><th className="px-3 py-2">Time</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {absentRows.map((row) => (
+                        <tr key={row.key} className="hover:bg-amber-50/50">
+                          <td className="px-3 py-2 text-center"><input type="checkbox" checked={Boolean(selectedAbsentRows[row.key])} onChange={() => toggleAbsentRow(row.key)} className="h-4 w-4" /></td>
+                          <td className="px-3 py-2 font-mono text-gray-700">{row.student?.regNo || '-'}</td>
+                          <td className="px-3 py-2 font-bold text-primary">{row.student?.name || 'Student'}</td>
+                          <td className="px-3 py-2 font-semibold text-gray-800">{row.course?.name || 'Course'}</td>
+                          <td className="px-3 py-2 font-semibold text-gray-800">{row.subject?.name || row.subject?.printedName || 'Subject'}</td>
+                          <td className="px-3 py-2 text-gray-600">{row.originalDate ? new Date(row.originalDate).toLocaleDateString('en-IN') : '-'}</td>
+                          <td className="px-3 py-2 text-gray-600">{row.originalStartTime && row.originalEndTime ? `${row.originalStartTime} - ${row.originalEndTime}` : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -137,6 +137,11 @@ const parseExamTime = (dateValue, timeValue) => {
     if (!date.isValid()) return null;
 
     const time = String(timeValue || '').trim();
+    const time24Match = time.match(/^(\d{1,2}):(\d{2})$/);
+    if (time24Match) {
+        date.hour(Number(time24Match[1])).minute(Number(time24Match[2])).second(0).millisecond(0);
+        return date.toDate();
+    }
     const match = time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
     if (!match) return date.toDate();
 
@@ -750,23 +755,43 @@ const getStudentExamSchedules = async (req, res) => {
             const attendeeIds = (schedule.attendees || []).map(id => String(id));
             return attendeeIds.length === 0 || attendeeIds.includes(String(student._id));
         });
+        const attempts = await ExamAttempt.find({
+            schedule: { $in: visibleSchedules.map((schedule) => schedule._id) },
+            student: student._id
+        }).lean();
+        const attemptMap = new Map(
+            attempts.map((attempt) => [
+                `${String(attempt.schedule)}:${String(attempt.subject?._id || attempt.subject)}`,
+                attempt
+            ])
+        );
 
         const payload = visibleSchedules.map((schedule) => ({
             _id: schedule._id,
             examName: schedule.examName,
             remarks: schedule.remarks,
             isActive: schedule.isActive,
+            isReExam: Boolean(schedule.isReExam),
+            scheduleType: schedule.scheduleType || (schedule.isReExam ? 'reExam' : 'regular'),
             createdAt: schedule.createdAt,
             course: schedule.course,
-            timeTable: (schedule.timeTable || []).map((row) => ({
-                subject: row.subject,
-                date: row.date,
-                startTime: row.startTime,
-                endTime: row.endTime,
-                theory: row.theory,
-                practical: row.practical,
-                total: row.total
-            }))
+            timeTable: (schedule.timeTable || []).map((row) => {
+                const subjectId = row.subject?._id || row.subject;
+                const attempt = attemptMap.get(`${String(schedule._id)}:${String(subjectId)}`);
+                const window = getScheduleSubjectWindow(row);
+                return {
+                    subject: row.subject,
+                    date: row.date,
+                    startTime: row.startTime,
+                    endTime: row.endTime,
+                    theory: row.theory,
+                    practical: row.practical,
+                    total: row.total,
+                    status: window.status,
+                    isSubmitted: Boolean(attempt?.isSubmitted),
+                    isAbsent: window.status === 'ended' && !attempt
+                };
+            })
         }));
 
         res.json({
@@ -845,6 +870,8 @@ const getStudentExamConduct = async (req, res) => {
             examName: schedule.examName,
             remarks: schedule.remarks,
             isActive: schedule.isActive,
+            isReExam: Boolean(schedule.isReExam),
+            scheduleType: schedule.scheduleType || (schedule.isReExam ? 'reExam' : 'regular'),
             examiner: schedule.examiner,
             conductPasswordEnabled: Boolean(schedule.conductPasswordEnabled),
             hasConductPassword: Boolean(schedule.conductPasswordHash || schedule.conductPasswordText),
@@ -864,6 +891,7 @@ const getStudentExamConduct = async (req, res) => {
                     total: row.total,
                     status: window.status,
                     canOpen: window.canOpen && isCourseSubject,
+                    isAbsent: window.status === 'ended' && !attempt,
                     isCourseSubject,
                     conductPasswordEnabled: Boolean(row.conductPasswordEnabled || schedule.conductPasswordEnabled),
                     hasConductPassword: Boolean(

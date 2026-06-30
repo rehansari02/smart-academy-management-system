@@ -14,6 +14,16 @@ const examScheduleSchema = new mongoose.Schema({
     conductPasswordEnabled: { type: Boolean, default: false },
     conductPasswordText: { type: String, default: '' },
     conductPasswordHash: { type: String, default: '' },
+    scheduleType: {
+        type: String,
+        enum: ['regular', 'reExam'],
+        default: 'regular'
+    },
+    isReExam: { type: Boolean, default: false },
+    reExamOf: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'ExamSchedule'
+    },
     attendees: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Student' }],
     timeTable: [{
         subject: { type: mongoose.Schema.Types.ObjectId, ref: 'Subject' },

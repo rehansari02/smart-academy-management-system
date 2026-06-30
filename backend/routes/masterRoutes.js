@@ -17,7 +17,7 @@ const {
     getPopularCategories, createPopularCategory, updatePopularCategory, deletePopularCategory
 } = require('../controllers/masterController');
 const { getExamRequests, getExamRequestBranches, cancelExamRequest, createExamRequest, getPendingExams } = require('../controllers/examController');
-const { getExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, getExamScheduleDetails, getExamScheduleConductSummary, getMyExamSchedules, getExamStudentMarks, getExamStudentMarksDetail } = require('../controllers/examScheduleController');
+const { getExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, getExamScheduleDetails, getExamScheduleConductSummary, getMyExamSchedules, getExamStudentMarks, getExamStudentMarksDetail, getAbsentExamStudents, createAbsentReExamSchedules } = require('../controllers/examScheduleController');
 const { getExamResults, createExamResult, updateExamResult, deleteExamResult, getExamResultById, getNextResultNumbers, verifyExamResult } = require('../controllers/examResultController');
 const {
     getFinalExamQuestionPapers,
@@ -149,6 +149,9 @@ router.get('/exam-pending', protect, getPendingExams);
 router.route('/exam-schedule')
     .get(protect, getExamSchedules)
     .post(protect, createExamSchedule);
+
+router.get('/exam-schedule/absent-students', protect, getAbsentExamStudents);
+router.post('/exam-schedule/absent-reexam', protect, createAbsentReExamSchedules);
 
 router.route('/exam-schedule/:id')
     .put(protect, updateExamSchedule)

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Clock } from 'lucide-react';
 
-const TimePicker12Hour = ({ value, onChange }) => {
+const TimePicker12Hour = ({ value, onChange, disabled = false, compact = false }) => {
     const [hour, setHour] = useState('12');
     const [minute, setMinute] = useState('00');
     const [period, setPeriod] = useState('AM');
@@ -55,35 +55,39 @@ const TimePicker12Hour = ({ value, onChange }) => {
     const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
 
     return (
-        <div className="flex items-center gap-1 bg-white border border-gray-300 rounded p-1 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 w-full">
-            <Clock size={16} className="text-blue-500 ml-1 flex-shrink-0" />
+        <div className={`flex w-full min-w-0 items-center bg-white border border-gray-300 rounded shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 ${compact ? 'gap-0.5 p-0.5' : 'gap-1 p-1'}`}>
+            {!compact && <Clock size={16} className="text-blue-500 ml-1 flex-shrink-0" />}
             <select 
                 value={hour} 
                 onChange={handleHourChange} 
-                className="bg-transparent border-none p-1 text-sm focus:outline-none font-bold text-gray-800 cursor-pointer text-center outline-none"
+                disabled={disabled}
+                className={`min-w-0 bg-transparent border-none focus:outline-none font-bold text-gray-800 cursor-pointer text-center outline-none ${compact ? 'w-11 p-0.5 text-xs' : 'p-1 text-sm'}`}
             >
                 {hours.map(h => <option key={h} value={h}>{h}</option>)}
             </select>
-            <span className="text-gray-500 font-bold">:</span>
+            <span className="shrink-0 text-gray-500 font-bold">:</span>
             <select 
                 value={minute} 
                 onChange={handleMinuteChange} 
-                className="bg-transparent border-none p-1 text-sm focus:outline-none font-bold text-gray-800 cursor-pointer text-center outline-none"
+                disabled={disabled}
+                className={`min-w-0 bg-transparent border-none focus:outline-none font-bold text-gray-800 cursor-pointer text-center outline-none ${compact ? 'w-11 p-0.5 text-xs' : 'p-1 text-sm'}`}
             >
                 {minutes.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
-            <div className="flex bg-gray-100 rounded p-0.5 ml-auto border border-gray-200 flex-shrink-0">
+            <div className={`ml-auto flex flex-shrink-0 rounded border border-gray-200 bg-gray-100 ${compact ? 'p-0' : 'p-0.5'}`}>
                 <button 
                     type="button" 
                     onClick={() => handlePeriodChange('AM')} 
-                    className={`px-2.5 py-1 text-xs font-extrabold rounded transition-all duration-150 ${period === 'AM' ? 'bg-blue-600 text-white shadow-md transform scale-105' : 'text-gray-600 hover:text-gray-900'}`}
+                    disabled={disabled}
+                    className={`${compact ? 'px-1.5 py-1 text-[10px]' : 'px-2.5 py-1 text-xs'} font-extrabold rounded transition-all duration-150 ${period === 'AM' ? 'bg-blue-600 text-white shadow-md transform scale-105' : 'text-gray-600 hover:text-gray-900'}`}
                 >
                     AM
                 </button>
                 <button 
                     type="button" 
                     onClick={() => handlePeriodChange('PM')} 
-                    className={`px-2.5 py-1 text-xs font-extrabold rounded transition-all duration-150 ${period === 'PM' ? 'bg-blue-600 text-white shadow-md transform scale-105' : 'text-gray-600 hover:text-gray-900'}`}
+                    disabled={disabled}
+                    className={`${compact ? 'px-1.5 py-1 text-[10px]' : 'px-2.5 py-1 text-xs'} font-extrabold rounded transition-all duration-150 ${period === 'PM' ? 'bg-blue-600 text-white shadow-md transform scale-105' : 'text-gray-600 hover:text-gray-900'}`}
                 >
                     PM
                 </button>

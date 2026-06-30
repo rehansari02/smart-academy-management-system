@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchStudentExamSchedules } from '../../features/student/studentPortalSlice';
 import Loading from '../../components/Loading';
-import { CalendarDays, Clock3, BookOpen, BadgeInfo } from 'lucide-react';
+import { CalendarDays, Clock3, BookOpen, BadgeInfo, ShieldAlert } from 'lucide-react';
 import moment from 'moment';
 
 const formatDate = (value) => {
@@ -22,6 +22,72 @@ const ExamSchedule = () => {
     if (isLoading && examSchedules.length === 0) {
         return <Loading />;
     }
+
+    const regularSchedules = examSchedules.filter((schedule) => !schedule.isReExam);
+    const reExamSchedules = examSchedules.filter((schedule) => schedule.isReExam);
+
+    const renderSchedule = (schedule, isReExam = false) => (
+        <section key={schedule._id} className={`bg-white border rounded-lg shadow-sm overflow-hidden ${isReExam ? 'border-amber-300' : 'border-gray-200'}`}>
+            <div className={`border-b px-5 py-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between ${isReExam ? 'border-amber-200 bg-amber-50' : 'border-gray-200'}`}>
+                <div>
+                    <div className="flex items-center gap-2">
+                        {isReExam ? <ShieldAlert size={18} className="text-amber-600" /> : <BookOpen size={18} className="text-blue-600" />}
+                        <h2 className="text-lg font-bold text-gray-900">{schedule.examName}</h2>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">
+                        {schedule.course?.name || 'Course'}{isReExam ? ' - Re-Exam Timetable, last warning to come exam center' : schedule.remarks ? ` - ${schedule.remarks}` : ''}
+                    </p>
+                </div>
+                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold w-fit ${schedule.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {isReExam ? 'Re-Exam' : schedule.isActive ? 'Active' : 'Inactive'}
+                </div>
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] border-collapse">
+                    <thead>
+                        <tr className={`${isReExam ? 'bg-amber-600' : 'bg-blue-600'} text-white text-left text-xs uppercase tracking-wider`}>
+                            <th className={`p-3 border-r font-semibold w-16 text-center ${isReExam ? 'border-amber-500' : 'border-blue-500'}`}>Sr. No.</th>
+                            <th className={`p-3 border-r font-semibold ${isReExam ? 'border-amber-500' : 'border-blue-500'}`}>Subject</th>
+                            <th className={`p-3 border-r font-semibold ${isReExam ? 'border-amber-500' : 'border-blue-500'}`}>Date</th>
+                            <th className={`p-3 border-r font-semibold ${isReExam ? 'border-amber-500' : 'border-blue-500'}`}>Time</th>
+                            <th className={`p-3 border-r font-semibold text-center ${isReExam ? 'border-amber-500' : 'border-blue-500'}`}>Theory</th>
+                            <th className={`p-3 border-r font-semibold text-center ${isReExam ? 'border-amber-500' : 'border-blue-500'}`}>Practical</th>
+                            <th className={`p-3 border-r font-semibold text-center ${isReExam ? 'border-amber-500' : 'border-blue-500'}`}>Total</th>
+                            <th className="p-3 font-semibold text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {schedule.timeTable?.length > 0 ? (
+                            schedule.timeTable.map((item, index) => (
+                                <tr key={`${schedule._id}-${index}`} className="border-b border-gray-100 hover:bg-blue-50/50 text-sm">
+                                    <td className="p-3 text-center text-gray-500 font-medium">{index + 1}</td>
+                                    <td className="p-3 font-semibold text-gray-900">{item.subject?.name || 'Subject'}</td>
+                                    <td className="p-3 text-gray-600">{formatDate(item.date)}</td>
+                                    <td className="p-3 text-gray-600">
+                                        <div className="inline-flex items-center gap-1">
+                                            <Clock3 size={14} className="text-gray-400" />
+                                            {item.startTime && item.endTime ? `${item.startTime} To ${item.endTime}` : item.startTime || item.endTime || '-'}
+                                        </div>
+                                    </td>
+                                    <td className="p-3 text-center text-gray-700 font-medium">{item.theory ?? 0}</td>
+                                    <td className="p-3 text-center text-gray-700 font-medium">{item.practical ?? 0}</td>
+                                    <td className="p-3 text-center text-blue-700 font-bold">{item.total ?? 0}</td>
+                                    <td className="p-3 text-center">
+                                        <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-black ${item.isSubmitted ? 'bg-green-100 text-green-700' : item.isAbsent ? 'bg-red-100 text-red-700' : isReExam ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
+                                            {item.isSubmitted ? 'Submitted' : item.isAbsent ? 'Absent' : isReExam ? 'Re-Exam' : item.status === 'upcoming' ? 'Upcoming' : item.status === 'live' ? 'Live' : 'Ended'}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr><td colSpan="8" className="p-6 text-center text-gray-400">No timetable has been published yet.</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    );
 
     return (
         <div className="space-y-6">
@@ -45,80 +111,15 @@ const ExamSchedule = () => {
             </section>
 
             {examSchedules.length > 0 ? (
-                examSchedules.map((schedule, scheduleIndex) => (
-                    <section key={schedule._id} className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                        <div className="border-b border-gray-200 px-5 py-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <BookOpen size={18} className="text-blue-600" />
-                                    <h2 className="text-lg font-bold text-gray-900">
-                                        {schedule.examName}
-                                    </h2>
-                                </div>
-                                <p className="text-sm text-gray-500 mt-1">
-                                    {schedule.course?.name || 'Course'}{schedule.remarks ? ` - ${schedule.remarks}` : ''}
-                                </p>
-                            </div>
-                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold w-fit ${schedule.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                {schedule.isActive ? 'Active' : 'Inactive'}
-                            </div>
+                <>
+                    {regularSchedules.map((schedule) => renderSchedule(schedule, false))}
+                    {reExamSchedules.length > 0 && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
+                            Re-Exam Time Table - Last warning to come exam center.
                         </div>
-
-                        <div className="overflow-x-auto">
-                            <table className="w-full min-w-[900px] border-collapse">
-                                <thead>
-                                    <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
-                                        <th className="p-3 border-r border-blue-500 font-semibold w-16 text-center">Sr. No.</th>
-                                        <th className="p-3 border-r border-blue-500 font-semibold">Subject</th>
-                                        <th className="p-3 border-r border-blue-500 font-semibold">Date</th>
-                                        <th className="p-3 border-r border-blue-500 font-semibold">Time</th>
-                                        <th className="p-3 border-r border-blue-500 font-semibold text-center">Theory</th>
-                                        <th className="p-3 border-r border-blue-500 font-semibold text-center">Practical</th>
-                                        <th className="p-3 font-semibold text-center">Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {schedule.timeTable?.length > 0 ? (
-                                        schedule.timeTable.map((item, index) => (
-                                            <tr key={`${schedule._id}-${index}`} className="border-b border-gray-100 hover:bg-blue-50/50 text-sm">
-                                                <td className="p-3 text-center text-gray-500 font-medium">
-                                                    {index + 1}
-                                                </td>
-                                                <td className="p-3 font-semibold text-gray-900">
-                                                    {item.subject?.name || 'Subject'}
-                                                </td>
-                                                <td className="p-3 text-gray-600">
-                                                    {formatDate(item.date)}
-                                                </td>
-                                                <td className="p-3 text-gray-600">
-                                                    <div className="inline-flex items-center gap-1">
-                                                        <Clock3 size={14} className="text-gray-400" />
-                                                        {item.startTime && item.endTime ? `${item.startTime} To ${item.endTime}` : item.startTime || item.endTime || '-'}
-                                                    </div>
-                                                </td>
-                                                <td className="p-3 text-center text-gray-700 font-medium">
-                                                    {item.theory ?? 0}
-                                                </td>
-                                                <td className="p-3 text-center text-gray-700 font-medium">
-                                                    {item.practical ?? 0}
-                                                </td>
-                                                <td className="p-3 text-center text-blue-700 font-bold">
-                                                    {item.total ?? 0}
-                                                </td>
-                                            </tr>
-                                        ))
-                                    ) : (
-                                        <tr>
-                                            <td colSpan="7" className="p-6 text-center text-gray-400">
-                                                No timetable has been published yet.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-                ))
+                    )}
+                    {reExamSchedules.map((schedule) => renderSchedule(schedule, true))}
+                </>
             ) : (
                 <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-10 text-center">
                     <CalendarDays size={42} className="mx-auto text-gray-300 mb-3" />

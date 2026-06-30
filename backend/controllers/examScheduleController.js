@@ -45,6 +45,8 @@ const getScheduleRowWindow = (row) => {
 
     const parseTime = (timeValue, fallbackHour, fallbackMinute) => {
         if (!timeValue) return { hour: fallbackHour, minute: fallbackMinute };
+        const time24Match = String(timeValue).match(/^(\d{1,2}):(\d{2})$/);
+        if (time24Match) return { hour: Number(time24Match[1]), minute: Number(time24Match[2]) };
         const match = String(timeValue).match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
         if (!match) return { hour: fallbackHour, minute: fallbackMinute };
         let hour = Number(match[1]);
@@ -784,6 +786,197 @@ const getExamStudentMarksDetail = asyncHandler(async (req, res) => {
 
     res.json(await buildAttemptReviewDetail(attempt));
 });
+
+const getAbsentExamStudents = asyncHandler(async (req, res) => {
+    const examName = String(req.query.examName || '').trim();
+    if (!examName) return res.json({ examName: '', rows: [] });
+
+    const schedules = await ExamSchedule.find({
+        isDeleted: false,
+        examName: { $regex: `^${examName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
+    })
+        .populate('course', 'name shortName')
+        .populate('attendees', 'firstName middleName lastName regNo mobileStudent mobileParent branchId branchName isDeleted isCancelled')
+        .populate('timeTable.subject', 'name printedName')
+        .sort({ createdAt: -1 });
+
+    const scheduleIds = schedules.map((schedule) => schedule._id);
+    const reExamSchedules = await ExamSchedule.find({
+        isDeleted: false,
+        isActive: true,
+        isReExam: true,
+        examName: { $regex: `^${examName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
+    }).select('course attendees timeTable').lean();
+    const reExamMap = new Set();
+    reExamSchedules.forEach((schedule) => {
+        (schedule.timeTable || []).forEach((timeRow) => {
+            const subjectId = timeRow.subject?._id || timeRow.subject;
+            (schedule.attendees || []).forEach((studentId) => {
+                reExamMap.add(`${String(schedule.course)}:${String(subjectId)}:${String(studentId)}`);
+            });
+        });
+    });
+
+    const attempts = await ExamAttempt.find({ schedule: { $in: scheduleIds } })
+        .select('schedule subject student isSubmitted startedAt lastSavedAt submittedAt')
+        .lean();
+
+    const attemptMap = new Map(
+        attempts.map((attempt) => [
+            `${String(attempt.schedule)}:${String(attempt.subject)}:${String(attempt.student)}`,
+            attempt
+        ])
+    );
+
+    const rows = [];
+    schedules.forEach((schedule) => {
+        (schedule.timeTable || []).forEach((timeRow) => {
+            const subjectId = timeRow.subject?._id || timeRow.subject;
+            const rowStatus = getScheduleRowStatus(timeRow);
+            if (rowStatus.status !== 'ended') return;
+
+            (schedule.attendees || []).forEach((student) => {
+                if (!student || student.isDeleted || student.isCancelled) return;
+                if (!schedule.isReExam && reExamMap.has(`${String(schedule.course?._id || schedule.course)}:${String(subjectId)}:${String(student._id)}`)) return;
+                const attempt = attemptMap.get(`${String(schedule._id)}:${String(subjectId)}:${String(student._id)}`);
+                if (attempt) return;
+
+                rows.push({
+                    key: `${schedule._id}-${subjectId}-${student._id}`,
+                    scheduleId: schedule._id,
+                    course: schedule.course,
+                    subject: timeRow.subject,
+                    student: {
+                        _id: student._id,
+                        name: getStudentName(student),
+                        regNo: student.regNo || '',
+                        mobile: student.mobileStudent || '',
+                        branchName: student.branchId?.name || student.branchName || ''
+                    },
+                    originalDate: timeRow.date,
+                    originalStartTime: timeRow.startTime || '',
+                    originalEndTime: timeRow.endTime || '',
+                    originalStatus: rowStatus.status,
+                    isReExam: Boolean(schedule.isReExam),
+                    theory: timeRow.theory || 0,
+                    practical: timeRow.practical || 0,
+                    total: timeRow.total || 0
+                });
+            });
+        });
+    });
+
+    res.json({ examName, rows });
+});
+
+const createAbsentReExamSchedules = asyncHandler(async (req, res) => {
+    const {
+        examName,
+        selectedRows,
+        date,
+        startTime,
+        endTime,
+        examiner,
+        conductPasswordEnabled,
+        conductPassword
+    } = req.body;
+
+    if (!String(examName || '').trim()) {
+        res.status(400);
+        throw new Error('Exam name is required');
+    }
+    if (!Array.isArray(selectedRows) || selectedRows.length === 0) {
+        res.status(400);
+        throw new Error('Select at least one absent student');
+    }
+    const hasRowTimeTable = selectedRows.every((row) => row.date && row.startTime && row.endTime);
+    if (!hasRowTimeTable && (!date || !startTime || !endTime)) {
+        res.status(400);
+        throw new Error('Re-exam date, start time and end time are required');
+    }
+
+    const passwordEnabled = Boolean(conductPasswordEnabled);
+    const normalizedPassword = await normalizeConductPassword(conductPassword, passwordEnabled);
+    const scheduleIds = [...new Set(selectedRows.map((row) => row.scheduleId).filter(Boolean))];
+    const schedules = await ExamSchedule.find({
+        _id: { $in: scheduleIds },
+        isDeleted: false
+    }).populate('timeTable.subject', 'name printedName');
+    const scheduleMap = new Map(schedules.map((schedule) => [String(schedule._id), schedule]));
+    const groupMap = new Map();
+
+    selectedRows.forEach((selected) => {
+        const schedule = scheduleMap.get(String(selected.scheduleId));
+        if (!schedule || !selected.subjectId || !selected.studentId) return;
+        const timeRow = (schedule.timeTable || []).find((row) => String(row.subject?._id || row.subject) === String(selected.subjectId));
+        if (!timeRow) return;
+
+        const rowDate = selected.date || date;
+        const rowStartTime = selected.startTime || startTime;
+        const rowEndTime = selected.endTime || endTime;
+        const groupKey = `${String(schedule.course)}:${String(selected.subjectId)}:${rowDate}:${rowStartTime}:${rowEndTime}`;
+        if (!groupMap.has(groupKey)) {
+            groupMap.set(groupKey, {
+                originalSchedule: schedule,
+                subjectId: selected.subjectId,
+                timeRow,
+                date: rowDate,
+                startTime: rowStartTime,
+                endTime: rowEndTime,
+                studentIds: new Set()
+            });
+        }
+        groupMap.get(groupKey).studentIds.add(String(selected.studentId));
+    });
+
+    if (groupMap.size === 0) {
+        res.status(400);
+        throw new Error('No valid absent student rows found');
+    }
+
+    const created = [];
+    for (const group of groupMap.values()) {
+        const schedule = await ExamSchedule.create({
+            course: group.originalSchedule.course,
+            examName: String(examName).trim(),
+            remarks: `Re-exam for absent students from ${String(examName).trim()}`,
+            isActive: true,
+            scheduleType: 'reExam',
+            isReExam: true,
+            reExamOf: group.originalSchedule._id,
+            attendees: [...group.studentIds],
+            examiner: examiner || undefined,
+            conductPasswordEnabled: passwordEnabled,
+            conductPasswordText: normalizedPassword.passwordText,
+            conductPasswordHash: normalizedPassword.passwordHash,
+            timeTable: [{
+                subject: group.subjectId,
+                date: group.date,
+                startTime: group.startTime,
+                endTime: group.endTime,
+                theory: group.timeRow.theory || 0,
+                practical: group.timeRow.practical || 0,
+                total: group.timeRow.total || 0,
+                conductPasswordEnabled: passwordEnabled,
+                conductPasswordText: normalizedPassword.passwordText,
+                conductPasswordHash: normalizedPassword.passwordHash
+            }]
+        });
+        queueExamScheduleSms(schedule._id);
+        created.push(schedule);
+    }
+
+    const populated = await ExamSchedule.find({ _id: { $in: created.map((schedule) => schedule._id) } })
+        .populate('course', 'name')
+        .populate('examiner', 'name designation role')
+        .populate('timeTable.subject', 'name printedName')
+        .populate('attendees', 'firstName lastName regNo');
+
+    res.status(201).json({
+        message: `${populated.length} re-exam schedule(s) created`,
+        schedules: populated
+    });
+});
 // @desc    Get My Exam Schedules
 // @route   GET /api/master/exam-schedule/my
 const getMyExamSchedules = asyncHandler(async (req, res) => {
@@ -852,7 +1045,9 @@ module.exports = {
     getExamScheduleConductSummary,
     getMyExamSchedules,
     getExamStudentMarks,
-    getExamStudentMarksDetail 
+    getExamStudentMarksDetail,
+    getAbsentExamStudents,
+    createAbsentReExamSchedules
 };
 
 
