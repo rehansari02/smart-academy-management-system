@@ -12,6 +12,14 @@ import { getBranches } from '../../../features/master/branchSlice';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
 
+const todayInputDate = () => new Date().toISOString().split('T')[0];
+
+const toDateInputValue = (value) => {
+    if (!value) return todayInputDate();
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? todayInputDate() : parsed.toISOString().split('T')[0];
+};
+
 const Expenses = () => {
     const dispatch = useDispatch();
     const { user } = useSelector((state) => state.auth);
@@ -59,6 +67,7 @@ const Expenses = () => {
         reason: '',
         category: '',
         branch: '',
+        date: todayInputDate(),
         paymentMode: 'Cash'
     });
     const [categoryName, setCategoryName] = useState('');
@@ -151,7 +160,7 @@ const Expenses = () => {
             return;
         }
         
-        if (!expenseData.amount || !expenseData.reason || !expenseData.category || !expenseData.branch) {
+        if (!expenseData.amount || !expenseData.reason || !expenseData.category || !expenseData.branch || !expenseData.date) {
             return toast.error('Please fill all required fields');
         }
 
@@ -181,6 +190,7 @@ const Expenses = () => {
             reason: expense.reason,
             category: expense.category?._id || '',
             branch: expense.branch?._id || userBranchId || '',
+            date: toDateInputValue(expense.date),
             paymentMode: expense.paymentMode
         });
         setIsExpenseModalOpen(true);
@@ -221,6 +231,7 @@ const Expenses = () => {
             reason: '',
             category: allCategories.length > 0 ? allCategories[0]._id : '',
             branch: isSuperAdmin ? '' : (userBranchId || ''),
+            date: todayInputDate(),
             paymentMode: 'Cash'
         });
     };
@@ -306,10 +317,24 @@ const Expenses = () => {
             ? `${customStartDate || 'Start'} to ${customEndDate || 'End'}`
             : dateFilter
         : 'All Time';
+    const totalExpenseAmount = filteredExpenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
 
     const handlePrint = useReactToPrint({
         contentRef: componentRef,
-        documentTitle: `Expenses_${activeBranchName.replace(/\s+/g, '_')}_${activeDateLabel.replace(/\s+/g, '_')}`
+        documentTitle: `Expenses_${activeBranchName.replace(/\s+/g, '_')}_${activeDateLabel.replace(/\s+/g, '_')}`,
+        pageStyle: `
+            @page { size: A4 landscape; margin: 12mm; }
+            @media print {
+                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                .expense-print-area { width: 100% !important; max-width: none !important; }
+                .expense-print-card { box-shadow: none !important; border: 1px solid #d1d5db !important; border-radius: 0 !important; overflow: visible !important; }
+                .expense-print-table { width: 100% !important; table-layout: fixed !important; font-size: 11px !important; }
+                .expense-print-table th, .expense-print-table td { padding: 7px 8px !important; border: 1px solid #e5e7eb !important; vertical-align: top !important; }
+                .expense-print-table thead tr { background: #f3f4f6 !important; color: #111827 !important; }
+                .expense-print-reason { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; max-width: none !important; }
+                .expense-print-category { background: transparent !important; color: #111827 !important; padding: 0 !important; }
+            }
+        `
     });
 
     if (isLoading && safeExpenses.length === 0) return <Loading />;
@@ -343,7 +368,8 @@ const Expenses = () => {
                         onClick={() => {
                             setExpenseData(prev => ({
                                 ...prev,
-                                branch: isSuperAdmin ? (branchFilter || '') : (userBranchId || '')
+                                branch: isSuperAdmin ? (branchFilter || '') : (userBranchId || ''),
+                                date: prev.date || todayInputDate()
                             }));
                             setIsExpenseModalOpen(true);
                         }}
@@ -426,7 +452,7 @@ const Expenses = () => {
                 </div>
 
                 {/* Right Panel: Expenses Table */}
-                <div ref={componentRef} className="lg:w-3/4">
+                <div ref={componentRef} className="lg:w-3/4 print:w-full expense-print-area">
                     {/* Search Bar & Filter */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 mb-6 print:hidden">
                         <div className="flex flex-col sm:flex-row gap-4 items-center">
@@ -513,7 +539,7 @@ const Expenses = () => {
                     </div>
 
                     {/* Table */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden expense-print-card">
                         <div className="hidden print:block px-6 pt-6 pb-3 border-b border-gray-200">
                             <h2 className="text-2xl font-bold text-gray-900">Expense Report</h2>
                             <div className="mt-2 text-sm text-gray-600 flex flex-wrap gap-x-6 gap-y-1">
@@ -522,8 +548,8 @@ const Expenses = () => {
                                 <span><strong>Records:</strong> {filteredExpenses.length}</span>
                             </div>
                         </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
+                        <div className="overflow-x-auto print:overflow-visible">
+                            <table className="w-full text-left border-collapse expense-print-table">
                                 <thead>
                                     <tr className="bg-gray-50 text-gray-500 text-sm uppercase tracking-wider border-b border-gray-100">
                                         <th className="px-6 py-4 font-semibold">Date</th>
@@ -542,15 +568,15 @@ const Expenses = () => {
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                                     {new Date(expense.date).toLocaleDateString()}
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
+                                                <td className="px-6 py-4 whitespace-nowrap print:whitespace-normal">
+                                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 expense-print-category">
                                                         {expense.category?.name || 'N/A'}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700">
                                                     {expense.branch?.name || '-'}
                                                 </td>
-                                                <td className="px-6 py-4 text-sm text-gray-800 font-medium max-w-xs truncate">
+                                                <td className="px-6 py-4 text-sm text-gray-800 font-medium max-w-xs truncate expense-print-reason">
                                                     {expense.reason}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
@@ -588,6 +614,15 @@ const Expenses = () => {
                                         </tr>
                                     )}
                                 </tbody>
+                                {filteredExpenses.length > 0 && (
+                                    <tfoot>
+                                        <tr className="bg-gray-50 border-t border-gray-200">
+                                            <td colSpan="5" className="px-6 py-4 text-right text-sm font-black uppercase text-gray-700">Total</td>
+                                            <td className="px-6 py-4 text-right font-black text-primary">₹{totalExpenseAmount.toLocaleString()}</td>
+                                            <td className="px-6 py-4 print:hidden"></td>
+                                        </tr>
+                                    </tfoot>
+                                )}
                             </table>
                         </div>
                         
@@ -622,17 +657,25 @@ const Expenses = () => {
             {/* Modal: Add/Edit Expense */}
             <AnimatePresence>
                 {isExpenseModalOpen && (
-                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4">
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeExpenseModal} className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" />
-                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-3xl shadow-2xl w-full max-w-lg relative z-10 overflow-hidden">
-                            <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                                <h2 className="text-2xl font-bold text-gray-900">{editingExpenseId ? 'Edit Expense' : 'Record Expense'}</h2>
+                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative z-10 flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[88vh]">
+                            <div className="shrink-0 border-b border-gray-100 bg-gray-50/50 px-5 py-4 sm:px-6">
+                                <h2 className="text-xl font-bold text-gray-900 sm:text-2xl">{editingExpenseId ? 'Edit Expense' : 'Record Expense'}</h2>
                             </div>
 
-                            <form onSubmit={handleExpenseSubmit} className="p-6 space-y-5">
-                                <div>
+                            <form onSubmit={handleExpenseSubmit} className="flex min-h-0 flex-1 flex-col">
+                                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                  <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Expense Date *</label>
+                                    <input type="date" name="date" required value={expenseData.date} onChange={handleExpenseInputChange} className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all font-medium" />
+                                  </div>
+
+                                  <div>
                                     <label className="block text-sm font-semibold text-gray-700 mb-1.5">Amount (₹) *</label>
                                     <input type="number" name="amount" required value={expenseData.amount} onChange={handleExpenseInputChange} placeholder="e.g. 5000" className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all font-medium" />
+                                  </div>
                                 </div>
                                 
                                 <div>
@@ -640,7 +683,7 @@ const Expenses = () => {
                                     <input type="text" name="reason" required value={expenseData.reason} onChange={handleExpenseInputChange} placeholder="e.g. Office Supplies" className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all" />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1.5">Category *</label>
                                         <select 
@@ -698,7 +741,9 @@ const Expenses = () => {
                                     </div>
                                 </div>
 
-                                <div className="flex justify-end gap-3 pt-6 border-t border-gray-100 mt-6">
+                                </div>
+
+                                <div className="shrink-0 flex justify-end gap-3 border-t border-gray-100 bg-white px-5 py-4 sm:px-6">
                                     <button type="button" onClick={closeExpenseModal} className="px-6 py-2.5 rounded-xl font-semibold text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
                                     <button type="submit" disabled={isSubmitting || allCategories.length === 0} className="px-6 py-2.5 rounded-xl font-semibold text-white bg-primary hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50">
                                         {isSubmitting ? 'Saving...' : (editingExpenseId ? 'Update Expense' : 'Save Expense')}
