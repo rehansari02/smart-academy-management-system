@@ -41,6 +41,8 @@ const allowedOrigins = [
   "http://localhost:5174",
   "http://192.168.10.55:5173",
   "http://192.168.10.55:5174",
+  "https://localhost:5173",
+  "https://localhost:5174",
   "https://smartinstituteonline.com",
   "https://www.smartinstituteonline.com",
   "https://smar.smartinstituteonline.com",
@@ -87,22 +89,44 @@ function isOriginAllowed(origin) {
   return false;
 }
 
-// CORS Middleware (Must be before Rate Limiter for 429s to work in browser)
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
     const allowed = isOriginAllowed(origin);
     if (allowed) {
       callback(null, true);
     } else {
       console.log("Blocked by CORS:", origin);
-      // Use false instead of an Error to gracefully deny without sending 503
       callback(null, false);
     }
   },
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
   credentials: true,
   exposedHeaders: ["set-cookie"],
-}));
+  optionsSuccessStatus: 204,
+};
+
+const setCorsHeaders = (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && isOriginAllowed(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Vary", "Origin");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,PATCH,OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
+  }
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
+  next();
+};
+
+// CORS Middleware (Must be before Rate Limiter for 429s to work in browser)
+app.use(setCorsHeaders);
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 
 // Rate Limiting
 const limiter = rateLimit({
