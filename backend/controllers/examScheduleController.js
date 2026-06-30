@@ -649,6 +649,141 @@ const getExamScheduleConductSummary = asyncHandler(async (req, res) => {
     });
 });
 
+const buildStudentName = (student) => String((student?.firstName || '') + ' ' + (student?.lastName || '')).trim() || 'Student';
+
+const getAttemptSubjectPaper = async (attempt) => {
+    const subjectId = attempt.subject?._id || attempt.subject;
+    const courseId = attempt.course?._id || attempt.course;
+    const exactPaper = await FinalExamQuestionPaper.findOne({
+        isDeleted: false,
+        isActive: true,
+        course: courseId,
+        examName: attempt.examName,
+        'subjects.subject': subjectId
+    }).populate('subjects.subject', 'name printedName');
+
+    const fallbackPaper = exactPaper || await FinalExamQuestionPaper.findOne({
+        isDeleted: false,
+        isActive: true,
+        course: courseId,
+        'subjects.subject': subjectId
+    }).populate('subjects.subject', 'name printedName');
+
+    return (fallbackPaper?.subjects || []).find((row) => String(row.subject?._id || row.subject) === String(subjectId));
+};
+
+const buildAttemptReviewDetail = async (attempt) => {
+    const subjectPaper = await getAttemptSubjectPaper(attempt);
+    const answers = Array.isArray(attempt.answers) ? attempt.answers : [];
+    const mcqAnswerMap = new Map(answers.filter((item) => item.type === 'mcq').map((item) => [Number(item.questionIndex) || 0, item]));
+    const qaAnswerMap = new Map(answers.filter((item) => item.type === 'qa').map((item) => [Number(item.questionIndex) || 0, item]));
+
+    const mcqs = (subjectPaper?.mcqs || []).map((mcq, index) => {
+        const questionIndex = index + 1;
+        const answer = mcqAnswerMap.get(questionIndex);
+        const correctOption = getMcqCorrectOptionLetter(mcq);
+        const selectedOption = answer?.selectedOption || '';
+        return {
+            type: 'mcq',
+            questionIndex,
+            question: mcq.question,
+            options: mcq.options || [],
+            selectedOption,
+            correctOption,
+            marks: mcq.marks || 0,
+            isCorrect: Boolean(selectedOption && correctOption && normalizeAnswerText(selectedOption) === normalizeAnswerText(correctOption)),
+            savedAt: answer?.savedAt || null
+        };
+    });
+
+    const questionAnswers = (subjectPaper?.questionAnswers || []).map((qa, index) => {
+        const questionIndex = index + 1;
+        const answer = qaAnswerMap.get(questionIndex);
+        return {
+            type: 'qa',
+            questionIndex,
+            question: qa.question,
+            expectedAnswer: qa.answer || '',
+            answerText: answer?.answerText || '',
+            marks: qa.marks || 0,
+            savedAt: answer?.savedAt || null
+        };
+    });
+
+    return {
+        _id: attempt._id,
+        examName: attempt.examName,
+        course: attempt.course,
+        schedule: attempt.schedule,
+        subject: attempt.subject,
+        student: {
+            _id: attempt.student?._id,
+            name: buildStudentName(attempt.student),
+            regNo: attempt.student?.regNo || '',
+            mobile: attempt.student?.mobile || '',
+            branchName: attempt.student?.branchName || ''
+        },
+        totalQuestions: attempt.totalQuestions,
+        answeredCount: attempt.answeredCount,
+        totalMcq: attempt.totalMcq,
+        totalQa: attempt.totalQa,
+        isSubmitted: attempt.isSubmitted,
+        startedAt: attempt.startedAt,
+        lastSavedAt: attempt.lastSavedAt,
+        submittedAt: attempt.submittedAt,
+        score: scoreAttemptAgainstPaper(attempt, subjectPaper),
+        mcqs,
+        questionAnswers
+    };
+};
+
+const getExamStudentMarks = asyncHandler(async (req, res) => {
+    const examName = String(req.query.examName || '').trim();
+    if (!examName) return res.json([]);
+
+    const attempts = await ExamAttempt.find({ examName })
+        .populate('course', 'name shortName')
+        .populate('schedule', 'examName timeTable')
+        .populate('student', 'firstName lastName regNo mobile branchName course')
+        .populate('subject', 'name printedName')
+        .sort({ submittedAt: -1, updatedAt: -1 });
+
+    res.json(attempts.map((attempt) => ({
+        _id: attempt._id,
+        examName: attempt.examName,
+        course: attempt.course,
+        schedule: attempt.schedule?._id || attempt.schedule,
+        student: {
+            _id: attempt.student?._id,
+            name: buildStudentName(attempt.student),
+            regNo: attempt.student?.regNo || '',
+            mobile: attempt.student?.mobile || '',
+            branchName: attempt.student?.branchName || ''
+        },
+        subject: attempt.subject,
+        totalQuestions: attempt.totalQuestions,
+        answeredCount: attempt.answeredCount,
+        isSubmitted: Boolean(attempt.isSubmitted),
+        submittedAt: attempt.submittedAt,
+        lastSavedAt: attempt.lastSavedAt,
+        updatedAt: attempt.updatedAt
+    })));
+});
+
+const getExamStudentMarksDetail = asyncHandler(async (req, res) => {
+    const attempt = await ExamAttempt.findById(req.params.attemptId)
+        .populate('course', 'name shortName')
+        .populate('schedule', 'examName timeTable')
+        .populate('student', 'firstName lastName regNo mobile branchName course')
+        .populate('subject', 'name printedName');
+
+    if (!attempt) {
+        res.status(404);
+        throw new Error('Exam attempt not found');
+    }
+
+    res.json(await buildAttemptReviewDetail(attempt));
+});
 // @desc    Get My Exam Schedules
 // @route   GET /api/master/exam-schedule/my
 const getMyExamSchedules = asyncHandler(async (req, res) => {
@@ -715,5 +850,9 @@ module.exports = {
     deleteExamSchedule,
     getExamScheduleDetails,
     getExamScheduleConductSummary,
-    getMyExamSchedules 
+    getMyExamSchedules,
+    getExamStudentMarks,
+    getExamStudentMarksDetail 
 };
+
+

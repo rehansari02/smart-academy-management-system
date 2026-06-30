@@ -77,6 +77,8 @@ const ExamRequestList = lazy(() =>
   import("./pages/admin/master/ExamRequestList")
 );
 const ExamSchedule = lazy(() => import("./pages/admin/master/ExamSchedule"));
+const ExamSet = lazy(() => import("./pages/admin/master/ExamSet"));
+const ExamStudentMarks = lazy(() => import("./pages/admin/master/ExamStudentMarks"));
 const FinalExamQuestionPaper = lazy(() => import("./pages/admin/master/FinalExamQuestionPaper"));
 const AddFinalExamQuestionPaper = lazy(() => import("./pages/admin/master/AddFinalExamQuestionPaper"));
 const FinalExamQuestionPaperSubjects = lazy(() => import("./pages/admin/master/FinalExamQuestionPaperSubjects"));
@@ -351,6 +353,23 @@ function App() {
                   </PrivateRoute>
                 }
               />
+              <Route
+                path="/master/exam-set"
+                element={
+                  <PrivateRoute>
+                    <ExamSet />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/exam-student-marks"
+                element={
+                  <PrivateRoute>
+                    <ExamStudentMarks />
+                  </PrivateRoute>
+                }
+              />
+
               <Route
                 path="/master/final-exam-question-paper"
                 element={
@@ -1057,4 +1076,8 @@ function App() {
 }
 
 export default App;
+
+
+
+
 

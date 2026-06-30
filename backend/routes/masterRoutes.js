@@ -17,7 +17,7 @@ const {
     getPopularCategories, createPopularCategory, updatePopularCategory, deletePopularCategory
 } = require('../controllers/masterController');
 const { getExamRequests, getExamRequestBranches, cancelExamRequest, createExamRequest, getPendingExams } = require('../controllers/examController');
-const { getExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, getExamScheduleDetails, getExamScheduleConductSummary, getMyExamSchedules } = require('../controllers/examScheduleController');
+const { getExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, getExamScheduleDetails, getExamScheduleConductSummary, getMyExamSchedules, getExamStudentMarks, getExamStudentMarksDetail } = require('../controllers/examScheduleController');
 const { getExamResults, createExamResult, updateExamResult, deleteExamResult, getExamResultById, getNextResultNumbers, verifyExamResult } = require('../controllers/examResultController');
 const {
     getFinalExamQuestionPapers,
@@ -157,6 +157,8 @@ router.route('/exam-schedule/:id')
 router.get('/exam-schedule/:id/details', protect, getExamScheduleDetails);
 router.get('/exam-schedule/:id/conduct', protect, getExamScheduleConductSummary);
 router.get('/exam-schedule/my', protect, getMyExamSchedules);
+router.get('/exam-student-marks', protect, getExamStudentMarks);
+router.get('/exam-student-marks/:attemptId', protect, getExamStudentMarksDetail);
 
 // --- Final Exam Question Paper Routes ---
 router.route('/final-exam-question-paper')
@@ -212,3 +214,4 @@ router.delete('/teacher-subject/remove', protect, checkPermission('Teacher Subje
 router.use('/location', locationRoutes);
 
 module.exports = router;
+

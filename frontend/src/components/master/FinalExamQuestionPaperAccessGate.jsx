@@ -10,6 +10,13 @@ import {
 import { useUserRights } from '../../hooks/useUserRights';
 import { showPermissionDenied } from '../../utils/permissionAlert';
 
+const ACCESS_KEY_PREFIX = 'finalExamQuestionPaperAccessVerified';
+
+const getAccessKey = (user) => {
+  const userId = user?._id || user?.id || user?.username || user?.email || 'anonymous';
+  return `${ACCESS_KEY_PREFIX}:${userId}`;
+};
+
 const FinalExamQuestionPaperAccessGate = ({ children, requiredAction = 'view' }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -50,6 +57,11 @@ const FinalExamQuestionPaperAccessGate = ({ children, requiredAction = 'view' })
           return;
         }
 
+        if (sessionStorage.getItem(getAccessKey(user)) === 'true') {
+          setLoading(false);
+          return;
+        }
+
         setAttemptsLeft(3);
         setPassword('');
         setShowPassword(false);
@@ -62,7 +74,7 @@ const FinalExamQuestionPaperAccessGate = ({ children, requiredAction = 'view' })
     };
 
     init();
-  }, [dispatch, isSuperAdmin, navigate, permissionSignature, requiredAction]);
+  }, [dispatch, isSuperAdmin, navigate, permissionSignature, requiredAction, user]);
 
   const closePrompt = () => {
     setPromptOpen(false);
@@ -79,6 +91,7 @@ const FinalExamQuestionPaperAccessGate = ({ children, requiredAction = 'view' })
 
     const result = await dispatch(verifyFinalExamQuestionPaperAccess({ password }));
     if (verifyFinalExamQuestionPaperAccess.fulfilled.match(result)) {
+      sessionStorage.setItem(getAccessKey(user), 'true');
       setPromptOpen(false);
       setLoading(false);
       return;

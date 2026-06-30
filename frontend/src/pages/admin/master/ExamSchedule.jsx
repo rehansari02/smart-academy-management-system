@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchCourses, fetchExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, resetMasterStatus, fetchExams, createExam, updateExam, deleteExam, fetchBranches } from '../../../features/master/masterSlice';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { Plus, Search, RefreshCw, Edit, Trash2, Eye, X, Save, AlertCircle, Pencil, Check, ShieldCheck } from 'lucide-react';
+import { Plus, Search, RefreshCw, Edit, Trash2, Eye, X, Save, AlertCircle, Pencil, Check } from 'lucide-react';
 import axios from 'axios'; // For direct detail fetch
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
@@ -92,8 +92,6 @@ const ExamSchedule = () => {
   const [pendingRequests, setPendingRequests] = useState([]);
   const [selectedAttendees, setSelectedAttendees] = useState([]);
   const [isRequestsLoading, setIsRequestsLoading] = useState(false);
-  const [employees, setEmployees] = useState([]);
-  const [examinerId, setExaminerId] = useState('');
 
   // Time Table State
   const [timeTableData, setTimeTableData] = useState([]);
@@ -262,8 +260,6 @@ const ExamSchedule = () => {
             ...item,
             subject: item.subject?._id || item.subject,
             name: item.subject?.name || item.name || 'Subject',
-            conductPasswordEnabled: Boolean(item.conductPasswordEnabled),
-            conductPassword: '',
             total: Number(item.total) || (Number(item.theory) || 0) + (Number(item.practical) || 0)
         }));
     }
@@ -282,11 +278,14 @@ const ExamSchedule = () => {
             endTime: saved?.endTime || '01:00 PM',
             theory,
             practical,
-            conductPasswordEnabled: Boolean(saved?.conductPasswordEnabled),
-            conductPassword: '',
             total: Number(saved?.total) || Number(subject.totalMarks) || ((Number(theory) || 0) + (Number(practical) || 0))
         };
     });
+  };
+
+  const isSingleMarksSubject = (subjectName = '') => {
+    const normalizedName = subjectName.toLowerCase();
+    return normalizedName.includes('discipline') || normalizedName.includes('project');
   };
 
   const handleCreateExamName = async () => {
@@ -360,11 +359,6 @@ const ExamSchedule = () => {
     dispatch(fetchBranches());
   }, [dispatch]);
 
-  useEffect(() => {
-    axios.get(`${import.meta.env.VITE_API_URL}/master/employee`, { withCredentials: true })
-      .then((res) => setEmployees(Array.isArray(res.data) ? res.data : []))
-      .catch(() => setEmployees([]));
-  }, []);
 
   useEffect(() => {
     if (isSuccess && message) {
@@ -374,7 +368,6 @@ const ExamSchedule = () => {
         setEditMode(null);
         setSelectedAttendees([]);
         setTimeTableData([]);
-        setExaminerId('');
         reset();
     }
   }, [isSuccess, message, dispatch, showForm, reset]);
@@ -498,7 +491,6 @@ const ExamSchedule = () => {
     }
     const finalData = { 
         ...data, 
-        examiner: examinerId || undefined,
         attendees: selectedAttendees,
         timeTable: timeTableData.map(item => ({
             subject: item.subject,
@@ -508,8 +500,6 @@ const ExamSchedule = () => {
             theory: item.theory,
             practical: item.practical,
             total: item.total || ((Number(item.theory) || 0) + (Number(item.practical) || 0)),
-            conductPasswordEnabled: Boolean(item.conductPasswordEnabled),
-            conductPassword: String(item.conductPassword || '').trim()
         }))
     };
     if (editMode) {
@@ -528,6 +518,11 @@ const ExamSchedule = () => {
         const t = parseFloat(newData[index].theory) || 0;
         const p = parseFloat(newData[index].practical) || 0;
         newData[index].total = t + p;
+    } else if (field === 'singleMarks') {
+        const marks = parseFloat(value) || 0;
+        newData[index].theory = value;
+        newData[index].practical = 0;
+        newData[index].total = marks;
     }
     
     setTimeTableData(newData);
@@ -546,7 +541,6 @@ const ExamSchedule = () => {
     setValue('examName', schedule.examName);
     setValue('remarks', schedule.remarks);
     setValue('isActive', schedule.isActive);
-    setExaminerId(schedule.examiner?._id || schedule.examiner || '');
     setSelectedAttendees(schedule.attendees || []);
     
     // Map existing timeTable with names from course
@@ -575,7 +569,7 @@ const ExamSchedule = () => {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Exam Schedule</h2>
         {!showForm && !detailView && (
-            <button onClick={() => { setShowForm(true); reset(); setEditMode(null); setExaminerId(''); }} className="bg-primary text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700">
+            <button onClick={() => { setShowForm(true); reset(); setEditMode(null); }} className="bg-primary text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700">
                 <Plus size={18} /> Add New Exam Schedule
             </button>
         )}
@@ -599,7 +593,7 @@ const ExamSchedule = () => {
                             <span className={selectedExamName ? 'text-gray-900 font-medium' : 'text-gray-400'}>
                                 {selectedExamName || '-- Select Exam --'}
                             </span>
-                            <span className="text-gray-500">▼</span>
+                            <span className="text-gray-500">?</span>
                         </button>
                         
                         {isExamDropdownOpen && (
@@ -684,7 +678,7 @@ const ExamSchedule = () => {
                             <span className={selectedCourse ? 'text-gray-900 font-medium' : 'text-gray-400'}>
                                 {selectedCourseName || '-- Select Course --'}
                             </span>
-                            <span className="text-gray-500">▼</span>
+                            <span className="text-gray-500">?</span>
                         </button>
                         
                         {isCourseDropdownOpen && (
@@ -730,21 +724,6 @@ const ExamSchedule = () => {
                 <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Remarks</label>
                     <textarea {...register('remarks')} className="border p-2 rounded w-full" rows="2"></textarea>
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Examiner</label>
-                    <select
-                        value={examinerId}
-                        onChange={(e) => setExaminerId(e.target.value)}
-                        className="border p-2 rounded w-full text-sm"
-                    >
-                        <option value="">Select Examiner</option>
-                        {employees.map((employee) => (
-                            <option key={employee._id} value={employee._id}>
-                                {employee.name || [employee.firstName, employee.lastName].filter(Boolean).join(' ') || 'Employee'}
-                            </option>
-                        ))}
-                    </select>
                 </div>
                 <div className="flex items-center gap-2">
                     <input type="checkbox" {...register('isActive')} id="isActive" className="h-4 w-4" defaultChecked />
@@ -818,8 +797,7 @@ const ExamSchedule = () => {
                                             <th className="px-4 py-2 border-r border-blue-200 text-center w-16">Sr. No.</th>
                                             <th className="px-4 py-2 border-r border-blue-200">Subject</th>
                                             <th className="px-4 py-2 border-r border-blue-200 w-32">Date</th>
-                                            <th className="px-4 py-2 border-r border-blue-200">Time</th>
-                                            <th className="px-4 py-2 border-r border-blue-200 text-center w-56">Password</th>
+                                            <th className="px-4 py-2 border-r border-blue-200 text-center min-w-[300px]">Time</th>
                                             <th className="px-4 py-2 border-r border-blue-200 text-center w-24">Theory</th>
                                             <th className="px-4 py-2 border-r border-blue-200 text-center w-24">Practical</th>
                                             <th className="px-4 py-2 text-center w-24">Total</th>
@@ -843,11 +821,11 @@ const ExamSchedule = () => {
                                                         className="w-full text-xs border rounded p-1 focus:ring-1 focus:ring-blue-400 outline-none"
                                                     />
                                                 </td>
-                                                <td className="px-3 py-2 border-r border-blue-100 min-w-[210px]">
-                                                    <div className="flex flex-col gap-1.5">
+                                                <td className="px-3 py-3 border-r border-blue-100 min-w-[300px]">
+                                                    <div className="flex flex-col gap-2">
                                                         {/* Start Time */}
-                                                        <div className="flex items-center gap-1">
-                                                            <span className="text-[9px] font-bold text-gray-400 w-8">From:</span>
+                                                        <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-2.5 py-2 shadow-sm">
+                                                            <span className="w-11 text-[10px] font-black uppercase tracking-wide text-blue-700">From</span>
                                                             {(() => {
                                                                 const startParts = parseTimeToParts(item.startTime);
                                                                 return (
@@ -855,7 +833,7 @@ const ExamSchedule = () => {
                                                                         <select 
                                                                             value={startParts.hour} 
                                                                             onChange={(e) => updateTimeTableField(index, 'startTime', buildTimeStr(e.target.value, startParts.minute, startParts.period))}
-                                                                            className="border rounded p-0.5 text-[10px] bg-white font-medium focus:ring-1 focus:ring-blue-400 outline-none"
+                                                                            className="h-8 flex-1 rounded-md border border-blue-200 bg-white px-1.5 text-center text-xs font-bold text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                                                                         >
                                                                             {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(h => (
                                                                                 <option key={h} value={h}>{h}</option>
@@ -865,7 +843,7 @@ const ExamSchedule = () => {
                                                                         <select 
                                                                             value={startParts.minute} 
                                                                             onChange={(e) => updateTimeTableField(index, 'startTime', buildTimeStr(startParts.hour, e.target.value, startParts.period))}
-                                                                            className="border rounded p-0.5 text-[10px] bg-white font-medium focus:ring-1 focus:ring-blue-400 outline-none"
+                                                                            className="h-8 flex-1 rounded-md border border-blue-200 bg-white px-1.5 text-center text-xs font-bold text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                                                                         >
                                                                             {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
                                                                                 <option key={m} value={m}>{m}</option>
@@ -874,7 +852,7 @@ const ExamSchedule = () => {
                                                                         <select 
                                                                             value={startParts.period} 
                                                                             onChange={(e) => updateTimeTableField(index, 'startTime', buildTimeStr(startParts.hour, startParts.minute, e.target.value))}
-                                                                            className="border rounded p-0.5 text-[10px] bg-white font-bold text-blue-600 focus:ring-1 focus:ring-blue-400 outline-none"
+                                                                            className="h-8 w-16 rounded-md border border-blue-200 bg-white px-1.5 text-center text-xs font-black text-blue-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                                                                         >
                                                                             <option value="AM">AM</option>
                                                                             <option value="PM">PM</option>
@@ -885,8 +863,8 @@ const ExamSchedule = () => {
                                                         </div>
                                                         
                                                         {/* End Time */}
-                                                        <div className="flex items-center gap-1">
-                                                            <span className="text-[9px] font-bold text-gray-400 w-8">To:</span>
+                                                        <div className="flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50/70 px-2.5 py-2 shadow-sm">
+                                                            <span className="w-11 text-[10px] font-black uppercase tracking-wide text-emerald-700">To</span>
                                                             {(() => {
                                                                 const endParts = parseTimeToParts(item.endTime);
                                                                 return (
@@ -894,7 +872,7 @@ const ExamSchedule = () => {
                                                                         <select 
                                                                             value={endParts.hour} 
                                                                             onChange={(e) => updateTimeTableField(index, 'endTime', buildTimeStr(e.target.value, endParts.minute, endParts.period))}
-                                                                            className="border rounded p-0.5 text-[10px] bg-white font-medium focus:ring-1 focus:ring-blue-400 outline-none"
+                                                                            className="h-8 flex-1 rounded-md border border-emerald-200 bg-white px-1.5 text-center text-xs font-bold text-gray-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                                                                         >
                                                                             {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(h => (
                                                                                 <option key={h} value={h}>{h}</option>
@@ -904,7 +882,7 @@ const ExamSchedule = () => {
                                                                         <select 
                                                                             value={endParts.minute} 
                                                                             onChange={(e) => updateTimeTableField(index, 'endTime', buildTimeStr(endParts.hour, e.target.value, endParts.period))}
-                                                                            className="border rounded p-0.5 text-[10px] bg-white font-medium focus:ring-1 focus:ring-blue-400 outline-none"
+                                                                            className="h-8 flex-1 rounded-md border border-emerald-200 bg-white px-1.5 text-center text-xs font-bold text-gray-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                                                                         >
                                                                             {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
                                                                                 <option key={m} value={m}>{m}</option>
@@ -913,7 +891,7 @@ const ExamSchedule = () => {
                                                                         <select 
                                                                             value={endParts.period} 
                                                                             onChange={(e) => updateTimeTableField(index, 'endTime', buildTimeStr(endParts.hour, endParts.minute, e.target.value))}
-                                                                            className="border rounded p-0.5 text-[10px] bg-white font-bold text-blue-600 focus:ring-1 focus:ring-blue-400 outline-none"
+                                                                            className="h-8 w-16 rounded-md border border-emerald-200 bg-white px-1.5 text-center text-xs font-black text-emerald-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                                                                         >
                                                                             <option value="AM">AM</option>
                                                                             <option value="PM">PM</option>
@@ -924,53 +902,49 @@ const ExamSchedule = () => {
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-3 py-2 border-r border-blue-100">
-                                                    <div className="space-y-2">
-                                                        <label className="flex items-center gap-2 text-[10px] font-bold text-gray-600">
+                                                {isSingleMarksSubject(item.name) ? (
+                                                    <td colSpan="3" className="px-3 py-3 text-center bg-slate-50/70">
+                                                        <div className="mx-auto flex max-w-[240px] items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                                                            <span className="text-[10px] font-black uppercase tracking-wide text-slate-600">Marks</span>
                                                             <input
-                                                                type="checkbox"
-                                                                checked={Boolean(item.conductPasswordEnabled)}
-                                                                onChange={(e) => updateTimeTableField(index, 'conductPasswordEnabled', e.target.checked)}
-                                                                className="h-3.5 w-3.5"
+                                                                type="number"
+                                                                placeholder="0"
+                                                                value={item.total ?? item.theory ?? ''}
+                                                                onChange={(e) => updateTimeTableField(index, 'singleMarks', e.target.value)}
+                                                                className="h-9 w-24 rounded-md border border-slate-200 bg-slate-50 px-2 text-center text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                                                             />
-                                                            Password required
-                                                        </label>
-                                                        <input
-                                                            type="text"
-                                                            value={item.conductPassword || ''}
-                                                            onChange={(e) => updateTimeTableField(index, 'conductPassword', e.target.value)}
-                                                            disabled={!item.conductPasswordEnabled}
-                                                            placeholder={item.conductPasswordEnabled ? 'Set subject password' : 'Enable first'}
-                                                            className="w-full text-xs border rounded p-1 disabled:bg-gray-100"
-                                                        />
-                                                    </div>
-                                                </td>
-                                                <td className="px-3 py-2 border-r border-blue-100">
-                                                    <input 
-                                                        type="number" 
-                                                        placeholder="0"
-                                                        value={item.theory} 
-                                                        onChange={(e) => updateTimeTableField(index, 'theory', e.target.value)}
-                                                        className="w-full text-xs border rounded p-1 font-bold text-center"
-                                                    />
-                                                </td>
-                                                <td className="px-3 py-2 border-r border-blue-100">
-                                                    <input 
-                                                        type="number" 
-                                                        placeholder="0"
-                                                        value={item.practical} 
-                                                        onChange={(e) => updateTimeTableField(index, 'practical', e.target.value)}
-                                                        className="w-full text-xs border rounded p-1 font-bold text-center"
-                                                    />
-                                                </td>
-                                                <td className="px-3 py-2 text-center font-bold text-blue-700 bg-blue-50/50">
-                                                    {item.total || 0}
-                                                </td>
+                                                        </div>
+                                                    </td>
+                                                ) : (
+                                                    <>
+                                                        <td className="px-3 py-2 border-r border-blue-100">
+                                                            <input 
+                                                                type="number" 
+                                                                placeholder="0"
+                                                                value={item.theory} 
+                                                                onChange={(e) => updateTimeTableField(index, 'theory', e.target.value)}
+                                                                className="w-full text-xs border rounded p-1 font-bold text-center"
+                                                            />
+                                                        </td>
+                                                        <td className="px-3 py-2 border-r border-blue-100">
+                                                            <input 
+                                                                type="number" 
+                                                                placeholder="0"
+                                                                value={item.practical} 
+                                                                onChange={(e) => updateTimeTableField(index, 'practical', e.target.value)}
+                                                                className="w-full text-xs border rounded p-1 font-bold text-center"
+                                                            />
+                                                        </td>
+                                                        <td className="px-3 py-2 text-center font-bold text-blue-700 bg-blue-50/50">
+                                                            {item.total || 0}
+                                                        </td>
+                                                    </>
+                                                )}
                                             </tr>
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan="8" className="px-4 py-8 text-center text-gray-400 italic">
+                                            <td colSpan="7" className="px-4 py-8 text-center text-gray-400 italic">
                                                 Select a course to populate subjects...
                                             </td>
                                         </tr>
@@ -985,7 +959,7 @@ const ExamSchedule = () => {
                 </div>
                 
                 <div className="md:col-span-2 flex gap-2 justify-end mt-2">
-                    <button type="button" onClick={() => { setShowForm(false); setExaminerId(''); }} className="border px-4 py-2 rounded hover:bg-gray-100">Cancel</button>
+                    <button type="button" onClick={() => { setShowForm(false); }} className="border px-4 py-2 rounded hover:bg-gray-100">Cancel</button>
                     <button type="submit" disabled={isLoading} className="bg-green-600 text-white px-6 py-2 rounded flex items-center gap-2 hover:bg-green-700 disabled:opacity-70 disabled:cursor-not-allowed">
                         {isLoading ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />} 
                         {isLoading ? 'Saving...' : 'Save'}
@@ -1009,7 +983,7 @@ const ExamSchedule = () => {
                         <span className={filters.examName ? 'text-gray-900 font-medium' : 'text-gray-400'}>
                             {filters.examName || '-- All Exams --'}
                         </span>
-                        <span className="text-gray-500">▼</span>
+                        <span className="text-gray-500">?</span>
                     </button>
                     
                     {isFilterExamDropdownOpen && (
@@ -1085,7 +1059,7 @@ const ExamSchedule = () => {
                         <span className={filters.courseId ? 'text-gray-900 font-medium' : 'text-gray-400'}>
                             {selectedFilterCourse?.name || '-- All Courses --'}
                         </span>
-                        <span className="text-gray-500">▼</span>
+                        <span className="text-gray-500">?</span>
                     </button>
                     
                     {isFilterCourseDropdownOpen && (
@@ -1162,7 +1136,7 @@ const ExamSchedule = () => {
                         <span className={filters.branchId ? 'text-gray-900 font-medium' : 'text-gray-400'}>
                             {branches.find(b => b._id === filters.branchId)?.name || '-- All Branches --'}
                         </span>
-                        <span className="text-gray-500">▼</span>
+                        <span className="text-gray-500">?</span>
                     </button>
                     
                     {isFilterBranchDropdownOpen && (
@@ -1378,85 +1352,6 @@ const ExamSchedule = () => {
                             </div>
                         </section>
 
-                        <section>
-                            <h4 className="text-sm font-bold text-blue-700 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                <ShieldCheck size={16} className="text-blue-500"/>
-                                Conduct Summary
-                            </h4>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                                <div className="border rounded-lg p-4 bg-gray-50">
-                                    <div className="text-[10px] uppercase text-gray-500 font-bold">Examiner</div>
-                                    <div className="text-sm font-bold text-gray-900 mt-1">
-                                        {conductData?.schedule?.examiner?.name || 'Not Assigned'}
-                                    </div>
-                                </div>
-                                <div className="border rounded-lg p-4 bg-gray-50">
-                                    <div className="text-[10px] uppercase text-gray-500 font-bold">Password</div>
-                                    <div className="text-sm font-bold text-gray-900 mt-1">
-                                        {conductData?.schedule?.hasConductPassword ? 'Enabled' : 'Disabled'}
-                                    </div>
-                                </div>
-                                <div className="border rounded-lg p-4 bg-gray-50">
-                                    <div className="text-[10px] uppercase text-gray-500 font-bold">Attempts</div>
-                                    <div className="text-sm font-bold text-gray-900 mt-1">
-                                        {conductData?.attempts?.length || 0}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="border rounded-lg overflow-hidden shadow-sm">
-                                <table className="min-w-full divide-y divide-gray-200">
-                                    <thead className="bg-gray-50 text-[10px] font-bold text-gray-500 uppercase">
-                                        <tr>
-                                            <th className="px-4 py-3 text-left">Student</th>
-                                            <th className="px-4 py-3 text-left">Subject</th>
-                                            <th className="px-4 py-3 text-center">Status</th>
-                                            <th className="px-4 py-3 text-center">Answered</th>
-                                            <th className="px-4 py-3 text-center">Right / Wrong</th>
-                                            <th className="px-4 py-3 text-center">Marks</th>
-                                            <th className="px-4 py-3 text-center">Submitted</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100 text-sm">
-                                        {conductData?.attendees?.length > 0 ? conductData.attendees.flatMap((student) =>
-                                            (student.rows || []).map((row, index) => (
-                                                <tr key={`${student._id}-${String(row.subjectId || index)}`} className="hover:bg-blue-50/30">
-                                                    <td className="px-4 py-3 font-bold text-primary">
-                                                        {student.name}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-gray-700">
-                                                        {row.subjectName}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <span className="text-xs font-bold px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                                                            {row.status}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center font-medium">
-                                                        {row.answeredCount || 0} / {row.totalQuestions || 0}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center font-medium">
-                                                        {(row.mcqCorrectCount || 0)} / {(row.mcqWrongCount || 0)}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center font-medium">
-                                                        {(row.totalMarksObtained || 0)} / {(row.totalMarksPossible || 0)}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center font-medium">
-                                                        {row.isSubmitted ? 'Yes' : 'No'}
-                                                    </td>
-                                                </tr>
-                                            ))
-                                        ) : (
-                                            <tr>
-                                                <td colSpan="7" className="text-center py-4 text-gray-400 italic">
-                                                    No conduct data found.
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </section>
                     </div>
                 )}
             </div>
@@ -1553,3 +1448,5 @@ const ExamSchedule = () => {
 };
 
 export default ExamSchedule;
+
+
