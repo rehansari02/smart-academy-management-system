@@ -29,61 +29,13 @@ export const receiptPrintPageStyle = `
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-
-    body.receipt-printing .receipt-page-shell {
-      visibility: visible !important;
-      width: 210mm !important;
-      min-height: 297mm !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      max-width: none !important;
-      background: #fff !important;
-    }
-
-    body.receipt-printing .receipt-page-shell > :not(.receipt-print-host):not(style) {
-      display: none !important;
-    }
-
-    body.receipt-printing .receipt-print-host {
-      visibility: visible !important;
-      display: block !important;
-      position: absolute !important;
-      left: 0 !important;
-      top: 0 !important;
-      width: 210mm !important;
-      min-height: 297mm !important;
-      overflow: visible !important;
-      pointer-events: auto !important;
-      background: #fff !important;
-    }
-
-    body.receipt-printing .print-only-container {
-      visibility: visible !important;
-      width: 210mm !important;
-      height: 297mm !important;
-      margin: 0 !important;
-      page-break-after: avoid !important;
-      page-break-inside: avoid !important;
-    }
-
-    body.receipt-printing * {
-      visibility: hidden !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-      color-adjust: exact !important;
-    }
-
-    body.receipt-printing .receipt-print-host,
-    body.receipt-printing .receipt-print-host * {
-      visibility: visible !important;
-    }
   }
 `;
 
 export const useReceiptPrinter = () => {
   const [printingReceipt, setPrintingReceipt] = useState(null);
   const printRef = useRef(null);
-  const printWindowRef = useRef(null);
+  const printFrameRef = useRef(null);
   const cleanupTimerRef = useRef(null);
   const printTimerRef = useRef(null);
 
@@ -91,14 +43,14 @@ export const useReceiptPrinter = () => {
     document.body.classList.remove('receipt-printing');
     setPrintingReceipt(null);
 
-    if (printWindowRef.current && !printWindowRef.current.closed) {
+    if (printFrameRef.current) {
       try {
-        printWindowRef.current.close();
+        printFrameRef.current.remove();
       } catch {
         // Ignore window close failures.
       }
     }
-    printWindowRef.current = null;
+    printFrameRef.current = null;
 
     if (cleanupTimerRef.current) {
       window.clearTimeout(cleanupTimerRef.current);
@@ -120,40 +72,28 @@ export const useReceiptPrinter = () => {
     };
   }, [cleanupPrint]);
 
-  const openReceiptPrintWindow = useCallback(() => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return null;
-
-    printWindowRef.current = printWindow;
-    printWindow.document.open();
-    printWindow.document.write(`<!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Receipt</title>
-          <base href="${window.location.origin}/" />
-          <style>${receiptPrintPageStyle}</style>
-        </head>
-        <body class="receipt-printing" style="margin:0;background:#fff;">
-          <div class="receipt-print-host">
-            <div class="print-only-container">
-              <div id="receipt-print-root"></div>
-            </div>
-          </div>
-        </body>
-      </html>`);
-    printWindow.document.close();
-
-    printWindow.onafterprint = cleanupPrint;
-    return printWindow;
-  }, [cleanupPrint]);
+  const openReceiptPrintFrame = useCallback(() => {
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.opacity = '0';
+    iframe.style.pointerEvents = 'none';
+    iframe.style.zIndex = '-1';
+    document.body.appendChild(iframe);
+    printFrameRef.current = iframe;
+    return iframe;
+  }, []);
 
   const triggerPrintReceipt = useCallback((receipt) => {
     if (!receipt) return;
 
-    const printWindow = openReceiptPrintWindow();
-    if (!printWindow) {
+    const printFrame = openReceiptPrintFrame();
+    if (!printFrame) {
       return;
     }
 
@@ -173,18 +113,50 @@ export const useReceiptPrinter = () => {
         return;
       }
 
-      const receiptRoot = printWindow.document.getElementById('receipt-print-root');
-      if (!receiptRoot) {
+      const frameDoc = printFrame.contentDocument || printFrame.contentWindow?.document;
+      const frameWin = printFrame.contentWindow;
+      if (!frameDoc || !frameWin) {
         cleanupPrint();
         return;
       }
 
-      receiptRoot.innerHTML = receiptMarkup;
+      frameDoc.open();
+      frameDoc.write(`<!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>Receipt</title>
+            <base href="${window.location.origin}/" />
+            <style>${receiptPrintPageStyle}</style>
+            <style>
+              .receipt-print-host {
+                position: static !important;
+                left: auto !important;
+                top: auto !important;
+                width: 210mm !important;
+                min-height: 297mm !important;
+                overflow: visible !important;
+                pointer-events: auto !important;
+                background: #fff !important;
+              }
+              .print-only-container {
+                width: 210mm !important;
+                min-height: 297mm !important;
+                margin: 0 !important;
+              }
+            </style>
+          </head>
+          <body style="margin:0;background:#fff;">
+            ${receiptMarkup}
+          </body>
+        </html>`);
+      frameDoc.close();
 
       window.requestAnimationFrame(() => {
         try {
-          printWindow.focus();
-          printWindow.print();
+          frameWin.focus();
+          frameWin.print();
         } catch {
           cleanupPrint();
         }
@@ -196,7 +168,7 @@ export const useReceiptPrinter = () => {
 
       cleanupTimerRef.current = window.setTimeout(cleanupPrint, 12000);
     }, 300);
-  }, [cleanupPrint, openReceiptPrintWindow, printRef]);
+  }, [cleanupPrint, openReceiptPrintFrame, printRef]);
 
   return { printingReceipt, triggerPrintReceipt, printRef };
 };
