@@ -101,7 +101,7 @@ const FeeCollection = () => {
     const { edit } = useUserRights('Fees Receipt');
     
     const [editingReceipt, setEditingReceipt] = useState(null);
-    const { printingReceipt, triggerPrintReceipt } = useReceiptPrinter();
+    const { printingReceipt, triggerPrintReceipt, printRef } = useReceiptPrinter();
     
     // Testing Date State
     const [testDate, setTestDate] = useState(new Date().toISOString().split('T')[0]);
@@ -926,6 +926,7 @@ const FeeCollection = () => {
             <div className="receipt-print-host" aria-hidden={!printingReceipt}>
                 {printingReceipt && (
                     <ReceiptPrintTemplate
+                        ref={printRef}
                         receipt={printingReceipt}
                     />
                 )}

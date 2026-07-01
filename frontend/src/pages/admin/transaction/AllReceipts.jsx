@@ -40,7 +40,7 @@ const AllReceipts = () => {
         limit: 10
     });
 
-    const { printingReceipt, triggerPrintReceipt } = useReceiptPrinter();
+    const { printingReceipt, triggerPrintReceipt, printRef } = useReceiptPrinter();
 
     // Edit Modal State
     const [showEditModal, setShowEditModal] = useState(false);
@@ -173,6 +173,7 @@ const AllReceipts = () => {
             <div className="receipt-print-host" aria-hidden={!printingReceipt}>
                 {printingReceipt && (
                     <ReceiptPrintTemplate
+                        ref={printRef}
                         receipt={printingReceipt}
                     />
                 )}

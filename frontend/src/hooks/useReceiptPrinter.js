@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { useReactToPrint } from 'react-to-print';
 
 export const receiptPrintPageStyle = `
   @media screen {
@@ -82,6 +83,7 @@ export const receiptPrintPageStyle = `
 
 export const useReceiptPrinter = () => {
   const [printingReceipt, setPrintingReceipt] = useState(null);
+  const printRef = useRef(null);
   const cleanupTimerRef = useRef(null);
   const printTimerRef = useRef(null);
 
@@ -109,6 +111,12 @@ export const useReceiptPrinter = () => {
     };
   }, [cleanupPrint]);
 
+  const printReceipt = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: 'Receipt',
+    onAfterPrint: cleanupPrint,
+  });
+
   const triggerPrintReceipt = useCallback((receipt) => {
     if (!receipt) return;
 
@@ -123,7 +131,7 @@ export const useReceiptPrinter = () => {
 
     printTimerRef.current = window.setTimeout(() => {
       window.requestAnimationFrame(() => {
-        window.print();
+        printReceipt();
       });
 
       if (cleanupTimerRef.current) {
@@ -132,7 +140,7 @@ export const useReceiptPrinter = () => {
 
       cleanupTimerRef.current = window.setTimeout(cleanupPrint, 12000);
     }, 300);
-  }, [cleanupPrint]);
+  }, [cleanupPrint, printReceipt]);
 
-  return { printingReceipt, triggerPrintReceipt };
+  return { printingReceipt, triggerPrintReceipt, printRef };
 };
