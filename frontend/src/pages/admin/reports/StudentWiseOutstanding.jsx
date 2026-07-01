@@ -217,12 +217,14 @@ const StudentWiseOutstanding = () => {
         : sortedStudents.filter((student) => getDueTotal(student) > 0);
 
     const reportTotals = outstandingStudents.reduce((acc, student) => {
-        const summary = paymentSummaryMap[student._id] || {};
         const monthlyOutstanding = getMonthlyOutstanding(student);
         const dueAmount = getDueTotal(student);
         acc.totalStudents += 1;
-        acc.totalOutstanding += monthlyOutstanding;
-        if (monthlyOutstanding < 0) acc.totalAdvance += monthlyOutstanding;
+        if (monthlyOutstanding > 0) {
+            acc.totalOutstanding += monthlyOutstanding;
+        } else if (monthlyOutstanding < 0) {
+            acc.totalAdvance += Math.abs(monthlyOutstanding);
+        }
         acc.totalDue += dueAmount;
         return acc;
     }, {
@@ -389,7 +391,7 @@ const StudentWiseOutstanding = () => {
                                     <td className="border border-gray-300 px-2 py-1.5">{s.course?.shortName || s.course?.name || '-'}</td>
                                     <td className="border border-gray-300 px-2 py-1.5 text-center">{s.mobileParent || '-'}</td>
 
-                                    {/* Outstanding Amount: current month's net due (can be negative = credit) */}
+                                    {/* Outstanding Amount: current month's net due (can be negative = credit/advance) */}
                                     <td className="border border-gray-300 px-2 py-1.5 text-right font-semibold text-red-600">
                                         {summaryLoading ? '...' : (() => {
                                             const total = getMonthlyOutstanding(s);
