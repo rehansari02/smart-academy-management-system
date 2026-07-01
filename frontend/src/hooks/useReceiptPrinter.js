@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { useReactToPrint } from 'react-to-print';
 
 export const receiptPrintPageStyle = `
   @media screen {
@@ -84,12 +83,22 @@ export const receiptPrintPageStyle = `
 export const useReceiptPrinter = () => {
   const [printingReceipt, setPrintingReceipt] = useState(null);
   const printRef = useRef(null);
+  const printWindowRef = useRef(null);
   const cleanupTimerRef = useRef(null);
   const printTimerRef = useRef(null);
 
   const cleanupPrint = useCallback(() => {
     document.body.classList.remove('receipt-printing');
     setPrintingReceipt(null);
+
+    if (printWindowRef.current && !printWindowRef.current.closed) {
+      try {
+        printWindowRef.current.close();
+      } catch {
+        // Ignore window close failures.
+      }
+    }
+    printWindowRef.current = null;
 
     if (cleanupTimerRef.current) {
       window.clearTimeout(cleanupTimerRef.current);
@@ -111,14 +120,42 @@ export const useReceiptPrinter = () => {
     };
   }, [cleanupPrint]);
 
-  const printReceipt = useReactToPrint({
-    contentRef: printRef,
-    documentTitle: 'Receipt',
-    onAfterPrint: cleanupPrint,
-  });
+  const openReceiptPrintWindow = useCallback(() => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return null;
+
+    printWindowRef.current = printWindow;
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Receipt</title>
+          <base href="${window.location.origin}/" />
+          <style>${receiptPrintPageStyle}</style>
+        </head>
+        <body class="receipt-printing" style="margin:0;background:#fff;">
+          <div class="receipt-print-host">
+            <div class="print-only-container">
+              <div id="receipt-print-root"></div>
+            </div>
+          </div>
+        </body>
+      </html>`);
+    printWindow.document.close();
+
+    printWindow.onafterprint = cleanupPrint;
+    return printWindow;
+  }, [cleanupPrint]);
 
   const triggerPrintReceipt = useCallback((receipt) => {
     if (!receipt) return;
+
+    const printWindow = openReceiptPrintWindow();
+    if (!printWindow) {
+      return;
+    }
 
     flushSync(() => {
       setPrintingReceipt(receipt);
@@ -130,8 +167,27 @@ export const useReceiptPrinter = () => {
     }
 
     printTimerRef.current = window.setTimeout(() => {
+      const receiptMarkup = printRef.current?.outerHTML;
+      if (!receiptMarkup) {
+        cleanupPrint();
+        return;
+      }
+
+      const receiptRoot = printWindow.document.getElementById('receipt-print-root');
+      if (!receiptRoot) {
+        cleanupPrint();
+        return;
+      }
+
+      receiptRoot.innerHTML = receiptMarkup;
+
       window.requestAnimationFrame(() => {
-        printReceipt();
+        try {
+          printWindow.focus();
+          printWindow.print();
+        } catch {
+          cleanupPrint();
+        }
       });
 
       if (cleanupTimerRef.current) {
@@ -140,7 +196,7 @@ export const useReceiptPrinter = () => {
 
       cleanupTimerRef.current = window.setTimeout(cleanupPrint, 12000);
     }, 300);
-  }, [cleanupPrint, printReceipt]);
+  }, [cleanupPrint, openReceiptPrintWindow, printRef]);
 
   return { printingReceipt, triggerPrintReceipt, printRef };
 };
