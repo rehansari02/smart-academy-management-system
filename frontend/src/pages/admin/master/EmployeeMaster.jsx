@@ -22,6 +22,7 @@ import Swal from 'sweetalert2';
 
 import { useUserRights } from '../../../hooks/useUserRights';
 import { useNavigate } from 'react-router-dom';
+import { confirmTypedDelete } from '../../../utils/confirmTypedDelete';
 
 const EmployeeMaster = () => {
   const navigate = useNavigate();
@@ -257,7 +258,7 @@ const EmployeeMaster = () => {
       });
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (emp) => {
       if(!canDelete) {
           Swal.fire({
               title: 'Access Denied',
@@ -267,19 +268,20 @@ const EmployeeMaster = () => {
           });
           return;
       }
-      Swal.fire({
-          title: 'Are you sure?',
-          text: "You want to permanently delete this employee? This action cannot be undone.",
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonColor: '#d33',
-          cancelButtonColor: '#3085d6',
-          confirmButtonText: 'Yes, delete it!'
-      }).then((result) => {
-          if (result.isConfirmed) {
-              dispatch(deleteEmployee(id));
-          }
+
+      const confirmed = await confirmTypedDelete({
+          itemName: emp?.name,
+          itemType: 'employee',
+          details: [
+              emp?.employeeCode ? `Employee Code: ${emp.employeeCode}` : '',
+              emp?.mobile ? `Mobile: ${emp.mobile}` : '',
+          ],
+          finalWarning: 'This will permanently delete employee details, login, and related records.',
       });
+
+      if (confirmed) {
+          dispatch(deleteEmployee(emp._id));
+      }
   };
 
   const handlePrint = (emp) => {
@@ -657,7 +659,7 @@ const EmployeeMaster = () => {
                                         <Printer size={14}/>
                                     </button>
                                     {canDelete && (
-                                        <button onClick={() => handleDelete(emp._id)} className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" title="Delete">
+                                        <button onClick={() => handleDelete(emp)} className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" title="Delete">
                                             <Trash2 size={14}/>
                                         </button>
                                     )}

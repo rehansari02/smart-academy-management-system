@@ -13,6 +13,8 @@ import EditReceiptModal from '../../../components/transaction/EditReceiptModal';
 import { useLocation } from 'react-router-dom';
 import { getMediaUrl } from '../../../utils/mediaUrl';
 import { receiptPrintPageStyle, useReceiptPrinter } from '../../../hooks/useReceiptPrinter';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const POPULAR_INDIAN_BANKS = [
     "State Bank of India",
@@ -83,6 +85,7 @@ const FeeCollection = () => {
     const location = useLocation();
     const { receipts, isSuccess, message, isLoading } = useSelector(state => state.transaction);
     const { user } = useSelector((state) => state.auth);
+    const { edit } = useUserRights('Fees Receipt');
     
     const [editingReceipt, setEditingReceipt] = useState(null);
     const { printingReceipt, triggerPrintReceipt } = useReceiptPrinter();
@@ -296,6 +299,11 @@ const FeeCollection = () => {
 
         try {
             if (editingReceipt) {
+                if (!edit) {
+                    showPermissionDenied("You don't have authority to edit fees receipts.");
+                    setIsSubmitting(false);
+                    return;
+                }
                 await dispatch(updateFeeReceipt({ id: editingReceipt._id, data: payload })).unwrap();
             } else {
                 await dispatch(collectFees(payload)).unwrap();
@@ -310,6 +318,10 @@ const FeeCollection = () => {
     const [showEditModal, setShowEditModal] = useState(false);
 
     const handleEdit = (receipt) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit fees receipts.");
+            return;
+        }
         setEditingReceipt(receipt);
         setShowEditModal(true);
     };

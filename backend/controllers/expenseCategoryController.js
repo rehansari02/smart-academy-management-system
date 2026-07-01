@@ -14,7 +14,7 @@ const getExpenseCategories = asyncHandler(async (req, res) => {
   
   // If 'all' is true, return without pagination (for dropdowns)
   if (req.query.all === 'true') {
-      const categories = await ExpenseCategory.find(query).sort({ name: 1 });
+      const categories = await ExpenseCategory.find(query).populate('branch', 'name').sort({ name: 1 });
       return res.status(200).json(categories);
   }
 
@@ -24,6 +24,7 @@ const getExpenseCategories = asyncHandler(async (req, res) => {
 
   const total = await ExpenseCategory.countDocuments(query);
   const categories = await ExpenseCategory.find(query)
+    .populate('branch', 'name')
     .sort({ name: 1 })
     .skip(skip)
     .limit(limit);

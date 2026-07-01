@@ -115,7 +115,7 @@ const Navbar = () => {
              return false;
         }
 
-        const perm = myPermissions.find(p => p.page === sub.title);
+        const perm = myPermissions.find(p => p.page === (sub.permissionPage || sub.title));
         return perm && normalizePermissionFlags(perm).view === true;
       }) : [];
 

@@ -11,6 +11,8 @@ import EditReceiptModal from '../../../components/transaction/EditReceiptModal';
 import ReceiptPrintTemplate from '../../../components/ReceiptPrintTemplate';
 import StudentSearch from '../../../components/StudentSearch';
 import { receiptPrintPageStyle, useReceiptPrinter } from '../../../hooks/useReceiptPrinter';
+import { useUserRights } from '../../../hooks/useUserRights';
+import { showPermissionDenied } from '../../../utils/permissionAlert';
 // Assuming you might want to reuse the Edit Modal from FeeCollection or create a new one. 
 // For now, I will implement the table first. If Edit needs a modal, I might need to copy that logic or refactor it into a shared component.
 // Given the user request, I will implement the Edit/Delete actions.
@@ -21,6 +23,7 @@ const AllReceipts = () => {
     const { employees } = useSelector(state => state.employees);
     const { branches } = useSelector(state => state.master);
     const { user } = useSelector(state => state.auth);
+    const { edit } = useUserRights('Fees Receipt');
     
     // Filters State
     const [filters, setFilters] = useState({
@@ -152,6 +155,10 @@ const AllReceipts = () => {
 
     // Edit Handlers
     const handleEdit = (receipt) => {
+        if (!edit) {
+            showPermissionDenied("You don't have authority to edit fees receipts.");
+            return;
+        }
         setEditingReceipt(receipt);
         setShowEditModal(true);
     };

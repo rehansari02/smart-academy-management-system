@@ -11,6 +11,7 @@ import { Search, Plus, X, Edit2, Trash2, Layers, Eye, Upload, RefreshCw, Clock, 
 import { TableSkeleton } from '../../../components/common/SkeletonLoader';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
+import { confirmTypedDelete } from '../../../utils/confirmTypedDelete';
 
 const CourseMaster = () => {
   const dispatch = useDispatch();
@@ -175,13 +176,24 @@ const CourseMaster = () => {
       setPendingPriceChange(null);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (course) => {
       if (!canDelete) {
         showPermissionDenied("You don't have authority to delete courses.");
         return;
       }
-      if(window.confirm('Are you sure you want to delete this course?')) {
-          dispatch(deleteCourse(id));
+
+      const confirmed = await confirmTypedDelete({
+          itemName: course?.name,
+          itemType: 'course',
+          details: [
+              course?.shortName ? `Short Name: ${course.shortName}` : '',
+              course?.courseType ? `Type: ${course.courseType}` : '',
+          ],
+          finalWarning: 'This will permanently delete this course and may affect linked students, subjects, batches, and fees.',
+      });
+
+      if (confirmed) {
+          dispatch(deleteCourse(course._id));
       }
   };
 
@@ -389,7 +401,7 @@ const CourseMaster = () => {
                                 <button onClick={() => handleEdit(course)} className="bg-blue-50 text-blue-600 p-1 rounded border border-blue-200 hover:bg-blue-100 transition" title="Edit">
                                     <Edit2 size={14}/>
                                 </button>
-                                <button onClick={() => handleDelete(course._id)} className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" title="Delete">
+                                <button onClick={() => handleDelete(course)} className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" title="Delete">
                                     <Trash2 size={14}/>
                                 </button>
                             </div>

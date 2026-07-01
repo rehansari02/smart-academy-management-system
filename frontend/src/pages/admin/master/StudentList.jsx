@@ -9,9 +9,9 @@ import SearchableDropdown from '../../../components/common/SearchableDropdown';
 import { toast } from 'react-toastify';
 import moment from 'moment';
 import { TableSkeleton } from '../../../components/common/SkeletonLoader';
-import Swal from 'sweetalert2';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
+import { confirmTypedDelete } from '../../../utils/confirmTypedDelete';
 
 const StudentList = () => {
   const dispatch = useDispatch();
@@ -157,25 +157,26 @@ const StudentList = () => {
       }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (student) => {
       if (!canDelete) {
           showPermissionDenied("You don't have authority to delete students.");
           return;
       }
-      
-      Swal.fire({
-          title: 'Are you sure?',
-          text: "You want to permanently delete this student? This action cannot be undone.",
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonColor: '#d33',
-          cancelButtonColor: '#3085d6',
-          confirmButtonText: 'Yes, delete it!'
-      }).then((result) => {
-          if (result.isConfirmed) {
-              dispatch(deleteStudent(id));
-          }
+
+      const fullName = getStudentFullName(student);
+      const confirmed = await confirmTypedDelete({
+          itemName: fullName,
+          itemType: 'student',
+          details: [
+              student?.regNo ? `Reg No: ${student.regNo}` : '',
+              student?.course?.name || student?.course?.shortName ? `Course: ${student.course?.name || student.course?.shortName}` : '',
+          ],
+          finalWarning: 'This will permanently delete student records, login, receipts, and related data.',
       });
+
+      if (confirmed) {
+          dispatch(deleteStudent(student._id));
+      }
   };
 
   return (
@@ -439,7 +440,7 @@ const StudentList = () => {
                         >
                             <Edit size={14}/>
                         </button>
-                        <button onClick={() => handleDelete(s._id)} className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" title="Delete">
+                        <button onClick={() => handleDelete(s)} className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" title="Delete">
                             <Trash2 size={14}/>
                         </button>
                         <Link to={`/print/admission-form/${s._id}?mode=FULL`} target="_blank" className="bg-purple-50 text-purple-600 p-1 rounded border border-purple-200 hover:bg-purple-100 transition" title="Print">

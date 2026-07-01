@@ -96,6 +96,7 @@ export const MENU_CONFIG = [
       // { title: 'Cancelled Students', path: '/transaction/cancelled-students' },
       { title: 'Fees Receipt', path: '/transaction/fees-receipt' },
       { title: 'Expenses', path: '/transaction/expenses' },
+      { title: 'Expense Categories', path: '/transaction/expense-categories', permissionPage: 'Expenses' },
       {
         title: 'Attendance',
         type: 'nested',
@@ -214,7 +215,7 @@ export const getMenuSections = () => {
                         pageNames.push(nestedSub.permissionPage || `${sub.title} - ${nestedSub.title}`);
                     });
                 } else {
-                    pageNames.push(sub.title);
+                    pageNames.push(sub.permissionPage || sub.title);
                     
                     // Specific Handling for Admin Home Granular Rights
                     if (sub.title === 'Admin Home') {

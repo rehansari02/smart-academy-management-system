@@ -15,7 +15,7 @@ const getBranchScope = (req) => {
 const normalizeBranch = (branchId) => {
   if (!branchId) return null;
   if (!mongoose.Types.ObjectId.isValid(branchId)) return false;
-  return branchId;
+  return new mongoose.Types.ObjectId(branchId.toString());
 };
 
 const buildBranchExpenseQuery = async (branchId) => {
@@ -42,7 +42,8 @@ const buildBranchExpenseQuery = async (branchId) => {
 // @access  Private
 const getExpenses = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10;
+  const fetchAll = req.query.all === 'true';
+  const limit = fetchAll ? 0 : (parseInt(req.query.limit) || 10);
   const skip = (page - 1) * limit;
 
   let query = {};
@@ -53,6 +54,14 @@ const getExpenses = asyncHandler(async (req, res) => {
   }
   if (branchId) {
     query = { ...query, ...(await buildBranchExpenseQuery(branchId)) };
+  }
+
+  if (req.query.categoryId) {
+    if (!mongoose.Types.ObjectId.isValid(req.query.categoryId)) {
+      res.status(400);
+      throw new Error('Invalid category selected');
+    }
+    query.category = new mongoose.Types.ObjectId(req.query.categoryId);
   }
   
   const dateFilter = req.query.dateFilter;
@@ -97,21 +106,32 @@ const getExpenses = asyncHandler(async (req, res) => {
       }
   }
   
-  const total = await Expense.countDocuments(query);
-  
-  const expenses = await Expense.find(query)
+  const [total, totalAmountResult] = await Promise.all([
+    Expense.countDocuments(query),
+    Expense.aggregate([
+      { $match: query },
+      { $group: { _id: null, amount: { $sum: '$amount' } } }
+    ])
+  ]);
+
+  let expenseQuery = Expense.find(query)
     .populate('addedBy', 'name email')
     .populate('branch', 'name')
     .populate('category', 'name')
-    .sort({ date: -1 })
-    .skip(skip)
-    .limit(limit);
+    .sort({ date: -1 });
+
+  if (!fetchAll) {
+    expenseQuery = expenseQuery.skip(skip).limit(limit);
+  }
+
+  const expenses = await expenseQuery;
     
   res.status(200).json({
     data: expenses,
     currentPage: page,
-    totalPages: Math.ceil(total / limit),
-    totalItems: total
+    totalPages: fetchAll ? 1 : Math.ceil(total / limit),
+    totalItems: total,
+    totalAmount: totalAmountResult[0]?.amount || 0
   });
 });
 

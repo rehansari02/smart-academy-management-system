@@ -7,15 +7,16 @@ const {
   deleteExpenseCategory
 } = require('../controllers/expenseCategoryController');
 const { protect } = require('../middlewares/authMiddleware');
+const { checkPermission } = require('../middlewares/permissionMiddleware');
 
 router.use(protect);
 
 router.route('/')
-  .get(getExpenseCategories)
-  .post(createExpenseCategory);
+  .get(checkPermission('Expenses', 'view'), getExpenseCategories)
+  .post(checkPermission('Expenses', 'add'), createExpenseCategory);
 
 router.route('/:id')
-  .put(updateExpenseCategory)
-  .delete(deleteExpenseCategory);
+  .put(checkPermission('Expenses', 'edit'), updateExpenseCategory)
+  .delete(checkPermission('Expenses', 'delete'), deleteExpenseCategory);
 
 module.exports = router;

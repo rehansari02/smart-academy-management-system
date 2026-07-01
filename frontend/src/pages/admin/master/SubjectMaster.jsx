@@ -6,6 +6,7 @@ import { toast } from 'react-toastify';
 import { Search, Plus, X, BookOpen, Edit, Trash2, Loader, Eye, RotateCcw } from 'lucide-react';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
+import { confirmTypedDelete } from '../../../utils/confirmTypedDelete';
 
 const SubjectMaster = () => {
   const dispatch = useDispatch();
@@ -82,13 +83,24 @@ const SubjectMaster = () => {
       });
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (subject) => {
       if (!canDelete) {
           showPermissionDenied("You don't have authority to delete subjects.");
           return;
       }
-      if(window.confirm("Are you sure you want to delete this subject?")) {
-          dispatch(deleteSubject(id));
+
+      const confirmed = await confirmTypedDelete({
+          itemName: subject?.name,
+          itemType: 'subject',
+          details: [
+              subject?.printedName ? `Printed Name: ${subject.printedName}` : '',
+              subject?.duration ? `Duration: ${subject.duration} ${subject.durationType || ''}` : '',
+          ],
+          finalWarning: 'This will permanently delete this subject and may affect linked courses and exam data.',
+      });
+
+      if (confirmed) {
+          dispatch(deleteSubject(subject._id));
       }
   };
 
@@ -184,7 +196,7 @@ const SubjectMaster = () => {
                                 <button onClick={() => handleEdit(sub)} className="bg-blue-50 text-blue-600 p-1 rounded border border-blue-200 hover:bg-blue-100 transition" title="Edit">
                                     <Edit size={14}/>
                                 </button>
-                                <button onClick={() => handleDelete(sub._id)} className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" title="Delete">
+                                <button onClick={() => handleDelete(sub)} className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" title="Delete">
                                     <Trash2 size={14}/>
                                 </button>
                             </div>

@@ -154,6 +154,7 @@ const StudentAttendance = lazy(() => import("./pages/admin/transaction/StudentAt
 const EmployeeAttendance = lazy(() => import("./pages/admin/transaction/EmployeeAttendance"));
 const ManageAttendance = lazy(() => import("./pages/admin/transaction/ManageAttendance"));
 const Expenses = lazy(() => import("./pages/admin/transaction/Expenses"));
+const ExpenseCategories = lazy(() => import("./pages/admin/transaction/ExpenseCategories"));
 
 // --- BLOG ---
 const ManageBlogs = lazy(() => import("./pages/admin/blog/ManageBlogs"));
@@ -705,6 +706,16 @@ function App() {
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
                         <Expenses />
+                    </Suspense>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/transaction/expense-categories"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <ExpenseCategories />
                     </Suspense>
                   </PrivateRoute>
                 }

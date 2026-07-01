@@ -10,6 +10,7 @@ import { Search, Plus, X, Clock, Users, Edit2, Trash2, CheckSquare, Square, Refr
 import { TableSkeleton } from '../../../components/common/SkeletonLoader';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
+import { confirmTypedDelete } from '../../../utils/confirmTypedDelete';
 
 const BatchMaster = () => {
   const dispatch = useDispatch();
@@ -113,13 +114,24 @@ const BatchMaster = () => {
       setShowForm(true);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (batch) => {
       if (!canDelete) {
           showPermissionDenied("You don't have authority to delete batches.");
           return;
       }
-      if(window.confirm('Are you sure you want to delete this batch?')) {
-          dispatch(deleteBatch(id));
+
+      const confirmed = await confirmTypedDelete({
+          itemName: batch?.name,
+          itemType: 'batch',
+          details: [
+              batch?.faculty?.name ? `Faculty: ${batch.faculty.name}` : '',
+              batch?.startTime && batch?.endTime ? `Time: ${batch.startTime} - ${batch.endTime}` : '',
+          ],
+          finalWarning: 'This will permanently delete this batch and can affect linked batch records.',
+      });
+
+      if (confirmed) {
+          dispatch(deleteBatch(batch._id));
       }
   };
 
@@ -333,7 +345,7 @@ const BatchMaster = () => {
                                 <button onClick={() => handleEdit(batch)} className="bg-blue-50 text-blue-600 p-1 rounded border border-blue-200 hover:bg-blue-100 transition" title="Edit">
                                     <Edit2 size={14}/>
                                 </button>
-                                <button onClick={() => handleDelete(batch._id)} className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" title="Delete">
+                                <button onClick={() => handleDelete(batch)} className="bg-red-50 text-red-600 p-1 rounded border border-red-200 hover:bg-red-100 transition" title="Delete">
                                     <Trash2 size={14}/>
                                 </button>
                             </div>

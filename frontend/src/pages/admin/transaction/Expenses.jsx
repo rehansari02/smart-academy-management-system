@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
+import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, FileText, IndianRupee, Trash2, Edit, Calendar, FolderPlus, Tag, ChevronLeft, ChevronRight, Building2, Printer } from 'lucide-react';
+import { Plus, Search, FileText, IndianRupee, Trash2, Edit, FolderPlus, ChevronLeft, ChevronRight, Building2, Printer } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Swal from 'sweetalert2';
 import { useReactToPrint } from 'react-to-print';
@@ -24,7 +26,7 @@ const Expenses = () => {
     const dispatch = useDispatch();
     const { user } = useSelector((state) => state.auth);
     const { branches } = useSelector((state) => state.branch);
-    const { add, edit, delete: canDelete } = useUserRights('Expenses');
+    const { view, add, edit, delete: canDelete } = useUserRights('Expenses');
     const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
     const userBranchId = typeof user?.branchId === 'object' ? user.branchId?._id : user?.branchId;
     const userBranchName = user?.branchDetails?.name || user?.branchName || 'My Branch';
@@ -37,6 +39,12 @@ const Expenses = () => {
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [branchFilter, setBranchFilter] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('');
+    const [totalItems, setTotalItems] = useState(0);
+    const [summaryTotalAmount, setSummaryTotalAmount] = useState(0);
+    const [printExpenses, setPrintExpenses] = useState([]);
+    const [isPrintMode, setIsPrintMode] = useState(false);
+    const [isPreparingPrint, setIsPreparingPrint] = useState(false);
     
     // Pagination State (Expenses)
     const [currentPage, setCurrentPage] = useState(1);
@@ -44,22 +52,13 @@ const Expenses = () => {
     const limit = 10;
 
     // State for Categories
-    const [categories, setCategories] = useState([]);
     const [allCategories, setAllCategories] = useState([]); // For Dropdown
-    const [isCategoryLoading, setIsCategoryLoading] = useState(false);
-    
-    // Pagination State (Categories)
-    const [catCurrentPage, setCatCurrentPage] = useState(1);
-    const [catTotalPages, setCatTotalPages] = useState(1);
-    const catLimit = 10;
 
     // Modal States
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
-    const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
     
     // Edit Modes
     const [editingExpenseId, setEditingExpenseId] = useState(null);
-    const [editingCategoryId, setEditingCategoryId] = useState(null);
 
     // Form States
     const [expenseData, setExpenseData] = useState({
@@ -70,7 +69,6 @@ const Expenses = () => {
         date: todayInputDate(),
         paymentMode: 'Cash'
     });
-    const [categoryName, setCategoryName] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const componentRef = useRef(null);
 
@@ -78,10 +76,6 @@ const Expenses = () => {
         dispatch(getBranches());
         fetchAllCategoriesForDropdown();
     }, [dispatch]);
-
-    useEffect(() => {
-        fetchCategories(catCurrentPage);
-    }, [catCurrentPage, branchFilter]);
 
     useEffect(() => {
         fetchAllCategoriesForDropdown();
@@ -102,7 +96,7 @@ const Expenses = () => {
         } else {
             fetchExpenses(currentPage);
         }
-    }, [currentPage, dateFilter, customStartDate, customEndDate, branchFilter]);
+    }, [currentPage, dateFilter, customStartDate, customEndDate, branchFilter, categoryFilter]);
 
     // Fetch all categories for the dropdown in the Add Expense modal
     const fetchAllCategoriesForDropdown = async () => {
@@ -117,28 +111,15 @@ const Expenses = () => {
         }
     };
 
-    const fetchCategories = async (page) => {
-        try {
-            setIsCategoryLoading(true);
-            const response = await expenseCategoryService.getCategories(page, catLimit, false, branchFilter);
-            setCategories(Array.isArray(response.data) ? response.data : []);
-            setCatCurrentPage(response.currentPage);
-            setCatTotalPages(response.totalPages);
-        } catch (error) {
-            console.error('Error fetching categories:', error);
-            toast.error('Failed to load expense categories');
-        } finally {
-            setIsCategoryLoading(false);
-        }
-    };
-
     const fetchExpenses = async (page) => {
         try {
             setIsLoading(true);
-            const response = await expenseService.getExpenses(page, limit, dateFilter, customStartDate, customEndDate, branchFilter);
+            const response = await expenseService.getExpenses(page, limit, dateFilter, customStartDate, customEndDate, branchFilter, categoryFilter);
             setExpenses(Array.isArray(response.data) ? response.data : []);
             setCurrentPage(response.currentPage);
             setTotalPages(response.totalPages);
+            setTotalItems(response.totalItems || 0);
+            setSummaryTotalAmount(response.totalAmount || 0);
         } catch (error) {
             console.error('Error fetching expenses:', error);
             toast.error(error.response?.data?.message || 'Failed to load expenses');
@@ -202,19 +183,32 @@ const Expenses = () => {
             return;
         }
         const result = await Swal.fire({
-            title: 'Are you sure?',
-            text: "You won't be able to revert this!",
+            title: 'Delete Expense?',
+            text: 'This expense will be permanently removed.',
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonColor: '#3085d6',
-            cancelButtonColor: '#d33',
-            confirmButtonText: 'Yes, delete it!'
+            confirmButtonText: 'Delete',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#dc2626',
+            cancelButtonColor: '#6b7280',
+            reverseButtons: true,
+            allowOutsideClick: false,
+            customClass: {
+                popup: 'rounded-2xl',
+                confirmButton: 'rounded-lg',
+                cancelButton: 'rounded-lg'
+            }
         });
 
         if (result.isConfirmed) {
             try {
                 await expenseService.deleteExpense(id);
-                Swal.fire('Deleted!', 'Expense has been deleted.', 'success');
+                Swal.fire({
+                    title: 'Deleted',
+                    text: 'Expense has been deleted.',
+                    icon: 'success',
+                    confirmButtonColor: '#2563eb'
+                });
                 fetchExpenses(safeExpenses.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage);
             } catch (error) {
                 console.error('Error deleting expense:', error);
@@ -236,92 +230,32 @@ const Expenses = () => {
         });
     };
 
-    // --- CATEGORY HANDLERS ---
-    const handleCategorySubmit = async (e) => {
-        e.preventDefault();
-        if(!categoryName.trim()) return toast.error('Category name is required');
-        if (editingCategoryId ? !edit : !add) {
-            showPermissionDenied(`You don't have authority to ${editingCategoryId ? 'edit' : 'add'} expense categories.`);
-            return;
-        }
-
-        try {
-            setIsSubmitting(true);
-            if (editingCategoryId) {
-                await expenseCategoryService.updateCategory(editingCategoryId, { name: categoryName });
-                toast.success('Category updated successfully');
-            } else {
-                await expenseCategoryService.createCategory({ name: categoryName });
-                toast.success('Category created successfully');
-            }
-            closeCategoryModal();
-            fetchCategories(catCurrentPage);
-            fetchAllCategoriesForDropdown(); // Refresh dropdown list
-        } catch (error) {
-            console.error('Error saving category:', error);
-            toast.error(error.response?.data?.message || 'Failed to save category');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    const openEditCategory = (category) => {
-        setEditingCategoryId(category._id);
-        setCategoryName(category.name);
-        setIsCategoryModalOpen(true);
-    };
-
-    const handleDeleteCategory = async (id) => {
-         if (!canDelete) {
-            showPermissionDenied("You don't have authority to delete expense categories.");
-            return;
-         }
-         const result = await Swal.fire({
-            title: 'Delete Category?',
-            text: "Ensure no expenses are currently linked to this category.",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#3085d6',
-            cancelButtonColor: '#d33',
-            confirmButtonText: 'Yes, delete it!'
-        });
-
-        if (result.isConfirmed) {
-            try {
-                await expenseCategoryService.deleteCategory(id);
-                Swal.fire('Deleted!', 'Category has been deleted.', 'success');
-                fetchCategories(categories.length === 1 && catCurrentPage > 1 ? catCurrentPage - 1 : catCurrentPage);
-                fetchAllCategoriesForDropdown();
-            } catch (error) {
-                console.error('Error deleting category:', error);
-                Swal.fire('Error', error.response?.data?.message || 'Failed to delete category', 'error');
-            }
-        }
-    };
-
-    const closeCategoryModal = () => {
-        setIsCategoryModalOpen(false);
-        setEditingCategoryId(null);
-        setCategoryName('');
-    };
-
     const safeExpenses = Array.isArray(expenses) ? expenses : [];
-    const filteredExpenses = safeExpenses.filter(exp => 
+    const filteredExpenses = safeExpenses.filter(exp =>
         (exp.reason || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
+    const printFilteredExpenses = printExpenses.filter(exp =>
+        (exp.reason || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    const tableExpenses = isPrintMode ? printFilteredExpenses : filteredExpenses;
     const activeBranchName = isSuperAdmin
         ? (branches.find(branch => branch._id === branchFilter)?.name || 'All Branches')
         : userBranchName;
+    const activeCategoryName = allCategories.find(cat => cat._id === categoryFilter)?.name || 'All Categories';
     const activeDateLabel = dateFilter
         ? dateFilter === 'custom'
             ? `${customStartDate || 'Start'} to ${customEndDate || 'End'}`
             : dateFilter
         : 'All Time';
-    const totalExpenseAmount = filteredExpenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+    const totalExpenseAmount = tableExpenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
 
-    const handlePrint = useReactToPrint({
+    const runPrint = useReactToPrint({
         contentRef: componentRef,
         documentTitle: `Expenses_${activeBranchName.replace(/\s+/g, '_')}_${activeDateLabel.replace(/\s+/g, '_')}`,
+        onAfterPrint: () => {
+            setIsPrintMode(false);
+            setPrintExpenses([]);
+        },
         pageStyle: `
             @page { size: A4 landscape; margin: 12mm; }
             @media print {
@@ -333,9 +267,54 @@ const Expenses = () => {
                 .expense-print-table thead tr { background: #f3f4f6 !important; color: #111827 !important; }
                 .expense-print-reason { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; max-width: none !important; }
                 .expense-print-category { background: transparent !important; color: #111827 !important; padding: 0 !important; }
+                .expense-print-total-row td {
+                    border: 2px solid #111827 !important;
+                    border-top-width: 3px !important;
+                    background: #f9fafb !important;
+                    color: #111827 !important;
+                    break-inside: avoid !important;
+                    page-break-inside: avoid !important;
+                }
             }
         `
     });
+
+    const handlePrint = async () => {
+        if (totalItems === 0) return;
+
+        try {
+            setIsPreparingPrint(true);
+            const response = await expenseService.getExpenses(1, limit, dateFilter, customStartDate, customEndDate, branchFilter, categoryFilter, true);
+
+            flushSync(() => {
+                setPrintExpenses(Array.isArray(response.data) ? response.data : []);
+                setIsPrintMode(true);
+                setIsPreparingPrint(false);
+            });
+
+            requestAnimationFrame(() => {
+                runPrint();
+            });
+        } catch (error) {
+            console.error('Error preparing expense print:', error);
+            toast.error(error.response?.data?.message || 'Failed to prepare print data');
+            setIsPreparingPrint(false);
+            setIsPrintMode(false);
+            setPrintExpenses([]);
+        }
+    };
+
+    if (!view) {
+        return (
+            <div className="container mx-auto px-4 py-16">
+                <div className="mx-auto max-w-lg rounded-2xl border border-red-100 bg-white p-8 text-center shadow-sm">
+                    <FileText className="mx-auto mb-4 h-12 w-12 text-red-300" />
+                    <h1 className="text-xl font-bold text-gray-900">Access Denied</h1>
+                    <p className="mt-2 text-sm text-gray-500">You don't have authority to view expenses.</p>
+                </div>
+            </div>
+        );
+    }
 
     if (isLoading && safeExpenses.length === 0) return <Loading />;
 
@@ -351,19 +330,19 @@ const Expenses = () => {
                 <div className="flex items-center gap-3 print:hidden">
                      <button
                         onClick={handlePrint}
-                        disabled={filteredExpenses.length === 0}
+                        disabled={totalItems === 0 || isPreparingPrint}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold transition-all shadow-sm hover:shadow-md flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <Printer size={20} />
-                        <span className="hidden sm:inline">Print</span>
+                        <span className="hidden sm:inline">{isPreparingPrint ? 'Preparing...' : 'Print'}</span>
                     </button>
-                     <button 
-                        onClick={() => setIsCategoryModalOpen(true)}
+                     <Link
+                        to="/transaction/expense-categories"
                         className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-5 py-2.5 rounded-xl font-semibold transition-all flex items-center gap-2 border border-indigo-200"
                     >
                         <FolderPlus size={20} />
-                        <span className="hidden sm:inline">New Category</span>
-                    </button>
+                        <span className="hidden sm:inline">Categories</span>
+                    </Link>
                     <button 
                         onClick={() => {
                             setExpenseData(prev => ({
@@ -381,78 +360,8 @@ const Expenses = () => {
                 </div>
             </div>
 
-            <div className="flex flex-col lg:flex-row gap-8">
-                {/* Left Panel: Categories */}
-                <div className="lg:w-1/4">
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden sticky top-24">
-                        <div className="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                            <h2 className="font-bold text-gray-800 flex items-center gap-2">
-                                <Tag size={18} className="text-primary"/> 
-                                Categories
-                            </h2>
-                        </div>
-                        <div className="p-3">
-                            {isCategoryLoading ? (
-                                <div className="text-center py-4 text-sm text-gray-500">Loading...</div>
-                            ) : categories.length > 0 ? (
-                                <ul className="space-y-1">
-                                    {categories.map(cat => (
-                                        <li key={cat._id} className="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg transition-colors group">
-                                            <span className="text-sm font-medium text-gray-700 truncate mr-2">{cat.name}</span>
-                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button 
-                                                    onClick={() => openEditCategory(cat)}
-                                                    className="text-gray-400 hover:text-blue-500 p-1"
-                                                >
-                                                    <Edit size={14}/>
-                                                </button>
-                                                <button 
-                                                    onClick={() => handleDeleteCategory(cat._id)}
-                                                    className="text-gray-400 hover:text-red-500 p-1"
-                                                >
-                                                    <Trash2 size={14}/>
-                                                </button>
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <div className="text-center py-8 px-4">
-                                    <p className="text-sm text-gray-500 mb-3">No categories found.</p>
-                                    <button 
-                                        onClick={() => setIsCategoryModalOpen(true)}
-                                        className="text-sm font-medium text-primary hover:underline"
-                                    >
-                                        Create category
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                        {/* Category Pagination Controls */}
-                        {catTotalPages > 1 && (
-                            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
-                                <button 
-                                    onClick={() => setCatCurrentPage(prev => Math.max(prev - 1, 1))}
-                                    disabled={catCurrentPage === 1}
-                                    className="p-1 rounded bg-white border text-gray-500 disabled:opacity-50"
-                                >
-                                    <ChevronLeft size={16} />
-                                </button>
-                                <span className="text-xs text-gray-500">{catCurrentPage} / {catTotalPages}</span>
-                                <button 
-                                    onClick={() => setCatCurrentPage(prev => Math.min(prev + 1, catTotalPages))}
-                                    disabled={catCurrentPage === catTotalPages}
-                                    className="p-1 rounded bg-white border text-gray-500 disabled:opacity-50"
-                                >
-                                    <ChevronRight size={16} />
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Right Panel: Expenses Table */}
-                <div ref={componentRef} className="lg:w-3/4 print:w-full expense-print-area">
+            <div>
+                <div ref={componentRef} className="print:w-full expense-print-area">
                     {/* Search Bar & Filter */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 mb-6 print:hidden">
                         <div className="flex flex-col sm:flex-row gap-4 items-center">
@@ -460,11 +369,26 @@ const Expenses = () => {
                                 <Search className="text-gray-400 ml-2 mr-3" size={20} />
                                 <input 
                                     type="text" 
-                                    placeholder="Search expenses by reason (current page)..." 
+                                    placeholder="Search expenses by reason..." 
                                     className="w-full py-2 bg-transparent border-none outline-none text-gray-700"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
+                            </div>
+                            <div className="w-full sm:w-auto">
+                                <select
+                                    value={categoryFilter}
+                                    onChange={(e) => {
+                                        setCategoryFilter(e.target.value);
+                                        setCurrentPage(1);
+                                    }}
+                                    className="w-full sm:w-52 px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-gray-700 font-medium cursor-pointer"
+                                >
+                                    <option value="">All Categories</option>
+                                    {allCategories.map(cat => (
+                                        <option key={cat._id} value={cat._id}>{cat.name}</option>
+                                    ))}
+                                </select>
                             </div>
                             <div className="w-full sm:w-auto">
                                 <select 
@@ -495,8 +419,8 @@ const Expenses = () => {
                                         value={branchFilter}
                                         onChange={(e) => {
                                             setBranchFilter(e.target.value);
+                                            setCategoryFilter('');
                                             setCurrentPage(1);
-                                            setCatCurrentPage(1);
                                         }}
                                         className="w-full sm:w-56 px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-gray-700 font-medium cursor-pointer"
                                     >
@@ -538,6 +462,28 @@ const Expenses = () => {
                         )}
                     </div>
 
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 print:hidden">
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-xs font-black uppercase tracking-wide text-gray-500">Total Expense</p>
+                                    <p className="mt-2 text-2xl font-black text-primary">₹{summaryTotalAmount.toLocaleString()}</p>
+                                </div>
+                                <div className="h-11 w-11 rounded-lg bg-blue-50 text-primary flex items-center justify-center">
+                                    <IndianRupee size={22} />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                            <p className="text-xs font-black uppercase tracking-wide text-gray-500">Selected Date</p>
+                            <p className="mt-2 text-lg font-bold text-gray-900 capitalize">{activeDateLabel}</p>
+                        </div>
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                            <p className="text-xs font-black uppercase tracking-wide text-gray-500">Selected Category</p>
+                            <p className="mt-2 text-lg font-bold text-gray-900">{activeCategoryName}</p>
+                        </div>
+                    </div>
+
                     {/* Table */}
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden expense-print-card">
                         <div className="hidden print:block px-6 pt-6 pb-3 border-b border-gray-200">
@@ -545,7 +491,8 @@ const Expenses = () => {
                             <div className="mt-2 text-sm text-gray-600 flex flex-wrap gap-x-6 gap-y-1">
                                 <span><strong>Branch:</strong> {activeBranchName}</span>
                                 <span><strong>Range:</strong> {activeDateLabel}</span>
-                                <span><strong>Records:</strong> {filteredExpenses.length}</span>
+                                <span><strong>Category:</strong> {activeCategoryName}</span>
+                                <span><strong>Records:</strong> {tableExpenses.length}</span>
                             </div>
                         </div>
                         <div className="overflow-x-auto print:overflow-visible">
@@ -562,8 +509,8 @@ const Expenses = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {filteredExpenses.length > 0 ? (
-                                        filteredExpenses.map((expense) => (
+                                    {tableExpenses.length > 0 ? (
+                                        tableExpenses.map((expense) => (
                                             <tr key={expense._id} className="hover:bg-blue-50/30 transition-colors">
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                                     {new Date(expense.date).toLocaleDateString()}
@@ -609,14 +556,21 @@ const Expenses = () => {
                                         <tr>
                                             <td colSpan="7" className="px-6 py-12 text-center">
                                                 <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
-                                                <p className="text-gray-500 font-medium">No expenses found for this page.</p>
+                                                <p className="text-gray-500 font-medium">No expenses found.</p>
                                             </td>
                                         </tr>
                                     )}
+                                    {tableExpenses.length > 0 && (
+                                        <tr className="hidden print:table-row expense-print-total-row">
+                                            <td colSpan="5" className="px-6 py-4 text-right text-sm font-black uppercase text-gray-900">Grand Total</td>
+                                            <td className="px-6 py-4 text-right font-black text-primary">₹{totalExpenseAmount.toLocaleString()}</td>
+                                            <td className="px-6 py-4 print:hidden"></td>
+                                        </tr>
+                                    )}
                                 </tbody>
-                                {filteredExpenses.length > 0 && (
+                                {tableExpenses.length > 0 && (
                                     <tfoot>
-                                        <tr className="bg-gray-50 border-t border-gray-200">
+                                        <tr className="bg-gray-50 border-t border-gray-200 print:hidden">
                                             <td colSpan="5" className="px-6 py-4 text-right text-sm font-black uppercase text-gray-700">Total</td>
                                             <td className="px-6 py-4 text-right font-black text-primary">₹{totalExpenseAmount.toLocaleString()}</td>
                                             <td className="px-6 py-4 print:hidden"></td>
@@ -747,33 +701,6 @@ const Expenses = () => {
                                     <button type="button" onClick={closeExpenseModal} className="px-6 py-2.5 rounded-xl font-semibold text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
                                     <button type="submit" disabled={isSubmitting || allCategories.length === 0} className="px-6 py-2.5 rounded-xl font-semibold text-white bg-primary hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50">
                                         {isSubmitting ? 'Saving...' : (editingExpenseId ? 'Update Expense' : 'Save Expense')}
-                                    </button>
-                                </div>
-                            </form>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
-
-             {/* Modal: Add/Edit Category */}
-             <AnimatePresence>
-                {isCategoryModalOpen && (
-                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeCategoryModal} className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" />
-                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-3xl shadow-2xl w-full max-w-sm relative z-10 overflow-hidden">
-                            <div className="p-5 border-b border-gray-100 bg-indigo-50/50">
-                                <h2 className="text-xl font-bold text-gray-900">{editingCategoryId ? 'Edit Category' : 'New Category'}</h2>
-                            </div>
-
-                            <form onSubmit={handleCategorySubmit} className="p-5 space-y-4">
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Category Name *</label>
-                                    <input type="text" autoFocus required value={categoryName} onChange={(e)=>setCategoryName(e.target.value)} placeholder="e.g. Utilities" className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all" />
-                                </div>
-                                <div className="flex justify-end gap-3 pt-4">
-                                    <button type="button" onClick={closeCategoryModal} className="px-4 py-2 rounded-xl font-semibold text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
-                                    <button type="submit" disabled={isSubmitting} className="px-4 py-2 rounded-xl font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50">
-                                        {editingCategoryId ? 'Update' : 'Create'}
                                     </button>
                                 </div>
                             </form>
