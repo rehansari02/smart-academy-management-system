@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 
 export const receiptPrintPageStyle = `
   @media screen {
@@ -30,6 +31,7 @@ export const receiptPrintPageStyle = `
     }
 
     body.receipt-printing .receipt-page-shell {
+      visibility: visible !important;
       width: 210mm !important;
       min-height: 297mm !important;
       margin: 0 !important;
@@ -43,10 +45,11 @@ export const receiptPrintPageStyle = `
     }
 
     body.receipt-printing .receipt-print-host {
+      visibility: visible !important;
       display: block !important;
-      position: static !important;
-      left: auto !important;
-      top: auto !important;
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
       width: 210mm !important;
       min-height: 297mm !important;
       overflow: visible !important;
@@ -55,6 +58,7 @@ export const receiptPrintPageStyle = `
     }
 
     body.receipt-printing .print-only-container {
+      visibility: visible !important;
       width: 210mm !important;
       height: 297mm !important;
       margin: 0 !important;
@@ -63,9 +67,15 @@ export const receiptPrintPageStyle = `
     }
 
     body.receipt-printing * {
+      visibility: hidden !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
       color-adjust: exact !important;
+    }
+
+    body.receipt-printing .receipt-print-host,
+    body.receipt-printing .receipt-print-host * {
+      visibility: visible !important;
     }
   }
 `;
@@ -102,15 +112,19 @@ export const useReceiptPrinter = () => {
   const triggerPrintReceipt = useCallback((receipt) => {
     if (!receipt) return;
 
-    setPrintingReceipt(receipt);
+    flushSync(() => {
+      setPrintingReceipt(receipt);
+    });
+    document.body.classList.add('receipt-printing');
 
     if (printTimerRef.current) {
       window.clearTimeout(printTimerRef.current);
     }
 
     printTimerRef.current = window.setTimeout(() => {
-      document.body.classList.add('receipt-printing');
-      window.print();
+      window.requestAnimationFrame(() => {
+        window.print();
+      });
 
       if (cleanupTimerRef.current) {
         window.clearTimeout(cleanupTimerRef.current);

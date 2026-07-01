@@ -79,6 +79,19 @@ const getReceiptDisplayType = (receipt) => {
     };
 };
 
+const getDisplayOutstanding = (summary) => {
+    const netOutstanding = Number(summary?.monthlyOutstanding ?? summary?.outstandingAmount ?? 0);
+    const totalDue = Number(summary?.dueAmount ?? 0);
+
+    if (netOutstanding > 0 && totalDue > 0) {
+        return Math.min(netOutstanding, totalDue);
+    }
+
+    return netOutstanding;
+};
+
+const getPayableNow = (summary) => Math.max(0, getDisplayOutstanding(summary));
+
 const FeeCollection = () => {
     const dispatch = useDispatch();
     const navigate = useNavigate();
@@ -99,7 +112,7 @@ const FeeCollection = () => {
     const [paymentHistory, setPaymentHistory] = useState([]);
     
 
-    const { register, handleSubmit, reset, setValue, control, watch, formState: { errors } } = useForm({
+    const { register, handleSubmit, reset, setValue, clearErrors, control, watch, formState: { errors } } = useForm({
         defaultValues: {
             receiptNo: 'Loading...',
             date: new Date().toISOString().split('T')[0],
@@ -183,8 +196,8 @@ const FeeCollection = () => {
             );
             setPaymentHistory(history);
 
-            // Auto-fill only the current outstanding amount returned by the backend.
-            setValue('amountPaid', Number(summary.outstandingAmount ?? 0));
+            // Show net current outstanding; negative means advance/credit is still available.
+            setValue('amountPaid', getDisplayOutstanding(summary));
         } catch (error) {
             console.error("Failed to fetch student payment data", error);
             toast.error("Failed to load student payment information");
@@ -201,7 +214,8 @@ const FeeCollection = () => {
     const handleStudentSelect = (id, student) => {
         setSelectedStudent(student);
         if (student) {
-            setValue('studentId', id);
+            setValue('studentId', id, { shouldValidate: true, shouldDirty: true });
+            clearErrors('studentId');
             setValue('courseName', student.course?.name || 'N/A');
             fetchStudentPaymentData(id);
             // Fetch next receipt number for this student's branch
@@ -463,7 +477,7 @@ const FeeCollection = () => {
                                 })} 
                                 className={`w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none font-medium text-base ${errors.amountPaid ? 'border-red-500' : ''}`}
                                 placeholder="Enter amount"
-                                onInput={(e) => e.target.value = e.target.value.replace(/[^0-9.]/g, '')}
+                                onInput={(e) => e.target.value = e.target.value.replace(/[^0-9.-]/g, '')}
                             />
                             {errors.amountPaid && <p className="text-red-500 text-xs mt-1">{errors.amountPaid.message}</p>}
                              {paymentSummary && (
@@ -479,7 +493,7 @@ const FeeCollection = () => {
                                     {paymentSummary.feesMethod === 'Monthly' && (
                                         <div className="flex justify-between">
                                             <span className="text-blue-700 font-semibold">Installment:</span>
-                                            <span>Current: ₹{(paymentSummary.netInstallmentDue ?? paymentSummary.currentInstallmentDue)?.toLocaleString('en-IN')} / Prev Out: ₹{paymentSummary.previousOutstanding?.toLocaleString('en-IN')}</span>
+                                            <span>Current: ₹{getPayableNow(paymentSummary).toLocaleString('en-IN')} / Prev Out: ₹{paymentSummary.previousOutstanding?.toLocaleString('en-IN')}</span>
                                         </div>
                                     )}
                                     {paymentSummary.installmentPrepaid > 0 && (
@@ -490,7 +504,9 @@ const FeeCollection = () => {
                                     )}
                                     <div className="flex justify-between border-t border-blue-200 pt-1 font-semibold text-orange-700">
                                         <span>Current Due:</span>
-                                        <span>₹{paymentSummary.outstandingAmount?.toLocaleString('en-IN')}</span>
+                                        <span className={getDisplayOutstanding(paymentSummary) < 0 ? 'text-green-700 font-bold' : ''}>
+                                            ₹{getDisplayOutstanding(paymentSummary).toLocaleString('en-IN')}
+                                        </span>
                                     </div>
                                     <div className="flex justify-between font-bold text-red-600">
                                         <span>Total Due  Outstanding:</span>
@@ -780,7 +796,7 @@ const FeeCollection = () => {
                                                 <div className="border-t border-blue-200 mt-2 pt-2 space-y-1">
                                                     <div className="flex justify-between">
                                                         <span className="text-blue-700 font-semibold">Current Installment Due:</span>
-                                                        <span className="font-bold text-blue-800">₹{(paymentSummary.netInstallmentDue ?? paymentSummary.currentInstallmentDue)?.toLocaleString('en-IN')}</span>
+                                                        <span className="font-bold text-blue-800">₹{getPayableNow(paymentSummary).toLocaleString('en-IN')}</span>
                                                     </div>
                                                     <div className="flex justify-between">
                                                         <span className="text-orange-700 font-semibold">Previous Outstanding:</span>
@@ -809,7 +825,9 @@ const FeeCollection = () => {
                                         </div>
                                         <div className="flex justify-between mt-1 border-t border-gray-300 pt-1 text-sm">
                                             <span className="font-bold text-red-700">Current Outstanding:</span>
-                                            <span className="font-bold text-red-700 text-lg">₹{paymentSummary.outstandingAmount?.toLocaleString('en-IN')}</span>
+                                            <span className={`font-bold text-lg ${getDisplayOutstanding(paymentSummary) < 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                ₹{getDisplayOutstanding(paymentSummary).toLocaleString('en-IN')}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
