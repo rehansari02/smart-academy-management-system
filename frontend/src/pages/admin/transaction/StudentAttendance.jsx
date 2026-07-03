@@ -28,7 +28,12 @@ const StudentAttendance = () => {
     const dispatch = useDispatch();
     const { attendanceList, currentAttendanceStudents, attendanceStatus, isSuccess, message, isLoading } = useSelector(state => state.attendance);
     const { batches } = useSelector(state => state.master); // Get batches for dropdown
+    const { user } = useSelector(state => state.auth);
     const { add, edit, delete: canDelete } = useUserRights('Attendance - Student Attendance');
+    const userBranchId = getBranchIdValue(user?.branchId);
+    const scopedBatches = user?.role === 'Super Admin'
+        ? batches
+        : batches.filter(batch => getBranchIdValue(batch.branchId) === userBranchId);
 
     // View Mode: 'list' or 'form' or 'view-details'
     const [viewMode, setViewMode] = useState('list'); 
@@ -127,7 +132,7 @@ const StudentAttendance = () => {
 
     // Handle Status Check Result
     useEffect(() => {
-        if(viewMode === 'form' && !isEditing && attendanceStatus && currentAttendanceStudents.length > 0) {
+        if(viewMode === 'form' && !isEditing && attendanceStatus) {
             if (attendanceStatus.exists) {
                 // If exists, DISABLE inputs? Or showing existing record?
                 // Requirements: "show the attendance table disabled and message 'Attendance already taken by X'"
@@ -178,7 +183,7 @@ const StudentAttendance = () => {
 
     const handleBatchChange = (e) => {
         const batchId = e.target.value;
-        const selectedBatch = batches.find(b => b._id === batchId);
+        const selectedBatch = scopedBatches.find(b => b._id === batchId);
         const batchName = selectedBatch?.name || '';
         const time = selectedBatch ? `${selectedBatch.startTime} - ${selectedBatch.endTime}` : '';
         const branchId = getBranchIdValue(selectedBatch?.branchId);
@@ -203,10 +208,10 @@ const StudentAttendance = () => {
         setViewMode('form');
         setFormData({
             date: getDateInputValue(record.date),
-            batchId: batches.find(b => b.name === record.batchName && `${b.startTime} - ${b.endTime}` === record.batchTime)?._id || '',
+            batchId: scopedBatches.find(b => b.name === record.batchName && `${b.startTime} - ${b.endTime}` === record.batchTime)?._id || '',
             batchName: record.batchName,
             batchTime: record.batchTime,
-            branchId: getBranchIdValue(batches.find(b => b.name === record.batchName && `${b.startTime} - ${b.endTime}` === record.batchTime)?.branchId),
+            branchId: getBranchIdValue(scopedBatches.find(b => b.name === record.batchName && `${b.startTime} - ${b.endTime}` === record.batchTime)?.branchId || record.branchId),
             remarks: record.remarks
         });
 
@@ -337,7 +342,7 @@ const StudentAttendance = () => {
                             <select className="border rounded px-3 py-2 text-sm min-w-[150px]"
                                 value={filters.batch} onChange={e => setFilters({...filters, batch: e.target.value})}>
                                 <option value="">All Batches</option>
-                                {batches.map(b => (
+                                {scopedBatches.map(b => (
                                     <option key={b._id} value={b.name}>{b.name}</option>
                                 ))}
                             </select>
@@ -430,7 +435,7 @@ const StudentAttendance = () => {
                                     onChange={handleBatchChange}
                                 >
                                     <option value="">Select Batch</option>
-                                    {batches.map(b => (
+                                    {scopedBatches.map(b => (
                                         <option key={b._id} value={b._id}>{b.name}</option>
                                     ))}
                                 </select>

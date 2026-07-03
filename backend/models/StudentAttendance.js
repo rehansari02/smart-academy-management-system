@@ -4,6 +4,7 @@ const studentAttendanceSchema = new mongoose.Schema({
     date: { type: Date, required: true },
     batchName: { type: String, required: true },
     batchTime: { type: String, required: true },
+    branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
     takenBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Faculty who took attendance
     remarks: { type: String }, // General remarks for the batch
     records: [{
@@ -18,7 +19,7 @@ const studentAttendanceSchema = new mongoose.Schema({
     }]
 }, { timestamps: true });
 
-// Prevent duplicate attendance for same batch & time on same day
-studentAttendanceSchema.index({ date: 1, batchName: 1, batchTime: 1 }, { unique: true });
+// Prevent duplicate attendance for same branch, batch & time on same day
+studentAttendanceSchema.index({ date: 1, batchName: 1, batchTime: 1, branchId: 1 }, { unique: true });
 
 module.exports = mongoose.model('StudentAttendance', studentAttendanceSchema);

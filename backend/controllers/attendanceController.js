@@ -67,6 +67,48 @@ const getCourseEndDate = (student) => {
     return endDate;
 };
 
+const getStudentAttendanceStartDate = (student) => {
+    const dateValues = [
+        student?.admissionDate,
+        student?.registrationDate,
+        student?.batchStartDate
+    ]
+        .map(value => (value ? parseLocalDate(value) : null))
+        .filter(value => value && !Number.isNaN(value.getTime()));
+
+    if (dateValues.length === 0) return null;
+
+    const startDate = new Date(Math.max(...dateValues.map(value => value.getTime())));
+    startDate.setUTCHours(0, 0, 0, 0);
+    return startDate;
+};
+
+const isStudentEligibleForAttendanceDate = (student, attendanceDayStart) => {
+    const attendanceStartDate = getStudentAttendanceStartDate(student);
+    if (attendanceStartDate && attendanceStartDate > attendanceDayStart) {
+        return false;
+    }
+
+    const courseEndDate = getCourseEndDate(student);
+    return !courseEndDate || courseEndDate >= attendanceDayStart;
+};
+
+const getAttendanceBranchScope = (req, requestedBranchId = null) => {
+    if (req.user?.role !== 'Super Admin') {
+        return getObjectIdString(req.user?.branchId);
+    }
+    return getObjectIdString(requestedBranchId);
+};
+
+const getAccessibleBatchNamesForBranch = async (branchId) => {
+    if (!branchId) return null;
+    const batches = await require('../models/Batch')
+        .find({ branchId, isDeleted: false })
+        .select('name')
+        .lean();
+    return [...new Set(batches.map(batch => batch.name).filter(Boolean))];
+};
+
 const getCalendarYears = (fromDate, toDate) => {
     const currentYear = new Date().getFullYear();
     const startYear = fromDate ? parseLocalDate(fromDate).getUTCFullYear() : currentYear;
@@ -352,6 +394,15 @@ exports.getStudentsForAttendance = async (req, res) => {
             if (batchDoc?.name) batchValues.push(batchDoc.name);
         }
 
+        const scopedBranchId = getAttendanceBranchScope(req, branchId || batchDoc?.branchId);
+        if (
+            scopedBranchId &&
+            batchDoc?.branchId &&
+            batchDoc.branchId.toString() !== scopedBranchId.toString()
+        ) {
+            return res.status(200).json([]);
+        }
+
         const closureBranchId = branchId || batchDoc?.branchId;
         const closure = await getAttendanceClosureForDate(date, req.user, closureBranchId);
         if (closure) {
@@ -373,8 +424,8 @@ exports.getStudentsForAttendance = async (req, res) => {
             ]
         };
 
-        if (req.user && req.user.role !== 'Super Admin' && req.user.branchId) {
-            query.branchId = req.user.branchId;
+        if (scopedBranchId) {
+            query.branchId = scopedBranchId;
         }
 
         const students = await Student.find(query)
@@ -386,10 +437,8 @@ exports.getStudentsForAttendance = async (req, res) => {
         const attendanceDayStart = new Date(attendanceDate);
         attendanceDayStart.setUTCHours(0, 0, 0, 0);
 
-        let eligibleStudents = students.filter(student => {
-            const courseEndDate = getCourseEndDate(student);
-            return !courseEndDate || courseEndDate >= attendanceDayStart;
-        });
+        let eligibleStudents = students.filter(student => isStudentEligibleForAttendanceDate(student, attendanceDayStart));
+
         if (!Number.isNaN(attendanceDate.getTime()) && eligibleStudents.length > 0) {
             const scheduledStudentIds = await ExamSchedule.distinct('attendees', {
                 attendees: { $in: eligibleStudents.map(student => student._id) },
@@ -398,7 +447,7 @@ exports.getStudentsForAttendance = async (req, res) => {
                 'timeTable.date': { $lte: attendanceDate }
             });
             const scheduledStudentIdSet = new Set(scheduledStudentIds.map(id => id.toString()));
-            eligibleStudents = students.filter(student => !scheduledStudentIdSet.has(student._id.toString()));
+            eligibleStudents = eligibleStudents.filter(student => !scheduledStudentIdSet.has(student._id.toString()));
         }
 
         // Map to a cleaner format for frontend
@@ -445,15 +494,39 @@ exports.checkStudentAttendanceStatus = async (req, res) => {
         // For simplicity, let's assume specific date match if stored with time 00:00:00, or use range.
         
         const { start: startOfDay, end: endOfDay } = normalizeDateRange(date);
-
-        const existingRecord = await StudentAttendance.findOne({
+        const scopedBranchId = getAttendanceBranchScope(req, branchId);
+        const attendanceQuery = {
             batchName: batch,
             batchTime: batchTime,
             date: { $gte: startOfDay, $lte: endOfDay }
-        }).populate('takenBy', 'name')
-          .populate('records.studentId', 'firstName middleName lastName');
+        };
+        if (scopedBranchId) {
+            attendanceQuery.$or = [
+                { branchId: scopedBranchId },
+                { branchId: { $exists: false } },
+                { branchId: null }
+            ];
+        }
+
+        const existingRecord = await StudentAttendance.findOne(attendanceQuery)
+          .populate('takenBy', 'name')
+          .populate({
+              path: 'records.studentId',
+              select: 'firstName middleName lastName admissionDate registrationDate batchStartDate course branchId',
+              populate: { path: 'course', select: 'duration durationType' }
+          });
 
         if (existingRecord) {
+            existingRecord.records = existingRecord.records.filter(record => (
+                record.studentId &&
+                (!scopedBranchId || record.studentId.branchId?.toString() === scopedBranchId.toString()) &&
+                isStudentEligibleForAttendanceDate(record.studentId, startOfDay)
+            ));
+
+            if (scopedBranchId && existingRecord.records.length === 0) {
+                return res.status(200).json({ exists: false });
+            }
+
             return res.status(200).json({ 
                 exists: true, 
                 takenBy: existingRecord.takenBy?.name || 'Unknown',
@@ -473,6 +546,7 @@ exports.saveStudentAttendance = async (req, res) => {
     try {
         const { date, batchName, batchTime, remarks, records, branchId } = req.body;
         const takenBy = req.user.id; // From auth middleware
+        const scopedBranchId = getAttendanceBranchScope(req, branchId);
 
         // Validate basic
         if(!date || !batchName || !batchTime || !records) {
@@ -493,18 +567,40 @@ exports.saveStudentAttendance = async (req, res) => {
         
         // Double check uniqueness to be safe (though index handles it)
         const { start: startOfDay, end: endOfDay } = normalizeDateRange(attendanceDate);
+        const requestedStudentIds = records
+            .map(record => getObjectIdString(record.studentId))
+            .filter(Boolean);
+        const validStudents = await Student.find({
+            _id: { $in: requestedStudentIds },
+            isActive: true,
+            isDeleted: { $ne: true },
+            isCancelled: { $ne: true },
+            ...(scopedBranchId ? { branchId: scopedBranchId } : {})
+        }).populate('course', 'duration durationType');
+        const validStudentIdSet = new Set(
+            validStudents
+                .filter(student => isStudentEligibleForAttendanceDate(student, startOfDay))
+                .map(student => student._id.toString())
+        );
+        const eligibleRecords = records.filter(record => validStudentIdSet.has(getObjectIdString(record.studentId)));
 
-        let attendance = await StudentAttendance.findOne({
+        const attendanceQuery = {
             batchName,
             batchTime,
             date: { $gte: startOfDay, $lte: endOfDay }
-        });
+        };
+        if (scopedBranchId) {
+            attendanceQuery.branchId = scopedBranchId;
+        }
+
+        let attendance = await StudentAttendance.findOne(attendanceQuery);
 
         if (attendance) {
             // Update existing
              attendance.takenBy = takenBy;
+             attendance.branchId = scopedBranchId || attendance.branchId;
              attendance.remarks = remarks;
-             attendance.records = records;
+             attendance.records = eligibleRecords;
              await attendance.save();
              // response handled at end
         } else {
@@ -513,9 +609,10 @@ exports.saveStudentAttendance = async (req, res) => {
                 date: attendanceDate,
                 batchName,
                 batchTime,
+                branchId: scopedBranchId || undefined,
                 takenBy,
                 remarks,
-                records
+                records: eligibleRecords
             });
             await attendance.save();
         }
@@ -534,7 +631,7 @@ exports.saveStudentAttendance = async (req, res) => {
             }
 
             // Loop sequentially to send SMS to absent students
-            for (const record of records) {
+            for (const record of eligibleRecords) {
                 if (!record.isPresent) {
                     const studentName = record.studentName || record.name || 'Student';
                     const parentMobile = getParentSmsRecipients({ mobileParent: record.contactParent })[0];
@@ -560,8 +657,9 @@ exports.saveStudentAttendance = async (req, res) => {
 // Get Attendance History (Filter)
 exports.getStudentAttendanceHistory = async (req, res) => {
     try {
-        const { fromDate, toDate, batch, batchTime } = req.query;
+        const { fromDate, toDate, batch, batchTime, branchId } = req.query;
         let query = {};
+        const scopedBranchId = getAttendanceBranchScope(req, branchId);
         
         if (fromDate && toDate) {
              const { start } = normalizeDateRange(fromDate);
@@ -577,14 +675,38 @@ exports.getStudentAttendanceHistory = async (req, res) => {
             query.batchTime = batchTime;
         }
 
+        if (scopedBranchId) {
+            const scopedBatchNames = await getAccessibleBatchNamesForBranch(scopedBranchId);
+            query.$or = [
+                { branchId: scopedBranchId },
+                {
+                    $and: [
+                        { $or: [{ branchId: { $exists: false } }, { branchId: null }] },
+                        { batchName: { $in: scopedBatchNames || [] } }
+                    ]
+                }
+            ];
+        }
+
         // Removed unused 'history' variable block
 
         const records = await StudentAttendance.find(query)
                                 .populate('takenBy', 'name')
-                                .populate('records.studentId', 'firstName middleName lastName')
+                                .populate('branchId', 'name')
+                                .populate('records.studentId', 'firstName middleName lastName branchId')
                                 .sort({ date: -1 });
-                                
-        res.status(200).json(records);
+
+        const filteredRecords = scopedBranchId
+            ? records.map(record => {
+                const recordObject = record.toObject();
+                recordObject.records = (recordObject.records || []).filter(item => (
+                    item.studentId?.branchId?.toString?.() === scopedBranchId.toString()
+                ));
+                return recordObject;
+            }).filter(record => record.branchId || record.records.length > 0)
+            : records;
+
+        res.status(200).json(filteredRecords);
 
     } catch (error) {
          res.status(500).json({ message: "Server Error", error });
@@ -594,6 +716,20 @@ exports.getStudentAttendanceHistory = async (req, res) => {
 // Delete Student Attendance
 exports.deleteStudentAttendance = async (req, res) => {
     try {
+        const record = await StudentAttendance.findById(req.params.id);
+        if (!record) {
+            return res.status(404).json({ message: "Attendance record not found" });
+        }
+
+        const scopedBranchId = getAttendanceBranchScope(req, null);
+        if (
+            scopedBranchId &&
+            record.branchId &&
+            record.branchId.toString() !== scopedBranchId.toString()
+        ) {
+            return res.status(403).json({ message: "Not authorized for this branch" });
+        }
+
         await StudentAttendance.findByIdAndDelete(req.params.id);
         res.status(200).json({ message: "Deleted successfully" });
     } catch (error) {
