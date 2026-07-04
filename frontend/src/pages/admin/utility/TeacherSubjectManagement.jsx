@@ -86,16 +86,30 @@ const TeacherSubjectManagement = () => {
     [employees, selectedTeacherId]
   );
 
+  const getBranchId = (item) => {
+    const branch = item?.branchId;
+    return String(branch?._id || branch || '');
+  };
+
+  const filteredBatches = useMemo(() => {
+    if (!selectedTeacher) return allBatches;
+
+    const teacherBranchId = getBranchId(selectedTeacher);
+    if (!teacherBranchId) return allBatches;
+
+    return allBatches.filter(batch => getBranchId(batch) === teacherBranchId);
+  }, [allBatches, selectedTeacher]);
+
   // ── Courses filtered by selected batch ────────────────────────────────────
   const filteredCourses = useMemo(() => {
     if (!selectedBatchId) return [];
-    const batch = allBatches.find(b => b._id === selectedBatchId);
+    const batch = filteredBatches.find(b => b._id === selectedBatchId);
     if (!batch) return [];
     const activeCourseIds = new Set(
       Object.keys(batch.courseCounts || {}).filter(cId => (batch.courseCounts[cId] || 0) > 0)
     );
     return courses.filter(c => activeCourseIds.has(c._id.toString()));
-  }, [selectedBatchId, allBatches, courses]);
+  }, [selectedBatchId, filteredBatches, courses]);
 
   // ── Subjects of selected course ────────────────────────────────────────────
   const filteredSubjects = useMemo(() => {
@@ -204,7 +218,7 @@ const TeacherSubjectManagement = () => {
     }
   };
 
-  const selectedBatch  = allBatches.find(b => b._id === selectedBatchId)  || null;
+  const selectedBatch  = filteredBatches.find(b => b._id === selectedBatchId)  || null;
   const selectedCourse = courses.find(c => c._id === selectedCourseId)    || null;
 
   if (!view) {
@@ -254,7 +268,11 @@ const TeacherSubjectManagement = () => {
             <div className="relative">
               <select
                 value={selectedTeacherId}
-                onChange={e => { setSelectedTeacherId(e.target.value); }}
+                onChange={e => {
+                  setSelectedTeacherId(e.target.value);
+                  setSelectedBatchId('');
+                  setSelectedCourseId('');
+                }}
                 className="w-full h-10 appearance-none border border-gray-200 rounded-lg pl-3 pr-8 text-sm font-medium text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 transition"
               >
                 <option value="">-- Select Teacher --</option>
@@ -280,16 +298,20 @@ const TeacherSubjectManagement = () => {
               <select
                 value={selectedBatchId}
                 onChange={e => { setSelectedBatchId(e.target.value); setSelectedCourseId(''); }}
+                disabled={!selectedTeacherId}
                 className="w-full h-10 appearance-none border border-gray-200 rounded-lg pl-3 pr-8 text-sm font-medium text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 transition"
               >
                 <option value="">-- Select Batch --</option>
                 {batchesLoading && <option disabled>Loading...</option>}
-                {allBatches.map(b => (
+                {filteredBatches.map(b => (
                   <option key={b._id} value={b._id}>{b.name}</option>
                 ))}
               </select>
               <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
+            {selectedTeacherId && !batchesLoading && filteredBatches.length === 0 && (
+              <p className="text-xs text-amber-600 font-semibold mt-1">No batches found for this teacher's branch.</p>
+            )}
           </div>
 
           {/* Course Dropdown */}
