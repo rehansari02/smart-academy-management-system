@@ -879,6 +879,36 @@ function App() {
                 }
               />
               <Route
+                path="/master/syllabus-management/report/:reportBranchId/:reportBatchId/:reportCourseId/:reportSubjectId/:reportStudentId"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <SyllabusManagement />
+                    </Suspense>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/syllabus-management/report/:reportSubjectId/:reportStudentId"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <SyllabusManagement />
+                    </Suspense>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/syllabus-management/:subjectId/edit"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <SyllabusManagement />
+                    </Suspense>
+                  </PrivateRoute>
+                }
+              />
+              <Route
                 path="/master/syllabus-management/:branchId"
                 element={
                   <PrivateRoute>

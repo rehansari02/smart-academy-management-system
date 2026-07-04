@@ -43,6 +43,7 @@ import {
   Eye
 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import Swal from 'sweetalert2';
 import moment from 'moment';
 import { getBranches } from '../../../features/master/branchSlice';
 import { fetchBatches, fetchCourses } from '../../../features/master/masterSlice';
@@ -89,6 +90,29 @@ const decodeId = (b64Id) => {
   }
 };
 
+const confirmActionDialog = async ({
+  title = 'Are you sure?',
+  text = '',
+  confirmButtonText = 'Yes, delete it',
+  icon = 'warning',
+  confirmButtonColor = '#dc2626'
+}) => {
+  const result = await Swal.fire({
+    title,
+    text,
+    icon,
+    showCancelButton: true,
+    confirmButtonText,
+    cancelButtonText: 'Cancel',
+    confirmButtonColor,
+    cancelButtonColor: '#64748b',
+    reverseButtons: true,
+    focusCancel: true
+  });
+
+  return result.isConfirmed;
+};
+
 const isSunday = (date) => {
   return moment(date).day() === 0;
 };
@@ -112,6 +136,58 @@ const isHoliday = (date, holidaysList, studentBranchId) => {
 
 const isClosedDay = (date, holidaysList, studentBranchId) => {
   return isSunday(date) || isHoliday(date, holidaysList, studentBranchId);
+};
+
+const normalizeBatchName = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+const mapSyllabusStudent = (student) => ({
+  _id: student._id,
+  enrollmentNo: student.enrollmentNo || student.regNo || '',
+  name: `${student.firstName || ''} ${student.middleName ? `${student.middleName} ` : ''}${student.lastName || ''}`.trim(),
+  firstName: student.firstName,
+  middleName: student.middleName,
+  lastName: student.lastName,
+  courseName: student.course ? student.course.name : '',
+  batchName: student.batch || '',
+  contactStudent: student.mobileStudent,
+  contactParent: student.mobileParent,
+  admissionDate: student.admissionDate,
+  batchStartDate: student.batchStartDate,
+  courseDuration: student.course?.duration,
+  courseDurationType: student.course?.durationType,
+});
+
+const fetchSyllabusStudents = async ({ branchId, courseId, batchName }) => {
+  const baseParams = {
+    branchId: branchId || undefined,
+    courseFilter: courseId || undefined,
+    isActive: 'true',
+    registrationPaidOrRegistered: 'true',
+    pageSize: 3000
+  };
+
+  const fetchWithParams = async (params) => {
+    const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/students`, {
+      params,
+      withCredentials: true
+    });
+    return data?.students || [];
+  };
+
+  const exactStudents = await fetchWithParams({
+    ...baseParams,
+    batch: batchName
+  });
+
+  if (exactStudents.length > 0 || !batchName) {
+    return exactStudents.map(mapSyllabusStudent);
+  }
+
+  const normalizedSelectedBatch = normalizeBatchName(batchName);
+  const fallbackStudents = await fetchWithParams(baseParams);
+  return fallbackStudents
+    .filter(student => normalizeBatchName(student.batch) === normalizedSelectedBatch)
+    .map(mapSyllabusStudent);
 };
 
 const getStudentStartDate = (student) => {
@@ -274,6 +350,13 @@ const SyllabusManagement = () => {
   const navigate = useNavigate();
   
   const params = useParams();
+  const isQuickStudentReportRoute = Boolean(params.reportStudentId);
+  const reportBranchId = decodeId(params.reportBranchId);
+  const reportBatchId = decodeId(params.reportBatchId);
+  const reportCourseId = decodeId(params.reportCourseId);
+  const reportSubjectId = decodeId(params.reportSubjectId);
+  const reportStudentId = decodeId(params.reportStudentId);
+  const isShortStudentReportRoute = isQuickStudentReportRoute && !params.reportBatchId;
   const branchId = decodeId(params.branchId);
   const batchId = decodeId(params.batchId);
   const courseId = decodeId(params.courseId);
@@ -395,6 +478,18 @@ const SyllabusManagement = () => {
   const [studentsLoading, setStudentsLoading] = useState(false);
   const [studentsSearchQuery, setStudentsSearchQuery] = useState('');
   const [holidays, setHolidays] = useState([]);
+  const [quickFilters, setQuickFilters] = useState({
+    branchId: user?.branchId || '',
+    batchId: '',
+    courseId: '',
+    subjectId: '',
+    studentSearch: ''
+  });
+  const [quickStudents, setQuickStudents] = useState([]);
+  const [quickSummaries, setQuickSummaries] = useState({});
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickReportShown, setQuickReportShown] = useState(false);
+  const [quickDetailStudentId, setQuickDetailStudentId] = useState(null);
 
   // â”€â”€ Syllabus Log state (Level 5 â€“ per student panel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [expandedLogStudent, setExpandedLogStudent] = useState(null); // studentId whose log panel is open
@@ -432,6 +527,12 @@ const SyllabusManagement = () => {
     }
   }, [studentId]);
 
+  useEffect(() => {
+    if (user?.branchId && user?.role !== 'Super Admin' && user?.type !== 'Super Admin') {
+      setQuickFilters(prev => ({ ...prev, branchId: user.branchId }));
+    }
+  }, [user]);
+
   const [actionDate, setActionDate] = useState(moment().format('YYYY-MM-DD'));
   const [actionNotes, setActionNotes] = useState('');
 
@@ -445,12 +546,12 @@ const SyllabusManagement = () => {
 
   // Determine current step based on route parameters
   const step = useMemo(() => {
+    if (window.location.pathname.endsWith('/edit') || window.location.pathname.includes('/edit')) {
+      return 6; // Edit Subject page, supports both full and short URLs
+    }
     if (!branchId) return 1; // Level 1: Branch list
     if (!batchId) return 2;  // Level 2: Batch list
     if (!courseId) return 3; // Level 3: Course list
-    if (window.location.pathname.endsWith('/edit') || window.location.pathname.includes('/edit')) {
-      return 6; // Level 6: Edit Subject page
-    }
     if (!subjectId) return 4; // Level 4: Subject list
     return 5;                // Level 5: Student list for selected Subject
   }, [branchId, batchId, courseId, subjectId]);
@@ -465,14 +566,19 @@ const SyllabusManagement = () => {
   }, [batches, batchId]);
 
   const selectedCourse = useMemo(() => {
-    return courses.find(c => c._id === courseId) || null;
-  }, [courses, courseId]);
+    if (courseId) return courses.find(c => c._id === courseId) || null;
+    if (subjectId) {
+      return courses.find(c => (c.subjects || []).some(s => String(s.subject?._id) === String(subjectId))) || null;
+    }
+    return null;
+  }, [courses, courseId, subjectId]);
 
   const selectedSubject = useMemo(() => {
-    if (!selectedCourse) return null;
-    const subObj = (selectedCourse.subjects || []).find(s => s.subject?._id === subjectId);
+    const sourceCourse = selectedCourse || courses.find(c => (c.subjects || []).some(s => String(s.subject?._id) === String(subjectId)));
+    if (!sourceCourse) return null;
+    const subObj = (sourceCourse.subjects || []).find(s => String(s.subject?._id) === String(subjectId));
     return subObj?.subject || null;
-  }, [selectedCourse, subjectId]);
+  }, [courses, selectedCourse, subjectId]);
 
   // Fetch branches, courses & employees on mount
   useEffect(() => {
@@ -566,34 +672,11 @@ const SyllabusManagement = () => {
           });
           const holidaysList = holidaysRes.data?.items || [];
 
-          const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/students`, {
-            params: {
-              branchId: branchId || undefined,
-              courseFilter: courseId || undefined,
-              batch: selectedBatch.name,
-              isActive: 'true',
-              registrationPaidOrRegistered: 'true',
-              pageSize: 1000
-            },
-            withCredentials: true
+          const mapped = await fetchSyllabusStudents({
+            branchId,
+            courseId,
+            batchName: selectedBatch.name
           });
-
-          const studentsData = data?.students || [];
-          const mapped = studentsData.map(s => ({
-            _id: s._id,
-            enrollmentNo: s.enrollmentNo || s.regNo || '',
-            name: `${s.firstName} ${s.middleName ? s.middleName + ' ' : ''}${s.lastName}`,
-            firstName: s.firstName,
-            middleName: s.middleName,
-            lastName: s.lastName,
-            courseName: s.course ? s.course.name : '',
-            contactStudent: s.mobileStudent,
-            contactParent: s.mobileParent,
-            admissionDate: s.admissionDate,
-            batchStartDate: s.batchStartDate,
-            courseDuration: s.course?.duration,
-            courseDurationType: s.course?.durationType,
-          }));
 
           setStudentsList(mapped);
           setHolidays(holidaysList);
@@ -759,7 +842,12 @@ const SyllabusManagement = () => {
 
   // Delete log
   const handleDeleteLog = useCallback(async (logId, studentId) => {
-    if (!window.confirm('Delete this log entry?')) return;
+    const confirmed = await confirmActionDialog({
+      title: 'Delete log entry?',
+      text: 'This student progress log will be removed.',
+      confirmButtonText: 'Yes, delete log'
+    });
+    if (!confirmed) return;
     try {
       await axios.delete(`${import.meta.env.VITE_API_URL}/syllabus-logs/${logId}`, { withCredentials: true });
       toast.success('Log deleted.');
@@ -853,14 +941,10 @@ const SyllabusManagement = () => {
       .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
   }, [selectedCourse, searchQuery, step, allowedSubjectIds]);
 
-  // Filter students based on search string and selected course name
+  // Filter students based on search string. Course and batch are already filtered by the API.
   const filteredStudents = useMemo(() => {
-    if (step !== 5 || !selectedCourse) return [];
-    
-    // Filter students by matching the active course name (case-insensitive & trimmed)
-    let list = studentsList.filter(s => 
-      s.courseName?.toLowerCase().trim() === selectedCourse.name?.toLowerCase().trim()
-    );
+    if (step !== 5) return [];
+    let list = studentsList;
 
     if (studentsSearchQuery.trim()) {
       const q = studentsSearchQuery.toLowerCase();
@@ -870,7 +954,282 @@ const SyllabusManagement = () => {
       );
     }
     return list.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-  }, [studentsList, selectedCourse, studentsSearchQuery, step]);
+  }, [studentsList, studentsSearchQuery, step]);
+
+  const quickSelectedBranch = useMemo(() => (
+    branches.find(b => String(b._id) === String(quickFilters.branchId)) || null
+  ), [branches, quickFilters.branchId]);
+
+  const quickBatchOptions = useMemo(() => {
+    let list = allBatches;
+    if (quickFilters.branchId) {
+      list = list.filter(batch => String(batch.branchId?._id || batch.branchId || '') === String(quickFilters.branchId));
+    }
+    if (allowedBatchIds) {
+      list = list.filter(batch => allowedBatchIds.has(String(batch._id)));
+    }
+    return [...list].sort(compareBatchOrder);
+  }, [allBatches, quickFilters.branchId, allowedBatchIds]);
+
+  const quickSelectedBatch = useMemo(() => (
+    quickBatchOptions.find(b => String(b._id) === String(quickFilters.batchId)) || null
+  ), [quickBatchOptions, quickFilters.batchId]);
+
+  const quickCourseOptions = useMemo(() => {
+    if (!quickSelectedBatch) return [];
+    const activeCourseIds = new Set(
+      Object.keys(quickSelectedBatch.courseCounts || {}).filter(
+        cId => (quickSelectedBatch.courseCounts[cId] || 0) > 0
+      )
+    );
+    let list = courses.filter(course => activeCourseIds.has(String(course._id)));
+    if (allowedCourseIds) {
+      list = list.filter(course => allowedCourseIds.has(String(course._id)));
+    }
+    return list.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  }, [courses, quickSelectedBatch, allowedCourseIds]);
+
+  const quickSelectedCourse = useMemo(() => (
+    quickCourseOptions.find(c => String(c._id) === String(quickFilters.courseId)) || null
+  ), [quickCourseOptions, quickFilters.courseId]);
+
+  const quickSubjectOptions = useMemo(() => {
+    if (!quickSelectedCourse) return [];
+    let list = quickSelectedCourse.subjects || [];
+    if (allowedSubjectIds) {
+      list = list.filter(item => item.subject && allowedSubjectIds.has(String(item.subject._id)));
+    }
+    return list
+      .filter(item => item.subject)
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  }, [quickSelectedCourse, allowedSubjectIds]);
+
+  const quickSelectedSubject = useMemo(() => {
+    const item = quickSubjectOptions.find(sub => String(sub.subject?._id) === String(quickFilters.subjectId));
+    return item?.subject || null;
+  }, [quickSubjectOptions, quickFilters.subjectId]);
+
+  const quickFilteredStudents = useMemo(() => {
+    let list = quickStudents;
+    const q = quickFilters.studentSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter(student =>
+        student.name.toLowerCase().includes(q) ||
+        (student.enrollmentNo || '').toLowerCase().includes(q)
+      );
+    }
+    return [...list].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  }, [quickStudents, quickFilters.studentSearch]);
+
+  const updateQuickFilter = (name, value) => {
+    setQuickFilters(prev => {
+      const next = { ...prev, [name]: value };
+      if (name === 'branchId') {
+        next.batchId = '';
+        next.courseId = '';
+        next.subjectId = '';
+      }
+      if (name === 'batchId') {
+        next.courseId = '';
+        next.subjectId = '';
+      }
+      if (name === 'courseId') {
+        next.subjectId = '';
+      }
+      return next;
+    });
+    setQuickReportShown(false);
+    setQuickDetailStudentId(null);
+  };
+
+  const handleQuickReset = () => {
+    setQuickFilters({
+      branchId: user?.role === 'Super Admin' || user?.type === 'Super Admin' ? '' : user?.branchId || '',
+      batchId: '',
+      courseId: '',
+      subjectId: '',
+      studentSearch: ''
+    });
+    setQuickStudents([]);
+    setQuickSummaries({});
+    setQuickReportShown(false);
+    setQuickDetailStudentId(null);
+  };
+
+  const handleQuickShowReport = async (detailStudentId = null) => {
+    if (!quickFilters.batchId || !quickFilters.courseId || !quickFilters.subjectId || !quickSelectedBatch?.name) {
+      toast.warn('Please select Batch, Course and Subject.');
+      return;
+    }
+
+    setQuickLoading(true);
+    setQuickDetailStudentId(detailStudentId);
+    try {
+      const holidaysRes = await axios.get(`${import.meta.env.VITE_API_URL}/transaction/attendance/manage`, {
+        params: { limit: 1000 },
+        withCredentials: true
+      });
+
+      const mapped = await fetchSyllabusStudents({
+        branchId: quickFilters.branchId,
+        courseId: quickFilters.courseId,
+        batchName: quickSelectedBatch.name
+      });
+
+      const summaryRes = await axios.get(
+        `${import.meta.env.VITE_API_URL}/syllabus-logs/subject/${quickFilters.subjectId}/batch/${quickFilters.batchId}`,
+        { withCredentials: true }
+      );
+      const summaryMap = {};
+      (summaryRes.data?.summaries || []).forEach(summary => {
+        summaryMap[summary.studentId] = summary;
+      });
+
+      setHolidays(holidaysRes.data?.items || []);
+      setQuickStudents(mapped);
+      setQuickSummaries(summaryMap);
+      setQuickReportShown(true);
+      if (detailStudentId && !mapped.some(student => String(student._id) === String(detailStudentId))) {
+        toast.warn('Student not found in selected batch/course.');
+      }
+    } catch (error) {
+      console.error('Failed to load syllabus report', error);
+      toast.error('Failed to load syllabus report.');
+    } finally {
+      setQuickLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isQuickStudentReportRoute || !reportBatchId || !reportSubjectId || !reportStudentId) return;
+    navigate(`/master/syllabus-management/report/${encodeId(reportSubjectId)}/${encodeId(reportStudentId)}`, { replace: true });
+  }, [isQuickStudentReportRoute, reportBatchId, reportSubjectId, reportStudentId, navigate]);
+
+  useEffect(() => {
+    if (!isShortStudentReportRoute) return;
+    if (!reportSubjectId || !reportStudentId || allBatches.length === 0) return;
+
+    let cancelled = false;
+    const resolveShortReportRoute = async () => {
+      try {
+        const { data: student } = await axios.get(
+          `${import.meta.env.VITE_API_URL}/students/${reportStudentId}`,
+          { withCredentials: true }
+        );
+        if (cancelled) return;
+
+        const studentCourseId = student?.course?._id || student?.course || '';
+        const studentBranchId = student?.branchId?._id || student?.branchId || user?.branchId || '';
+        const normalizedStudentBatch = normalizeBatchName(student?.batch || '');
+        const matchedBatch = allBatches.find(batch => (
+          normalizeBatchName(batch.name) === normalizedStudentBatch &&
+          (!studentBranchId || String(batch.branchId?._id || batch.branchId || '') === String(studentBranchId))
+        )) || allBatches.find(batch => normalizeBatchName(batch.name) === normalizedStudentBatch);
+
+        if (!studentCourseId || !matchedBatch?._id) {
+          toast.error('Could not open student report. Batch or course was not found for this student.');
+          return;
+        }
+
+        setQuickFilters({
+          branchId: studentBranchId || '',
+          batchId: matchedBatch._id,
+          courseId: studentCourseId,
+          subjectId: reportSubjectId,
+          studentSearch: ''
+        });
+        setQuickReportShown(false);
+        setQuickStudents([]);
+        setQuickSummaries({});
+        setQuickDetailStudentId(reportStudentId);
+      } catch (error) {
+        console.error('Failed to resolve student report route', error);
+        toast.error('Failed to open student report.');
+      }
+    };
+
+    resolveShortReportRoute();
+    return () => {
+      cancelled = true;
+    };
+  }, [isShortStudentReportRoute, reportSubjectId, reportStudentId, allBatches, user?.branchId]);
+
+  useEffect(() => {
+    if (!isQuickStudentReportRoute) return;
+    if (!reportSubjectId || !reportStudentId) return;
+
+    if (!reportBatchId) {
+      if (!quickFilters.batchId || !quickFilters.courseId || !quickFilters.subjectId || !quickSelectedBatch?.name) return;
+      if (!quickReportShown || String(quickDetailStudentId || '') !== String(reportStudentId)) {
+        handleQuickShowReport(reportStudentId);
+      }
+      return;
+    }
+
+    if (!reportCourseId) return;
+
+    const routeFilters = {
+      branchId: reportBranchId || '',
+      batchId: reportBatchId,
+      courseId: reportCourseId,
+      subjectId: reportSubjectId,
+      studentSearch: ''
+    };
+
+    const filtersMatch =
+      String(quickFilters.branchId || '') === String(routeFilters.branchId || '') &&
+      String(quickFilters.batchId || '') === String(routeFilters.batchId || '') &&
+      String(quickFilters.courseId || '') === String(routeFilters.courseId || '') &&
+      String(quickFilters.subjectId || '') === String(routeFilters.subjectId || '');
+
+    if (!filtersMatch) {
+      setQuickFilters(routeFilters);
+      setQuickReportShown(false);
+      setQuickStudents([]);
+      setQuickSummaries({});
+      setQuickDetailStudentId(reportStudentId);
+      return;
+    }
+
+    if (!quickSelectedBatch?.name) return;
+
+    if (!quickReportShown || String(quickDetailStudentId || '') !== String(reportStudentId)) {
+      handleQuickShowReport(reportStudentId);
+    }
+  }, [
+    isQuickStudentReportRoute,
+    isShortStudentReportRoute,
+    reportBranchId,
+    reportBatchId,
+    reportCourseId,
+    reportSubjectId,
+    reportStudentId,
+    quickFilters.branchId,
+    quickFilters.batchId,
+    quickFilters.courseId,
+    quickFilters.subjectId,
+    quickSelectedBatch?.name,
+    quickReportShown,
+    quickDetailStudentId
+  ]);
+
+  const handleQuickEditSubjectSetup = () => {
+    if (!quickFilters.subjectId) {
+      toast.warn('Please select Subject first.');
+      return;
+    }
+
+    navigate(`/master/syllabus-management/${encodeId(quickFilters.subjectId)}/edit`);
+  };
+
+  const handleQuickStudentReportClick = (studentId) => {
+    if (!quickFilters.subjectId || !studentId) {
+      toast.warn('Please select Subject first.');
+      return;
+    }
+
+    navigate(`/master/syllabus-management/report/${encodeId(quickFilters.subjectId)}/${encodeId(studentId)}`);
+  };
 
   const progressLogData = useMemo(() => {
     return viewProgressStudent ? logsByStudent[viewProgressStudent._id] : null;
@@ -913,7 +1272,7 @@ const SyllabusManagement = () => {
 
   const handleEditPageClick = (sub) => {
     setSearchQuery('');
-    navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(sub.subject._id)}/edit`);
+    navigate(`/master/syllabus-management/${encodeId(sub.subject._id)}/edit`);
   };
 
   const handleViewStudentLog = (studentId) => {
@@ -925,7 +1284,11 @@ const SyllabusManagement = () => {
   const handleBack = () => {
     setSearchQuery('');
     if (step === 6) {
-      navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
+      if (branchId && batchId && courseId) {
+        navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
+      } else {
+        navigate('/master/syllabus-management');
+      }
     } else if (step === 5 && studentId) {
       // If in student detail view, go back to students list
       navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}/${encodeId(subjectId)}/students`);
@@ -1022,7 +1385,16 @@ const SyllabusManagement = () => {
   };
 
   // Delete project from subject edit list
-  const handleRemoveProject = (index) => {
+  const handleRemoveProject = async (index) => {
+    const project = editProjects[index];
+    const projectName = project?.name || project || 'this project';
+    const confirmed = await confirmActionDialog({
+      title: 'Delete practical project?',
+      text: `"${projectName}" will be removed from this chapter.`,
+      confirmButtonText: 'Yes, delete project'
+    });
+    if (!confirmed) return;
+
     const nextProjects = editProjects.filter((_, idx) => idx !== index);
     setEditProjects(nextProjects);
     autoSaveSubjectDetails(editChapters, nextProjects);
@@ -1077,8 +1449,22 @@ const SyllabusManagement = () => {
   };
 
   // Delete chapter from subject edit list and remove associated projects
-  const handleRemoveChapter = (index) => {
+  const handleRemoveChapter = async (index) => {
     const chapterToRemove = editChapters[index];
+    const chapterName = chapterToRemove?.name || chapterToRemove || 'this chapter';
+    const chapterIdToRemove = chapterToRemove?._id;
+    const linkedProjectsCount = chapterIdToRemove
+      ? editProjects.filter(p => String(p.chapterId) === String(chapterIdToRemove)).length
+      : 0;
+    const confirmed = await confirmActionDialog({
+      title: 'Delete chapter?',
+      text: linkedProjectsCount > 0
+        ? `This will delete "${chapterName}" and ${linkedProjectsCount} practical project(s).`
+        : `This will delete "${chapterName}".`,
+      confirmButtonText: 'Yes, delete chapter'
+    });
+    if (!confirmed) return;
+
     const nextChapters = editChapters.filter((_, idx) => idx !== index);
     setEditChapters(nextChapters);
     
@@ -1247,7 +1633,11 @@ const SyllabusManagement = () => {
 
       if (step === 6) {
         // Navigate back to the subject list (Level 4)
-        navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
+        if (branchId && batchId && courseId) {
+          navigate(`/master/syllabus-management/${encodeId(branchId)}/${encodeId(batchId)}/${encodeId(courseId)}`);
+        } else {
+          navigate('/master/syllabus-management');
+        }
       } else {
         setEditingSubject(null);
       }
@@ -1321,7 +1711,12 @@ const SyllabusManagement = () => {
 
   // â”€â”€ Remove a teacher's assignment from this subject â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleRemoveTeacherAssignment = async (teacherAssignment) => {
-    if (!window.confirm(`Remove ${teacherAssignment.employeeName} from this subject?`)) return;
+    const confirmed = await confirmActionDialog({
+      title: 'Remove teacher?',
+      text: `${teacherAssignment.employeeName} will be removed from this subject.`,
+      confirmButtonText: 'Yes, remove teacher'
+    });
+    if (!confirmed) return;
     try {
       await axios.delete(
         `${import.meta.env.VITE_API_URL}/master/teacher-subject/remove`,
@@ -1401,7 +1796,12 @@ const SyllabusManagement = () => {
 
   // â”€â”€ Standalone modal: remove assignment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleSaRemove = async (t) => {
-    if (!window.confirm(`Remove ${t.employeeName} from this subject?`)) return;
+    const confirmed = await confirmActionDialog({
+      title: 'Remove teacher?',
+      text: `${t.employeeName} will be removed from this subject.`,
+      confirmButtonText: 'Yes, remove teacher'
+    });
+    if (!confirmed) return;
     try {
       await axios.delete(
         `${import.meta.env.VITE_API_URL}/master/teacher-subject/remove`,
@@ -1425,6 +1825,310 @@ const SyllabusManagement = () => {
       <div className="flex flex-col items-center justify-center min-h-[50vh] p-4 text-center">
         <h2 className="text-xl font-bold text-red-600 mb-2">Access Denied</h2>
         <p className="text-gray-600">You do not have permission to view this syllabus section or subject.</p>
+      </div>
+    );
+  }
+
+  if (step === 1) {
+    const quickDetailStudent = quickFilteredStudents.find(student => student._id === quickDetailStudentId);
+
+    return (
+      <div className="container mx-auto max-w-[1400px] p-4">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-800">
+              <BookOpenCheck className="text-blue-600" size={28} />
+              Syllabus Management
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Select filters once and view the student syllabus report directly.
+            </p>
+          </div>
+          {showTeacher && (
+            <button
+              onClick={() => navigate('/master/teacher-subject-management')}
+              className="inline-flex items-center justify-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow hover:bg-emerald-700"
+            >
+              <UserCheck size={16} />
+              Manage Teacher Access
+            </button>
+          )}
+        </div>
+
+        <div className="mb-8 rounded-lg border border-gray-200 bg-white p-6 shadow-md print:hidden">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+            {isSuperAdmin && (
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-gray-600">Branch</label>
+                <select
+                  value={quickFilters.branchId}
+                  onChange={e => updateQuickFilter('branchId', e.target.value)}
+                  className="w-full rounded border p-2 outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">All Branches</option>
+                  {branches.map(branch => (
+                    <option key={branch._id} value={branch._id}>{branch.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-gray-600">Batch</label>
+              <select
+                value={quickFilters.batchId}
+                onChange={e => updateQuickFilter('batchId', e.target.value)}
+                className="w-full rounded border p-2 outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="">Select Batch</option>
+                {quickBatchOptions.map(batch => (
+                  <option key={batch._id} value={batch._id}>
+                    {batch.name} {batch.startTime && batch.endTime ? `(${batch.startTime} - ${batch.endTime})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-gray-600">Course</label>
+              <select
+                value={quickFilters.courseId}
+                onChange={e => updateQuickFilter('courseId', e.target.value)}
+                disabled={!quickFilters.batchId}
+                className="w-full rounded border p-2 outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-gray-100"
+              >
+                <option value="">Select Course</option>
+                {quickCourseOptions.map(course => (
+                  <option key={course._id} value={course._id}>{course.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-gray-600">Subject</label>
+              <select
+                value={quickFilters.subjectId}
+                onChange={e => updateQuickFilter('subjectId', e.target.value)}
+                disabled={!quickFilters.courseId}
+                className="w-full rounded border p-2 outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:bg-gray-100"
+              >
+                <option value="">Select Subject</option>
+                {quickSubjectOptions.map(item => (
+                  <option key={item.subject._id} value={item.subject._id}>{item.subject.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-gray-600">Student</label>
+              <div className="relative">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={quickFilters.studentSearch}
+                  onChange={e => setQuickFilters(prev => ({ ...prev, studentSearch: e.target.value }))}
+                  placeholder="Search student..."
+                  className="w-full rounded border py-2 pl-9 pr-3 outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={handleQuickReset}
+              className="inline-flex items-center gap-1 rounded border border-gray-300 bg-gray-100 px-4 py-2 font-medium text-gray-600 transition hover:bg-gray-200"
+            >
+              <RefreshCw size={16} />
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickShowReport()}
+              disabled={quickLoading}
+              className="inline-flex items-center gap-2 rounded bg-blue-600 px-6 py-2 font-bold text-white shadow transition hover:bg-blue-700 disabled:opacity-60"
+            >
+              {quickLoading ? <RefreshCw size={18} className="animate-spin" /> : <Search size={18} />}
+              Show Report
+            </button>
+          </div>
+
+          {quickSelectedSubject && (
+            <div className="mt-5 rounded-lg border border-blue-100 bg-blue-50 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-blue-500">Subject Setup</p>
+                  <h3 className="mt-1 text-base font-bold text-gray-900">{quickSelectedSubject.name}</h3>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold">
+                    <span className="rounded bg-white px-3 py-1 text-blue-700">
+                      Days to Complete: {quickSelectedSubject.daysToComplete || 0}
+                    </span>
+                    <span className="rounded bg-white px-3 py-1 text-indigo-700">
+                      Chapters: {(quickSelectedSubject.chapters || []).length}
+                    </span>
+                    <span className="rounded bg-white px-3 py-1 text-emerald-700">
+                      Projects / Practical: {(quickSelectedSubject.projects || []).length}
+                    </span>
+                    <span className="rounded bg-white px-3 py-1 text-slate-700">
+                      Pages: {quickSelectedSubject.totalPages || 0}
+                    </span>
+                  </div>
+                </div>
+                {showEdit && (
+                  <button
+                    type="button"
+                    onClick={handleQuickEditSubjectSetup}
+                    className="inline-flex items-center justify-center gap-2 rounded bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow hover:bg-indigo-700"
+                  >
+                    <Edit3 size={16} />
+                    Add / Edit Chapter, Project, Practical
+                  </button>
+                )}
+              </div>
+              {/* <p className="mt-3 text-xs font-semibold text-blue-700">
+                Is button se Days to Complete, Subject Chapters, Project/Practical aur page range add/edit kar sakte ho.
+              </p> */}
+            </div>
+          )}
+        </div>
+
+        <div className="overflow-auto bg-gray-50 p-4 print:bg-white print:p-0">
+          <div className="mx-auto min-h-[297mm] bg-white p-8 shadow-lg print:w-full print:p-0 print:shadow-none">
+            <div className="mb-5 border-b-2 border-primary pb-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-blue-600">
+                    {quickSelectedBranch?.name || user?.branchDetails?.name || 'Smart Institute'}
+                  </h2>
+                  <p className="mt-1 text-sm font-semibold text-gray-600">Syllabus Progress Report</p>
+                </div>
+                <div className="text-right text-xs text-gray-500">
+                  <p><span className="font-bold text-gray-700">Batch:</span> {quickSelectedBatch?.name || '-'}</p>
+                  <p><span className="font-bold text-gray-700">Course:</span> {quickSelectedCourse?.name || '-'}</p>
+                  <p><span className="font-bold text-gray-700">Subject:</span> {quickSelectedSubject?.name || '-'}</p>
+                  <p><span className="font-bold text-gray-700">Date:</span> {moment().format('DD-MM-YYYY')}</p>
+                </div>
+              </div>
+            </div>
+
+            {quickDetailStudentId && quickDetailStudent && quickSelectedSubject ? (
+              <StudentDetailView
+                studentId={quickDetailStudentId}
+                onClose={() => {
+                  if (isQuickStudentReportRoute) {
+                    navigate('/master/syllabus-management');
+                  } else {
+                    setQuickDetailStudentId(null);
+                  }
+                }}
+                student={quickDetailStudent}
+                selectedSubject={quickSelectedSubject}
+                subjectChapters={quickSelectedSubject.chapters || []}
+                subjectProjects={quickSelectedSubject.projects || []}
+                batchId={quickFilters.batchId}
+                courseId={quickFilters.courseId}
+                branchId={quickFilters.branchId}
+                getStudentStartDate={getStudentStartDate}
+                getCourseEndDate={getCourseEndDate}
+                getDaysRemainingText={getDaysRemainingText}
+                holidays={holidays}
+                user={user}
+              />
+            ) : (
+              <>
+                <table className="w-full border-collapse border border-gray-400 text-[11px]">
+                  <thead>
+                    <tr className="bg-blue-600 text-left text-white print:bg-gray-200 print:text-black">
+                      <th className="border border-gray-400 p-2 text-center">Sr.</th>
+                      <th className="border border-gray-400 p-2">Student</th>
+                      <th className="border border-gray-400 p-2">Course Period</th>
+                      <th className="border border-gray-400 p-2">Course Status</th>
+                      <th className="border border-gray-400 p-2">Current Chapter</th>
+                      <th className="border border-gray-400 p-2">Teacher</th>
+                      <th className="border border-gray-400 p-2">Completed On</th>
+                      <th className="border border-gray-400 p-2">Days Taken</th>
+                      <th className="border border-gray-400 p-2">Target</th>
+                      <th className="border border-gray-400 p-2 text-center print:hidden">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quickLoading ? (
+                      <tr>
+                        <td colSpan="10" className="border border-gray-400 p-6 text-center font-semibold text-gray-500">
+                          Loading...
+                        </td>
+                      </tr>
+                    ) : quickReportShown && quickFilteredStudents.length > 0 ? (
+                      quickFilteredStudents.map((student, index) => {
+                        const summary = quickSummaries[student._id];
+                        const startDate = getStudentStartDate(student);
+                        const endDate = getCourseEndDate(student, holidays, quickFilters.branchId);
+                        const remaining = getDaysRemainingText(student, holidays, quickFilters.branchId);
+                        return (
+                          <tr key={student._id} className="break-inside-avoid hover:bg-gray-50">
+                            <td className="border border-gray-400 p-2 text-center">{index + 1}</td>
+                            <td className="border border-gray-400 p-2">
+                              <p className="font-bold uppercase text-gray-800">{student.name}</p>
+                              <p className="text-[10px] font-semibold text-gray-500">{student.enrollmentNo || '-'}</p>
+                            </td>
+                            <td className="border border-gray-400 p-2 font-semibold text-gray-700">
+                              {startDate ? startDate.format('DD-MM-YYYY') : '-'} to {endDate ? endDate.format('DD-MM-YYYY') : '-'}
+                            </td>
+                            <td className="border border-gray-400 p-2">
+                              <span className={`rounded px-2 py-1 text-[10px] font-bold ${remaining.colorClass}`}>
+                                {remaining.text}
+                              </span>
+                            </td>
+                            <td className="border border-gray-400 p-2 font-semibold text-gray-700">
+                              {summary?.currentChapterName || '-'}
+                            </td>
+                            <td className="border border-gray-400 p-2 font-semibold text-gray-700">
+                              {summary?.currentTeacherName || '-'}
+                            </td>
+                            <td className="border border-gray-400 p-2 font-semibold text-gray-700">
+                              {summary?.subjectCompletedAt ? moment(summary.subjectCompletedAt).format('DD-MM-YYYY') : 'In progress'}
+                            </td>
+                            <td className="border border-gray-400 p-2 font-semibold text-gray-700">
+                              {summary ? `${summary.actualDaysTaken ?? summary.elapsedDays ?? 0} day(s)` : '-'}
+                            </td>
+                            <td className="border border-gray-400 p-2 font-semibold">
+                              {summary
+                                ? summary.daysOverTarget > 0
+                                  ? <span className="text-red-600">{summary.daysOverTarget} extra day(s)</span>
+                                  : <span className="text-green-700">{summary.daysRemainingToTarget ?? summary.daysToComplete ?? quickSelectedSubject?.daysToComplete ?? 0} day(s) left</span>
+                                : <span className="text-gray-400">-</span>}
+                            </td>
+                            <td className="border border-gray-400 p-2 text-center print:hidden">
+                              <button
+                                type="button"
+                                onClick={() => handleQuickStudentReportClick(student._id)}
+                                className="inline-flex items-center gap-1 rounded bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-200"
+                              >
+                                <Eye size={13} />
+                                Report
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan="10" className="border border-gray-400 p-6 text-center font-semibold text-gray-500">
+                          {quickReportShown ? 'No records found.' : 'Select filters and click Show Report.'}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+
+                <div className="mt-4 flex justify-between text-[10px] text-gray-500">
+                  <span>Printed On: {moment().format('DD-MM-YYYY hh:mm A')}</span>
+                  <span>Total Records: {quickReportShown ? quickFilteredStudents.length : 0}</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -2255,7 +2959,7 @@ const SyllabusManagement = () => {
                   <ListTodo size={20} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Projects</p>
+                  <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Practical Projects</p>
                   <p className="text-lg font-black text-slate-800">{editProjects.length}</p>
                 </div>
               </div>
@@ -2521,7 +3225,7 @@ const SyllabusManagement = () => {
                     </div>
                     <div>
                       <h5 className="text-xs font-black uppercase tracking-wider text-emerald-800">Add New Chapter</h5>
-                      <p className="text-[10px] text-emerald-600/80 font-medium">Add a chapter block to partition the book syllabus</p>
+                      <p className="text-[10px] text-emerald-600/80 font-medium">Every chapter creates Theory automatically; add Practical projects inside the chapter card.</p>
                     </div>
                   </div>
 
@@ -2664,7 +3368,7 @@ const SyllabusManagement = () => {
                                       <BookOpen size={9} /> Pages {chap.startPage !== undefined ? `${chap.startPage} â€“ ${chap.endPage}` : '0 â€“ 0'}
                                     </span>
                                     <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase bg-emerald-100/60 text-emerald-800 rounded px-1.5 py-0.5">
-                                      <ListTodo size={9} /> {chapProjects.length} Project{chapProjects.length !== 1 ? 's' : ''}
+                                      <ListTodo size={9} /> {chapProjects.length} Practical{chapProjects.length !== 1 ? 's' : ''}
                                     </span>
                                   </div>
                                 </div>
@@ -2705,11 +3409,33 @@ const SyllabusManagement = () => {
                             </div>
                           )}
 
-                          {/* Nested Projects List inside Chapter Card */}
-                          <div className="p-4 bg-white space-y-3">
-                            <span className="block text-[9px] font-black uppercase tracking-wider text-slate-400">
-                              Associated Projects ({chapProjects.length})
-                            </span>
+                          {/* Theory + Practical layout inside Chapter Card */}
+                          <div className="p-4 bg-white space-y-4">
+                            <div className="rounded-xl border border-sky-100 bg-sky-50/40 p-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <span className="block text-[9px] font-black uppercase tracking-wider text-sky-600">
+                                    Theory
+                                  </span>
+                                  <p className="mt-1 truncate text-xs font-bold text-slate-800">
+                                    {chap.name || chap}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 rounded-lg bg-white px-2 py-1 text-[10px] font-black text-sky-700">
+                                  Display only
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-emerald-100 bg-emerald-50/20 p-3">
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <span className="block text-[9px] font-black uppercase tracking-wider text-emerald-700">
+                                  Practical Projects ({chapProjects.length})
+                                </span>
+                                <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black text-emerald-700">
+                                  Add projects here
+                                </span>
+                              </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                               {chapProjects.length > 0 ? (
@@ -2794,7 +3520,7 @@ const SyllabusManagement = () => {
                                   );
                                 })
                               ) : (
-                                <p className="text-[10px] text-slate-400 italic px-1.5 py-0.5 col-span-full">No projects added under this chapter.</p>
+                                <p className="text-[10px] text-slate-400 italic px-1.5 py-0.5 col-span-full">No practical projects added under this chapter.</p>
                               )}
                             </div>
 
@@ -2813,8 +3539,9 @@ const SyllabusManagement = () => {
                                 disabled={!(newProjectNames[chapId] || '').trim()}
                                 className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-slate-800 px-4 text-xs font-bold text-white hover:bg-slate-900 transition disabled:opacity-50 shrink-0 shadow-sm active:scale-95"
                               >
-                                <Plus size={12} className="stroke-[2.5]" /> Add Project
+                                <Plus size={12} className="stroke-[2.5]" /> Add Practical
                               </button>
+                            </div>
                             </div>
                           </div>
                         </div>
