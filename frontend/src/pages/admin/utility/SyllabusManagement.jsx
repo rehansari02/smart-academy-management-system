@@ -40,7 +40,10 @@ import {
   BarChart3,
   CheckCircle2,
   Circle,
-  Eye
+  Eye,
+  Printer,
+  Play,
+  Trophy
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Swal from 'sweetalert2';
@@ -50,6 +53,7 @@ import { fetchBatches, fetchCourses } from '../../../features/master/masterSlice
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
 import { useUserRights } from '../../../hooks/useUserRights';
 import StudentDetailView from './StudentDetailView';
+import logo from '../../../assets/logo2.png';
 
 // Helper to shorten 24-char hex MongoDB ObjectID to a 16-char base64url string
 const encodeId = (hexId) => {
@@ -89,6 +93,15 @@ const decodeId = (b64Id) => {
     return b64Id || '';
   }
 };
+
+const truncateText = (value = '', maxLength = 12) => {
+  const text = String(value || '');
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+};
+
+const getProjectColumnKey = (project = {}) => (
+  String(project.name || project.projectName || project._id || '').trim().toLowerCase()
+);
 
 const confirmActionDialog = async ({
   title = 'Are you sure?',
@@ -490,6 +503,9 @@ const SyllabusManagement = () => {
   const [quickLoading, setQuickLoading] = useState(false);
   const [quickReportShown, setQuickReportShown] = useState(false);
   const [quickDetailStudentId, setQuickDetailStudentId] = useState(null);
+  const [quickChapterStatuses, setQuickChapterStatuses] = useState({});
+  const [quickChapterSelections, setQuickChapterSelections] = useState({});
+  const [quickActionLoading, setQuickActionLoading] = useState(null);
 
   // â”€â”€ Syllabus Log state (Level 5 â€“ per student panel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [expandedLogStudent, setExpandedLogStudent] = useState(null); // studentId whose log panel is open
@@ -1040,6 +1056,8 @@ const SyllabusManagement = () => {
     });
     setQuickReportShown(false);
     setQuickDetailStudentId(null);
+    setQuickChapterStatuses({});
+    setQuickChapterSelections({});
   };
 
   const handleQuickReset = () => {
@@ -1054,6 +1072,254 @@ const SyllabusManagement = () => {
     setQuickSummaries({});
     setQuickReportShown(false);
     setQuickDetailStudentId(null);
+    setQuickChapterStatuses({});
+    setQuickChapterSelections({});
+  };
+
+  const getDefaultQuickChapterId = (statuses = []) => {
+    const running = statuses.find(item => item.status === 'Running');
+    if (running?.chapter?._id) return String(running.chapter._id);
+    const firstOpen = statuses.find(item => !item.isLocked && item.status !== 'Completed');
+    if (firstOpen?.chapter?._id) return String(firstOpen.chapter._id);
+    return statuses[0]?.chapter?._id ? String(statuses[0].chapter._id) : '';
+  };
+
+  const fetchQuickChapterStatus = useCallback(async (studentIdToLoad) => {
+    if (!studentIdToLoad || !quickFilters.subjectId) return [];
+    const { data } = await axios.get(
+      `${import.meta.env.VITE_API_URL}/syllabus-logs/student/${studentIdToLoad}/subject/${quickFilters.subjectId}/status`,
+      { withCredentials: true }
+    );
+    const statuses = data?.chapterStatuses || [];
+    setQuickChapterStatuses(prev => ({ ...prev, [studentIdToLoad]: statuses }));
+    setQuickChapterSelections(prev => ({
+      ...prev,
+      [studentIdToLoad]: prev[studentIdToLoad] || getDefaultQuickChapterId(statuses)
+    }));
+    return statuses;
+  }, [quickFilters.subjectId]);
+
+  const loadQuickChapterStatuses = useCallback(async (students = []) => {
+    if (!quickFilters.subjectId || students.length === 0) {
+      setQuickChapterStatuses({});
+      setQuickChapterSelections({});
+      return;
+    }
+
+    const results = await Promise.allSettled(students.map(student => (
+      axios.get(
+        `${import.meta.env.VITE_API_URL}/syllabus-logs/student/${student._id}/subject/${quickFilters.subjectId}/status`,
+        { withCredentials: true }
+      ).then(res => ({ studentId: student._id, statuses: res.data?.chapterStatuses || [] }))
+    )));
+
+    const statusMap = {};
+    const selectionMap = {};
+    results.forEach(result => {
+      if (result.status !== 'fulfilled') return;
+      statusMap[result.value.studentId] = result.value.statuses;
+      selectionMap[result.value.studentId] = getDefaultQuickChapterId(result.value.statuses);
+    });
+    setQuickChapterStatuses(statusMap);
+    setQuickChapterSelections(selectionMap);
+  }, [quickFilters.subjectId]);
+
+  const getQuickSelectedChapterStatus = (studentIdToRead) => {
+    const statuses = quickChapterStatuses[studentIdToRead] || [];
+    const selectedChapterId = quickChapterSelections[studentIdToRead] || getDefaultQuickChapterId(statuses);
+    return statuses.find(item => String(item.chapter?._id) === String(selectedChapterId)) || statuses[0] || null;
+  };
+
+  const getQuickRunningChapterStatus = (studentIdToRead) => {
+    const statuses = quickChapterStatuses[studentIdToRead] || [];
+    return statuses.find(item => item.status === 'Running' && !item.isLocked) || null;
+  };
+
+  const getQuickActionBranchId = () => (
+    quickFilters.branchId || quickSelectedBatch?.branchId?._id || quickSelectedBatch?.branchId || user?.branchId || ''
+  );
+
+  const handleQuickChapterSelect = (studentIdToSet, chapterIdToSet) => {
+    setQuickChapterSelections(prev => ({ ...prev, [studentIdToSet]: chapterIdToSet }));
+  };
+
+  const handleQuickStartChapter = async (student, chapterStatus) => {
+    const chapter = chapterStatus?.chapter;
+    if (!student || !chapter || !quickSelectedSubject) return;
+    const runningChapter = getQuickRunningChapterStatus(student._id);
+    if (runningChapter?.chapter?._id && String(runningChapter.chapter._id) !== String(chapter._id)) {
+      toast.warn(`${runningChapter.chapter?.name || 'Running chapter'} complete karo, fir next chapter start hoga.`);
+      return;
+    }
+    const actionKey = `start_${student._id}_${chapter._id}`;
+    setQuickActionLoading(actionKey);
+    try {
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/syllabus-logs/chapter/start`,
+        {
+          studentId: student._id,
+          subjectId: quickFilters.subjectId,
+          batchId: quickFilters.batchId,
+          courseId: quickFilters.courseId,
+          branchId: getQuickActionBranchId(),
+          chapterId: chapter._id,
+          chapterName: chapter.name || '',
+          sessionDate: moment().format('YYYY-MM-DD'),
+        },
+        { withCredentials: true }
+      );
+      toast.success(`${student.name}: ${chapter.name} started.`);
+      await fetchQuickChapterStatus(student._id);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to start chapter.');
+    } finally {
+      setQuickActionLoading(null);
+    }
+  };
+
+  const handleQuickTheoryComplete = async (student, chapterStatus) => {
+    const chapter = chapterStatus?.chapter;
+    if (!student || !chapter) return;
+    const confirmed = await confirmActionDialog({
+      title: 'Theory complete?',
+      text: `${student.name} - ${chapter.name} theory complete mark karna hai?`,
+      confirmButtonText: 'Yes, complete theory',
+      icon: 'question',
+      confirmButtonColor: '#059669'
+    });
+    if (!confirmed) return;
+    const actionKey = `theory_${student._id}_${chapter._id}`;
+    setQuickActionLoading(actionKey);
+    try {
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/syllabus-logs/chapter/complete`,
+        {
+          studentId: student._id,
+          subjectId: quickFilters.subjectId,
+          batchId: quickFilters.batchId,
+          courseId: quickFilters.courseId,
+          branchId: getQuickActionBranchId(),
+          chapterId: chapter._id,
+          chapterName: chapter.name || '',
+        },
+        { withCredentials: true }
+      );
+      toast.success(`${student.name}: theory completed.`);
+      await fetchQuickChapterStatus(student._id);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to complete theory.');
+    } finally {
+      setQuickActionLoading(null);
+    }
+  };
+
+  const handleQuickProjectComplete = async (student, chapterStatus, project) => {
+    const chapter = chapterStatus?.chapter;
+    if (!student || !chapter || !project) return;
+    const key = `${student._id}_${chapter._id}_${project._id}`;
+    const actionKey = `project_${key}`;
+    setQuickActionLoading(actionKey);
+    try {
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/syllabus-logs/project/complete`,
+        {
+          studentId: student._id,
+          subjectId: quickFilters.subjectId,
+          batchId: quickFilters.batchId,
+          courseId: quickFilters.courseId,
+          branchId: getQuickActionBranchId(),
+          chapterId: chapter._id,
+          chapterName: chapter.name || '',
+          projects: [{ projectId: project._id, projectName: project.name }],
+          sessionDate: new Date().toISOString(),
+        },
+        { withCredentials: true }
+      );
+      toast.success(`${student.name}: ${project.name} done.`);
+      await fetchQuickChapterStatus(student._id);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to complete practical.');
+    } finally {
+      setQuickActionLoading(null);
+    }
+  };
+
+  const handleQuickAllProjectsComplete = async (student, chapterStatus) => {
+    const pendingProjects = (chapterStatus?.projects || []).filter(project => !project.completed);
+    if (!student || !chapterStatus?.chapter || pendingProjects.length === 0) return;
+    const actionKey = `all_projects_${student._id}_${chapterStatus.chapter._id}`;
+    setQuickActionLoading(actionKey);
+    try {
+      await Promise.all(pendingProjects.map(project => (
+        axios.post(
+          `${import.meta.env.VITE_API_URL}/syllabus-logs/project/complete`,
+          {
+            studentId: student._id,
+            subjectId: quickFilters.subjectId,
+            batchId: quickFilters.batchId,
+            courseId: quickFilters.courseId,
+            branchId: getQuickActionBranchId(),
+            chapterId: chapterStatus.chapter._id,
+            chapterName: chapterStatus.chapter.name || '',
+            projects: [{ projectId: project._id, projectName: project.name }],
+            sessionDate: moment().format('YYYY-MM-DD'),
+          },
+          { withCredentials: true }
+        )
+      )));
+      toast.success(`${student.name}: all practical completed.`);
+      await fetchQuickChapterStatus(student._id);
+    } catch (error) {
+      toast.error('Failed to complete all practical.');
+    } finally {
+      setQuickActionLoading(null);
+    }
+  };
+
+  const handleQuickFinalChapterComplete = async (student, chapterStatus) => {
+    const chapter = chapterStatus?.chapter;
+    if (!student || !chapter) return;
+    const result = await Swal.fire({
+      title: 'Chapter completed?',
+      text: `${student.name} - ${chapter.name} ko final completed mark karna hai?`,
+      icon: 'success',
+      input: 'textarea',
+      inputLabel: 'Reason / note',
+      inputValue: 'Theory and practical completed from main report.',
+      showCancelButton: true,
+      confirmButtonColor: '#7c3aed',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Yes, chapter completed',
+      cancelButtonText: 'Cancel',
+      reverseButtons: true,
+      inputValidator: value => (!value?.trim() ? 'Please enter note.' : undefined),
+      customClass: { container: 'z-[9999]' }
+    });
+    if (!result.isConfirmed) return;
+    const actionKey = `final_${student._id}_${chapter._id}`;
+    setQuickActionLoading(actionKey);
+    try {
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/syllabus-logs/chapter/final-complete`,
+        {
+          studentId: student._id,
+          subjectId: quickFilters.subjectId,
+          batchId: quickFilters.batchId,
+          courseId: quickFilters.courseId,
+          branchId: getQuickActionBranchId(),
+          chapterId: chapter._id,
+          chapterName: chapter.name || '',
+          reason: result.value || '',
+        },
+        { withCredentials: true }
+      );
+      toast.success(`${student.name}: chapter completed.`);
+      await fetchQuickChapterStatus(student._id);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to complete chapter.');
+    } finally {
+      setQuickActionLoading(null);
+    }
   };
 
   const handleQuickShowReport = async (detailStudentId = null) => {
@@ -1089,6 +1355,7 @@ const SyllabusManagement = () => {
       setQuickStudents(mapped);
       setQuickSummaries(summaryMap);
       setQuickReportShown(true);
+      loadQuickChapterStatuses(mapped);
       if (detailStudentId && !mapped.some(student => String(student._id) === String(detailStudentId))) {
         toast.warn('Student not found in selected batch/course.');
       }
@@ -1831,20 +2098,60 @@ const SyllabusManagement = () => {
 
   if (step === 1) {
     const quickDetailStudent = quickFilteredStudents.find(student => student._id === quickDetailStudentId);
+    const reportBranch = quickSelectedBranch || user?.branchDetails || {};
+    const reportBranchName = reportBranch?.name || user?.branchName || 'Smart Institute';
+    const reportBranchAddress = reportBranch?.address || '';
+    const reportBranchPhone = reportBranch?.phone || reportBranch?.mobile || '';
+    const reportBranchMobile = reportBranch?.mobile || '';
+    const reportBranchEmail = reportBranch?.email || '';
+    const quickProjectColumns = quickFilteredStudents.reduce((columns, student) => {
+      const chapterStatus = getQuickSelectedChapterStatus(student._id);
+      (chapterStatus?.projects || []).forEach(project => {
+        const projectKey = getProjectColumnKey(project);
+        if (projectKey && !columns.some(item => item.columnKey === projectKey)) {
+          columns.push({ ...project, columnKey: projectKey });
+        }
+      });
+      return columns;
+    }, []);
+    const quickProjectColumnCount = Math.max(quickProjectColumns.length, 1);
+    const quickTableColSpan = 13 + quickProjectColumnCount;
+    const quickProjectColumnWidth = `${Math.max(3, Math.min(8, 24 / quickProjectColumnCount))}%`;
 
     return (
-      <div className="container mx-auto max-w-[1400px] p-4">
+      <div className="mx-auto w-full max-w-none p-2 lg:p-4">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-800">
               <BookOpenCheck className="text-blue-600" size={28} />
-              Syllabus Management
+              {isQuickStudentReportRoute ? 'Student Syllabus Report' : 'Syllabus Management'}
             </h1>
             <p className="mt-1 text-sm text-gray-500">
-              Select filters once and view the student syllabus report directly.
+              {isQuickStudentReportRoute
+                ? 'Student wise syllabus progress and chapter report.'
+                : 'Select filters once and view the student syllabus report directly.'}
             </p>
           </div>
-          {showTeacher && (
+          {isQuickStudentReportRoute ? (
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => navigate('/master/syllabus-management')}
+                className="inline-flex items-center justify-center gap-2 rounded border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50"
+              >
+                <ArrowLeft size={16} />
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="inline-flex items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow hover:bg-blue-700"
+              >
+                <Printer size={16} />
+                Print
+              </button>
+            </div>
+          ) : showTeacher && (
             <button
               onClick={() => navigate('/master/teacher-subject-management')}
               className="inline-flex items-center justify-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow hover:bg-emerald-700"
@@ -1855,7 +2162,7 @@ const SyllabusManagement = () => {
           )}
         </div>
 
-        <div className="mb-8 rounded-lg border border-gray-200 bg-white p-6 shadow-md print:hidden">
+        <div className={`${isQuickStudentReportRoute ? 'hidden' : 'mb-8 rounded-lg border border-gray-200 bg-white p-6 shadow-md print:hidden'}`}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
             {isSuperAdmin && (
               <div>
@@ -1992,8 +2299,41 @@ const SyllabusManagement = () => {
           )}
         </div>
 
-        <div className="overflow-auto bg-gray-50 p-4 print:bg-white print:p-0">
-          <div className="mx-auto min-h-[297mm] bg-white p-8 shadow-lg print:w-full print:p-0 print:shadow-none">
+        <div className="overflow-hidden bg-gray-50 p-2 print:bg-white print:p-0">
+          <div className="mx-auto w-full min-h-[297mm] bg-white p-3 shadow-lg print:w-full print:p-0 print:shadow-none lg:p-5">
+            {isQuickStudentReportRoute ? (
+              <>
+                <div className="mb-6 flex items-start justify-between border-b-2 border-primary pb-4">
+                  <div className="flex items-center gap-4">
+                    <img src={logo} alt="Institute Logo" className="h-20 object-contain" />
+                  </div>
+                  <div className="max-w-md text-right text-xs text-gray-600">
+                    <h2 className="mb-1 text-xl font-bold text-blue-600">{reportBranchName}</h2>
+                    {reportBranchAddress && <p>{reportBranchAddress}</p>}
+                    {(reportBranchPhone || reportBranchMobile) && (
+                      <p className="font-semibold text-blue-800">
+                        Ph. No. : {reportBranchPhone || '-'}{reportBranchMobile ? `, Mob. No. : ${reportBranchMobile}` : ''}
+                      </p>
+                    )}
+                    {reportBranchEmail && <p className="text-blue-500 underline">{reportBranchEmail}</p>}
+                  </div>
+                </div>
+
+                <div className="mb-5 text-center">
+                  <h3 className="text-lg font-bold uppercase text-black underline decoration-2 underline-offset-4">
+                    Student Syllabus Progress Report
+                  </h3>
+                  <div className="mt-2 flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs font-semibold text-gray-600">
+                    <span>Student: <span className="font-bold text-gray-900">{quickDetailStudent?.name || '-'}</span></span>
+                    <span>Enrollment: <span className="font-bold text-gray-900">{quickDetailStudent?.enrollmentNo || '-'}</span></span>
+                    <span>Batch: <span className="font-bold text-gray-900">{quickSelectedBatch?.name || '-'}</span></span>
+                    <span>Course: <span className="font-bold text-gray-900">{quickSelectedCourse?.name || '-'}</span></span>
+                    <span>Subject: <span className="font-bold text-gray-900">{quickSelectedSubject?.name || '-'}</span></span>
+                    <span>Date: <span className="font-bold text-gray-900">{moment().format('DD-MM-YYYY')}</span></span>
+                  </div>
+                </div>
+              </>
+            ) : (
             <div className="mb-5 border-b-2 border-primary pb-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -2010,6 +2350,7 @@ const SyllabusManagement = () => {
                 </div>
               </div>
             </div>
+            )}
 
             {quickDetailStudentId && quickDetailStudent && quickSelectedSubject ? (
               <StudentDetailView
@@ -2036,25 +2377,62 @@ const SyllabusManagement = () => {
               />
             ) : (
               <>
-                <table className="w-full border-collapse border border-gray-400 text-[11px]">
+                <table className="w-full table-fixed border-collapse border border-gray-400 text-[10px] leading-tight">
+                  <colgroup>
+                    <col style={{ width: '2.5%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '5%' }} />
+                    <col style={{ width: '6%' }} />
+                    <col style={{ width: '5%' }} />
+                    <col style={{ width: '6%' }} />
+                    <col style={{ width: '4%' }} />
+                    <col style={{ width: '5%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '5%' }} />
+                    {quickProjectColumns.length > 0 ? (
+                      quickProjectColumns.map(project => (
+                        <col key={project.columnKey || project._id} style={{ width: quickProjectColumnWidth }} />
+                      ))
+                    ) : (
+                      <col style={{ width: quickProjectColumnWidth }} />
+                    )}
+                    <col style={{ width: '5%' }} />
+                    <col style={{ width: '3%' }} />
+                  </colgroup>
                   <thead>
                     <tr className="bg-blue-600 text-left text-white print:bg-gray-200 print:text-black">
-                      <th className="border border-gray-400 p-2 text-center">Sr.</th>
-                      <th className="border border-gray-400 p-2">Student</th>
-                      <th className="border border-gray-400 p-2">Course Period</th>
-                      <th className="border border-gray-400 p-2">Course Status</th>
-                      <th className="border border-gray-400 p-2">Current Chapter</th>
-                      <th className="border border-gray-400 p-2">Teacher</th>
-                      <th className="border border-gray-400 p-2">Completed On</th>
-                      <th className="border border-gray-400 p-2">Days Taken</th>
-                      <th className="border border-gray-400 p-2">Target</th>
-                      <th className="border border-gray-400 p-2 text-center print:hidden">Action</th>
+                      <th className="border border-gray-400 p-1 text-center">Sr.</th>
+                      <th className="border border-gray-400 p-1">Student</th>
+                      <th className="border border-gray-400 p-1">Course</th>
+                      <th className="border border-gray-400 p-1">Status</th>
+                      <th className="border border-gray-400 p-1">Current</th>
+                      <th className="border border-gray-400 p-1">Teacher</th>
+                      <th className="border border-gray-400 p-1">Done On</th>
+                      <th className="border border-gray-400 p-1">Days</th>
+                      <th className="border border-gray-400 p-1">Target</th>
+                      <th className="border border-gray-400 p-1 print:hidden">Chapter</th>
+                      <th className="border border-gray-400 p-1 print:hidden">Theory</th>
+                      {quickProjectColumns.length > 0 ? (
+                        quickProjectColumns.map(project => (
+                          <th key={project.columnKey || project._id} className="border border-gray-400 p-1 text-center print:hidden">
+                            <div className="min-w-0">
+                              <p className="truncate font-bold" title={project.name || 'Project'}>{truncateText(project.name || 'Project')}</p>
+                              <p className="truncate text-[9px] font-semibold opacity-80">Practical</p>
+                            </div>
+                          </th>
+                        ))
+                      ) : (
+                        <th className="border border-gray-400 p-1 text-center print:hidden">Practical</th>
+                      )}
+                      <th className="border border-gray-400 p-1 print:hidden">Final</th>
+                      <th className="border border-gray-400 p-1 text-center print:hidden">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {quickLoading ? (
                       <tr>
-                        <td colSpan="10" className="border border-gray-400 p-6 text-center font-semibold text-gray-500">
+                        <td colSpan={quickTableColSpan} className="border border-gray-400 p-6 text-center font-semibold text-gray-500">
                           Loading...
                         </td>
                       </tr>
@@ -2064,48 +2442,194 @@ const SyllabusManagement = () => {
                         const startDate = getStudentStartDate(student);
                         const endDate = getCourseEndDate(student, holidays, quickFilters.branchId);
                         const remaining = getDaysRemainingText(student, holidays, quickFilters.branchId);
+                        const chapterStatus = getQuickSelectedChapterStatus(student._id);
+                        const chapterStatuses = quickChapterStatuses[student._id] || [];
+                        const selectedChapter = chapterStatus?.chapter || null;
+                        const chapterActionKey = selectedChapter ? `${student._id}_${selectedChapter._id}` : '';
+                        const projects = chapterStatus?.projects || [];
+                        const pendingProjects = projects.filter(project => !project.completed);
+                        const allProjectsCompleted = projects.length === 0 || pendingProjects.length === 0;
+                        const theoryCompleted = chapterStatus?.status === 'Completed' || chapterStatus?.isLocked;
+                        const chapterStarted = Boolean(chapterStatus?.startedAt || chapterStatus?.status);
+                        const runningChapterStatus = getQuickRunningChapterStatus(student._id);
+                        const runningOtherChapter = runningChapterStatus?.chapter?._id &&
+                          selectedChapter?._id &&
+                          String(runningChapterStatus.chapter._id) !== String(selectedChapter._id)
+                          ? runningChapterStatus
+                          : null;
                         return (
                           <tr key={student._id} className="break-inside-avoid hover:bg-gray-50">
-                            <td className="border border-gray-400 p-2 text-center">{index + 1}</td>
-                            <td className="border border-gray-400 p-2">
-                              <p className="font-bold uppercase text-gray-800">{student.name}</p>
-                              <p className="text-[10px] font-semibold text-gray-500">{student.enrollmentNo || '-'}</p>
+                            <td className="border border-gray-400 p-1 text-center">{index + 1}</td>
+                            <td className="border border-gray-400 p-1">
+                              <p className="truncate font-bold uppercase text-gray-800" title={student.name}>{student.name}</p>
+                              <p className="truncate text-[9px] font-semibold text-gray-500">{student.enrollmentNo || '-'}</p>
                             </td>
-                            <td className="border border-gray-400 p-2 font-semibold text-gray-700">
+                            <td className="border border-gray-400 p-1 font-semibold text-gray-700">
                               {startDate ? startDate.format('DD-MM-YYYY') : '-'} to {endDate ? endDate.format('DD-MM-YYYY') : '-'}
                             </td>
-                            <td className="border border-gray-400 p-2">
-                              <span className={`rounded px-2 py-1 text-[10px] font-bold ${remaining.colorClass}`}>
+                            <td className="border border-gray-400 p-1">
+                              <span className={`block truncate rounded px-1 py-0.5 text-[9px] font-bold ${remaining.colorClass}`} title={remaining.text}>
                                 {remaining.text}
                               </span>
                             </td>
-                            <td className="border border-gray-400 p-2 font-semibold text-gray-700">
-                              {summary?.currentChapterName || '-'}
+                            <td className="border border-gray-400 p-1 font-semibold text-gray-700">
+                              <span className="block truncate" title={summary?.currentChapterName || '-'}>{summary?.currentChapterName || '-'}</span>
                             </td>
-                            <td className="border border-gray-400 p-2 font-semibold text-gray-700">
-                              {summary?.currentTeacherName || '-'}
+                            <td className="border border-gray-400 p-1 font-semibold text-gray-700">
+                              <span className="block truncate" title={summary?.currentTeacherName || '-'}>{summary?.currentTeacherName || '-'}</span>
                             </td>
-                            <td className="border border-gray-400 p-2 font-semibold text-gray-700">
+                            <td className="border border-gray-400 p-1 font-semibold text-gray-700">
                               {summary?.subjectCompletedAt ? moment(summary.subjectCompletedAt).format('DD-MM-YYYY') : 'In progress'}
                             </td>
-                            <td className="border border-gray-400 p-2 font-semibold text-gray-700">
+                            <td className="border border-gray-400 p-1 font-semibold text-gray-700">
                               {summary ? `${summary.actualDaysTaken ?? summary.elapsedDays ?? 0} day(s)` : '-'}
                             </td>
-                            <td className="border border-gray-400 p-2 font-semibold">
+                            <td className="border border-gray-400 p-1 font-semibold">
                               {summary
                                 ? summary.daysOverTarget > 0
-                                  ? <span className="text-red-600">{summary.daysOverTarget} extra day(s)</span>
-                                  : <span className="text-green-700">{summary.daysRemainingToTarget ?? summary.daysToComplete ?? quickSelectedSubject?.daysToComplete ?? 0} day(s) left</span>
+                                  ? <span className="block truncate text-red-600">{summary.daysOverTarget} extra</span>
+                                  : <span className="block truncate text-green-700">{summary.daysRemainingToTarget ?? summary.daysToComplete ?? quickSelectedSubject?.daysToComplete ?? 0} left</span>
                                 : <span className="text-gray-400">-</span>}
                             </td>
-                            <td className="border border-gray-400 p-2 text-center print:hidden">
+                            <td className="border border-gray-400 p-1 print:hidden">
+                              <div className="min-w-0 space-y-1">
+                                <select
+                                  value={selectedChapter?._id || ''}
+                                  onChange={e => handleQuickChapterSelect(student._id, e.target.value)}
+                                  className="w-full rounded border border-gray-300 px-1 py-0.5 text-[9px] font-semibold outline-none focus:border-blue-500"
+                                >
+                                  {chapterStatuses.length === 0 && <option value="">Loading chapters...</option>}
+                                  {chapterStatuses.map(item => (
+                                    <option key={item.chapter?._id} value={item.chapter?._id}>
+                                      {item.chapter?.name || 'Chapter'}
+                                    </option>
+                                  ))}
+                                </select>
+                                <div className="text-[9px] font-semibold text-gray-500">
+                                  <p className="truncate">Status: <span className="font-bold text-gray-800">{chapterStatus?.isLocked ? 'Completed' : chapterStatus?.status || 'Not started'}</span></p>
+                                  {chapterStatus?.startedAt && (
+                                    <p className="truncate">Start: {moment(chapterStatus.startedAt).format('DD-MM-YYYY')} {chapterStatus.startedBy ? `by ${chapterStatus.startedBy}` : ''}</p>
+                                  )}
+                                </div>
+                                {!chapterStarted && selectedChapter && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleQuickStartChapter(student, chapterStatus)}
+                                      disabled={quickActionLoading !== null || Boolean(runningOtherChapter)}
+                                      className="inline-flex w-full items-center justify-center gap-1 rounded bg-indigo-600 px-1 py-0.5 text-[9px] font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      {quickActionLoading === `start_${chapterActionKey}` ? <RefreshCw size={11} className="animate-spin" /> : <Play size={11} />}
+                                      Start Chapter
+                                    </button>
+                                    {runningOtherChapter && (
+                                      <p className="truncate text-[9px] font-bold text-amber-600" title={`${runningOtherChapter.chapter?.name || 'Running chapter'} complete first`}>
+                                        First complete: {runningOtherChapter.chapter?.name || 'Running chapter'}
+                                      </p>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                            <td className="border border-gray-400 p-1 print:hidden">
+                              <div className="min-w-0 space-y-1 text-[9px]">
+                                {theoryCompleted ? (
+                                  <div className="rounded bg-emerald-50 px-1 py-0.5 font-bold text-emerald-700">
+                                    Theory Done
+                                    {chapterStatus?.completedAt && (
+                                      <p className="truncate text-[9px] font-semibold text-emerald-600">
+                                        {moment(chapterStatus.completedAt).format('DD-MM-YYYY')}
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : chapterStatus?.status === 'Running' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickTheoryComplete(student, chapterStatus)}
+                                    disabled={quickActionLoading !== null}
+                                    className="inline-flex w-full items-center justify-center gap-1 rounded bg-emerald-600 px-1 py-0.5 text-[9px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                  >
+                                    {quickActionLoading === `theory_${chapterActionKey}` ? <RefreshCw size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
+                                    Theory Complete
+                                  </button>
+                                ) : (
+                                  <span className="font-semibold text-gray-400">Start first</span>
+                                )}
+                              </div>
+                            </td>
+                            {quickProjectColumns.length > 0 ? (
+                              quickProjectColumns.map(columnProject => {
+                                const project = projects.find(item => getProjectColumnKey(item) === columnProject.columnKey);
+                                const projectKey = `${student._id}_${selectedChapter?._id}_${columnProject.columnKey || columnProject._id}`;
+
+                                if (!project) {
+                                  return (
+                                    <td key={columnProject.columnKey || columnProject._id} className="border border-gray-400 p-1 text-center print:hidden">
+                                      <span className="text-[9px] font-bold text-gray-300">-</span>
+                                    </td>
+                                  );
+                                }
+
+                                return (
+                                  <td key={columnProject.columnKey || columnProject._id} className="border border-gray-400 p-1 print:hidden">
+                                    <div className="min-w-0 space-y-1 text-center">
+                                      {project.completed ? (
+                                        <>
+                                          <span className="inline-flex items-center justify-center rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
+                                            Done
+                                          </span>
+                                          <p className="truncate text-[9px] font-semibold text-gray-500" title={project.completedAt ? moment(project.completedAt).format('DD-MM-YYYY hh:mm A') : 'Completed'}>
+                                            {project.completedAt ? moment(project.completedAt).format('DD-MM hh:mm A') : 'Completed'}
+                                          </p>
+                                          {project.completedBy && (
+                                            <p className="truncate text-[9px] font-semibold text-gray-400" title={project.completedBy}>by {project.completedBy}</p>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleQuickProjectComplete(student, chapterStatus, project)}
+                                          disabled={!chapterStarted || quickActionLoading !== null}
+                                          className="w-full rounded bg-blue-600 px-1 py-0.5 text-[9px] font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                                        >
+                                          {quickActionLoading === `project_${projectKey}` ? 'Saving...' : 'Done'}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                );
+                              })
+                            ) : (
+                              <td className="border border-gray-400 p-1 text-center print:hidden">
+                                <span className="text-[9px] font-bold text-gray-400">No practical</span>
+                              </td>
+                            )}
+                            <td className="border border-gray-400 p-1 print:hidden">
+                              <div className="min-w-0">
+                                {chapterStatus?.isLocked ? (
+                                  <span className="block truncate rounded bg-violet-50 px-1 py-0.5 text-[9px] font-bold text-violet-700">Completed</span>
+                                ) : theoryCompleted && allProjectsCompleted ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickFinalChapterComplete(student, chapterStatus)}
+                                    disabled={quickActionLoading !== null}
+                                    className="inline-flex w-full items-center justify-center gap-1 rounded bg-violet-600 px-1 py-0.5 text-[9px] font-bold text-white hover:bg-violet-700 disabled:opacity-50"
+                                  >
+                                    {quickActionLoading === `final_${chapterActionKey}` ? <RefreshCw size={11} className="animate-spin" /> : <Trophy size={11} />}
+                                    Complete
+                                  </button>
+                                ) : (
+                                  <span className="text-[9px] font-semibold text-gray-400">Pending</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="border border-gray-400 p-1 text-center print:hidden">
                               <button
                                 type="button"
                                 onClick={() => handleQuickStudentReportClick(student._id)}
-                                className="inline-flex items-center gap-1 rounded bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-200"
+                                className="inline-flex items-center justify-center gap-1 rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold text-blue-700 hover:bg-blue-200"
                               >
                                 <Eye size={13} />
-                                Report
                               </button>
                             </td>
                           </tr>
@@ -2113,7 +2637,7 @@ const SyllabusManagement = () => {
                       })
                     ) : (
                       <tr>
-                        <td colSpan="10" className="border border-gray-400 p-6 text-center font-semibold text-gray-500">
+                        <td colSpan={quickTableColSpan} className="border border-gray-400 p-6 text-center font-semibold text-gray-500">
                           {quickReportShown ? 'No records found.' : 'Select filters and click Show Report.'}
                         </td>
                       </tr>

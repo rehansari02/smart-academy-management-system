@@ -150,6 +150,7 @@ const buildStudentSubjectSummary = (logs = [], subject = {}) => {
     elapsedDays,
     actualDaysTaken: elapsedDays,
     subjectCompletedAt,
+    currentChapterId: currentChapterState ? runningChapters[runningChapters.length - 1][0] : null,
     currentChapterName: currentChapterState?.chapterName || null,
     currentChapterStatus: currentChapterState?.status || null,
     currentTeacherName: latestLog?.loggedByName || currentChapterState?.startedBy || null,
@@ -338,6 +339,21 @@ const startChapter = asyncHandler(async (req, res) => {
   if (finalLock) {
     res.status(400);
     throw new Error('Chapter is locked. Request unlock before making changes.');
+  }
+
+  const subjectLogs = await SyllabusLog.find({
+    studentId,
+    subjectId,
+    isDeleted: false,
+  }).sort({ sessionDate: 1, createdAt: 1 });
+  const summary = buildStudentSubjectSummary(subjectLogs, {});
+  if (
+    summary.currentChapterStatus === 'Running' &&
+    summary.currentChapterId &&
+    String(summary.currentChapterId) !== String(chapterId)
+  ) {
+    res.status(400);
+    throw new Error(`Complete ${summary.currentChapterName || 'running chapter'} before starting another chapter.`);
   }
 
   // Check if chapter already has active logs

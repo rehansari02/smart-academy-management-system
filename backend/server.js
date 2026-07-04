@@ -25,13 +25,6 @@ const morgan = require("morgan");
 console.log("Loading logger...");
 const logger = require("./config/logger");
 
-console.log("Connecting to DB...");
-connectDB().then(() => {
-    console.log("DB connection call finished.");
-}).catch(err => {
-    console.error("DB connection call FAILED:", err);
-});
-
 const app = express();
 
 app.set('trust proxy', 1);
@@ -189,4 +182,16 @@ app.use("/api/syllabus-logs", require("./routes/syllabusLogRoutes")); // Syllabu
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const startServer = async () => {
+  try {
+    console.log("Connecting to DB...");
+    await connectDB();
+    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  } catch (err) {
+    console.error("Server startup failed. MongoDB connection is required.");
+    console.error(err);
+    process.exit(1);
+  }
+};
+
+startServer();
