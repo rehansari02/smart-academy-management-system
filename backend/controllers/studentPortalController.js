@@ -357,6 +357,7 @@ const getDashboardStats = async (req, res) => {
 
         res.json({
             studentName: student.firstName + ' ' + student.lastName,
+            studentPhoto: student.studentPhoto || '',
             courseName: student.course?.name,
             totalCourseDays,
             daysSinceJoining,

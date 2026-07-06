@@ -37,6 +37,19 @@ import {
 const percent = (value, total) => (!total ? 0 : Math.round((value / total) * 100));
 const clampPercent = (value) => Math.max(0, Math.min(100, value || 0));
 
+const getMediaUrl = (value) => {
+    if (!value) return '';
+    if (String(value).startsWith('http')) return value;
+    const cleanPath = String(value).replace(/\\/g, '/').replace(/^\//, '');
+    const baseUrl = import.meta.env.VITE_API_URL?.replace(/\/api\/?$/, '') || '';
+    return `${baseUrl}/${cleanPath}`;
+};
+
+const compactChartLabel = (label = '', maxChars = 18) => {
+    const value = String(label).trim();
+    return value.length > maxChars ? `${value.slice(0, maxChars - 1)}...` : value;
+};
+
 const reportQuestionCount = (report) => {
     if (Array.isArray(report?.questions)) return report.questions.length;
     return Number(report?.totalQuestions || report?.questionCount || 0);
@@ -49,14 +62,14 @@ const reportScore = (report) => {
 };
 
 const KpiCard = ({ title, value, helper, icon, tone }) => (
-    <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
-        <div className="flex items-start justify-between gap-2">
+    <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
+        <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-                <p className="truncate text-[10px] font-black uppercase tracking-wider text-gray-400">{title}</p>
-                <p className="mt-1 text-xl font-black text-gray-900">{value}</p>
-                <p className="mt-0.5 truncate text-[11px] font-semibold text-gray-500">{helper}</p>
+                <p className="truncate text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{title}</p>
+                <p className="mt-2 text-2xl font-black leading-none text-slate-950">{value}</p>
+                <p className="mt-2 truncate text-sm font-semibold text-slate-500">{helper}</p>
             </div>
-            <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${tone}`}>{icon}</div>
+            <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${tone}`}>{icon}</div>
         </div>
     </div>
 );
@@ -65,6 +78,20 @@ const MiniStat = ({ label, value, tone }) => (
     <div className={`rounded-lg px-3 py-2 ${tone}`}>
         <p className="text-[10px] font-black uppercase tracking-wider opacity-80">{label}</p>
         <p className="mt-0.5 text-lg font-black">{value}</p>
+    </div>
+);
+
+const HeroPill = ({ color, children }) => (
+    <span className="inline-flex min-w-0 items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-black text-white shadow-sm ring-1 ring-white/10">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${color}`} />
+        <span className="truncate">{children}</span>
+    </span>
+);
+
+const HeroMetric = ({ label, value, tone }) => (
+    <div className="rounded-xl bg-white/10 px-4 py-3 ring-1 ring-white/10">
+        <p className="text-[11px] font-black text-white">{label}</p>
+        <p className={`mt-1 text-lg font-black ${tone}`}>{value}</p>
     </div>
 );
 
@@ -192,6 +219,7 @@ const StudentHome = () => {
     if (isLoading && !stats && !syllabus) return <Loading />;
 
     const studentName = stats?.studentName || user?.name || 'Student';
+    const studentPhoto = getMediaUrl(stats?.studentPhoto || user?.photo || user?.avatar || '');
     const attendancePresent = stats?.presentDays || 0;
     const daysPassed = stats?.daysSinceJoining || 0;
     const attendanceMissed = Math.max(daysPassed - attendancePresent, 0);
@@ -205,6 +233,7 @@ const StudentHome = () => {
     const syllabusPercent = percent(dashboard.completedChapters, dashboard.totalChapters);
     const projectPercent = percent(dashboard.completedProjects, dashboard.totalProjects);
     const learningPercent = percent(dashboard.correctQuestions, dashboard.answeredQuestions);
+    const subjectChartHeight = Math.max(220, dashboard.subjectChart.length * 38 + 54);
 
     const attendancePie = [
         { name: 'Present', value: attendancePresent, color: '#2563eb' },
@@ -216,40 +245,72 @@ const StudentHome = () => {
         { name: moment().format('MMM'), Present: monthPresent, Missed: monthAbsent },
     ];
 
+    const studentInitials = studentName
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase())
+        .join('') || 'S';
+
     return (
-        <div className="space-y-3">
-            <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                    <div className="min-w-0">
-                        <p className="text-[10px] font-black uppercase tracking-wider text-primary">Student Dashboard</p>
-                        <h1 className="mt-0.5 truncate text-xl font-black text-gray-900">Welcome back, {studentName}</h1>
-                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-gray-500">
-                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
-                                {syllabus?.course?.name || stats?.courseName || 'Course'}
-                            </span>
-                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">
-                                Running: {dashboard.runningChapters[0]?.chapter?.name || 'None'}
-                            </span>
-                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
-                                {dashboard.pendingUnderstood.length} actions pending
-                            </span>
+        <div className="space-y-5">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 via-[#082047] to-[#0a4772] text-white shadow-[0_18px_45px_rgba(15,23,42,0.22)]">
+                <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-stretch">
+                    <div className="flex min-w-0 flex-col justify-between">
+                        <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">Student Dashboard</p>
+                        <h1 className="mt-4 text-3xl font-black leading-tight text-white sm:text-4xl">
+                            Welcome back, {studentName}
+                        </h1>
+                        <p className="mt-3 max-w-3xl text-base font-semibold uppercase tracking-wide text-slate-200">
+                            {syllabus?.course?.name || stats?.courseName || 'Course'}
+                        </p>
+                        <div className="mt-5 flex flex-wrap gap-3">
+                            <HeroPill color="bg-lime-400">Running: {dashboard.runningChapters[0]?.chapter?.name || 'None'}</HeroPill>
+                            <HeroPill color="bg-amber-400">{dashboard.pendingUnderstood.length} actions pending</HeroPill>
+                            <HeroPill color="bg-sky-400">{dashboard.completedChapters}/{dashboard.totalChapters} chapters done</HeroPill>
+                        </div>
+                        </div>
+                        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <Link to="/student/syllabus" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-black text-blue-800 shadow-sm hover:bg-slate-100">
+                                <BookOpenCheck size={14} /> Syllabus
+                            </Link>
+                            <Link to="/student/study/free-learning" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-blue-500 px-4 text-sm font-black text-white shadow-sm hover:bg-blue-400">
+                                <Brain size={14} /> Practice
+                            </Link>
+                            <Link to="/student/study/free-learning-report" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-400">
+                                <TrendingUp size={14} /> Report
+                            </Link>
                         </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 xl:w-[470px]">
-                        <Link to="/student/syllabus" className="inline-flex items-center justify-center gap-1 rounded-lg bg-gray-900 px-2 py-2 text-xs font-bold text-white hover:bg-gray-800">
-                            <BookOpenCheck size={14} /> Syllabus
-                        </Link>
-                        <Link to="/student/study/free-learning" className="inline-flex items-center justify-center gap-1 rounded-lg bg-blue-50 px-2 py-2 text-xs font-bold text-blue-700 ring-1 ring-blue-100 hover:bg-blue-100">
-                            <Brain size={14} /> Practice
-                        </Link>
-                        <Link to="/student/study/free-learning-report" className="inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-50 px-2 py-2 text-xs font-bold text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100">
-                            <TrendingUp size={14} /> Report
-                        </Link>
+                    <div className="flex flex-col justify-between gap-4 rounded-2xl bg-white/[0.12] p-5 ring-1 ring-white/10 sm:flex-row lg:flex-col">
+                        <div className="flex items-center gap-4">
+                            <div className="relative h-32 w-32 shrink-0 overflow-hidden rounded-2xl bg-slate-800 ring-4 ring-white/10">
+                                {studentPhoto ? (
+                                    <img src={studentPhoto} alt={studentName} className="h-full w-full object-cover object-top" />
+                                ) : (
+                                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-700 to-slate-900 text-2xl font-black text-white">
+                                        {studentInitials}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300">Current Focus</p>
+                                <p className="mt-3 text-lg font-black text-white">Running chapter</p>
+                                <p className="mt-2 line-clamp-2 text-sm font-semibold text-cyan-200">
+                                    {dashboard.runningChapters[0]?.chapter?.name || 'None'}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <HeroMetric label="Pending actions" value={`${dashboard.pendingUnderstood.length} items`} tone="text-amber-300" />
+                            <HeroMetric label="Chapters done" value={`${dashboard.completedChapters}/${dashboard.totalChapters}`} tone="text-emerald-300" />
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
                 <KpiCard
                     title="Syllabus"
                     value={`${syllabusPercent}%`}
@@ -280,9 +341,9 @@ const StudentHome = () => {
                 />
             </div>
 
-            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
-                <div className="grid gap-3 lg:grid-cols-2">
-                    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+                <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
                         <div className="flex items-center justify-between gap-2">
                             <div>
                                 <h2 className="flex items-center gap-2 text-sm font-black text-gray-900">
@@ -332,32 +393,50 @@ const StudentHome = () => {
                         </div>
                     </div>
 
-                    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
                         <div className="flex items-center justify-between gap-2">
                             <div>
                                 <h2 className="flex items-center gap-2 text-sm font-black text-gray-900">
                                     <BarChart3 size={16} className="text-primary" /> Subject Progress
                                 </h2>
-                                <p className="text-[11px] font-semibold text-gray-500">Done, running, left</p>
+                                <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] font-black">
+                                    <span className="inline-flex items-center gap-1.5 text-emerald-700">
+                                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Done
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5 text-amber-700">
+                                        <span className="h-2.5 w-2.5 rounded-full bg-amber-500" /> Running
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5 text-red-700">
+                                        <span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Left
+                                    </span>
+                                </div>
                             </div>
                             <span className="text-[11px] font-black text-emerald-700">{dashboard.completedChapters}/{dashboard.totalChapters}</span>
                         </div>
-                        <div className="mt-3 h-44">
+                        <div className="mt-3" style={{ height: subjectChartHeight }}>
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={dashboard.subjectChart} margin={{ top: 8, right: 6, left: -24, bottom: 0 }}>
+                                <BarChart data={dashboard.subjectChart} layout="vertical" margin={{ top: 8, right: 8, left: 6, bottom: 0 }} barCategoryGap={10}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2f7" />
-                                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} interval={0} height={36} />
-                                    <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                                    <YAxis
+                                        type="category"
+                                        dataKey="name"
+                                        width={112}
+                                        tick={{ fontSize: 10, fill: '#64748b', fontWeight: 700 }}
+                                        tickFormatter={(value) => compactChartLabel(value)}
+                                        tickLine={false}
+                                        axisLine={{ stroke: '#e2e8f0' }}
+                                    />
                                     <Tooltip />
-                                    <Bar dataKey="Done" stackId="a" fill="#10b981" radius={[0, 0, 4, 4]} />
-                                    <Bar dataKey="Run" stackId="a" fill="#3b82f6" />
-                                    <Bar dataKey="Left" stackId="a" fill="#e5e7eb" radius={[4, 4, 0, 0]} />
+                                    <Bar dataKey="Done" stackId="a" fill="#10b981" radius={[4, 0, 0, 4]} />
+                                    <Bar dataKey="Run" stackId="a" fill="#f59e0b" />
+                                    <Bar dataKey="Left" stackId="a" fill="#ef4444" radius={[0, 4, 4, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
                     </div>
 
-                    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
                         <div className="flex items-center justify-between gap-2">
                             <div>
                                 <h2 className="flex items-center gap-2 text-sm font-black text-gray-900">
@@ -398,7 +477,7 @@ const StudentHome = () => {
                         )}
                     </div>
 
-                    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
                         <div className="flex items-center justify-between gap-2">
                             <div>
                                 <h2 className="flex items-center gap-2 text-sm font-black text-gray-900">
@@ -434,8 +513,8 @@ const StudentHome = () => {
                     </div>
                 </div>
 
-                <div className="space-y-3">
-                    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                <div className="space-y-4">
+                    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
                         <div className="flex items-center justify-between gap-2">
                             <h2 className="flex items-center gap-2 text-sm font-black text-gray-900">
                                 <Clock size={16} className="text-rose-600" /> Pending Understand
@@ -467,7 +546,7 @@ const StudentHome = () => {
                         </div>
                     </div>
 
-                    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
                         <h2 className="flex items-center gap-2 text-sm font-black text-gray-900">
                             <Play size={16} className="text-blue-600" /> Running Chapters
                         </h2>
@@ -488,7 +567,7 @@ const StudentHome = () => {
                         </div>
                     </div>
 
-                    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
                         <h2 className="text-sm font-black text-gray-900">Course Progress</h2>
                         <div className="mt-3 space-y-3">
                             <div>

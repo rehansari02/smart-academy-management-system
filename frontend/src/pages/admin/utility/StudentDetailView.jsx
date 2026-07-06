@@ -460,7 +460,7 @@ const StudentDetailView = ({
     try {
       const { data } = await axios.get(
         `${import.meta.env.VITE_API_URL}/syllabus-logs/change-requests`,
-        { withCredentials: true }
+        { params: { status: 'pending' }, withCredentials: true }
       );
       setChangeRequests(data.requests || []);
     } catch (e) {
@@ -1312,8 +1312,8 @@ const StudentDetailView = ({
       {/* Super Admin: Pending Change Requests Panel */}
       {/* Super Admin Pending Approvals (final_complete) */}
       {isSuperAdmin && (() => {
-        const finalApprov = [];
-        const modRequests = changeRequests.filter(r => r.type === 'modification');
+        const finalApprov = changeRequests.filter(r => r.type === 'final_complete' && r.status === 'pending');
+        const modRequests = changeRequests.filter(r => r.type === 'modification' && r.status === 'pending');
         return (<>
         {finalApprov.length > 0 && (
         <div className="border-t border-slate-100 bg-violet-50/40 p-4">

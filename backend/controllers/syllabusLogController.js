@@ -964,7 +964,7 @@ const finalCompleteChapter = asyncHandler(async (req, res) => {
 const getChangeRequests = asyncHandler(async (req, res) => {
   const { status, subjectId } = req.query;
   const filter = {};
-  if (status) filter.status = status;
+  filter.status = status || 'pending';
   if (subjectId) filter.subjectId = subjectId;
 
   const requests = await ChapterChangeRequest.find(filter)

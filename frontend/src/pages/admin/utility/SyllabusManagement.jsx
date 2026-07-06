@@ -2086,12 +2086,13 @@ const SyllabusManagement = () => {
   const hasBatchAccess = !batchId || !allowedBatchIds || allowedBatchIds.has(batchId);
   const hasCourseAccess = !courseId || !allowedCourseIds || allowedCourseIds.has(courseId);
   const hasSubjectAccess = !subjectId || !allowedSubjectIds || allowedSubjectIds.has(subjectId);
+  const hasScopedAccess = isQuickStudentReportRoute ? true : (hasBranchAccess && hasBatchAccess && hasCourseAccess && hasSubjectAccess);
 
-  if (!view || !hasBranchAccess || !hasBatchAccess || !hasCourseAccess || !hasSubjectAccess) {
+  if (!view || !hasScopedAccess) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] p-4 text-center">
         <h2 className="text-xl font-bold text-red-600 mb-2">Access Denied</h2>
-        <p className="text-gray-600">You do not have permission to view this syllabus section or subject.</p>
+        <p className="text-gray-600">You do not have permission to view this syllabus page.</p>
       </div>
     );
   }

@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { ArrowLeft, FileQuestion, Loader, Plus, Save, Trash2 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { ArrowLeft, FileQuestion, FileSpreadsheet, Loader, Plus, Save, Trash2, Upload, X } from 'lucide-react';
 import {
   createFinalExamQuestionPaper,
   fetchCourses,
@@ -16,9 +17,6 @@ import FinalExamQuestionPaperAccessGate from '../../../components/master/FinalEx
 
 const emptyMcq = () => ({ question: '', options: ['', '', '', ''], correctAnswer: '', marks: 1 });
 const emptyQuestionAnswer = () => ({ question: '', answer: '', marks: 1 });
-const sumMarks = (rows = []) => rows.reduce((total, row) => total + (Number(row.marks) || 0), 0);
-const getCourseId = (course) => course?._id || course;
-const getSubjectId = (item) => item?.subject?._id || item?.subject || item?._id || item;
 const getConfiguredSectionMarks = (rows = [], sectionTotalMarks) => (Number(sectionTotalMarks) > 0 ? sumMarks(rows) : 0);
 const syncTotalMarks = (formData) => {
   const total = getConfiguredSectionMarks(formData.mcqs, formData.mcqTotalMarks)
@@ -30,6 +28,133 @@ const getQuestionCount = (totalMarks, perQuestionMarks) => {
   const perQuestion = Number(perQuestionMarks);
   if (!total || !perQuestion || total <= 0 || perQuestion <= 0) return null;
   return Math.max(1, Math.min(200, Math.ceil(total / perQuestion)));
+};
+const sumMarks = (rows = []) => rows.reduce((total, row) => total + (Number(row.marks) || 0), 0);
+const getCourseId = (course) => course?._id || course;
+const getSubjectId = (item) => item?.subject?._id || item?.subject || item?._id || item;
+const normalizeText = (value = '') => String(value || '').trim();
+const normalizeKey = (value = '') => normalizeText(value).toLowerCase().replace(/\s+/g, ' ');
+const parseBooleanText = (value = '') => /^(1|true|yes|y|active|on)$/i.test(normalizeText(value));
+const findSheetName = (workbook, candidates = []) => workbook.SheetNames.find((name) =>
+  candidates.some((candidate) => {
+    const current = normalizeKey(name);
+    const target = normalizeKey(candidate);
+    return current === target || current.includes(target) || target.includes(current);
+  })
+);
+const getCellValue = (row = {}, aliases = []) => {
+  const match = Object.entries(row).find(([key]) =>
+    aliases.some((alias) => normalizeKey(key) === normalizeKey(alias))
+  );
+  return normalizeText(match?.[1]);
+};
+const parseExcelMetaSheet = (worksheet) => {
+  const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false, blankrows: false });
+  const metadata = {};
+  rows.forEach((row) => {
+    const key = normalizeText(row?.[0]);
+    const value = normalizeText(row?.[1]);
+    if (key) metadata[normalizeKey(key)] = value;
+  });
+  return metadata;
+};
+const parseExcelQuestionRows = (rows = [], type = 'mcq') => rows
+  .map((row) => {
+    const question = getCellValue(row, ['Question', 'Q']);
+    if (!question) return null;
+
+    if (type === 'mcq') {
+      return {
+        question,
+        options: [
+          getCellValue(row, ['Option A', 'A', 'Option 1']),
+          getCellValue(row, ['Option B', 'B', 'Option 2']),
+          getCellValue(row, ['Option C', 'C', 'Option 3']),
+          getCellValue(row, ['Option D', 'D', 'Option 4'])
+        ],
+        correctAnswer: getCellValue(row, ['Correct Answer', 'Answer', 'Correct']),
+        marks: Number(getCellValue(row, ['Marks'])) || 1
+      };
+    }
+
+    return {
+      question,
+      answer: getCellValue(row, ['Answer', 'Solution']),
+      marks: Number(getCellValue(row, ['Marks'])) || 1
+    };
+  })
+  .filter(Boolean);
+const parseFinalExamMarkdown = () => ({ mcqs: [], questionAnswers: [] });
+const parseExcelUnifiedRows = (rows = []) => {
+  const mcqs = [];
+
+  rows.forEach((row) => {
+    const question = getCellValue(row, ['Question', 'Q']);
+    if (!question) return;
+
+    mcqs.push({
+      question,
+      options: [
+        getCellValue(row, ['Option A', 'A', 'Option 1']),
+        getCellValue(row, ['Option B', 'B', 'Option 2']),
+        getCellValue(row, ['Option C', 'C', 'Option 3']),
+        getCellValue(row, ['Option D', 'D', 'Option 4'])
+      ],
+      correctAnswer: getCellValue(row, ['Correct Answer', 'Answer', 'Correct']),
+      marks: Number(getCellValue(row, ['Marks'])) || 1
+    });
+  });
+
+  return { mcqs };
+};
+const parseFinalExamExcel = (workbook) => {
+  const metaSheetName = findSheetName(workbook, ['Meta', 'Metadata', 'Details']);
+  const mcqSheetName = findSheetName(workbook, ['MCQ', 'MCQs', 'Multiple Choice']);
+
+  let metadata = metaSheetName ? parseExcelMetaSheet(workbook.Sheets[metaSheetName]) : {};
+  let mcqs = [];
+
+  if (mcqSheetName) {
+    mcqs = parseExcelQuestionRows(
+      XLSX.utils.sheet_to_json(workbook.Sheets[mcqSheetName], { defval: '', raw: false, blankrows: false }),
+      'mcq'
+    );
+  }
+
+  if (!mcqSheetName && workbook.SheetNames.length) {
+    const firstSheetRows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {
+      defval: '',
+      raw: false,
+      blankrows: false
+    });
+    const parsedRows = parseExcelUnifiedRows(firstSheetRows);
+    mcqs = parsedRows.mcqs;
+    if (!metaSheetName && firstSheetRows.length) {
+      const maybeMeta = firstSheetRows.reduce((acc, row) => {
+        const key = normalizeText(row?.Field || row?.field || row?.Key || row?.key);
+        const value = normalizeText(row?.Value || row?.value);
+        if (key && value) acc[normalizeKey(key)] = value;
+        return acc;
+      }, {});
+      metadata = { ...maybeMeta, ...metadata };
+    }
+  }
+
+  const parsedCourse = normalizeText(metadata.course || metadata['course name'] || metadata['course/class']);
+  const parsedSubject = normalizeText(metadata.subject || metadata['subject name']);
+
+  return {
+    title: normalizeText(metadata.title || metadata['paper title']) || '',
+    examName: normalizeText(metadata['exam name']) || 'Final Exam',
+    courseName: parsedCourse,
+    subjectName: parsedSubject,
+    duration: normalizeText(metadata.duration || metadata['time duration']) || '',
+    remarks: normalizeText(metadata.remarks || metadata.note) || '',
+    isActive: metadata['is active'] ? parseBooleanText(metadata['is active']) : true,
+    mcqTotalMarks: metadata['mcq total marks'] || metadata['mcq marks'] || '',
+    mcqQuestionMarks: metadata['mcq each marks'] || metadata['mcq per question marks'] || 1,
+    mcqs
+  };
 };
 
 const AddFinalExamQuestionPaper = () => {
@@ -53,6 +178,12 @@ const AddFinalExamQuestionPaper = () => {
     remarks: '',
     isActive: true
   });
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importMode, setImportMode] = useState('excel');
+  const [importFile, setImportFile] = useState(null);
+  const [importMarkdown, setImportMarkdown] = useState('');
+  const [importFileName, setImportFileName] = useState('');
+  const [importError, setImportError] = useState('');
 
   const selectedCourse = useMemo(
     () => courses.find((course) => String(course._id) === String(form.course)),
@@ -107,7 +238,7 @@ const AddFinalExamQuestionPaper = () => {
       ...prev,
       course: courseId,
       subject: '',
-      title: course ? `${course.name} Question Paper` : prev.title,
+      title: course ? `${course.name} Question Bank` : prev.title,
       duration: '',
       totalMarks: '',
       mcqTotalMarks: '',
@@ -134,7 +265,7 @@ const AddFinalExamQuestionPaper = () => {
     setForm((prev) => ({
       ...prev,
       subject: subjectId,
-      title: coursePaper?.title || (selectedCourse && subject ? `${selectedCourse.name} - ${subject.name} Question Paper` : prev.title),
+      title: coursePaper?.title || (selectedCourse && subject ? `${selectedCourse.name} - ${subject.name} Question Bank` : prev.title),
       duration: savedSubject?.duration || '',
       totalMarks: mcqTotalMarks || qaTotalMarks ? Number(mcqTotalMarks || 0) + Number(qaTotalMarks || 0) : '',
       mcqTotalMarks,
@@ -158,6 +289,108 @@ const AddFinalExamQuestionPaper = () => {
 
     if (savedSubject) {
       toast.info('Existing question paper data loaded');
+    }
+  };
+
+  const applyImportedPaper = (parsed) => {
+    if (!parsed) return;
+
+    const matchedCourse = courses.find((course) => {
+      const names = [course.name, course.shortName, course.code].filter(Boolean).map(normalizeKey);
+      return names.includes(normalizeKey(parsed.courseName));
+    });
+
+    const matchedSubject = matchedCourse
+      ? (matchedCourse.subjects || [])
+        .map((item) => item.subject)
+        .filter(Boolean)
+        .find((subject) => normalizeKey(subject.name) === normalizeKey(parsed.subjectName))
+      : subjectOptions.find((subject) => normalizeKey(subject.name) === normalizeKey(parsed.subjectName));
+
+    const importedMcqs = (parsed.mcqs || []).map((mcq) => ({
+      question: mcq.question || '',
+      options: [...(mcq.options || []), '', '', '', ''].slice(0, 4),
+      correctAnswer: mcq.correctAnswer || '',
+      marks: Number(mcq.marks) || 1
+    }));
+    setForm((prev) => syncTotalMarks({
+      ...prev,
+      title: parsed.title || prev.title,
+      course: matchedCourse?._id || prev.course,
+      subject: matchedSubject?._id || prev.subject,
+      duration: parsed.duration || prev.duration,
+      mcqTotalMarks: parsed.mcqTotalMarks || prev.mcqTotalMarks,
+      mcqQuestionMarks: Number(parsed.mcqQuestionMarks) || prev.mcqQuestionMarks || 1,
+      qaTotalMarks: parsed.qaTotalMarks || prev.qaTotalMarks,
+      qaQuestionMarks: Number(parsed.qaQuestionMarks) || prev.qaQuestionMarks || 1,
+      mcqs: importedMcqs.length ? importedMcqs : [emptyMcq()],
+      questionAnswers: prev.questionAnswers,
+      remarks: parsed.remarks || prev.remarks,
+      isActive: typeof parsed.isActive === 'boolean' ? parsed.isActive : prev.isActive
+    }));
+
+    setShowImportModal(false);
+    setImportFile(null);
+    setImportFileName('');
+    setImportMarkdown('');
+    setImportError('');
+    toast.success('Excel import applied');
+    if (parsed.courseName && !matchedCourse) {
+      toast.warn(`Course not matched: ${parsed.courseName}`);
+    }
+    if (parsed.subjectName && !matchedSubject) {
+      toast.warn(`Subject not matched: ${parsed.subjectName}`);
+    }
+  };
+
+  const handleImportMarkdownText = () => {
+    try {
+      const parsed = parseFinalExamMarkdown(importMarkdown);
+      if (!parsed.mcqs.length) {
+        setImportError('Kam se kam ek MCQ block required hai.');
+        return;
+      }
+      applyImportedPaper(parsed);
+    } catch (error) {
+      setImportError(error.message || 'Markdown parse nahi hua');
+    }
+  };
+
+  const handleImportFileChange = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setImportFileName(file.name);
+    setImportFile(file);
+    setImportError('');
+    if (importMode === 'markdown') {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setImportMarkdown(String(reader.result || ''));
+        setImportError('');
+      };
+      reader.onerror = () => setImportError('File read nahi ho payi.');
+      reader.readAsText(file);
+    }
+  };
+
+  const handleImportExcel = async () => {
+    if (!importFile) {
+      setImportError('Pehle Excel file select karein.');
+      return;
+    }
+
+    try {
+      const buffer = await importFile.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+      const parsed = parseFinalExamExcel(workbook);
+      if (!parsed.mcqs.length) {
+        setImportError('Excel me kam se kam ek MCQ row required hai.');
+        return;
+      }
+      applyImportedPaper(parsed);
+    } catch (error) {
+      setImportError(error.message || 'Excel parse nahi hua');
     }
   };
 
@@ -253,17 +486,11 @@ const AddFinalExamQuestionPaper = () => {
           correctAnswer: mcq.correctAnswer.trim(),
           marks: Number(mcq.marks) || 1
         })),
-      questionAnswers: form.questionAnswers
-        .filter((qa) => qa.question.trim())
-        .map((qa) => ({
-          question: qa.question.trim(),
-          answer: qa.answer.trim(),
-          marks: Number(qa.marks) || 1
-        }))
+    questionAnswers: []
   });
 
   const buildPayload = (course) => ({
-    title: `${course?.name || selectedCourse?.name || 'Course'} Question Paper`,
+    title: `${course?.name || selectedCourse?.name || 'Course'} Question Bank`,
     examName: 'Final Exam',
     course: getCourseId(course) || form.course,
     remarks: form.remarks.trim(),
@@ -295,7 +522,7 @@ const AddFinalExamQuestionPaper = () => {
     }
 
     const subjectPayload = buildSubjectPayload();
-    const hasQuestions = subjectPayload.mcqs.length > 0 || subjectPayload.questionAnswers.length > 0;
+    const hasQuestions = subjectPayload.mcqs.length > 0;
     if (!hasQuestions) {
       toast.error('Kam se kam ek question add karein');
       return;
@@ -314,7 +541,7 @@ const AddFinalExamQuestionPaper = () => {
             subject: row.subject?._id || row.subject,
             duration: row.duration || '',
             mcqs: row.mcqs || [],
-            questionAnswers: row.questionAnswers || []
+            questionAnswers: []
           }));
 
         resultActions.push(await dispatch(updateFinalExamQuestionPaper({
@@ -342,7 +569,7 @@ const AddFinalExamQuestionPaper = () => {
       return;
     }
 
-    toast.success(`Question Paper ${needsEdit ? 'Updated' : 'Added'} Successfully for ${targetCourses.length} Course${targetCourses.length > 1 ? 's' : ''}`);
+    toast.success(`Question Bank ${needsEdit ? 'Updated' : 'Added'} Successfully for ${targetCourses.length} Course${targetCourses.length > 1 ? 's' : ''}`);
     dispatch(fetchFinalExamQuestionPapers());
     dispatch(resetMasterStatus());
     navigate('/master/final-exam-question-paper');
@@ -353,17 +580,34 @@ const AddFinalExamQuestionPaper = () => {
     <div className="container mx-auto p-4">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Add Question Paper</h1>
-          <p className="text-sm text-gray-500">Pehle course select karein, phir subject select karke uska paper banayein.</p>
+          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Add Question Bank</h1>
+          <p className="text-sm text-gray-500">Pehle course select karein, phir subject select karke MCQ bank banayein.</p>
         </div>
-        <button onClick={() => navigate('/master/final-exam-question-paper')} className="border border-gray-300 bg-white text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm font-bold">
-          <ArrowLeft size={17} /> Back To List
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setImportMode('excel');
+              setImportFile(null);
+              setImportFileName('');
+              setImportMarkdown('');
+              setImportError('');
+              setShowImportModal(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700"
+          >
+            <Upload size={17} />
+            Import Excel
+          </button>
+          <button onClick={() => navigate('/master/final-exam-question-paper')} className="border border-gray-300 bg-white text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm font-bold">
+            <ArrowLeft size={17} /> Back To List
+          </button>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white border rounded-lg shadow-sm overflow-hidden">
         <div className="bg-primary text-white p-4 flex items-center gap-2 font-bold">
-          <FileQuestion size={20} /> Question Paper Details
+          <FileQuestion size={20} /> Question Bank Details
         </div>
 
         <div className="p-5 space-y-5">
@@ -411,71 +655,6 @@ const AddFinalExamQuestionPaper = () => {
               </div>
 
               <div className="p-4 space-y-6">
-                <section className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-                  <h3 className="text-sm font-bold text-blue-800 uppercase mb-3">Marks Setup</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Total Marks</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={form.totalMarks}
-                        readOnly
-                        className="w-full border p-2 rounded text-sm bg-gray-100 outline-none"
-                        placeholder="Total"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 uppercase mb-1">MCQ Marks</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={form.mcqTotalMarks}
-                        onChange={(e) => updateMarksSetup('mcqTotalMarks', e.target.value)}
-                        className="w-full border p-2 rounded text-sm bg-white outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="e.g. 40"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 uppercase mb-1">MCQ Each Marks</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={form.mcqQuestionMarks}
-                        onChange={(e) => updateMarksSetup('mcqQuestionMarks', e.target.value)}
-                        className="w-full border p-2 rounded text-sm bg-white outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="Marks per MCQ"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Q&A Marks</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={form.qaTotalMarks}
-                        onChange={(e) => updateMarksSetup('qaTotalMarks', e.target.value)}
-                        className="w-full border p-2 rounded text-sm bg-white outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="e.g. 60"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Q&A Each Marks</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={form.qaQuestionMarks}
-                        onChange={(e) => updateMarksSetup('qaQuestionMarks', e.target.value)}
-                        className="w-full border p-2 rounded text-sm bg-white outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="Marks per question"
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-3 text-xs text-blue-900 font-semibold">
-                    MCQ: {form.mcqs.length} questions x {Number(form.mcqQuestionMarks) || 1} marks each = {getConfiguredSectionMarks(form.mcqs, form.mcqTotalMarks)} marks
-                    {Number(form.qaTotalMarks) > 0 ? ` | Q&A: ${form.questionAnswers.length} questions x ${Number(form.qaQuestionMarks) || 1} marks each = ${getConfiguredSectionMarks(form.questionAnswers, form.qaTotalMarks)} marks` : ''}
-                  </div>
-                </section>
-
                 <section>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-bold text-blue-700 uppercase">MCQs</h3>
@@ -502,28 +681,6 @@ const AddFinalExamQuestionPaper = () => {
                     ))}
                   </div>
                 </section>
-
-                <section>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-bold text-green-700 uppercase">Question Answer</h3>
-                    <button type="button" onClick={addQuestionAnswerRow} className="text-xs bg-green-50 text-green-700 border border-green-200 px-3 py-1 rounded font-bold hover:bg-green-100">
-                      <Plus size={13} className="inline" /> Add Q&A
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {form.questionAnswers.map((qa, index) => (
-                      <div key={index} className="border border-gray-200 rounded p-3 bg-gray-50">
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr_90px_34px] gap-2">
-                          <input value={qa.question} onChange={(e) => updateQuestionAnswer(index, 'question', e.target.value)} className="border p-2 rounded text-sm bg-white" placeholder={`Question ${index + 1}`} />
-                          <input type="number" min="1" value={qa.marks} onChange={(e) => updateQuestionAnswer(index, 'marks', e.target.value)} className="border p-2 rounded text-sm bg-white" placeholder="Marks" />
-                          <button type="button" onClick={() => removeQuestionAnswerRow(index)} className="text-red-600 hover:bg-red-50 rounded"><Trash2 size={16} /></button>
-                        </div>
-                        <textarea value={qa.answer} onChange={(e) => updateQuestionAnswer(index, 'answer', e.target.value)} rows="2" className="border p-2 rounded text-sm bg-white mt-2 w-full" placeholder="Answer / solution" />
-                      </div>
-                    ))}
-                  </div>
-                </section>
               </div>
             </div>
           )}
@@ -545,10 +702,95 @@ const AddFinalExamQuestionPaper = () => {
           </button>
           <button type="submit" disabled={isLoading} className="bg-primary text-white px-7 py-2 rounded hover:bg-blue-800 text-sm font-bold flex items-center gap-2 disabled:opacity-70">
             {isLoading ? <Loader className="animate-spin" size={16} /> : <Save size={16} />}
-            {linkedSubjectCourses.length > 1 ? 'Save For All Courses' : existingCoursePaper ? 'Update Paper' : 'Save Paper'}
+            {linkedSubjectCourses.length > 1 ? 'Save For All Courses' : existingCoursePaper ? 'Update Bank' : 'Save Bank'}
           </button>
         </div>
       </form>
+
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-4xl rounded-xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-bold text-gray-800">
+                  <FileSpreadsheet size={18} />
+                  Import Excel
+                </h2>
+                <p className="text-xs text-gray-500">Course, Subject aur MCQ ko `.xlsx` se load karein.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportFile(null);
+                  setImportFileName('');
+                  setImportError('');
+                }}
+                className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid gap-4 p-4 lg:grid-cols-[1fr_320px]">
+              <div className="space-y-3">
+                <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+                  <label className="mb-2 block text-xs font-bold uppercase text-gray-600">Upload `.xlsx` / `.xls` file</label>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handleImportFileChange}
+                    className="block w-full text-sm"
+                  />
+                  {importFileName && <p className="mt-2 text-xs font-semibold text-emerald-700">Loaded: {importFileName}</p>}
+                </div>
+
+                {importError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+                    {importError}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <h3 className="text-sm font-bold uppercase text-gray-800">Expected Sheets</h3>
+                <div className="space-y-2 text-xs text-gray-600">
+                  <p><span className="font-bold text-gray-800">Meta:</span> Title, Course, Subject, Duration, Remarks, Is Active</p>
+                  <p><span className="font-bold text-gray-800">MCQ:</span> Question, Option A, Option B, Option C, Option D, Correct Answer, Marks</p>
+                  <p><span className="font-bold text-gray-800">Note:</span> Sheet me sirf MCQ rows rakhein.</p>
+                </div>
+
+                <div className="rounded-md border border-gray-200 bg-white p-3 text-[11px] text-gray-600">
+                  <p className="font-bold text-gray-800">Format</p>
+                  <p className="mt-1">Template me already sheet names aur headers set hain. Aap bas rows fill kar do.</p>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={handleImportExcel}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+                  >
+                    <FileSpreadsheet size={16} />
+                    Apply Import
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImportFile(null);
+                      setImportFileName('');
+                      setImportError('');
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </FinalExamQuestionPaperAccessGate>
   );
