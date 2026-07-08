@@ -202,6 +202,8 @@ const AddFinalExamQuestionPaper = () => {
     [subjectOptions, form.subject]
   );
 
+  const canImportExcel = Boolean(form.course && form.subject);
+
   const existingCoursePaper = useMemo(
     () => finalExamQuestionPapers.find((paper) => String(paper.course?._id || paper.course) === String(form.course)),
     [finalExamQuestionPapers, form.course]
@@ -316,8 +318,8 @@ const AddFinalExamQuestionPaper = () => {
     setForm((prev) => syncTotalMarks({
       ...prev,
       title: parsed.title || prev.title,
-      course: matchedCourse?._id || prev.course,
-      subject: matchedSubject?._id || prev.subject,
+      course: prev.course || matchedCourse?._id,
+      subject: prev.subject || matchedSubject?._id,
       duration: parsed.duration || prev.duration,
       mcqTotalMarks: parsed.mcqTotalMarks || prev.mcqTotalMarks,
       mcqQuestionMarks: Number(parsed.mcqQuestionMarks) || prev.mcqQuestionMarks || 1,
@@ -360,6 +362,12 @@ const AddFinalExamQuestionPaper = () => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    if (!canImportExcel) {
+      setImportError('Pehle course aur subject select karein.');
+      setImportFile(null);
+      setImportFileName('');
+      return;
+    }
     setImportFileName(file.name);
     setImportFile(file);
     setImportError('');
@@ -375,6 +383,10 @@ const AddFinalExamQuestionPaper = () => {
   };
 
   const handleImportExcel = async () => {
+    if (!canImportExcel) {
+      setImportError('Pehle course aur subject select karein.');
+      return;
+    }
     if (!importFile) {
       setImportError('Pehle Excel file select karein.');
       return;
@@ -581,12 +593,16 @@ const AddFinalExamQuestionPaper = () => {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Add Question Bank</h1>
-          <p className="text-sm text-gray-500">Pehle course select karein, phir subject select karke MCQ bank banayein.</p>
+          <p className="text-sm text-gray-500">Select a course first, then choose a subject to create the MCQ bank.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => {
+              if (!canImportExcel) {
+                toast.error('Pehle course aur subject select karein');
+                return;
+              }
               setImportMode('excel');
               setImportFile(null);
               setImportFileName('');
@@ -594,7 +610,9 @@ const AddFinalExamQuestionPaper = () => {
               setImportError('');
               setShowImportModal(true);
             }}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700"
+            disabled={!canImportExcel}
+            title={!canImportExcel ? 'Pehle course aur subject select karein' : 'Import Excel'}
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Upload size={17} />
             Import Excel
@@ -611,7 +629,7 @@ const AddFinalExamQuestionPaper = () => {
         </div>
 
         <div className="p-5 space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Course *</label>
               <select value={form.course} onChange={(e) => handleCourseChange(e.target.value)} className="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-primary">
@@ -626,11 +644,6 @@ const AddFinalExamQuestionPaper = () => {
                 <option value="">{form.course ? 'Select Subject' : 'Select Course First'}</option>
                 {availableSubjectOptions.map((subject) => <option key={subject._id} value={subject._id}>{subject.name}</option>)}
               </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Time Duration</label>
-              <input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-primary" placeholder="e.g. 2 Hours" />
             </div>
           </div>
 
@@ -666,9 +679,8 @@ const AddFinalExamQuestionPaper = () => {
                   <div className="space-y-3">
                     {form.mcqs.map((mcq, index) => (
                       <div key={index} className="border border-gray-200 rounded p-3 bg-gray-50">
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr_90px_34px] gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_34px] gap-2">
                           <input value={mcq.question} onChange={(e) => updateMcq(index, 'question', e.target.value)} className="border p-2 rounded text-sm bg-white" placeholder={`MCQ Question ${index + 1}`} />
-                          <input type="number" min="1" value={mcq.marks} onChange={(e) => updateMcq(index, 'marks', e.target.value)} className="border p-2 rounded text-sm bg-white" placeholder="Marks" />
                           <button type="button" onClick={() => removeMcqRow(index)} className="text-red-600 hover:bg-red-50 rounded"><Trash2 size={16} /></button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mt-2">
@@ -740,7 +752,8 @@ const AddFinalExamQuestionPaper = () => {
                     type="file"
                     accept=".xlsx,.xls"
                     onChange={handleImportFileChange}
-                    className="block w-full text-sm"
+                    disabled={!canImportExcel}
+                    className="block w-full text-sm disabled:cursor-not-allowed disabled:opacity-50"
                   />
                   {importFileName && <p className="mt-2 text-xs font-semibold text-emerald-700">Loaded: {importFileName}</p>}
                 </div>
@@ -769,7 +782,8 @@ const AddFinalExamQuestionPaper = () => {
                   <button
                     type="button"
                     onClick={handleImportExcel}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+                    disabled={!canImportExcel || !importFile}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <FileSpreadsheet size={16} />
                     Apply Import
