@@ -219,7 +219,7 @@ const StudentHome = () => {
     if (isLoading && !stats && !syllabus) return <Loading />;
 
     const studentName = stats?.studentName || user?.name || 'Student';
-    const studentPhoto = getMediaUrl(stats?.studentPhoto || user?.photo || user?.avatar || '');
+    const studentPhoto = getMediaUrl(user?.photo || user?.avatar || stats?.studentPhoto || '');
     const attendancePresent = stats?.presentDays || 0;
     const daysPassed = stats?.daysSinceJoining || 0;
     const attendanceMissed = Math.max(daysPassed - attendancePresent, 0);
