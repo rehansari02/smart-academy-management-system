@@ -205,23 +205,16 @@ const uniqueObjectIds = (values = []) => {
         .map(value => new mongoose.Types.ObjectId(value));
 };
 
+const hasTeacherAssignments = (record) => (record?.assignments || []).some(item => item?.batchId && item?.courseId && item?.subjectId);
+
 const getTeacherList = async () => {
-    const [records, activeTeachers] = await Promise.all([
-        TeacherSubjectAccess.find({})
+    const records = await TeacherSubjectAccess.find({ 'assignments.0': { $exists: true } })
         .populate('employeeId', 'name type role email mobile photo isActive branchId userAccount')
         .sort({ updatedAt: -1 })
-            .lean(),
-        Employee.find({
-            isDeleted: false,
-            isActive: true,
-        })
-            .select('name type role email mobile photo isActive branchId userAccount')
-            .sort({ name: 1 })
-            .lean(),
-    ]);
+        .lean();
 
-    const assignedTeachers = records
-        .filter(record => record.employeeId && record.employeeId.isActive !== false)
+    return records
+        .filter(record => hasTeacherAssignments(record) && record.employeeId && record.employeeId.isActive !== false)
         .map(record => ({
             _id: record.employeeId._id,
             name: record.employeeId.name,
@@ -230,35 +223,14 @@ const getTeacherList = async () => {
             email: record.employeeId.email,
             mobile: record.employeeId.mobile,
             photo: record.employeeId.photo,
-            assignmentCount: record.assignments?.length || 0,
-        }));
-
-    const assignmentCountByTeacher = new Map(assignedTeachers.map(item => [item._id.toString(), item.assignmentCount]));
-    const merged = [...activeTeachers, ...assignedTeachers].reduce((map, teacher) => {
-        const id = teacher._id.toString();
-        if (!map.has(id)) {
-            map.set(id, {
-                _id: teacher._id,
-                name: teacher.name,
-                type: teacher.type,
-                role: teacher.role,
-                email: teacher.email,
-                mobile: teacher.mobile,
-                photo: teacher.photo,
-                assignmentCount: assignmentCountByTeacher.get(id) || teacher.assignmentCount || 0,
-            });
-        } else {
-            map.get(id).assignmentCount = Math.max(map.get(id).assignmentCount || 0, assignmentCountByTeacher.get(id) || teacher.assignmentCount || 0);
-        }
-        return map;
-    }, new Map());
-
-    return [...merged.values()].sort((a, b) => {
-        if ((b.assignmentCount || 0) !== (a.assignmentCount || 0)) {
-            return (b.assignmentCount || 0) - (a.assignmentCount || 0);
-        }
-        return String(a.name || '').localeCompare(String(b.name || ''));
-    });
+            assignmentCount: (record.assignments || []).filter(item => item?.batchId && item?.courseId && item?.subjectId).length,
+        }))
+        .sort((a, b) => {
+            if ((b.assignmentCount || 0) !== (a.assignmentCount || 0)) {
+                return (b.assignmentCount || 0) - (a.assignmentCount || 0);
+            }
+            return String(a.name || '').localeCompare(String(b.name || ''));
+        });
 };
 
 const resolveTeacherEmployee = async (req, teacherId) => {
@@ -269,20 +241,26 @@ const resolveTeacherEmployee = async (req, teacherId) => {
             error.statusCode = 400;
             throw error;
         }
-        return Employee.findOne({ _id: teacherId, isDeleted: false }).lean();
+
+        const assignmentRecord = await TeacherSubjectAccess.findOne({
+            employeeId: teacherId,
+            'assignments.0': { $exists: true },
+        }).lean();
+        if (!hasTeacherAssignments(assignmentRecord)) return null;
+
+        return Employee.findOne({ _id: teacherId, isDeleted: false, isActive: { $ne: false } }).lean();
     }
 
-    const employee = await Employee.findOne({ userAccount: req.user._id, isDeleted: false }).lean();
-    return employee || {
-        _id: req.user._id,
-        userAccount: req.user._id,
-        name: req.user.name || req.user.username || 'Teacher',
-        role: req.user.role,
-        type: req.user.role,
-        branchId: req.user.branchId,
-    };
-};
+    const employee = await Employee.findOne({ userAccount: req.user._id, isDeleted: false, isActive: { $ne: false } }).lean();
+    if (!employee) return null;
 
+    const assignmentRecord = await TeacherSubjectAccess.findOne({
+        employeeId: employee._id,
+        'assignments.0': { $exists: true },
+    }).lean();
+
+    return hasTeacherAssignments(assignmentRecord) ? employee : null;
+};
 const getReceiptLifecycleInfo = (receipts = []) => {
     const receiptInfo = new Map();
     let hasAdmission = false;
