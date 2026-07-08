@@ -108,18 +108,18 @@ const resolveAssignableUserId = async (value) => {
 };
 
 const resolveInquiryOwner = async ({ referenceBy, requestedAllocatedTo, fallbackUserId, isExternalRef }) => {
-  // 1. Explicitly selected external references stay with the creator.
-  if (isExternalRef) return fallbackUserId;
-
-  // 2. Direct/Self reference stays with creator
+  // 1. Direct/Self reference stays with creator
   if (isDirectReference(referenceBy)) return fallbackUserId;
 
   const referenceText = String(referenceBy || "").trim();
   if (!referenceText) return fallbackUserId;
 
-  // 3. Internal employee/user references must win over Reference master entries.
+  // 2. Internal employee/user references must win over external flags/master entries.
   const referenceOwner = await resolveAssignableUserId(referenceText);
   if (referenceOwner) return referenceOwner;
+
+  // 3. Explicitly selected external references stay with the creator.
+  if (isExternalRef) return fallbackUserId;
 
   // 4. Saved external references stay with creator.
   const isSavedExternalRef = await Reference.findOne({ 
@@ -132,6 +132,16 @@ const resolveInquiryOwner = async ({ referenceBy, requestedAllocatedTo, fallback
   // 5. Fallback to requested allocation or creator
   if (requestedAllocatedTo) return requestedAllocatedTo;
   return fallbackUserId;
+};
+
+const getUserReferenceOwnershipConditions = (user) => {
+  const values = [user?.name, user?.username, user?.email]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+
+  return [...new Set(values)].map((value) => ({
+    referenceBy: { $regex: new RegExp(`^${escapeRegex(value)}$`, "i") },
+  }));
 };
 
 const addInquiryOwnershipScope = (query, ownerId, extraOwnershipConditions = []) => {
@@ -584,7 +594,7 @@ const getInquiries = asyncHandler(async (req, res) => {
   }
 
   if (req.user && !canViewBranchWideInquiries && !isAdmissionLookup) {
-    const extraOwnershipConditions = [];
+    const extraOwnershipConditions = getUserReferenceOwnershipConditions(req.user);
     if (req.query.adminHome === "true" && req.user.branchId) {
       extraOwnershipConditions.push({
         source: "OnlineAdmission",
@@ -620,7 +630,8 @@ const getInquiries = asyncHandler(async (req, res) => {
       $or: [
         { isExternalRef: { $ne: true } }, // Show if not external ref
         { createdBy: req.user._id },      // OR if I created it
-        { allocatedTo: req.user._id }      // OR if it's allocated to me
+        { allocatedTo: req.user._id },     // OR if it's allocated to me
+        ...getUserReferenceOwnershipConditions(req.user)
       ]
     };
 
@@ -1223,8 +1234,9 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
     addInquiryOwnershipScope(rangeInquiryQuery, selectedEmployeeUserId);
   } else if (req.user && !canViewBranchWideInquiries) {
     selectedEmployeeUserId = req.user._id;
-    addInquiryOwnershipScope(rangeInquiryQuery, selectedEmployeeUserId);
-    addInquiryOwnershipScope(followupInquiryQuery, selectedEmployeeUserId);
+    const extraOwnershipConditions = getUserReferenceOwnershipConditions(req.user);
+    addInquiryOwnershipScope(rangeInquiryQuery, selectedEmployeeUserId, extraOwnershipConditions);
+    addInquiryOwnershipScope(followupInquiryQuery, selectedEmployeeUserId, extraOwnershipConditions);
   }
 
   if (followUpById) {
@@ -1676,11 +1688,12 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
           inquiry[field] = req.body[field];
           // Re-check external ref status if reference name changes
           const refName = String(req.body[field]).trim();
+          const internalReferenceUser = await resolveAssignableUserId(refName);
           const isSavedRef = await Reference.findOne({ 
               name: { $regex: new RegExp(`^${escapeRegex(refName)}$`, "i") }, 
               isDeleted: false 
           }).lean();
-          inquiry.isExternalRef = !!isSavedRef || inquiry.isExternalRef;
+          inquiry.isExternalRef = !internalReferenceUser && (!!isSavedRef || inquiry.isExternalRef);
         } else {
           inquiry[field] = req.body[field];
         }
