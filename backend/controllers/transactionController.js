@@ -1366,6 +1366,7 @@ const getInquiryFollowupStats = asyncHandler(async (req, res) => {
         followUpAt: actionDate,
         callingDate: history.createdAt || actionDate,
         remarks: history.remarks || history.remark || "",
+        origin: history.origin || "",
       };
       const detailKey = inquiryId;
       const existingRow = followupDetailsMap.get(detailKey);

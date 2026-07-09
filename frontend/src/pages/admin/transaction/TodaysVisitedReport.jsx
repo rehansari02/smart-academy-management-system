@@ -443,7 +443,6 @@ const TodaysVisitedReport = () => {
                     endDate: activeFilters.toDate,
                     branchId: activeFilters.branchId,
                     employeeId: activeEmployeeId,
-                    excludeVisitorReportActivity: 'true',
                 },
                 withCredentials: true
             });
@@ -471,6 +470,7 @@ const TodaysVisitedReport = () => {
             return true;
         });
         const doneInquiryFollowups = inquiryFollowups.filter((item) => {
+            if (item?.origin !== 'visitorReport') return false;
             const followupDate = item?.callingDate || item?.followUpAt || item?.followUpDate;
             if (!followupDate) return false;
             const nextSchedDate = item.followUpDate;
@@ -992,26 +992,7 @@ const TodaysVisitedReport = () => {
                         } : null;
                     })
                     .filter(Boolean);
-                const isInActiveRange = (value) => {
-                    if (!value) return false;
-                    const date = new Date(value);
-                    if (Number.isNaN(date.getTime())) return false;
-                    const start = new Date(activeFilters.fromDate);
-                    start.setHours(0, 0, 0, 0);
-                    const end = new Date(activeFilters.toDate);
-                    end.setHours(23, 59, 59, 999);
-                    return date >= start && date <= end;
-                };
-                const doneRows = (Array.isArray(doneActivityForStats.doneFollowupRows) ? doneActivityForStats.doneFollowupRows : [])
-                    .filter(item => item?.recordType === 'inquiry' || item?.recordType === 'visitor')
-                    .filter(item => isInActiveRange(item.followUpDate || item.scheduledDate))
-                    .map(item => ({
-                        ...item,
-                        _id: item._id || item.inquiryId || item.visitorId?._id || item.visitorId,
-                        followupCompleted: true,
-                        sortDate: item.followUpDate || item.scheduledDate || item.callingDate || item.followUpAt || item.createdAt || item.updatedAt
-                    }));
-                const mergedRows = [...visitorRows, ...inquiryRows, ...doneRows];
+                const mergedRows = [...visitorRows, ...inquiryRows];
                 const uniqueRows = [...new Map(mergedRows.map((item) => {
                     const visitorId = item.recordType === 'visitor'
                         ? (item.visitorId && typeof item.visitorId === 'object' ? item.visitorId._id : item.visitorId)
@@ -1370,26 +1351,24 @@ const TodaysVisitedReport = () => {
             };
         }
 
-        const totalRangeFollowups = Number(followups.length || 0);
-        const completedRows = followups.filter((item) => item.followupCompleted || item.isDone).length;
-        const followUpsDone = completedRows;
-        const doneTotal = totalRangeFollowups;
-        const remaining = Math.max(totalRangeFollowups - followUpsDone, 0);
+        const remaining = Number(followups.length || 0);
+        const followUpsDone = Number(doneActivityStats.followupsDone || 0);
+        const totalRangeFollowups = remaining + followUpsDone;
         const employeeMap = Array.isArray(stats?.employees) ? stats.employees : [];
         return {
-            total: doneTotal,
+            total: totalRangeFollowups,
             open: remaining,
             rangeCount: remaining,
             completed: followUpsDone,
             followUpsToday: followUpsDone,
             totalFollowUps: followUpsDone,
-            doneTotal,
+            doneTotal: totalRangeFollowups,
             remaining,
             rangeLabel: 'Range Followups',
             topLabel: 'Top Followup',
             employees: employeeMap,
             pendingFromBefore: pendingFromBeforeTotal,
-            newCount: doneTotal
+            newCount: totalRangeFollowups
         };
     })();
 
