@@ -27,8 +27,6 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
         return now.toTimeString().slice(0, 5);
     };
 
-    const [selectedStatus, setSelectedStatus] = useState(inquiry.status || 'Open');
-
     const { register, handleSubmit, watch, setValue } = useForm({
         defaultValues: {
             status: inquiry.status || 'Open',
@@ -37,11 +35,6 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
             fTime: inquiry.followUpDate ? new Date(inquiry.followUpDate).toTimeString().slice(0, 5) : getCurrentTime(),
         }
     });
-
-    const statusValue = watch('status');
-    useEffect(() => {
-        setSelectedStatus(statusValue);
-    }, [statusValue]);
 
     const onSubmit = async (data) => {
         let fDate = null;
@@ -434,7 +427,7 @@ const TodaysVisitedReport = () => {
             referenceBy: activeFilters.referenceBy
         };
 
-        const shouldFetchVisitorDone = (activeFilters.reportType === 'visited' || activeFilters.isPrintAll) && visitorReportRights.view;
+        const shouldFetchVisitorDone = visitorReportRights.view;
         const visitorFollowups = shouldFetchVisitorDone
             ? await visitorService.getVisitorFollowUps({
                 ...commonParams,
@@ -798,7 +791,6 @@ const TodaysVisitedReport = () => {
     const [followupTransferMode, setFollowupTransferMode] = useState(false);
     const canTransferRecords = ['Super Admin', 'Branch Director'].includes(user?.role);
     const employeeOptions = getEmployeeFilterOptions(employees, user);
-    const activeEmployeeId = getScopedEmployeeId(user, filters.employeeId);
     const getDateKey = (value) => {
         if (!value) return '';
         if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
@@ -896,7 +888,7 @@ const TodaysVisitedReport = () => {
                 withCredentials: true,
             });
             setStats(res.data);
-        } catch (error) {
+        } catch {
             setStats(null);
         }
     };
@@ -1000,8 +992,37 @@ const TodaysVisitedReport = () => {
                         } : null;
                     })
                     .filter(Boolean);
+                const isInActiveRange = (value) => {
+                    if (!value) return false;
+                    const date = new Date(value);
+                    if (Number.isNaN(date.getTime())) return false;
+                    const start = new Date(activeFilters.fromDate);
+                    start.setHours(0, 0, 0, 0);
+                    const end = new Date(activeFilters.toDate);
+                    end.setHours(23, 59, 59, 999);
+                    return date >= start && date <= end;
+                };
+                const doneRows = (Array.isArray(doneActivityForStats.doneFollowupRows) ? doneActivityForStats.doneFollowupRows : [])
+                    .filter(item => item?.recordType === 'inquiry' || item?.recordType === 'visitor')
+                    .filter(item => isInActiveRange(item.followUpDate || item.scheduledDate))
+                    .map(item => ({
+                        ...item,
+                        _id: item._id || item.inquiryId || item.visitorId?._id || item.visitorId,
+                        followupCompleted: true,
+                        sortDate: item.followUpDate || item.scheduledDate || item.callingDate || item.followUpAt || item.createdAt || item.updatedAt
+                    }));
+                const mergedRows = [...visitorRows, ...inquiryRows, ...doneRows];
+                const uniqueRows = [...new Map(mergedRows.map((item) => {
+                    const visitorId = item.recordType === 'visitor'
+                        ? (item.visitorId && typeof item.visitorId === 'object' ? item.visitorId._id : item.visitorId)
+                        : null;
+                    const key = item.recordType === 'visitor'
+                        ? `visitor:${visitorId || item._id || item.sortDate}`
+                        : `inquiry:${item.inquiryId || item._id || item.sortDate}`;
+                    return [key, item];
+                })).values()];
 
-                setFollowups([...visitorRows, ...inquiryRows].sort((a, b) => new Date(a.sortDate) - new Date(b.sortDate)));
+                setFollowups(uniqueRows.sort((a, b) => new Date(a.sortDate) - new Date(b.sortDate)));
                 setVisitors([]);
                 setSelectedVisitorIds(new Set());
                 setVisitorBulkAssignee('');
@@ -1163,7 +1184,7 @@ const TodaysVisitedReport = () => {
             toast.success("Inquiry Updated Successfully");
             setEditInquiryData(null);
             fetchVisitors();
-        } catch (error) {
+        } catch {
             toast.error("Failed to update inquiry");
         }
     };
@@ -1179,16 +1200,13 @@ const TodaysVisitedReport = () => {
             toast.success("Follow-up Updated");
             setShowFollowUpModal(null);
             fetchVisitors();
-        } catch (error) {
+        } catch {
             toast.error("Failed to update follow-up");
         }
     };
 
-    const openStatuses = ["Open", "InProgress", "Recall", "Pending"];
     const completedStatuses = ["Complete", "Completed", "Converted"];
-    const isOpenStatus = (status) => openStatuses.includes(status || 'Open');
     const isCompletedStatus = (status) => completedStatuses.includes(status || '');
-    const isToday = (date) => date ? new Date(date).toDateString() === new Date().toDateString() : false;
     const isVisitorHandled = (visitor) => Boolean(
         visitor?.latestFollowup ||
         (visitor?.status && visitor.status !== 'Open')
@@ -1206,7 +1224,7 @@ const TodaysVisitedReport = () => {
             const visitorId = item.visitorId && typeof item.visitorId === 'object' ? item.visitorId._id : item.visitorId;
             return visitorId ? `visitor:${visitorId}` : '';
         }
-        return item._id ? `inquiry:${item._id}` : '';
+        return item._id || item.inquiryId ? `inquiry:${item._id || item.inquiryId}` : '';
     };
     const getFollowupRowRights = (item) => {
         if (!item) return { edit: false };
@@ -1352,10 +1370,11 @@ const TodaysVisitedReport = () => {
             };
         }
 
-        const followUpsDone = Number(doneActivityStats.followupsDone ?? 0);
         const totalRangeFollowups = Number(followups.length || 0);
-        const doneTotal = totalRangeFollowups + followUpsDone;
-        const remaining = totalRangeFollowups;
+        const completedRows = followups.filter((item) => item.followupCompleted || item.isDone).length;
+        const followUpsDone = completedRows;
+        const doneTotal = totalRangeFollowups;
+        const remaining = Math.max(totalRangeFollowups - followUpsDone, 0);
         const employeeMap = Array.isArray(stats?.employees) ? stats.employees : [];
         return {
             total: doneTotal,
@@ -1702,14 +1721,15 @@ const TodaysVisitedReport = () => {
                             )}
                             {filters.reportType === 'followup' && (
                                 <div>
-                                    <label className="text-xs text-gray-500 font-semibold mb-1 block">Inquiry List</label>
+                                    <label className="text-xs text-gray-500 font-semibold mb-1 block">Follow-up Source</label>
                                     <select
                                         name="listType"
                                         value={filters.listType}
                                         onChange={handleFilterChange}
                                         className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                                     >
-                                        <option value="all">All Lists</option>
+                                        <option value="all">All Follow-ups</option>
+                                        <option value="visitor">Visitor Follow-ups</option>
                                         <option value="online">Online Inquiry</option>
                                         <option value="offline">Offline Inquiry</option>
                                         <option value="dsr">DSR Inquiry</option>
@@ -1989,7 +2009,7 @@ const TodaysVisitedReport = () => {
                                         const personName = getFullName(isVisitorFollowUp ? (visitorInquiry || visitor) : inquiry);
                                         const originalDate = isVisitorFollowUp ? (hist.scheduledDate || visitor.visitingDate) : inquiry.inquiryDate;
                                         const status = isVisitorFollowUp ? (hist.status || visitor.status) : inquiry.status;
-                                        const branchName = isVisitorFollowUp ? hist.branchId?.name : inquiry.branchId?.name;
+                                        const branchName = isVisitorFollowUp ? hist.branchId?.name : (inquiry.branchId?.name || inquiry.branchName);
                                         const followupActivities = Array.isArray(inquiry.followUpHistory)
                                             ? inquiry.followUpHistory.filter(item => item.activityType === 'followup')
                                             : [];
@@ -1997,15 +2017,17 @@ const TodaysVisitedReport = () => {
                                         const followUpDate = isVisitorFollowUp ? hist.scheduledDate : (hist.followUpDate || lastHistoryItem?.date || inquiry.followUpDate);
                                         const details = isVisitorFollowUp ? hist.remark : (lastHistoryItem?.remarks || inquiry.followUpDetails);
                                         const followUpBy = isVisitorFollowUp ? hist.followUpBy : (hist.followUpBy || lastHistoryItem?.followUpBy || inquiry.followUpBy);
+                                        const followUpByLabel = typeof followUpBy === 'string' ? followUpBy : (followUpBy?.name || followUpBy?.username || '-');
                                         const callingDate = isVisitorFollowUp
                                             ? (hist.isDone ? (hist.callingDate || null) : null)
                                             : (hist.callingDate || lastHistoryItem?.callingDate || lastHistoryItem?.createdAt || lastHistoryItem?.date || inquiry.updatedAt);
                                         const callingBy = isVisitorFollowUp
                                             ? hist.followUpBy
                                             : (lastHistoryItem?.followUpBy || inquiry.followUpBy);
+                                        const callingByLabel = typeof callingBy === 'string' ? callingBy : (callingBy?.name || callingBy?.username || followUpByLabel);
                                         const filledBy = isVisitorFollowUp
                                             ? getFilledBy(visitor)
-                                            : (inquiry.createdBy?.name || inquiry.createdBy?.username || inquiry.followUpBy?.name || inquiry.followUpBy?.username || '-');
+                                            : (inquiry.createdBy?.name || inquiry.createdBy?.username || inquiry.filledBy || inquiry.followUpBy?.name || inquiry.followUpBy?.username || '-');
                                         const referenceBy = isVisitorFollowUp
                                             ? getReferenceBy(visitor)
                                             : getReferenceBy(inquiry);
@@ -2075,7 +2097,7 @@ const TodaysVisitedReport = () => {
                                             <td className="p-2 border text-gray-600 truncate max-w-xs" title={details}>
                                                 {details ? (details.length > 14 ? `${details.substring(0, 14)}...` : details) : '-'}
                                             </td>
-                                            <td className="p-2 border text-gray-700">{followUpBy?.name || followUpBy?.username || '-'}</td>
+                                            <td className="p-2 border text-gray-700">{followUpByLabel}</td>
                                             <td className="p-2 border text-center">
                                                 {callingDate ? (
                                                     <div className="text-xs">
@@ -2083,7 +2105,7 @@ const TodaysVisitedReport = () => {
                                                             {formatDate(callingDate)} {new Date(callingDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                         </div>
                                                         <div className="text-gray-500">
-                                                            by {callingBy?.name || callingBy?.username || '-'}
+                                                            by {callingByLabel}
                                                         </div>
                                                     </div>
                                                 ) : '-'}

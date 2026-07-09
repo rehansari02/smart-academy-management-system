@@ -494,8 +494,15 @@ const getInquiries = asyncHandler(async (req, res) => {
     if (dateField === "followUpHistory.createdAt" && dateRange) {
       activityMatch.createdAt = dateRange;
       delete query[dateField];
+      query.followUpHistory = { $elemMatch: activityMatch };
+    } else if (dateField === "followUpDate") {
+      query.followUpDate = dateRange || { $ne: null };
+      query.followUpHistory = {
+        $elemMatch: { activityType: "followup" }
+      };
+    } else {
+      query.followUpHistory = { $elemMatch: activityMatch };
     }
-    query.followUpHistory = { $elemMatch: activityMatch };
   } else if (
     req.query.excludeFollowupActivity === "true" ||
     (
