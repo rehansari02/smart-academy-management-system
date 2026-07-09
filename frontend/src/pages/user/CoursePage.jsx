@@ -136,7 +136,7 @@ const CoursePage = () => {
                         <img 
                           src={course.image || `https://placehold.co/600x400/png?text=${encodeURIComponent(course.name)}`} 
                           alt={course.name} 
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" 
+                          className="w-full h-full object-contain bg-white group-hover:scale-105 transition-transform duration-300" 
                         />
                         <div className="absolute top-4 left-4 flex gap-2">
                            {course.isPopular && (

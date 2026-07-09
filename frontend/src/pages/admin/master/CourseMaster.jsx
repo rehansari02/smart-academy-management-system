@@ -131,35 +131,7 @@ const CourseMaster = () => {
 
   // --- CRUD Operations ---
   const handleEdit = (course) => {
-      // Set Form Fields
-      const fields = [
-          'name', 'shortName', 'courseFees', 'admissionFees', 'registrationFees', 
-          'monthlyFees', 'totalInstallment', 'sorting', 'commissionType', 'commission', 'duration', 
-          'durationType', 'courseType', 'image', 'smallDescription', 'description', 'isActive'
-      ];
-      fields.forEach(f => setValue(f, course[f]));
-      setValue('commissionType', course.commissionType || 'Percentage');
-
-      // Set Subjects
-      const subjMap = {};
-      if (course.subjects) {
-          course.subjects.forEach(s => {
-              if (s.subject) {
-                  subjMap[s.subject._id] = s.sortOrder || 0;
-              }
-          });
-      }
-      setSelectedSubjectMap(subjMap);
-
-      setCurrentCourseId(course._id);
-      
-      if (course.image) {
-          setPreviewImage(course.image);
-          setValue('image', course.image); // Keep existing URL if not changed
-      }
-      
-      setIsEditing(true);
-      setShowForm(true);
+      navigate(`/master/course/edit/${course._id}`);
   };
 
   const handleView = (course) => {
@@ -331,7 +303,7 @@ const CourseMaster = () => {
                 <Star size={18}/> Manage Popular
             </button>
             <button 
-                onClick={() => { setShowForm(true); setValue('commissionType', 'Percentage'); }} 
+                onClick={() => navigate('/master/course/new')} 
                 className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-2 shadow text-sm font-medium"
             >
                 <Plus size={18}/> Add New Course

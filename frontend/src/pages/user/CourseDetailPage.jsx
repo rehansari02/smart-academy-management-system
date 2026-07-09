@@ -195,7 +195,7 @@ const CourseDetailPage = () => {
                 <img
                   src={courseImage}
                   alt={course.name}
-                  className="w-full aspect-[4/3] object-cover rounded-xl bg-slate-200"
+                  className="w-full aspect-[4/3] object-contain rounded-xl bg-white"
                 />
               </div>
             </div>

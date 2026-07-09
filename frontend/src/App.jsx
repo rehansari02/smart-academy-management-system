@@ -66,6 +66,7 @@ const StudentProfile = lazy(() =>
   import("./pages/admin/master/StudentProfile")
 );
 const CourseMaster = lazy(() => import("./pages/admin/master/CourseMaster"));
+const CourseFormPage = lazy(() => import("./pages/admin/master/CourseFormPage"));
 const PopularCourseMaster = lazy(() => import("./pages/admin/master/PopularCourseMaster"));
 const BatchMaster = lazy(() => import("./pages/admin/master/BatchMaster"));
 const EmployeeMaster = lazy(() =>
@@ -297,6 +298,22 @@ function App() {
                 element={
                   <PrivateRoute>
                     <CourseMaster />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/course/new"
+                element={
+                  <PrivateRoute>
+                    <CourseFormPage />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/course/edit/:id"
+                element={
+                  <PrivateRoute>
+                    <CourseFormPage />
                   </PrivateRoute>
                 }
               />
