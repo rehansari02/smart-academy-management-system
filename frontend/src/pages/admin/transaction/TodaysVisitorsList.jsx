@@ -359,6 +359,7 @@ const TodaysVisitorsList = () => {
                 branchId: nextBranch,
                 inquirySource: nextInquirySource,
                 employeeId: nextEmployee,
+                scope: 'todays-list',
                 excludeFollowedVisitors: 'true'
             });
             setVisitors(data);
@@ -999,3 +1000,4 @@ const TodaysVisitorsList = () => {
 };
 
 export default TodaysVisitorsList;
+

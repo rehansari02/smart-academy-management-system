@@ -50,6 +50,8 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
     const { references } = useSelector((state) => state.master);
     const { user } = useSelector((state) => state.auth);
     const externalReferenceValue = (id) => `ExternalRef:${id}`;
+    const getId = (value) => String(value?._id || value || '');
+    const isSameId = (a, b) => getId(a) === getId(b);
     const getExternalReferenceFromValue = (value) => {
         if (!value || !String(value).startsWith('ExternalRef:')) return null;
         const id = String(value).replace('ExternalRef:', '');
@@ -158,7 +160,10 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
             setCourses(coursesRes.data);
 
             const empRes = await axios.get(`${import.meta.env.VITE_API_URL}/employees`);
-            setEmployees(empRes.data);
+            const branchEmployees = user?.role === 'Super Admin'
+                ? empRes.data
+                : empRes.data.filter((emp) => isSameId(emp.branchId, user?.branchId));
+            setEmployees(branchEmployees);
         } catch (error) {
             console.error("Error fetching dropdowns:", error);
         }
@@ -834,3 +839,6 @@ const VisitorForm = ({ initialData = null, onSuccess = null, onCancel = null }) 
 };
 
 export default VisitorForm;
+
+
+

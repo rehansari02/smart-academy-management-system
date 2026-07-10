@@ -95,7 +95,22 @@ const resolveAssignableUserId = async (value) => {
     return null;
 };
 
-const resolveVisitorOwner = async ({ reference, fallbackUserId, isExternalRef }) => {
+const isSameObjectId = (a, b) => String(a || "") === String(b || "");
+
+const getUserBranchId = async (userId) => {
+    if (!userId) return null;
+
+    const user = await User.findById(userId).select("branchId").lean();
+    if (user?.branchId) return user.branchId;
+
+    const employee = await Employee.findOne({ userAccount: userId, isDeleted: false })
+        .select("branchId")
+        .lean();
+
+    return employee?.branchId || null;
+};
+
+const resolveVisitorOwner = async ({ reference, fallbackUserId, isExternalRef, branchId, allowCrossBranch = false }) => {
     // 1. Explicitly marked as external ref from frontend
     if (isExternalRef) return fallbackUserId;
 
@@ -105,9 +120,16 @@ const resolveVisitorOwner = async ({ reference, fallbackUserId, isExternalRef })
     const referenceText = String(reference || "").trim();
     if (!referenceText) return fallbackUserId;
 
-    // 3. Try to resolve to a Staff/User account
+    // 3. Try to resolve to a Staff/User account, but do not leak ownership across branches.
     const referenceOwner = await resolveAssignableUserId(referenceText);
-    if (referenceOwner) return referenceOwner;
+    if (referenceOwner) {
+        if (allowCrossBranch || !branchId) return referenceOwner;
+
+        const ownerBranchId = await getUserBranchId(referenceOwner);
+        if (isSameObjectId(ownerBranchId, branchId)) return referenceOwner;
+
+        return fallbackUserId;
+    }
 
     // 4. Check if this name exists in the Reference master (External References)
     const isSavedExternalRef = await Reference.findOne({
@@ -118,6 +140,15 @@ const resolveVisitorOwner = async ({ reference, fallbackUserId, isExternalRef })
     if (isSavedExternalRef) return fallbackUserId;
 
     return fallbackUserId;
+};
+
+const resolveAssignableUserIdForBranch = async (value, branchId, fallbackUserId, allowCrossBranch = false) => {
+    const userId = await resolveAssignableUserId(value);
+    if (!userId) return fallbackUserId || null;
+    if (allowCrossBranch || !branchId) return userId;
+
+    const userBranchId = await getUserBranchId(userId);
+    return isSameObjectId(userBranchId, branchId) ? userId : (fallbackUserId || null);
 };
 
 const addVisitorOwnershipScope = (query, ownerId) => {
@@ -271,7 +302,9 @@ exports.createVisitor = async (req, res) => {
         const allocatedTo = await resolveVisitorOwner({
             reference,
             fallbackUserId: creatorId,
-            isExternalRef: isExternalRef === 'true' || isExternalRef === true
+            isExternalRef: isExternalRef === 'true' || isExternalRef === true,
+            branchId,
+            allowCrossBranch: req.user.role === 'Super Admin'
         });
         
         const newVisitor = new Visitor({
@@ -318,6 +351,7 @@ exports.getAllVisitors = async (req, res) => {
         const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, branchId, inquirySource, employeeId, allocatedTo, onlyWithFollowups, excludeFollowedVisitors, scope, status, dateFilterType } = req.query;
         let query = { isDeleted: false };
         const isAdmissionLookup = scope === 'admission' || req.query.forAdmission === 'true';
+        const isTodaysListScope = scope === 'todays-list' || req.query.showAllVisitors === 'true';
         const dateRange = buildDateRange(fromDate, toDate);
 
         // Branch Filter Logic
@@ -367,7 +401,7 @@ exports.getAllVisitors = async (req, res) => {
         const isRestrictedRole = !["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role);
         
         // Employee/Allocation Filter
-        const targetEmployee = isRestrictedRole && !isAdmissionLookup ? req.user._id : (employeeId || allocatedTo);
+        const targetEmployee = isRestrictedRole && !isAdmissionLookup && !isTodaysListScope ? req.user._id : (employeeId || allocatedTo);
         if (targetEmployee && dateFilterType !== 'visitingOrFollowUpDate') {
             const employeeUserId = await resolveAssignableUserId(targetEmployee);
             if (employeeUserId) {
@@ -377,7 +411,7 @@ exports.getAllVisitors = async (req, res) => {
             }
         }
 
-        if (req.user && isRestrictedRole && !targetEmployee && !isAdmissionLookup && dateFilterType !== 'visitingOrFollowUpDate') {
+        if (req.user && isRestrictedRole && !targetEmployee && !isAdmissionLookup && !isTodaysListScope && dateFilterType !== 'visitingOrFollowUpDate') {
             addVisitorOwnershipScope(query, req.user._id);
         }
 
@@ -434,7 +468,7 @@ exports.getAllVisitors = async (req, res) => {
         // --- External Reference Privacy ---
         // If not Super Admin/Director/Admin, inquiries marked as External Reference are only visible to the owner/creator
         // Bypass for admission lookup to allow matching, but ensure sensitive data is handled in frontend
-        if (req.user && isRestrictedRole && !isAdmissionLookup) {
+        if (req.user && isRestrictedRole && !isAdmissionLookup && !isTodaysListScope) {
             const privacyQuery = {
                 $or: [
                     { isExternalRef: { $ne: true } }, // Show if not external ref
@@ -618,7 +652,7 @@ exports.updateVisitor = async (req, res) => {
         visitor.inquiryId = inquiryId || visitor.inquiryId;
 
         if (assignedTo !== undefined) {
-            visitor.allocatedTo = await resolveAssignableUserId(assignedTo) || visitor.allocatedTo;
+            visitor.allocatedTo = await resolveAssignableUserIdForBranch(assignedTo, visitor.branchId, visitor.allocatedTo, req.user.role === 'Super Admin') || visitor.allocatedTo;
         }
 
         if (isExternalRef !== undefined && canChangeReference) {
@@ -647,13 +681,17 @@ exports.updateVisitor = async (req, res) => {
             visitor.allocatedTo = await resolveVisitorOwner({
                 reference,
                 fallbackUserId: visitor.createdBy || req.user._id,
-                isExternalRef: visitor.isExternalRef
+                isExternalRef: visitor.isExternalRef,
+                branchId: visitor.branchId,
+                allowCrossBranch: req.user.role === 'Super Admin'
             });
         } else if (req.user.role !== 'Super Admin' && (visitor.reference || reference)) {
             visitor.allocatedTo = await resolveVisitorOwner({
                 reference: visitor.reference || reference,
                 fallbackUserId: visitor.createdBy || req.user._id,
-                isExternalRef: visitor.isExternalRef
+                isExternalRef: visitor.isExternalRef,
+                branchId: visitor.branchId,
+                allowCrossBranch: false
             });
         }
 
@@ -1141,3 +1179,6 @@ exports.deleteVisitor = async (req, res) => {
         res.status(500).json({ message: 'Error deleting visitor', error: error.message });
     }
 };
+
+
+

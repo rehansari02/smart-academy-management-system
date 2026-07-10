@@ -17,7 +17,7 @@ const createVisitor = async (visitorData) => {
 };
 
 const getAllVisitors = async (filters = {}) => {
-    const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, inquirySource, employeeId, allocatedTo, onlyWithFollowups, excludeFollowedVisitors, dateFilterType } = filters;
+    const { fromDate, toDate, search, searchField, studentName, referenceBy, limit, inquirySource, employeeId, allocatedTo, onlyWithFollowups, excludeFollowedVisitors, dateFilterType, scope } = filters;
     const params = new URLSearchParams();
     if (fromDate) params.append('fromDate', fromDate);
     if (toDate) params.append('toDate', toDate);
@@ -33,6 +33,7 @@ const getAllVisitors = async (filters = {}) => {
     if (onlyWithFollowups) params.append('onlyWithFollowups', onlyWithFollowups);
     if (excludeFollowedVisitors) params.append('excludeFollowedVisitors', excludeFollowedVisitors);
     if (dateFilterType) params.append('dateFilterType', dateFilterType);
+    if (scope) params.append('scope', scope);
 
     const response = await axios.get(`${API_URL}/all?${params.toString()}`);
     return response.data;
@@ -93,3 +94,5 @@ export default {
     deleteVisitorFollowUp,
     deleteVisitor
 };
+
+
