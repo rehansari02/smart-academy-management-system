@@ -99,6 +99,7 @@ const FeeCollection = () => {
     const { receipts, isSuccess, message, isLoading } = useSelector(state => state.transaction);
     const { user } = useSelector((state) => state.auth);
     const { edit } = useUserRights('Fees Receipt');
+    const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
     
     const [editingReceipt, setEditingReceipt] = useState(null);
     const { printingReceipt, triggerPrintReceipt, printRef } = useReceiptPrinter();
@@ -849,7 +850,7 @@ const FeeCollection = () => {
                             </div>
                             
                             <div className="overflow-x-auto overflow-y-auto flex-1 p-0 custom-scrollbar">
-                                <table className="w-full text-left border-collapse min-w-[500px]">
+                                <table className="w-full text-left border-collapse min-w-[720px]">
                                     <thead className="bg-gray-50 sticky top-0 z-10">
                                         <tr className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
                                             <th className="p-3 border-b">Date</th>
@@ -857,6 +858,7 @@ const FeeCollection = () => {
                                             <th className="p-3 border-b">Installment No</th>
                                             <th className="p-3 border-b text-right">Amount (₹)</th>
                                             <th className="p-3 border-b">Payment Mode</th>
+                                            {isSuperAdmin && <th className="p-3 border-b">Fees Taken By / Entry Time</th>}
                                             <th className="p-3 border-b text-center">Actions</th>
                                         </tr>
                                     </thead>
@@ -885,6 +887,14 @@ const FeeCollection = () => {
                                                             {receipt.paymentMode}
                                                         </span>
                                                     </td>
+                                                    {isSuperAdmin && (
+                                                        <td className="p-3 whitespace-nowrap">
+                                                            <div className="font-semibold text-gray-700">{receipt.createdBy?.name || receipt.createdBy?.username || '-'}</div>
+                                                            <div className="text-[11px] text-gray-500">
+                                                                {receipt.createdAt ? moment(receipt.createdAt).format('DD/MM/YYYY, hh:mm A') : '-'}
+                                                            </div>
+                                                        </td>
+                                                    )}
                                                     <td className="p-3">
                                                         <div className="flex justify-center gap-1">
                                                             <button 
@@ -907,7 +917,7 @@ const FeeCollection = () => {
                                             ))
                                         ) : (
                                             <tr>
-                                                <td colSpan="6" className="p-8 text-center text-gray-400">
+                                                <td colSpan={isSuperAdmin ? 7 : 6} className="p-8 text-center text-gray-400">
                                                     <div className="flex flex-col items-center">
                                                         <FileText size={32} className="mb-2 opacity-20"/>
                                                         <span className="text-xs">No payment history found.</span>

@@ -2473,6 +2473,7 @@ const getStudentPaymentHistory = asyncHandler(async (req, res) => {
     })
     .populate("course", "name shortName admissionFees registrationFees")
     .populate("branch", "name shortCode address city state phone mobile email")
+    .populate("createdBy", "name username role")
     .sort({ date: 1, createdAt: 1 })
     .lean();
 
