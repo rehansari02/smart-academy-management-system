@@ -779,7 +779,7 @@ const TodaysVisitedReport = () => {
         limit: 50,
         branchId: '',
         listType: 'all',
-        reportType: 'followup' // Default to follow-up as requested
+        reportType: 'visited'
     });
 
     const [followups, setFollowups] = useState([]);
@@ -970,12 +970,16 @@ const TodaysVisitedReport = () => {
                         : Promise.resolve({ data: [] })
                 ]);
 
-                const visitorRows = visitorFollowups.map(item => ({
-                    ...item,
-                    callingDate: item.isDone ? (item.callingDate || null) : null,
-                    recordType: 'visitor',
-                    sortDate: item.scheduledDate || item.createdAt || item.updatedAt || null
-                }));
+                const visitorRows = visitorFollowups
+                    // Follow-ups created from Today's Visitors List belong to
+                    // the Visitors report, not the generic Follow-ups section.
+                    .filter((item) => item.origin !== 'todaysList')
+                    .map(item => ({
+                        ...item,
+                        callingDate: item.isDone ? (item.callingDate || null) : null,
+                        recordType: 'visitor',
+                        sortDate: item.scheduledDate || item.createdAt || item.updatedAt || null
+                    }));
                 const inquiryRows = (Array.isArray(inquiryRes.data) ? inquiryRes.data : [])
                     .filter(item => canViewInquirySource(item.source))
                     .map(item => {

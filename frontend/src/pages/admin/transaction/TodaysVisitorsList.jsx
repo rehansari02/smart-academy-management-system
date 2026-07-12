@@ -325,17 +325,63 @@ const TodaysVisitorsList = () => {
 
     const fetchStats = async (override = {}) => {
         try {
-            const res = await axios.get(`${import.meta.env.VITE_API_URL}/visitors/followup-stats`, {
+            const nextFromDate = override.fromDate || fromDate;
+            const nextToDate = override.toDate || toDate;
+            const nextBranch = override.branchId ?? filterBranch;
+            const nextEmployee = override.employeeId ?? employeeId;
+            const scopedEmployee = getScopedEmployeeId(user, nextEmployee);
+            const [res, followupRows] = await Promise.all([
+                axios.get(`${import.meta.env.VITE_API_URL}/visitors/followup-stats`, {
                 params: {
-                    fromDate: override.fromDate || fromDate,
-                    toDate: override.toDate || toDate,
-                    branchId: override.branchId ?? filterBranch,
-                    employeeId: override.employeeId ?? employeeId,
+                    fromDate: nextFromDate,
+                    toDate: nextToDate,
+                    branchId: nextBranch,
+                    employeeId: nextEmployee,
                     excludeVisitorReportActivity: 'true'
                 },
                 withCredentials: true,
+                }),
+                visitorService.getVisitorFollowUps({
+                    fromDate: nextFromDate,
+                    toDate: nextToDate,
+                    branchId: nextBranch,
+                    employeeId: scopedEmployee,
+                    dateFilterType: 'callingDate',
+                    excludeVisitorReportActivity: 'true'
+                })
+            ]);
+            const uniqueDone = [...new Map((followupRows || []).map((item) => {
+                const visitorId = item.visitorId?._id || item.visitorId || item._id;
+                return [String(visitorId), item];
+            })).values()];
+            const employeeMap = new Map();
+            uniqueDone.forEach((item) => {
+                const by = item.followUpBy;
+                const key = String(by?._id || by || 'unknown');
+                const current = employeeMap.get(key) || {
+                    employeeId: key,
+                    employeeName: by?.name || by?.username || 'Unknown',
+                    followUpCount: 0,
+                    latestFollowUpAt: null
+                };
+                current.followUpCount += 1;
+                if (!current.latestFollowUpAt || new Date(item.callingDate) > new Date(current.latestFollowUpAt)) {
+                    current.latestFollowUpAt = item.callingDate;
+                }
+                employeeMap.set(key, current);
             });
-            setStats(res.data);
+            const directDoneCount = uniqueDone.length;
+            setStats({
+                ...res.data,
+                totalFollowUps: directDoneCount,
+                followUpsDoneToday: directDoneCount,
+                employees: [...employeeMap.values()].sort((a, b) => b.followUpCount - a.followUpCount),
+                summary: {
+                    ...(res.data?.summary || {}),
+                    followUpsToday: directDoneCount,
+                    followUpsDoneToday: directDoneCount
+                }
+            });
         } catch (error) {
             setStats(null);
         }
@@ -464,7 +510,7 @@ const TodaysVisitorsList = () => {
         try {
             await visitorService.createVisitorFollowUp({
                 ...data,
-                completeCurrentVisit: true
+                followUpOrigin: 'todaysList'
             });
             setFollowUpVisitor(null);
             fetchVisitors();
@@ -480,9 +526,9 @@ const TodaysVisitorsList = () => {
 
     const summary = stats?.summary || {};
     const employeeSummary = stats?.employees || [];
-    const totalRangeVisitors = Number(stats?.totalInquiries ?? summary.total ?? visitors.length ?? 0);
     const followUpsDoneToday = Number(stats?.totalFollowUps ?? stats?.followUpsDoneToday ?? summary.followUpsToday ?? 0);
-    const statsRemainingCount = Number(stats?.remainingVisitors?.length ?? Math.max(totalRangeVisitors - followUpsDoneToday, 0));
+    const statsRemainingCount = visitors.length;
+    const totalRangeVisitors = statsRemainingCount + followUpsDoneToday;
     const tableVisitors = visitors.length ? visitors : (stats?.remainingVisitors || []);
     const tableColSpan = user?.role === 'Super Admin' ? 13 : 12;
     const formatDateTime = (value) => {

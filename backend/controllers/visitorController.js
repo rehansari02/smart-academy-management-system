@@ -964,7 +964,6 @@ exports.getVisitorFollowUpStats = async (req, res) => {
 
         let employeeUserId = null;
         const rangeVisitorQuery = { ...baseQuery };
-        const followupVisitorQuery = { ...baseQuery };
 
         if (employeeId && canViewBranchWideVisitors) {
             employeeUserId = await resolveAssignableUserId(employeeId);
@@ -992,7 +991,6 @@ exports.getVisitorFollowUpStats = async (req, res) => {
         } else if (req.user && !canViewBranchWideVisitors) {
             employeeUserId = req.user._id;
             addVisitorOwnershipScope(rangeVisitorQuery, employeeUserId);
-            addVisitorOwnershipScope(followupVisitorQuery, employeeUserId);
         }
 
         const openStatuses = ["Open", "InProgress", "Recall", "Pending"];
@@ -1003,28 +1001,21 @@ exports.getVisitorFollowUpStats = async (req, res) => {
             visitingDate: { $gte: start, $lte: end }
         };
 
-        const [rangeVisitors, completedVisitors, visibleFollowupVisitors] = await Promise.all([
+        const [rangeVisitors, completedVisitors] = await Promise.all([
             Visitor.find(rangeVisitorsQuery)
                 .select('_id status visitingDate studentName mobileNumber contactParent contactHome reference branchId')
                 .populate('branchId', 'name')
                 .lean(),
-            Visitor.find({ ...rangeVisitorsQuery, status: { $in: completedStatuses } }).select('_id').lean(),
-            Visitor.find(followupVisitorQuery).select('_id').lean()
+            Visitor.find({ ...rangeVisitorsQuery, status: { $in: completedStatuses } }).select('_id').lean()
         ]);
 
-        const visibleFollowupVisitorIds = visibleFollowupVisitors.map((visitor) => visitor._id);
         const followUpsDoneQuery = {
             isDeleted: false,
             ...(baseQuery.branchId ? { branchId: baseQuery.branchId } : {}),
-            ...(visibleFollowupVisitorIds.length ? { visitorId: { $in: visibleFollowupVisitorIds } } : {}),
             callingDate: { $gte: start, $lte: end },
             ...(employeeUserId ? { followUpBy: employeeUserId } : {}),
             ...(excludeVisitorReportActivity ? { origin: { $ne: 'visitorReport' } } : {})
         };
-
-        if (!visibleFollowupVisitorIds.length) {
-            followUpsDoneQuery._id = { $exists: false };
-        }
 
         const followUpsDoneDocs = await VisitorFollowUp.find(followUpsDoneQuery)
             .select('visitorId scheduledDate followUpBy callingDate createdAt updatedAt status remark attendedBy branchId')
