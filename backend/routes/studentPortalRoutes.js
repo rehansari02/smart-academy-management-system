@@ -9,6 +9,7 @@ const {
     getFreeLearningQuestions,
     submitFreeLearning,
     getFreeLearningReport,
+    resetFreeLearningProgress,
     getStudentFees,
     getStudentExamSchedules,
     getStudentExamConduct,
@@ -38,6 +39,7 @@ router.get('/materials', protect, getStudyMaterials);
 router.get('/learning/questions', protect, getFreeLearningQuestions);
 router.post('/learning/submit', protect, submitFreeLearning);
 router.get('/learning/report', protect, getFreeLearningReport);
+router.delete('/learning/reset', protect, resetFreeLearningProgress);
 
 module.exports = router;
 

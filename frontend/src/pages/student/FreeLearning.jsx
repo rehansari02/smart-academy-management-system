@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchFreeLearningQuestions, fetchQuizReport, submitQuiz, resetQuizResult } from '../../features/student/studentPortalSlice';
+import { fetchFreeLearningQuestions, fetchQuizReport, submitQuiz, resetQuizResult, resetFreeLearningProgress } from '../../features/student/studentPortalSlice';
 import Loading from '../../components/Loading';
-import { Brain, CheckCircle, AlertCircle } from 'lucide-react';
+import { Brain, CheckCircle, AlertCircle, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import Swal from 'sweetalert2';
@@ -15,6 +15,7 @@ const FreeLearning = () => {
     // answers state: { [questionId]: selectedOptionIndex }
     const [answers, setAnswers] = useState({});
     const [selectedSubjectId, setSelectedSubjectId] = useState('all');
+    const [isResetting, setIsResetting] = useState(false);
 
     useEffect(() => {
         dispatch(fetchFreeLearningQuestions());
@@ -34,6 +35,40 @@ const FreeLearning = () => {
             ...prev,
             [questionId]: optionIndex
         }));
+    };
+
+    const handleResetProgress = async () => {
+        const result = await Swal.fire({
+            title: 'Reset free learning progress?',
+            text: 'This will clear your previous answers and let you attempt the questions again.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Reset',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#dc2626',
+            cancelButtonColor: '#6b7280',
+        });
+
+        if (!result.isConfirmed) {
+            return;
+        }
+
+        try {
+            setIsResetting(true);
+            const response = await dispatch(resetFreeLearningProgress()).unwrap();
+            toast.success(response?.message || 'Free learning progress reset successfully');
+            setAnswers({});
+            setSelectedSubjectId('all');
+            dispatch(resetQuizResult());
+            await Promise.all([
+                dispatch(fetchFreeLearningQuestions()),
+                dispatch(fetchQuizReport())
+            ]);
+        } catch (error) {
+            toast.error(error || 'Unable to reset free learning progress');
+        } finally {
+            setIsResetting(false);
+        }
     };
 
     const handleSubmit = async () => {
@@ -92,7 +127,7 @@ const FreeLearning = () => {
 
     return (
         <div className="space-y-6">
-             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
                         <Brain className="text-primary" />
@@ -100,6 +135,19 @@ const FreeLearning = () => {
                     </h1>
                     <p className="text-gray-500 mt-1">Test your knowledge with these practice questions.</p>
                 </div>
+                <button
+                    type="button"
+                    onClick={handleResetProgress}
+                    disabled={isLoading || isResetting}
+                    className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                    {isResetting ? (
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+                    ) : (
+                        <RotateCcw size={16} />
+                    )}
+                    Reset Progress
+                </button>
             </div>
 
             {quizQuestions && quizQuestions.length > 0 ? (

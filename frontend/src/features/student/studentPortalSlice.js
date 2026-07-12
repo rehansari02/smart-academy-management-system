@@ -93,6 +93,18 @@ export const fetchQuizReport = createAsyncThunk(
     }
 );
 
+export const resetFreeLearningProgress = createAsyncThunk(
+    'studentPortal/resetFreeLearningProgress',
+    async (_, thunkAPI) => {
+        try {
+            const response = await axios.delete(`${API_URL}learning/reset`);
+            return response.data;
+        } catch (error) {
+            return thunkAPI.rejectWithValue(error.response?.data?.message || error.message);
+        }
+    }
+);
+
 // Fetch Student Fees
 export const fetchStudentFees = createAsyncThunk(
     'studentPortal/fetchStudentFees',
@@ -246,6 +258,16 @@ const studentPortalSlice = createSlice({
                 state.quizReports = action.payload;
             })
             .addCase(fetchQuizReport.rejected, (state, action) => {
+                state.isLoading = false;
+                state.isError = true;
+                state.message = action.payload;
+            })
+            // Reset Free Learning Progress
+            .addCase(resetFreeLearningProgress.pending, (state) => { state.isLoading = true; state.isError = false; })
+            .addCase(resetFreeLearningProgress.fulfilled, (state) => {
+                state.isLoading = false;
+            })
+            .addCase(resetFreeLearningProgress.rejected, (state, action) => {
                 state.isLoading = false;
                 state.isError = true;
                 state.message = action.payload;

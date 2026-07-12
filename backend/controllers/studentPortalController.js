@@ -1398,6 +1398,28 @@ const saveStudentSyllabusComment = async (req, res) => {
         res.status(500).json({ message: 'Server Error' });
     }
 };
+
+const resetFreeLearningProgress = async (req, res) => {
+    try {
+        const Student = require('../models/Student');
+        const FreeLearningProgress = require('../models/FreeLearningProgress');
+
+        const student = await Student.findOne({ userId: req.user._id, isDeleted: false }).select('_id').lean();
+        if (!student) {
+            return res.status(404).json({ message: 'Student not found' });
+        }
+
+        const result = await FreeLearningProgress.deleteMany({ studentId: student._id });
+
+        res.json({
+            message: 'Free learning progress reset successfully',
+            removedAttempts: result.deletedCount || 0
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
 module.exports = {
     getDashboardStats,
     getCourseDetails,
@@ -1406,6 +1428,7 @@ module.exports = {
     getFreeLearningQuestions,
     submitFreeLearning,
     getFreeLearningReport,
+    resetFreeLearningProgress,
     getStudentFees,
     getStudentExamSchedules,
     getStudentExamConduct,
