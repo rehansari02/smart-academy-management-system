@@ -114,20 +114,21 @@ const resolveInquiryOwner = async ({ referenceBy, requestedAllocatedTo, fallback
   const referenceText = String(referenceBy || "").trim();
   if (!referenceText) return fallbackUserId;
 
-  // 2. Internal employee/user references must win over external flags/master entries.
+  // Explicit external references must be handled before name matching. This
+  // prevents an external ref from being assigned to a same-name student user.
+  if (isExternalRef) return requestedAllocatedTo || fallbackUserId;
+
+  // 2. Non-external employee/user references can own the inquiry.
   const referenceOwner = await resolveAssignableUserId(referenceText);
   if (referenceOwner) return referenceOwner;
 
-  // 3. Explicitly selected external references stay with the creator.
-  if (isExternalRef) return fallbackUserId;
-
-  // 4. Saved external references stay with creator.
+  // 4. Saved external references follow the same allocation rule.
   const isSavedExternalRef = await Reference.findOne({ 
     name: { $regex: new RegExp(`^${escapeRegex(referenceText)}$`, "i") }, 
     isDeleted: false 
   }).lean();
   
-  if (isSavedExternalRef) return fallbackUserId;
+  if (isSavedExternalRef) return requestedAllocatedTo || fallbackUserId;
 
   // 5. Fallback to requested allocation or creator
   if (requestedAllocatedTo) return requestedAllocatedTo;
