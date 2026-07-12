@@ -39,7 +39,7 @@ export const MENU_CONFIG = [
           { title: 'Exam Schedule', path: '/master/exam-schedule' },
           { title: 'Exam Set', path: '/master/exam-set', permissionPage: 'Exam Schedule' },
           { title: 'Exam Student Marks', path: '/master/exam-student-marks', permissionPage: 'Exam Schedule' },
-          { title: 'Final Exam Question Paper', path: '/master/final-exam-question-paper', permissionPage: 'Final Exam Question Paper' },
+          { title: 'Question Bank', path: '/master/final-exam-question-paper', permissionPage: 'Final Exam Question Paper' },
           { title: 'Exam Result', path: '/master/exam-result' }
         ]
       },

@@ -310,7 +310,7 @@ const FinalExamQuestionPaper = () => {
     <div className="container mx-auto p-4">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Final Exam Question Paper</h1>
+          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Question Bank</h1>
           {/* <p className="text-sm text-gray-500">Course wise subjects ke MCQ aur question-answer paper manage karein.</p> */}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-3">
