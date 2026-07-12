@@ -33,7 +33,7 @@ export const createCourse = createAsyncThunk('master/createCourse', async (data,
 
         const response = await axios.post(API_URL + 'course', payload, { headers });
         return response.data;
-    } catch (error) { return thunkAPI.rejectWithValue(error.response.data.message); }
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message || 'Unable to create subject'); }
 });
 
 export const updateCourse = createAsyncThunk('master/updateCourse', async ({ id, data }, thunkAPI) => {

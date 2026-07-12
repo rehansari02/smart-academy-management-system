@@ -46,19 +46,31 @@ const SubjectMaster = () => {
     }
   }, [isSuccess, message, showForm, dispatch]);
 
-  const onSubmit = (data) => {
+  const onSubmit = async (data) => {
     if (editMode) {
         if (!edit) {
             showPermissionDenied("You don't have authority to edit subjects.");
             return;
         }
-        dispatch(updateSubject({ id: currentId, data }));
+        try {
+            await dispatch(updateSubject({ id: currentId, data })).unwrap();
+            dispatch(fetchSubjects(filters));
+        } catch (error) {
+            toast.error(error || 'Unable to update subject');
+        }
     } else {
         if (!add) {
             showPermissionDenied("You don't have authority to add subjects.");
             return;
         }
-        dispatch(createSubject(data));
+        try {
+            await dispatch(createSubject(data)).unwrap();
+            const clearedFilters = { searchBy: 'Subject Name', searchValue: '' };
+            setFilters(clearedFilters);
+            await dispatch(fetchSubjects(clearedFilters)).unwrap();
+        } catch (error) {
+            toast.error(error || 'Unable to create subject');
+        }
     }
   };
 
@@ -118,7 +130,7 @@ const SubjectMaster = () => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Manage Subjects</h1>
         <button 
-            onClick={() => { reset(); setShowForm(true); setEditMode(false); }} 
+            onClick={() => { dispatch(resetMasterStatus()); reset({ duration: 1, durationType: 'Month', totalMarks: 100, theoryMarks: 0, practicalMarks: 0, passingMarks: 40, isActive: true }); setShowForm(true); setEditMode(false); }}
             className="bg-green-600 text-white px-5 py-2.5 rounded-lg hover:bg-green-700 flex items-center gap-2 shadow-lg text-sm font-bold transition-all"
         >
             <Plus size={20}/> Add New Subject
@@ -220,16 +232,18 @@ const SubjectMaster = () => {
                     <button onClick={closeForm} className="text-white hover:text-red-200 transition"><X size={24}/></button>
                 </div>
                 
-                <form onSubmit={handleSubmit(onSubmit)} className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <form onSubmit={handleSubmit(onSubmit, () => toast.error('Please fill all required subject fields.'))} className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                     
                     {/* Names */}
                     <div>
                         <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Subject Name <span className="text-red-500">*</span></label>
-                        <input {...register('name', {required: true})} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="e.g. Programming in C"/>
+                        <input {...register('name', { required: 'Subject name is required' })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="e.g. Programming in C"/>
+                        {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name.message}</p>}
                     </div>
                     <div>
                         <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Printed Name <span className="text-red-500">*</span></label>
-                        <input {...register('printedName', {required: true})} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="On Certificate"/>
+                        <input {...register('printedName', { required: 'Printed name is required' })} className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="On Certificate"/>
+                        {errors.printedName && <p className="mt-1 text-xs text-red-600">{errors.printedName.message}</p>}
                     </div>
 
                     {/* Duration */}

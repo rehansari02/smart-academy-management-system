@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import moment from 'moment';
-import { AlertCircle, ArrowLeft, Eye, Loader2, RefreshCw, Search } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Eye, Loader2, RefreshCw, RotateCcw, Search } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/master`;
 
@@ -13,6 +14,7 @@ const ManageFreeLearning = () => {
     const [reportLoading, setReportLoading] = useState(false);
     const [error, setError] = useState('');
     const [search, setSearch] = useState('');
+    const [resettingStudentId, setResettingStudentId] = useState('');
 
     const loadSubjects = async () => {
         try {
@@ -45,6 +47,23 @@ const ManageFreeLearning = () => {
     useEffect(() => {
         loadSubjects();
     }, []);
+
+    const resetStudentProgress = async (student) => {
+        if (!window.confirm(`Reset progress for ${student.name}?`)) return;
+        try {
+            setResettingStudentId(student._id);
+            const { data } = await axios.delete(
+                `${API_URL}/free-learning-report/subjects/${selectedSubject._id}/students/${student._id}`,
+                { withCredentials: true }
+            );
+            toast.success(data.message || 'Progress reset successfully');
+            await loadSubjectReport(selectedSubject);
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Unable to reset progress');
+        } finally {
+            setResettingStudentId('');
+        }
+    };
 
     const filteredStudents = (report?.students || []).filter((student) => {
         const value = search.trim().toLowerCase();
@@ -191,6 +210,7 @@ const ManageFreeLearning = () => {
                                             <th className="border p-3 text-center">Wrong</th>
                                             <th className="border p-3 text-center">Pending</th>
                                             <th className="border p-3">Last Attempt</th>
+                                            <th className="border p-3 text-center">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -218,11 +238,16 @@ const ManageFreeLearning = () => {
                                                     <td className="border p-3 text-gray-600">
                                                         {student.lastAttemptAt ? moment(student.lastAttemptAt).format('DD/MM/YYYY hh:mm A') : '-'}
                                                     </td>
+                                                    <td className="border p-3 text-center">
+                                                        <button type="button" onClick={() => resetStudentProgress(student)} disabled={resettingStudentId === student._id || student.attempted === 0} className="inline-flex items-center gap-1.5 rounded border border-amber-200 bg-amber-50 px-3 py-1.5 font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40">
+                                                            {resettingStudentId === student._id ? <Loader2 className="animate-spin" size={14} /> : <RotateCcw size={14} />} Reset
+                                                        </button>
+                                                    </td>
                                                 </tr>
                                             ))
                                         ) : (
                                             <tr>
-                                                <td colSpan="9" className="p-8 text-center text-gray-500">
+                                                <td colSpan="10" className="p-8 text-center text-gray-500">
                                                     No eligible students found for this subject.
                                                 </td>
                                             </tr>

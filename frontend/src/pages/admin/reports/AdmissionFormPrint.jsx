@@ -18,6 +18,7 @@ const AdmissionFormPrint = () => {
     const [student, setStudent] = useState(null);
     const [loading, setLoading] = useState(true);
     const [localPaymentPlan, setLocalPaymentPlan] = useState(null); // Local state for print toggle
+    const [termsContent, setTermsContent] = useState('');
 
     const { user } = useSelector((state) => state.auth);
     const { batches, references } = useSelector((state) => state.master); // Get batches & references from Redux
@@ -47,6 +48,7 @@ const AdmissionFormPrint = () => {
             }
         };
         fetchStudent();
+        axios.get(`${import.meta.env.VITE_API_URL}/master/terms`).then(({ data }) => setTermsContent(data.content || '')).catch(() => setTermsContent(''));
     }, [id, dispatch]);
 
     if (loading) return <div className="p-10 text-center">Loading form data...</div>;
@@ -432,6 +434,9 @@ const AdmissionFormPrint = () => {
                 </div>
 
                 <div className="space-y-4 text-sm text-justify px-4">
+                    {termsContent.trim() ? (
+                        <div className="whitespace-pre-wrap text-sm leading-7" contentEditable={canEdit} suppressContentEditableWarning>{termsContent}</div>
+                    ) : (
                     <ul className="list-none space-y-3">
                         {/* Custom Bullet Logic to match image diamonds if needed, using standard unicode for now */}
                         <li className="flex gap-3">
@@ -491,6 +496,7 @@ const AdmissionFormPrint = () => {
                             <span contentEditable suppressContentEditableWarning><span className="font-bold">1) ID Proof</span> (Aadhar Card, Pan-card, Election Card, Driving License, if any) <span className="font-bold">2) Address Proof</span> (Electricity Bill, Bera bill, Telephone Bill, Gas Bill, if any) <span className="font-bold">3) Certificate</span> (last Qualification) submitted with admission form <span className="font-bold">mandatory</span>.</span>
                         </li>
                     </ul>
+                    )}
                 </div>
 
                 {/* Signatures Footer Page 2 */}

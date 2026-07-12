@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import logo from '../../../assets/logo2.png';
+import axios from 'axios';
 
 const BlankAdmissionForm = () => {
     const { user } = useSelector((state) => state.auth);
+    const [termsContent, setTermsContent] = useState('');
 
     // Default blank state for printing
     const [branchInfo, setBranchInfo] = useState({
@@ -13,6 +15,10 @@ const BlankAdmissionForm = () => {
         mobile: "98988-30409", 
         website: "www.smartinstituteonline.com"
     });
+
+    useEffect(() => {
+        axios.get(`${import.meta.env.VITE_API_URL}/master/terms`).then(({ data }) => setTermsContent(data.content || '')).catch(() => setTermsContent(''));
+    }, []);
 
     useEffect(() => {
         if (user?.role === 'Super Admin') {
@@ -303,6 +309,9 @@ const BlankAdmissionForm = () => {
                  </div>
 
                  <div className="space-y-4 text-sm text-justify px-4">
+                    {termsContent.trim() ? (
+                        <div className="whitespace-pre-wrap text-sm leading-7" contentEditable suppressContentEditableWarning>{termsContent}</div>
+                    ) : (
                     <ul className="list-none space-y-3">
                         <li className="flex gap-3">
                             <span className="font-bold text-lg">❖</span>
@@ -362,6 +371,7 @@ const BlankAdmissionForm = () => {
                             <span><span className="font-bold">1) ID Proof</span> (Aadhar Card, Pan-card, Election Card, Driving License, if any) <span className="font-bold">2) Address Proof</span> (Electricity Bill, Bera bill, Telephone Bill, Gas Bill, if any) <span className="font-bold">3) Certificate</span> (last Qualification) submitted with admission form <span className="font-bold">mandatory</span>.</span>
                         </li>
                     </ul>
+                    )}
                  </div>
 
                  {/* Signatures Footer Page 2 */}

@@ -39,7 +39,7 @@ const subjectSchema = new mongoose.Schema({
 
 // --- Self-Healing Hooks for Legacy String Data ---
 
-subjectSchema.pre('validate', function(next) {
+subjectSchema.pre('validate', function() {
     if (this.chapters && this.chapters.length > 0) {
         this.chapters = this.chapters.map(c => {
             if (typeof c === 'string') {
@@ -56,7 +56,6 @@ subjectSchema.pre('validate', function(next) {
             return p;
         });
     }
-    next();
 });
 
 subjectSchema.post('init', function(doc) {

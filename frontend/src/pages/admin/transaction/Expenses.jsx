@@ -35,7 +35,8 @@ const Expenses = () => {
     const [expenses, setExpenses] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [dateFilter, setDateFilter] = useState('');
+    // Open the expense register on the current operational month by default.
+    const [dateFilter, setDateFilter] = useState('month');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [branchFilter, setBranchFilter] = useState('');

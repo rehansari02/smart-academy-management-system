@@ -36,7 +36,8 @@ const {
     updateQuestion,
     deleteQuestion,
     getFreeLearningSubjectsReport,
-    getFreeLearningSubjectStudentReport
+    getFreeLearningSubjectStudentReport,
+    resetFreeLearningStudentProgress
 } = require('../controllers/freeLearningController');
 const {
     getTeachersBySubject,
@@ -205,6 +206,7 @@ router.route('/free-learning/:id')
 
 router.get('/free-learning-report/subjects', protect, getFreeLearningSubjectsReport);
 router.get('/free-learning-report/subjects/:subjectId', protect, getFreeLearningSubjectStudentReport);
+router.delete('/free-learning-report/subjects/:subjectId/students/:studentId', protect, resetFreeLearningStudentProgress);
 
 // --- Teacher Subject Access Routes ---
 router.get('/teacher-subject/subject/:subjectId', protect, checkPermission('Teacher Subject Management', 'view'), getTeachersBySubject);

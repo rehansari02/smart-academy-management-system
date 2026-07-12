@@ -240,11 +240,38 @@ const getFreeLearningSubjectStudentReport = asyncHandler(async (req, res) => {
     });
 });
 
+// Reset one student's attempts for one subject without affecting other subjects.
+const resetFreeLearningStudentProgress = asyncHandler(async (req, res) => {
+    const { subjectId, studentId } = req.params;
+    const questionIds = await FreeLearning.find({ subject: subjectId }).distinct('_id');
+    const questionIdSet = new Set(questionIds.map(String));
+    const records = await FreeLearningProgress.find({ studentId });
+    let removedAttempts = 0;
+
+    for (const record of records) {
+        const retainedQuestions = (record.questions || []).filter((item) => {
+            const shouldRemove = questionIdSet.has(String(item.questionId));
+            if (shouldRemove) removedAttempts += 1;
+            return !shouldRemove;
+        });
+        if (retainedQuestions.length === 0) {
+            await record.deleteOne();
+        } else if (retainedQuestions.length !== record.questions.length) {
+            record.questions = retainedQuestions;
+            record.totalScore = retainedQuestions.filter((item) => item.isCorrect).length;
+            await record.save();
+        }
+    }
+
+    res.json({ message: 'Free learning progress reset successfully', removedAttempts });
+});
+
 module.exports = {
     createQuestion,
     getQuestions,
     updateQuestion,
     deleteQuestion,
     getFreeLearningSubjectsReport,
-    getFreeLearningSubjectStudentReport
+    getFreeLearningSubjectStudentReport,
+    resetFreeLearningStudentProgress
 };

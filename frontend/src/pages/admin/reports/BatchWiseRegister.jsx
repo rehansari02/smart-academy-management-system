@@ -10,7 +10,7 @@ import StudentSearch from '../../../components/StudentSearch';
 import logo from '../../../assets/logo2.png';
 
 const getStudentStartDate = (student) => {
-    const date = moment(student?.batchStartDate || student?.admissionDate);
+    const date = moment(student?.registrationDate || student?.admissionDate || student?.batchStartDate);
     return date.isValid() ? date.startOf('day') : null;
 };
 

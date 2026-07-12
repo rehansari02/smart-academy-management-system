@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
@@ -164,6 +164,7 @@ const mapSyllabusStudent = (student) => ({
   batchName: student.batch || '',
   contactStudent: student.mobileStudent,
   contactParent: student.mobileParent,
+  registrationDate: student.registrationDate,
   admissionDate: student.admissionDate,
   batchStartDate: student.batchStartDate,
   courseDuration: student.course?.duration,
@@ -204,43 +205,20 @@ const fetchSyllabusStudents = async ({ branchId, courseId, batchName }) => {
 };
 
 const getStudentStartDate = (student) => {
-  const date = moment(student?.batchStartDate || student?.admissionDate);
+  const date = moment(student?.registrationDate || student?.admissionDate || student?.batchStartDate);
   return date.isValid() ? date.startOf('day') : null;
 };
 
-const getCourseEndDate = (student, holidaysList = [], studentBranchId = null) => {
+const getCourseEndDate = (student) => {
   const duration = Number(student?.courseDuration || 0);
   const startDate = getStudentStartDate(student);
   if (!startDate) return null;
   if (!duration) return startDate;
 
   const durationType = String(student?.courseDurationType || 'Month').toLowerCase();
-  
-  // Calculate total class days based on duration type
-  let durationDays = 0;
-  if (durationType.startsWith('year')) {
-    durationDays = duration * 365;
-  } else if (durationType.startsWith('day')) {
-    durationDays = duration;
-  } else {
-    // Default to month -> 30 class days per month
-    durationDays = duration * 30;
-  }
-
-  let currentDate = startDate.clone();
-  let classDaysCount = 0;
-
-  // Count exactly durationDays open days
-  while (classDaysCount < durationDays) {
-    if (!isClosedDay(currentDate, holidaysList, studentBranchId)) {
-      classDaysCount++;
-    }
-    if (classDaysCount < durationDays) {
-      currentDate.add(1, 'day');
-    }
-  }
-
-  return currentDate;
+  if (durationType.startsWith('year')) return startDate.clone().add(duration, 'years');
+  if (durationType.startsWith('day')) return startDate.clone().add(duration, 'days');
+  return startDate.clone().add(duration, 'months');
 };
 
 const addTeachingDays = (startDate, teachingDays = 0, holidaysList = [], studentBranchId = null) => {
@@ -284,24 +262,13 @@ const getDaysRemainingText = (student, holidaysList = [], studentBranchId = null
     return { text: 'Completed', colorClass: 'bg-rose-50 text-rose-700' };
   }
 
-  // Count open class days from max(today, start) to end
-  let currentDate = today.isAfter(start) ? today.clone() : start.clone();
-  let remainingCount = 0;
+  const countFrom = today.isAfter(start) ? today : start;
+  const remainingCount = end.diff(countFrom, 'days');
 
-  while (currentDate.isSameOrBefore(end, 'day')) {
-    if (!isClosedDay(currentDate, holidaysList, studentBranchId)) {
-      remainingCount++;
-    }
-    currentDate.add(1, 'day');
-  }
-
-  if (remainingCount === 0) {
-    return { text: 'Completed', colorClass: 'bg-rose-50 text-rose-700' };
-  } else if (remainingCount === 1 && today.isSame(end, 'day')) {
+  if (today.isSame(end, 'day')) {
     return { text: 'Ends Today', colorClass: 'bg-amber-50 text-amber-700' };
-  } else {
-    return { text: `${remainingCount} day(s) remaining`, colorClass: 'bg-blue-50 text-blue-700' };
   }
+  return { text: `${remainingCount} calendar day(s) remaining`, colorClass: 'bg-blue-50 text-blue-700' };
 };
 
 const parseTimeToMinutes = (timeString) => {
