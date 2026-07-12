@@ -836,7 +836,7 @@ exports.getVisitorFollowUps = async (req, res) => {
         }
 
         if (req.query.excludeVisitorReportActivity === 'true') {
-            query.origin = { $ne: 'visitorReport' };
+            query.origin = { $nin: ['visitorReport', 'reportFollowup', 'reportVisitor'] };
         }
 
         if (visitorId) {
@@ -1014,7 +1014,7 @@ exports.getVisitorFollowUpStats = async (req, res) => {
             ...(baseQuery.branchId ? { branchId: baseQuery.branchId } : {}),
             callingDate: { $gte: start, $lte: end },
             ...(employeeUserId ? { followUpBy: employeeUserId } : {}),
-            ...(excludeVisitorReportActivity ? { origin: { $ne: 'visitorReport' } } : {})
+            ...(excludeVisitorReportActivity ? { origin: { $nin: ['visitorReport', 'reportFollowup', 'reportVisitor'] } } : {})
         };
 
         const followUpsDoneDocs = await VisitorFollowUp.find(followUpsDoneQuery)
@@ -1067,7 +1067,7 @@ exports.getVisitorFollowUpStats = async (req, res) => {
             scheduledDate: { $lt: start },
             ...(baseQuery.branchId ? { branchId: baseQuery.branchId } : {}),
             ...(employeeUserId ? { followUpBy: employeeUserId } : {}),
-            ...(excludeVisitorReportActivity ? { origin: { $ne: 'visitorReport' } } : {})
+            ...(excludeVisitorReportActivity ? { origin: { $nin: ['visitorReport', 'reportFollowup', 'reportVisitor'] } } : {})
         };
 
         const pendingFollowupDocs = await VisitorFollowUp.find(pendingFollowupQuery)

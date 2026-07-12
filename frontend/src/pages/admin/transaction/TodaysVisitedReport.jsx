@@ -51,7 +51,7 @@ const FollowUpForm = ({ inquiry, onClose, onSave }) => {
             followUpDate: fDate,
             newRemarks: data.newRemarks,
             recordFollowUpActivity: true,
-            followUpOrigin: 'visitorReport',
+            followUpOrigin: 'reportFollowup',
         };
 
         await onSave({ id: inquiry._id, data: updateData });
@@ -446,7 +446,9 @@ const TodaysVisitedReport = () => {
                 },
                 withCredentials: true
             });
-            return Array.isArray(data?.followupDetails) ? data.followupDetails : [];
+            return Array.isArray(data?.followupDetails)
+                ? data.followupDetails.map((item) => ({ ...item, source }))
+                : [];
         };
 
         const requestedSource = sourceByListType[listType];
@@ -462,12 +464,7 @@ const TodaysVisitedReport = () => {
             : (await Promise.all(inquiryRequests)).flat();
 
         const doneVisitorFollowups = visitorFollowups.filter((item) => {
-            if (!item?.callingDate) return false;
-            const schedDate = item.scheduledDate;
-            const isToday = schedDate && isWithinSelectedRange(schedDate);
-            const isOpen = ['Open', 'Recall'].includes(item.status || 'Open');
-            if (isToday && isOpen) return false;
-            return true;
+            return Boolean(item?.callingDate);
         });
         const doneInquiryFollowups = inquiryFollowups.filter((item) => {
             if (item?.origin !== 'visitorReport') return false;
@@ -503,10 +500,21 @@ const TodaysVisitedReport = () => {
             activityVisitors: [...activityVisitorMap.values()],
             doneVisitorRows: doneVisitorFollowups.map((item) => ({ ...item, recordType: 'visitor', sortDate: item.callingDate || item.updatedAt || item.createdAt })),
             todayVisitorRows: doneVisitorFollowups
-                .filter((item) => item.origin !== 'visitorReport')
+                .filter((item) => !['visitorReport', 'reportFollowup', 'reportVisitor'].includes(item.origin))
                 .map((item) => ({ ...item, recordType: 'visitor', sortDate: item.callingDate || item.updatedAt || item.createdAt })),
+            pageInquiryRows: inquiryFollowups
+                .filter((item) => !['visitorReport', 'reportFollowup', 'reportVisitor'].includes(item.origin))
+                .map((item) => ({ ...item, recordType: 'inquiry', sortDate: item.callingDate || item.followUpAt || item.followUpDate })),
+            reportFollowupRows: [
+                ...inquiryFollowups
+                    .filter((item) => ['visitorReport', 'reportFollowup'].includes(item.origin))
+                    .map((item) => ({ ...item, recordType: 'inquiry', sortDate: item.callingDate || item.followUpAt || item.followUpDate })),
+                ...doneVisitorFollowups
+                    .filter((item) => item.origin === 'reportFollowup')
+                    .map((item) => ({ ...item, recordType: 'visitor', sortDate: item.callingDate || item.updatedAt || item.createdAt }))
+            ],
             reportVisitorRows: doneVisitorFollowups
-                .filter((item) => item.origin === 'visitorReport')
+                .filter((item) => ['visitorReport', 'reportVisitor'].includes(item.origin))
                 .map((item) => ({ ...item, recordType: 'visitor', sortDate: item.callingDate || item.updatedAt || item.createdAt })),
             doneInquiryRows: doneInquiryFollowups.map((item) => ({ ...item, recordType: 'inquiry', sortDate: item.callingDate || item.followUpAt || item.followUpDate })),
             doneFollowupRows: [
@@ -621,24 +629,27 @@ const TodaysVisitedReport = () => {
                 ? `${formatDate(value)} ${new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
                 : '-';
             const doneActivity = await fetchDoneActivityData({ ...filters, isPrintAll: true });
-            const doneInquiryRows = doneActivity.doneInquiryRows || [];
+            const pageInquiryRows = doneActivity.pageInquiryRows || [];
+            const doneInquiryRows = pageInquiryRows;
             const doneVisitorRows = doneActivity.todayVisitorRows || [];
+            const reportFollowupRows = doneActivity.reportFollowupRows || [];
             const reportVisitorRows = doneActivity.reportVisitorRows || [];
             const allVisitorRows = [...doneVisitorRows, ...reportVisitorRows];
             const uniqueDoneKeys = new Set([
-                ...doneInquiryRows.map((item) => `inquiry:${item._id || item.inquiryId || item.studentName}:${item.callingDate || item.followUpAt || item.followUpDate}`),
+                ...pageInquiryRows.map((item) => `inquiry:${item._id || item.inquiryId || item.studentName}:${item.callingDate || item.followUpAt || item.followUpDate}`),
+                ...reportFollowupRows.map((item) => `${item.recordType}:${item._id || item.inquiryId || item.visitorId?._id || item.visitorId}:${item.callingDate || item.followUpAt || item.createdAt}`),
                 ...allVisitorRows.map((item) => `visitor:${item._id || item.visitorId?._id || item.visitorId}:${item.callingDate || item.createdAt || item.updatedAt}`),
             ]);
 
             toast.update(toastId, { render: "Data fetched, generating report...", type: "success", isLoading: false, autoClose: 2000 });
 
             const sections = [
-                { title: '1. Online Inquiry Done Followups', data: doneInquiryRows.filter(f => f.source === 'Online'), type: 'done-followup' },
-                { title: '2. Offline Inquiry Done Followups', data: doneInquiryRows.filter(f => f.source === 'Walk-in'), type: 'done-followup' },
-                { title: '3. DSR Inquiry Done Followups', data: doneInquiryRows.filter(f => f.source === 'DSR'), type: 'done-followup' },
-                { title: '4. Today Visitors Done Followups', data: doneVisitorRows, type: 'done-followup' },
-                { title: '5. Today Report Follow-up Section', data: doneActivity.doneFollowupRows || [], type: 'done-followup' },
-                { title: '6. Today Report Visitor Section', data: reportVisitorRows, type: 'done-followup' },
+                { title: '1. Online Inquiry Done Followups', data: pageInquiryRows.filter(f => f.source === 'Online'), type: 'done-followup' },
+                { title: '2. Offline Inquiry Done Followups', data: pageInquiryRows.filter(f => f.source === 'Walk-in'), type: 'done-followup' },
+                { title: '3. DSR Inquiry Done Followups', data: pageInquiryRows.filter(f => f.source === 'DSR'), type: 'done-followup' },
+                { title: '4. Today Visitors List Done Followups', data: doneVisitorRows, type: 'done-followup' },
+                { title: '5. Activity Report Follow-ups Section', data: reportFollowupRows, type: 'done-followup' },
+                { title: '6. Activity Report Visitors Section', data: reportVisitorRows, type: 'done-followup' },
             ];
 
             const employeeName = getEmployeeNameById(employeeOptions, activeEmployeeId, 'All Employees');
@@ -1114,7 +1125,7 @@ const TodaysVisitedReport = () => {
         try {
             await visitorService.createVisitorFollowUp({
                 ...data,
-                followUpOrigin: 'visitorReport'
+                followUpOrigin: filters.reportType === 'visited' ? 'reportVisitor' : 'reportFollowup'
             });
             toast.success("Visitor follow-up saved");
             setFollowUpVisitor(null);
