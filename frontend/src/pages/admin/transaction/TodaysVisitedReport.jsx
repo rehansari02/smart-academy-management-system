@@ -922,6 +922,7 @@ const TodaysVisitedReport = () => {
                     ...activeFilters,
                     employeeId: activeFilters.employeeId,
                     dateFilterType: 'visitingOrFollowUpDate',
+                    onlyWithFollowups: 'true',
                     excludeFollowedVisitors: 'true'
                 });
                 setVisitors(data);
