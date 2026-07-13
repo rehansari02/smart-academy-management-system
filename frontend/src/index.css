@@ -62,3 +62,22 @@
     margin-bottom: 0 !important;
   }
 }
+
+@keyframes newsVerticalScroll {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+
+.news-vertical-track {
+  animation: newsVerticalScroll 24s linear infinite;
+  will-change: transform;
+}
+
+.news-vertical-viewport:hover .news-vertical-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .news-vertical-track { animation: none; }
+  .news-vertical-viewport { overflow-y: auto; }
+}

@@ -13,7 +13,7 @@ import newsService from '../services/newsService';
 import topperService from '../services/topperService';
 import bannerService from '../services/bannerService';
 import homeSectionService from '../services/homeSectionService';
-import { ArrowRight, X,Trophy, Calendar, ChevronLeft, ChevronRight, Phone, Mail, MapPin, AlertCircle, Quote, Star, Users, BookOpen, ChevronDown, ExternalLink } from 'lucide-react';
+import { ArrowRight, X,Trophy, Calendar, ChevronLeft, ChevronRight, Phone, Mail, MapPin, AlertCircle, Quote, Users, ChevronDown, ExternalLink } from 'lucide-react';
 import { formatDate } from '../utils/dateUtils';
 import HeroCarousel from '../components/ui/HeroCarousel';
 import HeroImage1 from '../assets/6.jpg'
@@ -40,9 +40,9 @@ const Carousel = ({ items }) => {
       </style>
       <Swiper
         modules={[Navigation, Autoplay]}
-        spaceBetween={30}
+        spaceBetween={12}
         slidesPerView={1}
-        loop={true}
+        loop={items.length > 3}
         autoplay={{
           delay: 3000,
           disableOnInteraction: false,
@@ -58,12 +58,12 @@ const Carousel = ({ items }) => {
             spaceBetween: 20,
           },
           768: {
-            slidesPerView: 2,
-            spaceBetween: 30,
+            slidesPerView: 3,
+            spaceBetween: 12,
           },
           1024: {
             slidesPerView: 3,
-            spaceBetween: 30,
+            spaceBetween: 12,
           },
         }}
         className="!pb-12 !pt-4 !px-2"
@@ -71,14 +71,14 @@ const Carousel = ({ items }) => {
         {items.map((item, index) => (
           <SwiperSlide key={index} className="h-auto flex items-stretch justify-center">
                <div className="flex justify-center items-center w-full">
-                 <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center border-t-4 border-accent relative transform hover:scale-105 transition-transform duration-300">
+                 <div className="bg-white p-3 rounded-xl shadow-lg w-full text-center border-t-4 border-accent relative transform hover:scale-105 transition-transform duration-300">
                     <div className="absolute top-4 right-6 text-yellow-400 opacity-20"><Quote size={40} /></div>
-                    <div className="w-32 h-32 mx-auto mb-6 rounded-full overflow-hidden border-4 border-gray-50 shadow-inner">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3 rounded-full overflow-hidden border-4 border-gray-50 shadow-inner">
                       <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
                     </div>
-                    <h3 className="text-xl font-bold text-gray-800 mb-1">{item.name}</h3>
+                    <h3 className="text-sm sm:text-base font-bold text-gray-800 mb-1">{item.name}</h3>
                     <p className="text-primary font-medium text-sm mb-3 uppercase tracking-wide">{item.course}</p>
-                    <div className="bg-blue-50 py-2 rounded-lg mx-6">
+                    <div className="bg-blue-50 py-2 rounded-lg">
                          <div className="text-3xl font-black text-accent">{item.percentage}%</div>
                          <div className="text-[10px] text-gray-500 font-semibold uppercase">Score Achieved</div>
                     </div>
@@ -297,7 +297,7 @@ const HomePage = () => {
 
             {/* Courses Grid */}
             <Reveal delay={0.4}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {(selectedCategory === 'all'
                   ? popularCourses
                   : popularCourses.filter(c => (c.category?._id || c.category) === selectedCategory)
@@ -414,72 +414,6 @@ const HomePage = () => {
             </div>
             )}
 
-        </div>
-  
-        {/* 2. Welcome / About Section */}
-        <div className="container mx-auto px-4 py-16 md:py-24">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            
-            <Reveal>
-            <div className="relative">
-                <div className="absolute -top-4 -left-4 w-24 h-24 bg-accent/10 rounded-full blur-xl"></div>
-                <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-primary/10 rounded-full blur-xl"></div>
-                
-                <h4 className="text-accent font-bold uppercase tracking-widest text-sm mb-4">Excellence in Education</h4>
-                <h2 className="text-4xl md:text-5xl font-black text-gray-900 mb-6 leading-tight">
-                  Empowering <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-600">Futures</span>, <br/>
-                  Transforming <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-500">Lives</span>.
-                </h2>
-                <div className="w-20 h-1.5 bg-accent rounded-full mb-8"></div>
-                
-                <p className="text-gray-600 mb-6 text-lg leading-relaxed">
-                  Welcome to <span className="font-bold text-gray-800">Smart Institute</span>, where potential meets opportunity. For over a decade, we have been at the forefront of providing industry-relevant education that bridges the gap between academic learning and professional requirements.
-                </p>
-                <p className="text-gray-600 mb-8 leading-relaxed">
-                  Our comprehensive curriculum, experienced faculty, and strong industry connects ensure that our students are not just graduates, but future leaders ready to make an impact.
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-                     {/* 10000+ Alumni Network - Removed */}
-                    
-                    <div className="flex items-center gap-3">
-                        <div className="p-3 bg-orange-50 text-orange-600 rounded-lg">
-                            <Star size={24} />
-                        </div>
-                        <div>
-                            <div className="font-bold text-gray-900">18+ Years</div>
-                            <div className="text-xs text-gray-500">Of Excellence</div>
-                        </div>
-                    </div>
-                </div>
-
-                <a href="/about-us" className="inline-flex items-center gap-2 bg-gray-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-primary transition-colors hover:shadow-lg">
-                  Learn More About Us <ArrowRight size={18} />
-                </a>
-            </div>
-            </Reveal>
-
-            <Reveal delay={0.4}>
-            <div className="relative">
-                <div className="grid grid-cols-1 gap-5"> {/* Changed to single column/simplified grid since items removed */}
-                     {/* Best Institute Award & 100% Placement - Removed */}
-
-                     <div className="space-y-4 pt-8 md:pt-0">
-                        <div className="bg-white p-6 rounded-2xl shadow-xl border-b-4 border-accent transform hover:-translate-y-1 transition-transform cursor-default">
-                             <BookOpen className="text-primary mb-4" size={40} />
-                             <h3 className="font-bold text-xl mb-2">Industry Curriculum</h3>
-                             <p className="text-sm text-gray-500">Courses designed by experts to meet current market demands.</p>
-                        </div>
-                        <div className="bg-gray-100 p-6 rounded-2xl shadow-inner flex flex-col justify-center items-center text-center">
-                             <div className="font-black text-6xl text-gray-200">20+</div>
-                             <div className="font-bold text-gray-500">Professional Courses</div>
-                        </div>
-                     </div>
-                </div>
-            </div>
-            </Reveal>
-
-          </div>
         </div>
   
         {/* 3. Quick Contact (Inquiry Form) */}
@@ -630,8 +564,9 @@ const HomePage = () => {
           </div>
         </div>
   
+        <div className="grid grid-cols-1 lg:grid-cols-2">
         {/* 4. Student Success Stories (Toppers) */}
-        <div className="py-20 bg-white">
+        <div className="bg-white py-16 lg:h-[700px] lg:overflow-hidden lg:border-r lg:border-gray-200">
           <div className="container mx-auto px-4 text-center">
             <Reveal>
               <h4 className="text-accent font-bold uppercase tracking-widest text-sm mb-3">Hall of Fame</h4>
@@ -648,7 +583,7 @@ const HomePage = () => {
           </div>
         </div>
         {/* 5. Latest News - Carousel */}
-        <div className="bg-slate-50 py-20 border-t border-gray-200">
+        <div className="border-t border-gray-200 bg-slate-50 py-16 lg:h-[700px] lg:overflow-hidden lg:border-t-0">
           <div className="container mx-auto px-4">
             <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
                <div>
@@ -662,121 +597,30 @@ const HomePage = () => {
             
             <Reveal>
               {newsLoading ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  {Array(3).fill(0).map((_, i) => (
-                    <div key={i} className="bg-white rounded-2xl p-6 shadow-sm animate-pulse h-64">
-                      <div className="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
-                      <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
-                      <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
-                      <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-                    </div>
-                  ))}
-                </div>
+                <div className="space-y-4">{Array(3).fill(0).map((_, i) => <div key={i} className="h-32 animate-pulse rounded-2xl border border-gray-100 bg-white p-4 shadow-sm" />)}</div>
               ) : latestNews.length === 0 ? (
-                <div className="text-center py-12 text-gray-500 bg-white rounded-2xl shadow-sm border border-gray-100">
-                  <div className="inline-flex justify-center items-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                    <Calendar size={24} className="text-gray-400" />
-                  </div>
-                  <p className="text-lg font-medium">No recent news available.</p>
-                </div>
+                <div className="rounded-2xl border border-gray-100 bg-white py-12 text-center text-gray-500 shadow-sm"><Calendar size={24} className="mx-auto mb-4 text-gray-400" /><p className="text-lg font-medium">No recent news available.</p></div>
               ) : (
-                <div className="relative group px-2 md:px-8">
-                  <Swiper
-                    modules={[Navigation, Autoplay]}
-                    spaceBetween={30}
-                    slidesPerView={1}
-                    loop={latestNews.length > 3}
-                    autoplay={{
-                      delay: 4000,
-                      disableOnInteraction: false,
-                      pauseOnMouseEnter: true
-                    }}
-                    navigation={{
-                      nextEl: '.news-swiper-button-next',
-                      prevEl: '.news-swiper-button-prev',
-                    }}
-                    breakpoints={{
-                      640: {
-                        slidesPerView: 1,
-                        spaceBetween: 20,
-                      },
-                      768: {
-                        slidesPerView: 2,
-                        spaceBetween: 30,
-                      },
-                      1024: {
-                        slidesPerView: 3,
-                        spaceBetween: 30,
-                      },
-                    }}
-                    className="!pb-12 !pt-4 !px-2"
-                  >
-                    {latestNews.map((item) => (
-                      <SwiperSlide key={item._id} className="h-auto flex items-stretch">
-                        <div 
-                          onClick={() => setSelectedNews(item)}
-                          className="bg-white rounded-2xl shadow-sm hover:shadow-xl hover:shadow-blue-900/10 transition-all duration-300 hover:-translate-y-1 h-full flex flex-col overflow-hidden border border-gray-100 group cursor-pointer w-full"
-                        >
-                          <div className="h-1.5 bg-gradient-to-r from-primary to-blue-400 relative"></div>
-                          {item.image && (
-                            <div className="h-44 overflow-hidden bg-gray-100">
-                              <img src={item.image} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                            </div>
-                          )}
-                          <div className="p-8 flex-1 flex flex-col">
-                            <div className="flex justify-between items-start mb-4">
-                              <div className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50 px-3 py-1 rounded-full">
-                                <Calendar size={12} />
-                                <span>{formatDate(item.releaseDate) || "Recent"}</span>
-                              </div>
-                              {item.isBreaking && (
-                                <div className="bg-red-50 text-red-600 text-[10px] font-black px-2 py-1 rounded uppercase tracking-wide flex items-center gap-1 animate-pulse">
-                                  <AlertCircle size={10} /> BREAKING
-                                </div>
-                              )}
-                            </div>
-                            
-                            <h3 className="font-bold text-xl mb-3 text-gray-800 line-clamp-2 group-hover:text-primary transition-colors leading-tight">
-                              {item.title}
-                            </h3>
-                            
-                            <p className="text-gray-600 text-sm mb-6 line-clamp-3 leading-relaxed flex-1">
-                              {item.smallDetail || item.description?.substring(0, 80) + '...'}
-                            </p>
-                            
-                            <div className="flex flex-wrap items-center gap-4">
-                              <button className="text-sm font-bold text-gray-900 flex items-center gap-2 group/btn self-start">
-                                Read More <ChevronRight size={16} className="text-accent group-hover/btn:translate-x-1 transition-transform" />
-                              </button>
-                              {item.linkUrl && (
-                                <a
-                                  href={item.linkUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="text-sm font-bold text-primary flex items-center gap-1 hover:text-blue-700"
-                                >
-                                  {item.linkLabel || 'Open Link'} <ExternalLink size={14} />
-                                </a>
-                              )}
-                            </div>
-                          </div>
+                <div className="news-vertical-viewport h-[480px] overflow-hidden pr-2">
+                  <div className="news-vertical-track space-y-4">
+                    {[...latestNews, ...latestNews].map((item, index) => (
+                      <article key={`${item._id}-${index}`} onClick={() => setSelectedNews(item)} className="group flex cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:shadow-lg">
+                        {item.image && <div className="w-28 shrink-0 overflow-hidden bg-gray-100"><img src={item.image} alt={item.title} className="h-full w-full object-cover" /></div>}
+                        <div className="min-w-0 flex-1 p-4">
+                          <span className="flex items-center gap-1 text-[11px] font-bold uppercase text-gray-400"><Calendar size={12} />{formatDate(item.releaseDate) || 'Recent'}</span>
+                          <h3 className="mt-2 line-clamp-2 text-base font-bold text-gray-800 group-hover:text-primary">{item.title}</h3>
+                          <p className="mt-2 line-clamp-2 text-sm text-gray-500">{item.smallDetail || item.description}</p>
+                          <span className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-primary">Read More <ChevronRight size={15} /></span>
                         </div>
-                      </SwiperSlide>
+                      </article>
                     ))}
-                  </Swiper>
-                  
-                  {/* Custom Navigation Buttons */}
-                  <button className="news-swiper-button-prev absolute left-0 top-1/2 -translate-y-1/2 bg-white/90 text-gray-800 p-3 rounded-full shadow-lg hover:bg-accent hover:text-white transition-all z-20 cursor-pointer border border-gray-100 hidden md:block group-hover:block">
-                    <ChevronLeft size={24} />
-                  </button>
-                  <button className="news-swiper-button-next absolute right-0 top-1/2 -translate-y-1/2 bg-white/90 text-gray-800 p-3 rounded-full shadow-lg hover:bg-accent hover:text-white transition-all z-20 cursor-pointer border border-gray-100 hidden md:block group-hover:block">
-                    <ChevronRight size={24} />
-                  </button>
+                  </div>
                 </div>
               )}
             </Reveal>
           </div>
+        </div>
+
         </div>
 
         {/* 6. Feedback Section */}

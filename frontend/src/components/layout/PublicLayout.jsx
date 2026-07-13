@@ -5,7 +5,7 @@ import { fetchCourses } from '../../features/master/masterSlice';
 import groupInstituteService from '../../services/groupInstituteService';
 import {
   Phone, Mail, Facebook, Twitter, Instagram, Linkedin, Youtube,
-  LogIn, UserPlus, ArrowRight, Menu, X, MapPin, ChevronDown, BookOpen
+  LogIn, ArrowRight, Menu, X, MapPin, ChevronDown, BookOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import logoImage from '../../assets/logo2.png';
@@ -403,73 +403,8 @@ const PublicLayout = () => {
 
   return (
     <div className="min-h-screen bg-white font-sans flex flex-col">
-      {/* 1. Slim Top Header */}
-      <div className="bg-gray-100 text-black py-2.5 text-xs font-medium tracking-wide">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-3 md:gap-2">
-            {/* Contact Info */}
-            <div className="flex items-center justify-center w-full md:w-auto gap-6 uppercase tracking-wider text-[11px]">
-              <a href="tel:+919601749300" className="flex items-center gap-2 hover:text-accent transition-colors"><Phone size={12} className="text-accent" /> Call Us</a>
-              <span className="hidden sm:inline text-gray-400">|</span>
-              <a href="mailto:info@smartinstitute.co.in" className="flex items-center gap-2 hover:text-accent transition-colors"><Mail size={12} className="text-accent" /> Email Us</a>
-            </div>
+      {/* Logo & Branding Area */}
 
-            {/* Social & Auth - Desktop */}
-            <div className="hidden md:flex items-center gap-6">
-              <div className="flex gap-4 pr-6 border-r border-gray-700">
-                <a href="https://www.facebook.com/smartinstituteindia" target="_blank" rel="noopener noreferrer" className="hover:text-blue-500 transition-transform hover:-translate-y-0.5"><Facebook size={14} /></a>
-                <a href="https://www.instagram.com/smartinstitutesurat/" target='_blank' rel='noopener noreferrer' className="hover:text-pink-500 transition-transform hover:-translate-y-0.5"><Instagram size={14} /></a>
-                <a href="https://www.youtube.com/channel/UCFfLzGu6VS4gOTZkJRtmfkg" target="_blank" rel="noopener noreferrer" className="hover:text-red-500 transition-transform hover:-translate-y-0.5"><Youtube size={14} /></a>
-              </div>
-
-              <div className="text-[11px] font-bold uppercase tracking-widest flex items-center gap-4">
-                <Link to="/contact" className="hover:text-accent transition-colors">Support</Link>
-                <span className="text-gray-600">/</span>
-                {user ? (
-                  <Link to="/home" className="flex items-center gap-2 text-accent hover:text-white transition-colors">
-                    DASHBOARD <ArrowRight size={12} />
-                  </Link>
-                ) : (
-                  <Link to="/login" className="hover:text-accent transition-colors flex items-center gap-1">
-                    <LogIn size={12} /> Login
-                  </Link>
-                )}
-              </div>
-            </div>
-
-            {/* Social & Auth - Mobile */}
-            <div className="md:hidden flex flex-col items-center gap-3 w-full border-t border-gray-200 pt-3">
-              {/* Social Media Icons */}
-              <div className="flex items-center gap-5">
-                <a href="https://www.facebook.com/smartinstituteindia" target="_blank" rel="noopener noreferrer" className="p-2 bg-white rounded-full shadow-sm hover:shadow-md hover:bg-blue-500 hover:text-white transition-all transform hover:scale-110">
-                  <Facebook size={16} />
-                </a>
-                <a href="https://www.instagram.com/smartinstitutesurat/" target='_blank' rel='noopener noreferrer' className="p-2 bg-white rounded-full shadow-sm hover:shadow-md hover:bg-pink-500 hover:text-white transition-all transform hover:scale-110">
-                  <Instagram size={16} />
-                </a>
-                <a href="https://www.youtube.com/channel/UCFfLzGu6VS4gOTZkJRtmfkg" target="_blank" rel="noopener noreferrer" className="p-2 bg-white rounded-full shadow-sm hover:shadow-md hover:bg-red-500 hover:text-white transition-all transform hover:scale-110">
-                  <Youtube size={16} />
-                </a>
-              </div>
-
-              {/* Login Portal Button */}
-              <div className="flex items-center gap-3 text-[11px] font-bold uppercase tracking-widest">
-                {user ? (
-                  <Link to="/home" className="flex items-center gap-2 bg-accent text-white px-4 py-2 rounded-lg shadow-sm hover:shadow-md transition-all">
-                    <ArrowRight size={14} /> Dashboard
-                  </Link>
-                ) : (
-                  <Link to="/login" className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg shadow-sm hover:shadow-md transition-all">
-                    <LogIn size={14} /> Login Portal
-                  </Link>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Logo & Branding Area */}
       <div className="bg-white py-2">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
@@ -485,17 +420,17 @@ const PublicLayout = () => {
               <h3 className="text-2xl md:text-4xl font-black text-gray-900 tracking-tight">
                 <span className="text-gray-800">सपने जो</span> <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600 font-extrabold mx-1 font-sans">SMART</span> <span className="text-gray-800">बना दे</span>
               </h3>
-              <img 
-                src={bannerImage} 
-                alt="18 Years" 
-                className="h-20 sm:h-24 md:h-28 w-auto object-contain" 
+              <img
+                src={bannerImage}
+                alt="18 Years"
+                className="h-20 sm:h-24 md:h-28 w-auto object-contain"
               />
             </div>
 
-            {/* Right Side Visual/CTA (Optional) */}
+            {/* Login CTA */}
             <div className="hidden md:flex items-center gap-3">
-              <Link to="/online-admission" className="bg-primary text-white px-6 py-3.5 rounded-xl font-bold uppercase tracking-wider shadow-lg hover:shadow-primary/30 hover:-translate-y-1 transition-all flex items-center gap-2 text-sm animate-pulse-subtle">
-                <UserPlus size={18} /> Enroll Now
+              <Link to="/login" className="bg-primary text-white px-6 py-3.5 rounded-xl font-bold uppercase tracking-wider shadow-lg hover:shadow-primary/30 hover:-translate-y-1 transition-all flex items-center gap-2 text-sm">
+                <LogIn size={18} /> Login
               </Link>
             </div>
           </div>
