@@ -77,7 +77,50 @@
   animation-play-state: paused;
 }
 
+.hero-banner-swiper,
+.hero-banner-swiper .swiper-wrapper,
+.hero-banner-swiper .swiper-slide {
+  height: 100%;
+}
+
+.hero-banner-swiper .swiper-slide-active .hero-banner-image {
+  animation: heroBannerGlow 4.8s ease-in-out both;
+}
+
+.hero-banner-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 22%, rgba(255, 255, 255, 0.22) 42%, transparent 58%);
+  transform: translateX(-120%);
+  animation: heroBannerShine 5.8s ease-in-out infinite;
+}
+
+@keyframes heroBannerGlow {
+  from {
+    filter: saturate(0.96) contrast(0.98);
+  }
+  to {
+    filter: saturate(1.06) contrast(1.03);
+  }
+}
+
+@keyframes heroBannerShine {
+  0%, 42% {
+    transform: translateX(-120%);
+  }
+  64%, 100% {
+    transform: translateX(120%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .news-vertical-track { animation: none; }
   .news-vertical-viewport { overflow-y: auto; }
+  .hero-banner-swiper .swiper-slide-active .hero-banner-image,
+  .hero-banner-shine::after {
+    animation: none;
+  }
 }

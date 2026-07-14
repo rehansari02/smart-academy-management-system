@@ -13,9 +13,9 @@ import newsService from '../services/newsService';
 import topperService from '../services/topperService';
 import bannerService from '../services/bannerService';
 import homeSectionService from '../services/homeSectionService';
-import { ArrowRight, X,Trophy, Calendar, ChevronLeft, ChevronRight, Phone, Mail, MapPin, AlertCircle, Quote, Users, ChevronDown, ExternalLink } from 'lucide-react';
+import homeStatsService from '../services/homeStatsService';
+import { ArrowRight, X, Trophy, Calendar, ChevronLeft, ChevronRight, Phone, Mail, MapPin, AlertCircle, Quote, Users, ChevronDown, ExternalLink, GraduationCap, Sparkles, Award, Briefcase, Play, BookOpen, ShieldCheck, Handshake } from 'lucide-react';
 import { formatDate } from '../utils/dateUtils';
-import HeroCarousel from '../components/ui/HeroCarousel';
 import HeroImage1 from '../assets/6.jpg'
 import HeroImage2 from '../assets/studentWithbooks.webp';
 import Reveal from '../components/Reveal';
@@ -23,9 +23,11 @@ import FeedbackSection from '../components/ui/FeedbackSection';
 
 // Keep existing generic Carousel for Toppers/Reviews
 import { Swiper, SwiperSlide } from 'swiper/react';
-import { Navigation, Autoplay } from 'swiper/modules';
+import { Navigation, Autoplay, EffectFade } from 'swiper/modules';
 import 'swiper/css';
 import 'swiper/css/navigation';
+import 'swiper/css/effect-fade';
+import { getMediaUrl } from '../utils/mediaUrl';
 
 const Carousel = ({ items }) => {
   return (
@@ -99,6 +101,66 @@ const Carousel = ({ items }) => {
   );
 };
 
+const HeroBannerVisual = ({ items, mobile = false }) => {
+  const slides = items && items.length > 0
+    ? items
+    : [{ image: HeroImage2, title: 'Smart Institute students' }];
+  const shouldLoop = slides.length > 1;
+
+  return (
+    <div className="hero-banner-shine relative h-full w-full overflow-hidden">
+      <Swiper
+        modules={[Autoplay, EffectFade]}
+        effect="fade"
+        fadeEffect={{ crossFade: true }}
+        slidesPerView={1}
+        loop={shouldLoop}
+        speed={1200}
+        autoplay={shouldLoop ? {
+          delay: 3200,
+          disableOnInteraction: false,
+          pauseOnMouseEnter: false
+        } : false}
+        className="hero-banner-swiper h-full w-full"
+      >
+        {slides.map((item, index) => (
+          <SwiperSlide key={item._id || `${item.image}-${index}`} className="h-full w-full">
+            <img
+              src={getMediaUrl(item.image) || HeroImage2}
+              alt={item.title || 'Smart Institute banner'}
+              className="hero-banner-image h-full w-full object-contain object-center"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0a1931]/20 via-transparent to-white/5" />
+          </SwiperSlide>
+        ))}
+      </Swiper>
+
+      {shouldLoop && (
+        <div className={`${mobile ? 'bottom-7 left-1/2 -translate-x-1/2' : 'bottom-8 right-12'} absolute z-20 flex items-center gap-1.5`}>
+          {slides.slice(0, 4).map((item, index) => (
+            <span
+              key={item._id || index}
+              className="h-1.5 w-6 rounded-full bg-white/80 shadow-sm"
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const formatStatNumber = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '0';
+  if (number >= 1000000) {
+    return `${(number / 1000000).toFixed(number >= 10000000 ? 0 : 1).replace(/\.0$/, '')}M`;
+  }
+  if (number >= 1000) {
+    return `${(number / 1000).toFixed(number >= 10000 ? 0 : 1).replace(/\.0$/, '')}K`;
+  }
+  return new Intl.NumberFormat('en-IN').format(number);
+};
+
 const HomePage = () => {
     const dispatch = useDispatch();
     const navigate = useNavigate();
@@ -114,6 +176,13 @@ const HomePage = () => {
     const [toppersLoading, setToppersLoading] = useState(true);
     const defaultHeroImages = [];
     const [heroImages, setHeroImages] = useState(defaultHeroImages);
+    const [homeStats, setHomeStats] = useState({
+      studentsTrained: 0,
+      expertFaculty: 0,
+      coursesOffered: 0,
+      successRate: 95,
+      recruitmentPartners: 100
+    });
     const [homeSections, setHomeSections] = useState({});
     const [selectedCategory, setSelectedCategory] = useState('all');
   
@@ -147,7 +216,17 @@ const HomePage = () => {
       fetchToppers();
       fetchBanners();
       fetchHomeSections();
+      fetchHomeStats();
     }, [dispatch]);
+
+    const fetchHomeStats = async () => {
+        try {
+            const data = await homeStatsService.getPublicHomeStats();
+            setHomeStats((prev) => ({ ...prev, ...data }));
+        } catch (error) {
+            console.error("Failed to load home stats", error);
+        }
+    };
 
     const fetchHomeSections = async () => {
         try {
@@ -252,8 +331,191 @@ const HomePage = () => {
   
     return (
       <div className="w-full">
-        {/* 1. New Hero Carousel */}
-        <HeroCarousel items={heroImages} />
+        {/* 1. Custom Hero Section matching Screenshot */}
+        <div className="relative bg-white pt-8 pb-16 overflow-hidden min-h-[580px] lg:h-[640px] flex items-center">
+
+          {/* Right image elements (absolute relative to viewport edge) */}
+          <div className="absolute right-0 top-0 bottom-0 w-[55%] hidden md:block overflow-hidden z-0">
+            {/* Blue background decoration (rounded left, full height) */}
+            <div className="absolute right-0 top-0 bottom-0 w-[360px] lg:w-[500px] bg-[#0a1931] rounded-l-full shadow-2xl z-0"></div>
+
+            {/* Dotted pattern */}
+            <div className="absolute bottom-[15%] right-[460px] lg:right-[620px] w-20 h-20 opacity-15 bg-[radial-gradient(#f15a24_2px,transparent_2px)] [background-size:12px_12px] z-10"></div>
+
+            {/* Orange stroke curved line (parallel to white border) */}
+            <div className="absolute right-0 top-0 bottom-0 w-[410px] lg:w-[570px] rounded-l-full border-l-2 border-[#f15a24] z-10 pointer-events-none"></div>
+
+            {/* Banner image container (curved left, white border on left, full height of hero section) */}
+            <div className="absolute right-0 top-0 bottom-0 w-[400px] lg:w-[560px] rounded-l-full overflow-hidden border-l-[8px] border-white shadow-xl bg-slate-50 z-10 flex items-center justify-center">
+              <HeroBannerVisual items={heroImages} />
+            </div>
+          </div>
+
+          <div className="container mx-auto px-4 lg:px-8 z-10 relative">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+
+              {/* Left text column */}
+              <div className="lg:col-span-7 space-y-8 text-left z-10">
+                <div className="inline-flex flex-wrap items-center gap-1.5 text-[13px] font-extrabold tracking-widest uppercase">
+                  <span className="text-[#0a1931]">LEARN. PRACTICE. </span>
+                  <span className="text-[#f15a24]">MASTER.</span>
+                </div>
+
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.1] text-[#0a1931]">
+                  Empowering Minds. <br />
+                  <span className="text-blue-900">Building Futures.</span>
+                </h1>
+
+                <p className="text-slate-600 text-base sm:text-lg max-w-xl leading-relaxed font-normal">
+                  Industry-focused training designed to build your skills, boost confidence and create better career opportunities.
+                </p>
+
+                {/* Key Features row/grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 pt-4 pb-6 border-b border-gray-100">
+                  <div className="flex flex-col items-start space-y-2">
+                    <div className="p-3 bg-blue-50 text-primary rounded-2xl">
+                      <GraduationCap size={24} className="text-[#1e3a8a]" />
+                    </div>
+                    <span className="text-sm font-extrabold text-slate-800 tracking-tight leading-tight">Expert Faculty</span>
+                  </div>
+
+                  <div className="flex flex-col items-start space-y-2">
+                    <div className="p-3 bg-orange-50 text-[#f15a24] rounded-2xl">
+                      <Sparkles size={24} className="text-[#f15a24]" />
+                    </div>
+                    <span className="text-sm font-extrabold text-slate-800 tracking-tight leading-tight">Practical Learning</span>
+                  </div>
+
+                  <div className="flex flex-col items-start space-y-2">
+                    <div className="p-3 bg-blue-50 text-primary rounded-2xl">
+                      <Award size={24} className="text-[#1e3a8a]" />
+                    </div>
+                    <span className="text-sm font-extrabold text-slate-800 tracking-tight leading-tight">Certification</span>
+                  </div>
+
+                  <div className="flex flex-col items-start space-y-2">
+                    <div className="p-3 bg-orange-50 text-[#f15a24] rounded-2xl">
+                      <Briefcase size={24} className="text-[#f15a24]" />
+                    </div>
+                    <span className="text-sm font-extrabold text-slate-800 tracking-tight leading-tight">Placement Support</span>
+                  </div>
+                </div>
+
+                {/* CTA Buttons */}
+                <div className="flex flex-wrap items-center gap-4 sm:gap-6 pt-2">
+                  <button
+                    onClick={() => {
+                      const target = document.getElementById('courses-section');
+                      if (target) {
+                        target.scrollIntoView({ behavior: 'smooth' });
+                      } else {
+                        navigate('/course');
+                      }
+                    }}
+                    className="inline-flex items-center gap-3 bg-[#0a1931] hover:bg-[#1e3a8a] text-white px-8 py-4 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 hover:shadow-lg shadow-black/25 transform hover:-translate-y-0.5 text-sm"
+                  >
+                    Explore Courses <ArrowRight size={16} />
+                  </button>
+
+                  {/* <button
+                    onClick={() => setIsVideoModalOpen(true)}
+                    className="inline-flex items-center gap-3 text-[#0a1931] hover:text-[#f15a24] px-4 py-3 font-bold uppercase tracking-wider transition-colors duration-300 group text-sm"
+                  >
+                    <div className="p-3 bg-[#0a1931]/5 group-hover:bg-[#f15a24]/10 rounded-full border border-gray-200 transition-colors flex items-center justify-center">
+                      <Play size={16} fill="currentColor" className="text-[#0a1931] group-hover:text-[#f15a24] translate-x-0.5" />
+                    </div>
+                    Watch Video
+                  </button> */}
+                </div>
+              </div>
+
+              {/* Right column: Spacer on desktop/tablet, centered circle on mobile */}
+              <div className="lg:col-span-5 md:col-span-5 h-[350px] sm:h-[450px] md:h-auto relative flex items-center justify-center">
+                {/* On mobile, show the circle */}
+                <div className="md:hidden relative w-full h-full flex items-center justify-center">
+                  {/* Dotted pattern */}
+                  <div className="absolute -bottom-4 left-4 w-20 h-20 opacity-15 bg-[radial-gradient(#f15a24_2px,transparent_2px)] [background-size:12px_12px] hidden sm:block"></div>
+
+                  {/* Orange stroke circle */}
+                  <div className="absolute w-[330px] h-[330px] sm:w-[440px] sm:h-[440px] rounded-full border border-[#f15a24] pointer-events-none"></div>
+
+                  {/* Banner image circle container */}
+                  <div className="absolute left-[-20px] top-1/2 -translate-y-1/2 w-[420px] lg:w-[520px] h-[420px] lg:h-[520px] rounded-full overflow-hidden border-[8px] border-white shadow-xl bg-slate-50 flex items-center justify-center">
+                    <HeroBannerVisual items={heroImages} mobile />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+        {/* Stats Section overlapping */}
+        <div className="relative z-20 w-full mt-[-2rem] mb-12">
+          <div className="container mx-auto px-4 lg:px-8">
+            <div className="bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.06)] border border-gray-100 p-6 md:p-8">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-6 md:gap-0 items-center">
+
+                {/* 1. Students Trained */}
+                <div className="flex items-center gap-3 sm:gap-4 md:border-r border-gray-100 md:pr-4 py-2 md:py-0 justify-start md:justify-center lg:justify-start">
+                  <div className="p-3 bg-blue-50 text-[#f15a24] rounded-2xl shrink-0">
+                    <GraduationCap size={28} className="text-blue-900" />
+                  </div>
+                  <div>
+                    <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.studentsTrained)}+</div>
+                    <div className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Students Trained</div>
+                  </div>
+                </div>
+
+                {/* 2. Expert Faculty */}
+                <div className="flex items-center gap-3 sm:gap-4 md:border-r border-gray-100 md:px-4 py-2 md:py-0 justify-start md:justify-center lg:justify-start">
+                  <div className="p-3 bg-blue-50 text-[#f15a24] rounded-2xl shrink-0">
+                    <Users size={28} className="text-blue-900" />
+                  </div>
+                  <div>
+                    <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.expertFaculty)}+</div>
+                    <div className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Expert Faculty</div>
+                  </div>
+                </div>
+
+                {/* 3. Courses Offered */}
+                <div className="flex items-center gap-3 sm:gap-4 md:border-r border-gray-100 md:px-4 py-2 md:py-0 justify-start md:justify-center lg:justify-start">
+                  <div className="p-3 bg-blue-50   text-[#f15a24] rounded-2xl shrink-0">
+                    <BookOpen size={28} className="text-blue-900" />
+                  </div>
+                  <div>
+                    <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.coursesOffered)}+</div>
+                    <div className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Courses Offered</div>
+                  </div>
+                </div>
+
+                {/* 4. Success Rate */}
+                <div className="flex items-center gap-3 sm:gap-4 md:border-r border-gray-100 md:px-4 py-2 md:py-0 justify-start md:justify-center lg:justify-start">
+                  <div className="p-3 bg-blue-50 text-[#f15a24] rounded-2xl shrink-0">
+                    <ShieldCheck size={28} className="text-blue-900" />
+                  </div>
+                  <div>
+                    <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.successRate)}%</div>
+                    <div className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Success Rate</div>
+                  </div>
+                </div>
+
+                {/* 5. Recruitment Partners */}
+                <div className="flex items-center gap-3 sm:gap-4 md:pl-4 py-2 md:py-0 justify-start md:justify-center lg:justify-start col-span-2 md:col-span-1">
+                  <div className="p-3 bg-blue-50 text-[#f15a24] rounded-2xl shrink-0">
+                    <Handshake size={28} className="text-blue-900" />
+                  </div>
+                  <div>
+                    <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.recruitmentPartners)}+</div>
+                    <div className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Recruitment Partners</div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* 2. Popular & Category Courses */}
         <div className="py-20 bg-white">

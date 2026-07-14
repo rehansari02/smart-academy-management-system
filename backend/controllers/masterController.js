@@ -72,6 +72,27 @@ const getCourses = asyncHandler(async (req, res) => {
     res.json(result);
 });
 
+const getPublicHomeStats = asyncHandler(async (req, res) => {
+    const [studentsTrained, expertFaculty, coursesOffered] = await Promise.all([
+        Student.countDocuments({
+            isDeleted: false
+        }),
+        Employee.countDocuments({
+            isDeleted: false,
+            isActive: true
+        }),
+        Course.countDocuments({ isDeleted: false })
+    ]);
+
+    res.json({
+        studentsTrained,
+        expertFaculty,
+        coursesOffered,
+        successRate: 95,
+        recruitmentPartners: 100
+    });
+});
+
 const createCourse = asyncHandler(async (req, res) => {
     const data = { ...req.body };
     if (req.file) {
@@ -665,6 +686,7 @@ const deletePopularCourse = asyncHandler(async (req, res) => {
 
 module.exports = { 
     getCourses, createCourse, updateCourse, deleteCourse, 
+    getPublicHomeStats,
     getBatches, createBatch, updateBatch, deleteBatch,
     getSubjects, createSubject, updateSubject, deleteSubject,
     createEmployee, getEmployees, getPublicEmployeeReferences,

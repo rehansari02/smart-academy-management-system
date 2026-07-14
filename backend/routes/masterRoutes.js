@@ -4,6 +4,7 @@ const { protect } = require('../middlewares/authMiddleware');
 const { checkPermission } = require('../middlewares/permissionMiddleware');
 const { 
     getCourses, createCourse, updateCourse, deleteCourse,
+    getPublicHomeStats,
     getBatches, createBatch, updateBatch, deleteBatch, 
     createEmployee, getEmployees, getPublicEmployeeReferences,
     getSubjects, createSubject, updateSubject, deleteSubject,
@@ -49,6 +50,8 @@ const {
 const locationRoutes = require('./locationRoutes');
 
 const upload = require('../middlewares/uploadMiddleware');
+
+router.get('/home-stats', getPublicHomeStats);
 
 // --- Course Routes ---
 router.route('/course')
