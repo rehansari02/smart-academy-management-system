@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
     fetchCourses,
@@ -102,6 +102,9 @@ const Carousel = ({ items }) => {
 };
 
 const HeroBannerVisual = ({ items, mobile = false }) => {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const swiperRef = useRef(null);
+
   const slides = items && items.length > 0
     ? items
     : [{ image: HeroImage2, title: 'Smart Institute students' }];
@@ -110,14 +113,16 @@ const HeroBannerVisual = ({ items, mobile = false }) => {
   return (
     <div className="hero-banner-shine relative h-full w-full overflow-hidden">
       <Swiper
+        onSwiper={(swiper) => { swiperRef.current = swiper; }}
+        onSlideChange={(swiper) => setActiveIndex(swiper.realIndex)}
         modules={[Autoplay, EffectFade]}
         effect="fade"
         fadeEffect={{ crossFade: true }}
         slidesPerView={1}
         loop={shouldLoop}
-        speed={1200}
+        speed={1000}
         autoplay={shouldLoop ? {
-          delay: 3200,
+          delay: 3500,
           disableOnInteraction: false,
           pauseOnMouseEnter: false
         } : false}
@@ -128,19 +133,25 @@ const HeroBannerVisual = ({ items, mobile = false }) => {
             <img
               src={getMediaUrl(item.image) || HeroImage2}
               alt={item.title || 'Smart Institute banner'}
-              className="hero-banner-image h-full w-full object-contain object-center"
+              className="hero-banner-image h-full w-full object-cover object-center"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0a1931]/20 via-transparent to-white/5" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0a1931]/30 via-transparent to-white/10" />
           </SwiperSlide>
         ))}
       </Swiper>
 
       {shouldLoop && (
-        <div className={`${mobile ? 'bottom-7 left-1/2 -translate-x-1/2' : 'bottom-8 right-12'} absolute z-20 flex items-center gap-1.5`}>
-          {slides.slice(0, 4).map((item, index) => (
-            <span
+        <div className={`${mobile ? 'bottom-5 left-1/2 -translate-x-1/2' : 'bottom-6 right-8'} absolute z-20 flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 shadow-lg`}>
+          {slides.map((item, index) => (
+            <button
               key={item._id || index}
-              className="h-1.5 w-6 rounded-full bg-white/80 shadow-sm"
+              onClick={() => swiperRef.current?.slideToLoop(index)}
+              className={`h-2 rounded-full transition-all duration-500 cursor-pointer ${
+                activeIndex === index
+                  ? 'w-7 bg-[#f15a24] shadow-md shadow-[#f15a24]/60'
+                  : 'w-2 bg-white/50 hover:bg-white'
+              }`}
+              aria-label={`Go to slide ${index + 1}`}
             />
           ))}
         </div>
@@ -357,17 +368,23 @@ const HomePage = () => {
               {/* Left text column */}
               <div className="lg:col-span-7 space-y-8 text-left z-10">
                 <div className="inline-flex flex-wrap items-center gap-1.5 text-[13px] font-extrabold tracking-widest uppercase">
-                  <span className="text-[#0a1931]">LEARN. PRACTICE. </span>
-                  <span className="text-[#f15a24]">MASTER.</span>
+                  <span className="text-[#0a1931]">
+                    {homeSections.hero_text?.subtitle || 'LEARN. PRACTICE.'}
+                  </span>
+                  <span className="text-[#f15a24]">
+                    {homeSections.hero_text?.subtitle ? '' : 'MASTER.'}
+                  </span>
                 </div>
 
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.1] text-[#0a1931]">
-                  Empowering Minds. <br />
-                  <span className="text-blue-900">Building Futures.</span>
+                  {homeSections.hero_text?.title || 'Empowering Minds.'} <br />
+                  <span className="text-blue-900">
+                    {homeSections.hero_text?.quote || 'Building Futures.'}
+                  </span>
                 </h1>
 
                 <p className="text-slate-600 text-base sm:text-lg max-w-xl leading-relaxed font-normal">
-                  Industry-focused training designed to build your skills, boost confidence and create better career opportunities.
+                  {homeSections.hero_text?.description || 'Industry-focused training designed to build your skills, boost confidence and create better career opportunities.'}
                 </p>
 
                 {/* Key Features row/grid */}
@@ -414,7 +431,7 @@ const HomePage = () => {
                     }}
                     className="inline-flex items-center gap-3 bg-[#0a1931] hover:bg-[#1e3a8a] text-white px-8 py-4 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 hover:shadow-lg shadow-black/25 transform hover:-translate-y-0.5 text-sm"
                   >
-                    Explore Courses <ArrowRight size={16} />
+                    {homeSections.hero_text?.buttonLabel || 'Explore Courses'} <ArrowRight size={16} />
                   </button>
 
                   {/* <button

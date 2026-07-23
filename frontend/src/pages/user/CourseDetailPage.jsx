@@ -4,7 +4,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { fetchCourses } from '../../features/master/masterSlice';
 import { 
   Clock, BookOpen, CheckCircle, ArrowLeft, Award, Star, Users,
-  GraduationCap, Layers, Plus, Minus
+  GraduationCap, Layers, Plus, Minus, ChevronDown, ChevronUp, Sparkles, HelpCircle, FileText
 } from 'lucide-react';
 import Reveal from '../../components/Reveal';
 import { getMediaUrl } from '../../utils/mediaUrl';
@@ -14,7 +14,7 @@ const CourseDetailPage = () => {
   const dispatch = useDispatch();
   const { courses, isLoading } = useSelector((state) => state.master);
   const [activeSection, setActiveSection] = useState('overview');
-  const [openOverviewItem, setOpenOverviewItem] = useState('description-0');
+  const [openOverviewItems, setOpenOverviewItems] = useState(['description-0']);
   const course = courses.find(c => c._id === courseId);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ const CourseDetailPage = () => {
   const heroDescription = isSubjectLikeDescription
     ? 'Career focused course with practical learning and expert guidance.'
     : cleanSmallDescription || 'Career focused course with practical learning and expert guidance.';
-  const descriptionHeadingPattern = /^(\d+[).]\s*)?([A-Za-z][A-Za-z0-9\s/&+-]{2,45}):$/;
+  const descriptionHeadingPattern = /^(\d+[).]\s*)?(.+):$/;
   const hasDescriptionHeadings = descriptionLines.some(line => descriptionHeadingPattern.test(line));
 
   const descriptionSections = descriptionLines.reduce((sections, line) => {
@@ -73,6 +73,12 @@ const CourseDetailPage = () => {
 
   const hasDescription = descriptionSections.some(section => section.lines.length > 0);
 
+  const toggleOverviewItem = (id) => {
+    setOpenOverviewItems(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
   const sections = [
     {
       id: 'overview',
@@ -80,31 +86,78 @@ const CourseDetailPage = () => {
       icon: BookOpen,
       content: (
         <div className="space-y-5 text-gray-700 leading-relaxed">
-          {hasDescription && hasDescriptionHeadings ? (
-            <div className="space-y-3">
-              {descriptionSections.map((section) => {
-                const isOpen = openOverviewItem === section.id;
+          {hasDescription ? (
+            <div className="space-y-4">
+              {/* Accordion Action Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-gradient-to-r from-blue-50 via-indigo-50/50 to-orange-50/30 border border-blue-100/80 shadow-sm">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                  <div className="p-1.5 bg-primary text-white rounded-lg shadow-sm">
+                    <Layers size={14} />
+                  </div>
+                  Course Information Sections ({descriptionSections.length})
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOpenOverviewItems(descriptionSections.map(s => s.id))}
+                    className="bg-primary hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition"
+                  >
+                    Expand All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOpenOverviewItems([])}
+                    className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition"
+                  >
+                    Collapse All
+                  </button>
+                </div>
+              </div>
+
+              {descriptionSections.map((section, idx) => {
+                const isOpen = openOverviewItems.includes(section.id);
 
                 return (
-                  <div key={section.id} className="overflow-hidden rounded-xl border border-gray-100 bg-gray-50/70">
+                  <div key={section.id} className="overflow-hidden rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
                     <button
                       type="button"
-                      onClick={() => setOpenOverviewItem(isOpen ? '' : section.id)}
-                      className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left font-bold text-gray-900 transition-colors hover:bg-blue-50 hover:text-primary"
+                      onClick={() => toggleOverviewItem(section.id)}
+                      className={`flex w-full items-center justify-between gap-4 px-5 py-4 text-left font-bold transition-all cursor-pointer group ${
+                        isOpen 
+                          ? 'bg-gradient-to-r from-[#0a1931] via-blue-950 to-indigo-950 text-white border-l-4 border-l-orange-500 shadow-sm' 
+                          : 'bg-slate-50/90 hover:bg-blue-50/80 text-slate-900 border-l-4 border-l-primary/60 hover:border-l-primary'
+                      }`}
                     >
-                      <span>{section.title}</span>
+                      <div className="flex items-center gap-3">
+                        <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${
+                          isOpen ? 'bg-white/15 text-orange-400' : 'bg-blue-100/80 text-primary'
+                        }`}>
+                          {idx + 1}
+                        </span>
+                        <span className={`text-base font-extrabold tracking-tight ${isOpen ? 'text-white' : 'text-slate-900 group-hover:text-primary'}`}>
+                          {section.title}
+                        </span>
+                      </div>
                       {isOpen ? (
-                        <Minus size={20} className="shrink-0 text-primary" />
+                        <div className="w-7 h-7 rounded-lg bg-orange-500 text-white flex items-center justify-center shadow font-black shrink-0">
+                          <Minus size={16} />
+                        </div>
                       ) : (
-                        <Plus size={20} className="shrink-0" />
+                        <div className="w-7 h-7 rounded-lg bg-blue-100/90 text-primary group-hover:bg-primary group-hover:text-white flex items-center justify-center transition-colors font-black shrink-0">
+                          <Plus size={16} />
+                        </div>
                       )}
                     </button>
                     {isOpen && (
-                      <div className="space-y-3 border-t border-gray-100 bg-white px-5 py-4 text-justify">
+                      <div className="p-5 sm:p-6 border-t border-slate-100 bg-white space-y-3.5 text-slate-700 leading-relaxed text-justify">
                         {section.lines.length > 0 ? (
-                          section.lines.map((line, index) => <p key={index}>{line}</p>)
+                          section.lines.map((line, index) => (
+                            <p key={index} className="text-sm sm:text-base font-normal leading-relaxed text-slate-700 border-l-2 border-primary/20 pl-3.5 py-0.5">
+                              {line}
+                            </p>
+                          ))
                         ) : (
-                          <p>Details are being updated.</p>
+                          <p className="text-sm text-slate-400 italic">Details are being updated.</p>
                         )}
                       </div>
                     )}
@@ -112,14 +165,8 @@ const CourseDetailPage = () => {
                 );
               })}
             </div>
-          ) : hasDescription ? (
-            <div className="space-y-3 text-justify">
-              {descriptionSections.flatMap(section => section.lines).map((line, index) => (
-                <p key={index}>{line}</p>
-              ))}
-            </div>
           ) : (
-            <p>No description available for this course.</p>
+            <p className="text-slate-500 italic p-4 bg-slate-50 rounded-xl">No description available for this course.</p>
           )}
         </div>
       ),

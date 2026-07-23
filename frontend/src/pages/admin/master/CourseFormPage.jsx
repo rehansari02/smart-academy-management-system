@@ -10,11 +10,47 @@ import {
   updateCourse,
 } from '../../../features/master/masterSlice';
 import { toast } from 'react-toastify';
-import { ArrowLeft, Clock, Edit2, Layers, Plus, Save, Upload, X } from 'lucide-react';
+import { ArrowLeft, Clock, Edit2, Layers, Plus, Save, Upload, X, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
 
 const feeFields = ['courseFees', 'admissionFees', 'registrationFees', 'monthlyFees', 'totalInstallment'];
+
+const parseDescriptionToAccordions = (text) => {
+  if (!text || !text.trim()) {
+    return [{ title: 'Course Overview', content: '' }];
+  }
+  const lines = text.split('\n');
+  const items = [];
+  let currentTitle = '';
+  let currentContentLines = [];
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    const match = trimmed.match(/^(\d+[).]\s*)?(.+):$/);
+    if (match) {
+      if (currentTitle || currentContentLines.length > 0) {
+        items.push({
+          title: currentTitle || 'Course Overview',
+          content: currentContentLines.join('\n').trim()
+        });
+      }
+      currentTitle = match[2].trim();
+      currentContentLines = [];
+    } else {
+      currentContentLines.push(line);
+    }
+  });
+
+  if (currentTitle || currentContentLines.length > 0) {
+    items.push({
+      title: currentTitle || 'Course Overview',
+      content: currentContentLines.join('\n').trim()
+    });
+  }
+
+  return items.length > 0 ? items : [{ title: 'Course Overview', content: text }];
+};
 
 const CourseFormPage = () => {
   const { id } = useParams();
@@ -27,6 +63,11 @@ const CourseFormPage = () => {
   const [selectedSubjectMap, setSelectedSubjectMap] = useState({});
   const [previewImage, setPreviewImage] = useState(null);
   const [pendingPriceChange, setPendingPriceChange] = useState(null);
+  const [accordionSections, setAccordionSections] = useState([
+    { title: 'Course Overview', content: '' }
+  ]);
+  const [useRawDescription, setUseRawDescription] = useState(false);
+
   const { register, handleSubmit, reset, setValue, control } = useForm({
     defaultValues: {
       commissionType: 'Percentage',
@@ -72,12 +113,58 @@ const CourseFormPage = () => {
       if (!shouldHydrate) return;
       setSelectedSubjectMap(subjectMap);
       setPreviewImage(currentCourse.image || null);
+      if (currentCourse.description) {
+        setAccordionSections(parseDescriptionToAccordions(currentCourse.description));
+      }
     });
 
     return () => {
       shouldHydrate = false;
     };
   }, [currentCourse, isEditing, setValue]);
+
+  const updateDescriptionFromAccordions = (sections) => {
+    const formatted = sections
+      .filter(s => s.title.trim() || s.content.trim())
+      .map(s => `${s.title.trim() ? s.title.trim() + ':' : ''}\n${s.content.trim()}`)
+      .join('\n\n');
+    setValue('description', formatted);
+  };
+
+  const handleAddSection = () => {
+    const updated = [...accordionSections, { title: '', content: '' }];
+    setAccordionSections(updated);
+    updateDescriptionFromAccordions(updated);
+  };
+
+  const handleRemoveSection = (index) => {
+    if (accordionSections.length <= 1) {
+      toast.info("At least one section is required.");
+      return;
+    }
+    const updated = accordionSections.filter((_, i) => i !== index);
+    setAccordionSections(updated);
+    updateDescriptionFromAccordions(updated);
+  };
+
+  const handleSectionChange = (index, field, value) => {
+    const updated = accordionSections.map((sec, i) => {
+      if (i === index) return { ...sec, [field]: value };
+      return sec;
+    });
+    setAccordionSections(updated);
+    updateDescriptionFromAccordions(updated);
+  };
+
+  const handleMoveSection = (index, direction) => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= accordionSections.length) return;
+    const updated = [...accordionSections];
+    const [moved] = updated.splice(index, 1);
+    updated.splice(newIndex, 0, moved);
+    setAccordionSections(updated);
+    updateDescriptionFromAccordions(updated);
+  };
 
   useEffect(() => {
     if (!isSuccess) return;
@@ -226,9 +313,115 @@ const CourseFormPage = () => {
                 <label className="label">Small Description</label>
                 <input {...register('smallDescription')} className="input-field" placeholder="Brief summary..." />
               </div>
-              <div className="md:col-span-3">
-                <label className="label">Full Description</label>
-                <textarea {...register('description')} className="input-field h-28" placeholder="Detailed details..." />
+              {/* Accordion Section Builder */}
+              <div className="md:col-span-3 space-y-3 pt-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                  <div>
+                    <label className="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
+                      <Layers size={18} className="text-primary" /> Full Description (Accordion Builder)
+                    </label>
+                    <p className="text-xs text-gray-500">
+                      Add custom section headings and descriptions. These will display as interactive collapsible dropdowns on the course page.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setUseRawDescription(!useRawDescription)}
+                      className="text-xs font-semibold text-gray-600 hover:text-primary bg-white px-3 py-1.5 rounded-lg border shadow-sm transition"
+                    >
+                      {useRawDescription ? '⚡ Switch to Accordion Builder' : '📝 Edit Raw Text'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddSection}
+                      className="inline-flex items-center gap-1.5 bg-primary hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow transition"
+                    >
+                      <Plus size={14} /> Add Section
+                    </button>
+                  </div>
+                </div>
+
+                {useRawDescription ? (
+                  <div>
+                    <textarea
+                      {...register('description')}
+                      onChange={(e) => {
+                        setValue('description', e.target.value);
+                        setAccordionSections(parseDescriptionToAccordions(e.target.value));
+                      }}
+                      className="input-field h-44 font-mono text-sm leading-relaxed"
+                      placeholder="Enter description text formatted as 'Heading:\nContent...'"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {accordionSections.map((section, index) => (
+                      <div key={index} className="bg-slate-50/70 rounded-xl border border-slate-200 p-4 space-y-3 shadow-sm hover:border-primary/40 transition">
+                        <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2">
+                          <div className="flex items-center gap-2 flex-grow">
+                            <span className="bg-primary/10 text-primary text-xs font-bold px-2.5 py-1 rounded-md shrink-0">
+                              Section #{index + 1}
+                            </span>
+                            <input
+                              type="text"
+                              value={section.title}
+                              onChange={(e) => handleSectionChange(index, 'title', e.target.value)}
+                              placeholder="Section Heading (e.g. Course Overview, Syllabus Breakdown, Career Opportunities)"
+                              className="input-field text-sm font-bold text-gray-900 bg-white"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleMoveSection(index, 'up')}
+                              disabled={index === 0}
+                              className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                              title="Move Up"
+                            >
+                              <ChevronUp size={18} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveSection(index, 'down')}
+                              disabled={index === accordionSections.length - 1}
+                              className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                              title="Move Down"
+                            >
+                              <ChevronDown size={18} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSection(index)}
+                              className="p-1 text-red-400 hover:text-red-600 ml-1"
+                              title="Delete Section"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <textarea
+                            value={section.content}
+                            onChange={(e) => handleSectionChange(index, 'content', e.target.value)}
+                            rows={3}
+                            placeholder="Enter section description content..."
+                            className="input-field text-sm bg-white leading-relaxed"
+                          />
+                        </div>
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={handleAddSection}
+                      className="w-full py-3 border-2 border-dashed border-primary/30 rounded-xl text-primary font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-50 transition"
+                    >
+                      <Plus size={18} /> Add New Accordion Section
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="md:col-span-3">
                 <label className="flex cursor-pointer items-center gap-2">

@@ -180,12 +180,8 @@ const CoursePage = () => {
                            {/* We can add more specific details if available in backend schema later */}
                         </div>
                         
-                        <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-auto">
-                          <div>
-                            <div className="text-lg font-bold text-primary">₹{course.courseFees}</div>
-                            <div className="text-xs text-gray-500">Total Fees</div>
-                          </div>
-                          <Link to={`/course/${course._id}`} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold shadow-lg shadow-blue-500/20">
+                        <div className="flex items-center justify-end pt-4 border-t border-gray-100 mt-auto">
+                          <Link to={`/course/${course._id}`} className="w-full text-center bg-primary text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold shadow-lg shadow-blue-500/20">
                             View Details
                           </Link>
                         </div>

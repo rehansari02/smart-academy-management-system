@@ -83,8 +83,15 @@
   height: 100%;
 }
 
+.hero-banner-swiper .swiper-slide .hero-banner-image {
+  opacity: 0;
+  transform: scale(1.08);
+  transition: opacity 1.2s ease-in-out, transform 1.4s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
 .hero-banner-swiper .swiper-slide-active .hero-banner-image {
-  animation: heroBannerGlow 4.8s ease-in-out both;
+  animation: heroBannerFadeIn 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards, heroBannerGlow 4.8s ease-in-out infinite alternate;
 }
 
 .hero-banner-shine::after {
@@ -96,6 +103,17 @@
   background: linear-gradient(110deg, transparent 22%, rgba(255, 255, 255, 0.22) 42%, transparent 58%);
   transform: translateX(-120%);
   animation: heroBannerShine 5.8s ease-in-out infinite;
+}
+
+@keyframes heroBannerFadeIn {
+  0% {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes heroBannerGlow {
