@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { useSelector } from 'react-redux';
-import { CheckSquare, FileSpreadsheet, Square, Upload, X } from 'lucide-react';
+import { CheckSquare, Download, FileSpreadsheet, Square, Upload, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 import Swal from 'sweetalert2';
 import { showPermissionDenied } from '../../utils/permissionAlert';
@@ -55,6 +55,75 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
         resetDialog();
         fetchHistory();
         setIsOpen(true);
+    };
+
+    const downloadTemplate = () => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const nextDateStr = new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0];
+
+        const sampleData = [
+            {
+                "First Name": "Rahul",
+                "Last Name": "Sharma",
+                "Father/Husband Name": "Rajesh Sharma",
+                "Relation Type": "Father",
+                "S - Student Contact": "9876543210",
+                "P - Parent Contact": "9876543211",
+                "H - Home Contact": "0261234567",
+                "Gender": "Male",
+                "Date of Birth": "2002-05-15",
+                "Email": "rahul.sharma@example.com",
+                "Education": "12th Pass",
+                "Address": "102, Shanti Nagar, Bhestan",
+                "City": "Surat",
+                "State": "Gujarat",
+                "Interested Course": "A.D.C.A",
+                "Branch": "Bhestan",
+                "Reference": "Social Media",
+                "Inquiry Date": todayStr,
+                "Status": "Open",
+                "Follow-up Date": nextDateStr,
+                "Follow-up Time": "11:00 AM",
+                "Remark": "Interested in morning batch"
+            },
+            {
+                "First Name": "Priya",
+                "Last Name": "Patel",
+                "Father/Husband Name": "Karan Patel",
+                "Relation Type": "Husband",
+                "S - Student Contact": "9123456780",
+                "P - Parent Contact": "9123456789",
+                "H - Home Contact": "",
+                "Gender": "Female",
+                "Date of Birth": "2000-08-20",
+                "Email": "priya.patel@example.com",
+                "Education": "Graduate",
+                "Address": "B-45, Nilgiri Road, Godadara",
+                "City": "Surat",
+                "State": "Gujarat",
+                "Interested Course": "Tally Prime",
+                "Branch": "Godadara",
+                "Reference": "Friend",
+                "Inquiry Date": todayStr,
+                "Status": "Open",
+                "Follow-up Date": nextDateStr,
+                "Follow-up Time": "02:30 PM",
+                "Remark": "Wants weekend batch"
+            }
+        ];
+
+        const worksheet = XLSX.utils.json_to_sheet(sampleData);
+        const columnWidths = Object.keys(sampleData[0]).map((key) => ({
+            wch: Math.max(key.length + 3, 16)
+        }));
+        worksheet['!cols'] = columnWidths;
+
+        const workbook = XLSX.utils.book_new();
+        const sheetName = `${source || 'Inquiry'} Template`.substring(0, 31);
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+        const filename = `${(source || 'inquiry').toLowerCase().replace(/\s+/g, '_')}_import_template.xlsx`;
+        XLSX.writeFile(workbook, filename);
+        toast.info(`Sample template "${filename}" downloaded`);
     };
 
     const fetchHistory = async () => {
@@ -254,14 +323,31 @@ const InquiryImportButton = ({ source, onImported, canImport = true, permissionM
                                             : 'Allowed formats: .xlsx, .xls, .csv'}
                                     </div>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => inputRef.current?.click()}
-                                    disabled={isUploading}
-                                    className="bg-white border border-indigo-300 text-indigo-700 px-4 py-2 rounded text-sm font-bold hover:bg-indigo-100 disabled:opacity-60"
-                                >
-                                    Choose File
-                                </button>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={downloadTemplate}
+                                        className="bg-emerald-600 text-white px-3.5 py-2 rounded text-sm font-bold hover:bg-emerald-700 transition-all flex items-center gap-1.5 shadow-sm"
+                                        title="Download sample Excel template with all formatted inquiry columns"
+                                    >
+                                        <Download size={16} /> Download Template
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => inputRef.current?.click()}
+                                        disabled={isUploading}
+                                        className="bg-white border border-indigo-300 text-indigo-700 px-4 py-2 rounded text-sm font-bold hover:bg-indigo-100 disabled:opacity-60"
+                                    >
+                                        Choose File
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-900 flex items-start gap-2">
+                                <span className="font-bold shrink-0 text-amber-700">💡 Template Tip:</span>
+                                <div>
+                                    Click <strong className="text-emerald-700">Download Template</strong> to get a pre-formatted Excel file with ready-to-fill sample columns (<i>First Name, Last Name, S - Student Contact, Interested Course, Branch, Reference, etc.</i>).
+                                </div>
                             </div>
 
                             {parseError && (

@@ -471,61 +471,61 @@ const HomePage = () => {
         {/* Stats Section overlapping */}
         <div className="relative z-20 w-full mt-[-2rem] mb-12">
           <div className="container mx-auto px-4 lg:px-8">
-            <div className="bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.06)] border border-gray-100 p-6 md:p-8">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-6 md:gap-0 items-center">
+            <div className="bg-white/95 backdrop-blur-md rounded-3xl shadow-[0_25px_60px_rgba(10,25,49,0.12)] border border-slate-100 p-4 sm:p-6 md:p-8">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 md:gap-5 items-stretch">
 
                 {/* 1. Students Trained */}
-                <div className="flex items-center gap-3 sm:gap-4 md:border-r border-gray-100 md:pr-4 py-2 md:py-0 justify-start md:justify-center lg:justify-start">
-                  <div className="p-3 bg-blue-50 text-[#f15a24] rounded-2xl shrink-0">
-                    <GraduationCap size={28} className="text-blue-900" />
+                <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-white shadow-[0_6px_20px_rgba(0,0,0,0.05)] border border-slate-100 hover:shadow-[0_12px_28px_rgba(10,25,49,0.12)] hover:-translate-y-1 transition-all duration-300 justify-start">
+                  <div className="p-3 bg-blue-50/90 rounded-2xl shrink-0 shadow-sm">
+                    <GraduationCap size={28} className="text-[#0a1931]" />
                   </div>
                   <div>
                     <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.studentsTrained)}+</div>
-                    <div className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Students Trained</div>
+                    <div className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Students Trained</div>
                   </div>
                 </div>
 
                 {/* 2. Expert Faculty */}
-                <div className="flex items-center gap-3 sm:gap-4 md:border-r border-gray-100 md:px-4 py-2 md:py-0 justify-start md:justify-center lg:justify-start">
-                  <div className="p-3 bg-blue-50 text-[#f15a24] rounded-2xl shrink-0">
-                    <Users size={28} className="text-blue-900" />
+                <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-white shadow-[0_6px_20px_rgba(0,0,0,0.05)] border border-slate-100 hover:shadow-[0_12px_28px_rgba(10,25,49,0.12)] hover:-translate-y-1 transition-all duration-300 justify-start">
+                  <div className="p-3 bg-blue-50/90 rounded-2xl shrink-0 shadow-sm">
+                    <Users size={28} className="text-[#0a1931]" />
                   </div>
                   <div>
                     <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.expertFaculty)}+</div>
-                    <div className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Expert Faculty</div>
+                    <div className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Expert Faculty</div>
                   </div>
                 </div>
 
                 {/* 3. Courses Offered */}
-                <div className="flex items-center gap-3 sm:gap-4 md:border-r border-gray-100 md:px-4 py-2 md:py-0 justify-start md:justify-center lg:justify-start">
-                  <div className="p-3 bg-blue-50   text-[#f15a24] rounded-2xl shrink-0">
-                    <BookOpen size={28} className="text-blue-900" />
+                <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-white shadow-[0_6px_20px_rgba(0,0,0,0.05)] border border-slate-100 hover:shadow-[0_12px_28px_rgba(10,25,49,0.12)] hover:-translate-y-1 transition-all duration-300 justify-start">
+                  <div className="p-3 bg-blue-50/90 rounded-2xl shrink-0 shadow-sm">
+                    <BookOpen size={28} className="text-[#0a1931]" />
                   </div>
                   <div>
                     <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.coursesOffered)}+</div>
-                    <div className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Courses Offered</div>
+                    <div className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Courses Offered</div>
                   </div>
                 </div>
 
                 {/* 4. Success Rate */}
-                <div className="flex items-center gap-3 sm:gap-4 md:border-r border-gray-100 md:px-4 py-2 md:py-0 justify-start md:justify-center lg:justify-start">
-                  <div className="p-3 bg-blue-50 text-[#f15a24] rounded-2xl shrink-0">
-                    <ShieldCheck size={28} className="text-blue-900" />
+                <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-white shadow-[0_6px_20px_rgba(0,0,0,0.05)] border border-slate-100 hover:shadow-[0_12px_28px_rgba(10,25,49,0.12)] hover:-translate-y-1 transition-all duration-300 justify-start">
+                  <div className="p-3 bg-blue-50/90 rounded-2xl shrink-0 shadow-sm">
+                    <ShieldCheck size={28} className="text-[#0a1931]" />
                   </div>
                   <div>
                     <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.successRate)}%</div>
-                    <div className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Success Rate</div>
+                    <div className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Success Rate</div>
                   </div>
                 </div>
 
                 {/* 5. Recruitment Partners */}
-                <div className="flex items-center gap-3 sm:gap-4 md:pl-4 py-2 md:py-0 justify-start md:justify-center lg:justify-start col-span-2 md:col-span-1">
-                  <div className="p-3 bg-blue-50 text-[#f15a24] rounded-2xl shrink-0">
-                    <Handshake size={28} className="text-blue-900" />
+                <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-white shadow-[0_6px_20px_rgba(0,0,0,0.05)] border border-slate-100 hover:shadow-[0_12px_28px_rgba(10,25,49,0.12)] hover:-translate-y-1 transition-all duration-300 justify-start col-span-2 md:col-span-1">
+                  <div className="p-3 bg-blue-50/90 rounded-2xl shrink-0 shadow-sm">
+                    <Handshake size={28} className="text-[#0a1931]" />
                   </div>
                   <div>
                     <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.recruitmentPartners)}+</div>
-                    <div className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Recruitment Partners</div>
+                    <div className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Recruitment Partners</div>
                   </div>
                 </div>
 
