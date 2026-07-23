@@ -11,6 +11,26 @@ const examScheduleSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Employee'
     },
+    alternateExaminer: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Employee'
+    },
+    branchExaminers: [{
+        examDate: { type: String },
+        branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
+        branchName: { type: String },
+        examiner: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+        alternateExaminer: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+        conductPasswordEnabled: { type: Boolean, default: false },
+        conductPasswordText: { type: String, default: '' },
+        conductPasswordHash: { type: String, default: '' }
+    }],
+    attendance: [{
+        student: { type: mongoose.Schema.Types.ObjectId, ref: 'Student' },
+        examDate: { type: String },
+        status: { type: String, enum: ['Present', 'Absent'], default: 'Present' },
+        updatedAt: { type: Date, default: Date.now }
+    }],
     conductPasswordEnabled: { type: Boolean, default: false },
     conductPasswordText: { type: String, default: '' },
     conductPasswordHash: { type: String, default: '' },

@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import * as XLSX from 'xlsx';
-import { ArrowLeft, FileQuestion, FileSpreadsheet, Loader, Plus, Save, Trash2, Upload, X } from 'lucide-react';
+import { ArrowLeft, Download, FileQuestion, FileSpreadsheet, Loader, Plus, Save, Trash2, Upload, X } from 'lucide-react';
 import {
   createFinalExamQuestionPaper,
   fetchCourses,
@@ -67,10 +67,10 @@ const parseExcelQuestionRows = (rows = [], type = 'mcq') => rows
       return {
         question,
         options: [
-          getCellValue(row, ['Option A', 'A', 'Option 1']),
-          getCellValue(row, ['Option B', 'B', 'Option 2']),
-          getCellValue(row, ['Option C', 'C', 'Option 3']),
-          getCellValue(row, ['Option D', 'D', 'Option 4'])
+          getCellValue(row, ['Option 1', 'Option A', 'Option1', '1', 'A']),
+          getCellValue(row, ['Option 2', 'Option B', 'Option2', '2', 'B']),
+          getCellValue(row, ['Option 3', 'Option C', 'Option3', '3', 'C']),
+          getCellValue(row, ['Option 4', 'Option D', 'Option4', '4', 'D'])
         ],
         correctAnswer: getCellValue(row, ['Correct Answer', 'Answer', 'Correct']),
         marks: Number(getCellValue(row, ['Marks'])) || 1
@@ -95,10 +95,10 @@ const parseExcelUnifiedRows = (rows = []) => {
     mcqs.push({
       question,
       options: [
-        getCellValue(row, ['Option A', 'A', 'Option 1']),
-        getCellValue(row, ['Option B', 'B', 'Option 2']),
-        getCellValue(row, ['Option C', 'C', 'Option 3']),
-        getCellValue(row, ['Option D', 'D', 'Option 4'])
+        getCellValue(row, ['Option 1', 'Option A', 'Option1', '1', 'A']),
+        getCellValue(row, ['Option 2', 'Option B', 'Option2', '2', 'B']),
+        getCellValue(row, ['Option 3', 'Option C', 'Option3', '3', 'C']),
+        getCellValue(row, ['Option 4', 'Option D', 'Option4', '4', 'D'])
       ],
       correctAnswer: getCellValue(row, ['Correct Answer', 'Answer', 'Correct']),
       marks: Number(getCellValue(row, ['Marks'])) || 1
@@ -110,9 +110,11 @@ const parseExcelUnifiedRows = (rows = []) => {
 const parseFinalExamExcel = (workbook) => {
   const metaSheetName = findSheetName(workbook, ['Meta', 'Metadata', 'Details']);
   const mcqSheetName = findSheetName(workbook, ['MCQ', 'MCQs', 'Multiple Choice']);
+  const qaSheetName = findSheetName(workbook, ['QA', 'Q&A', 'Question Answer', 'QuestionAnswer', 'Question Answers', 'Descriptive']);
 
   let metadata = metaSheetName ? parseExcelMetaSheet(workbook.Sheets[metaSheetName]) : {};
   let mcqs = [];
+  let questionAnswers = [];
 
   if (mcqSheetName) {
     mcqs = parseExcelQuestionRows(
@@ -121,7 +123,14 @@ const parseFinalExamExcel = (workbook) => {
     );
   }
 
-  if (!mcqSheetName && workbook.SheetNames.length) {
+  if (qaSheetName) {
+    questionAnswers = parseExcelQuestionRows(
+      XLSX.utils.sheet_to_json(workbook.Sheets[qaSheetName], { defval: '', raw: false, blankrows: false }),
+      'qa'
+    );
+  }
+
+  if (!mcqSheetName && !qaSheetName && workbook.SheetNames.length) {
     const firstSheetRows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {
       defval: '',
       raw: false,
@@ -153,7 +162,8 @@ const parseFinalExamExcel = (workbook) => {
     isActive: metadata['is active'] ? parseBooleanText(metadata['is active']) : true,
     mcqTotalMarks: metadata['mcq total marks'] || metadata['mcq marks'] || '',
     mcqQuestionMarks: metadata['mcq each marks'] || metadata['mcq per question marks'] || 1,
-    mcqs
+    mcqs,
+    questionAnswers
   };
 };
 
@@ -193,6 +203,10 @@ const AddFinalExamQuestionPaper = () => {
   const subjectOptions = useMemo(() => {
     return [...(selectedCourse?.subjects || [])]
       .filter((item) => item.subject)
+      .filter((item) => {
+        const name = String(item.subject?.name || item.subject?.printedName || '').toLowerCase();
+        return !name.includes('project') && !name.includes('discipline');
+      })
       .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
       .map((item) => item.subject);
   }, [selectedCourse]);
@@ -315,6 +329,11 @@ const AddFinalExamQuestionPaper = () => {
       correctAnswer: mcq.correctAnswer || '',
       marks: Number(mcq.marks) || 1
     }));
+    const importedQa = (parsed.questionAnswers || []).map((qa) => ({
+      question: qa.question || '',
+      answer: qa.answer || '',
+      marks: Number(qa.marks) || 1
+    }));
     setForm((prev) => syncTotalMarks({
       ...prev,
       title: parsed.title || prev.title,
@@ -325,8 +344,8 @@ const AddFinalExamQuestionPaper = () => {
       mcqQuestionMarks: Number(parsed.mcqQuestionMarks) || prev.mcqQuestionMarks || 1,
       qaTotalMarks: parsed.qaTotalMarks || prev.qaTotalMarks,
       qaQuestionMarks: Number(parsed.qaQuestionMarks) || prev.qaQuestionMarks || 1,
-      mcqs: importedMcqs.length ? importedMcqs : [emptyMcq()],
-      questionAnswers: prev.questionAnswers,
+      mcqs: importedMcqs.length ? importedMcqs : prev.mcqs,
+      questionAnswers: importedQa.length ? importedQa : prev.questionAnswers,
       remarks: parsed.remarks || prev.remarks,
       isActive: typeof parsed.isActive === 'boolean' ? parsed.isActive : prev.isActive
     }));
@@ -348,8 +367,8 @@ const AddFinalExamQuestionPaper = () => {
   const handleImportMarkdownText = () => {
     try {
       const parsed = parseFinalExamMarkdown(importMarkdown);
-      if (!parsed.mcqs.length) {
-        setImportError('Kam se kam ek MCQ block required hai.');
+      if (!parsed.mcqs.length && !parsed.questionAnswers?.length) {
+        setImportError('Kam se kam ek MCQ ya QA block required hai.');
         return;
       }
       applyImportedPaper(parsed);
@@ -396,8 +415,8 @@ const AddFinalExamQuestionPaper = () => {
       const buffer = await importFile.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
       const parsed = parseFinalExamExcel(workbook);
-      if (!parsed.mcqs.length) {
-        setImportError('Excel me kam se kam ek MCQ row required hai.');
+      if (!parsed.mcqs.length && !parsed.questionAnswers.length) {
+        setImportError('Excel me kam se kam ek MCQ ya QA row required hai.');
         return;
       }
       applyImportedPaper(parsed);
@@ -498,7 +517,13 @@ const AddFinalExamQuestionPaper = () => {
           correctAnswer: mcq.correctAnswer.trim(),
           marks: Number(mcq.marks) || 1
         })),
-    questionAnswers: []
+    questionAnswers: form.questionAnswers
+        .filter((qa) => qa.question.trim())
+        .map((qa) => ({
+          question: qa.question.trim(),
+          answer: (qa.answer || '').trim(),
+          marks: Number(qa.marks) || 1
+        }))
   });
 
   const buildPayload = (course) => ({
@@ -534,7 +559,7 @@ const AddFinalExamQuestionPaper = () => {
     }
 
     const subjectPayload = buildSubjectPayload();
-    const hasQuestions = subjectPayload.mcqs.length > 0;
+    const hasQuestions = subjectPayload.mcqs.length > 0 || subjectPayload.questionAnswers.length > 0;
     if (!hasQuestions) {
       toast.error('Kam se kam ek question add karein');
       return;
@@ -553,7 +578,7 @@ const AddFinalExamQuestionPaper = () => {
             subject: row.subject?._id || row.subject,
             duration: row.duration || '',
             mcqs: row.mcqs || [],
-            questionAnswers: []
+            questionAnswers: row.questionAnswers || []
           }));
 
         resultActions.push(await dispatch(updateFinalExamQuestionPaper({
@@ -585,6 +610,25 @@ const AddFinalExamQuestionPaper = () => {
     dispatch(fetchFinalExamQuestionPapers());
     dispatch(resetMasterStatus());
     navigate('/master/final-exam-question-paper');
+  };
+
+  const handleDownloadTemplate = () => {
+    const wb = XLSX.utils.book_new();
+
+    // Single MCQ sheet
+    const mcqData = [
+      ['Question', 'Option 1', 'Option 2', 'Option 3', 'Option 4', 'Correct Answer', 'Marks'],
+      ['What is 2 + 2?', '3', '4', '5', '6', '4', '1'],
+      ['Capital of India?', 'Mumbai', 'Delhi', 'Chennai', 'Kolkata', 'Delhi', '1'],
+      ['Write your question here...', 'Option 1', 'Option 2', 'Option 3', 'Option 4', 'Option 1', '1']
+    ];
+    const mcqWs = XLSX.utils.aoa_to_sheet(mcqData);
+    mcqWs['!cols'] = [
+      { wch: 45 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 8 }
+    ];
+    XLSX.utils.book_append_sheet(wb, mcqWs, 'MCQs');
+
+    XLSX.writeFile(wb, 'MCQ_Import_Template.xlsx');
   };
 
   return (
@@ -649,7 +693,7 @@ const AddFinalExamQuestionPaper = () => {
 
           {form.course && availableSubjectOptions.length === 0 && (
             <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded text-sm">
-              Is course ke sabhi subjects ke paper already ban chuke hain. Naya subject nahi bacha.
+              Question papers have already been created for all subjects in this course. No remaining subjects left.
             </div>
           )}
 
@@ -693,6 +737,28 @@ const AddFinalExamQuestionPaper = () => {
                     ))}
                   </div>
                 </section>
+
+                <section className="mt-6 border-t pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-bold text-emerald-700 uppercase">Question & Answer (Q&A)</h3>
+                    <button type="button" onClick={addQuestionAnswerRow} className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded font-bold hover:bg-emerald-100">
+                      <Plus size={13} className="inline" /> Add Q&A
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {form.questionAnswers.map((qa, index) => (
+                      <div key={index} className="border border-gray-200 rounded p-3 bg-gray-50">
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_90px_34px] gap-2">
+                          <input value={qa.question} onChange={(e) => updateQuestionAnswer(index, 'question', e.target.value)} className="border p-2 rounded text-sm bg-white" placeholder={`Question ${index + 1}`} />
+                          <input type="number" min="1" value={qa.marks} onChange={(e) => updateQuestionAnswer(index, 'marks', e.target.value)} className="border p-2 rounded text-sm bg-white" placeholder="Marks" />
+                          <button type="button" onClick={() => removeQuestionAnswerRow(index)} className="text-red-600 hover:bg-red-50 rounded"><Trash2 size={16} /></button>
+                        </div>
+                        <textarea value={qa.answer} onChange={(e) => updateQuestionAnswer(index, 'answer', e.target.value)} rows="2" className="border p-2 rounded text-sm bg-white mt-2 w-full" placeholder="Answer / solution" />
+                      </div>
+                    ))}
+                  </div>
+                </section>
               </div>
             </div>
           )}
@@ -728,7 +794,7 @@ const AddFinalExamQuestionPaper = () => {
                   <FileSpreadsheet size={18} />
                   Import Excel
                 </h2>
-                <p className="text-xs text-gray-500">Course, Subject aur MCQ ko `.xlsx` se load karein.</p>
+                <p className="text-xs text-gray-500">Course, Subject, MCQ aur Q&A ko `.xlsx` se load karein.</p>
               </div>
               <button
                 type="button"
@@ -766,11 +832,9 @@ const AddFinalExamQuestionPaper = () => {
               </div>
 
               <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <h3 className="text-sm font-bold uppercase text-gray-800">Expected Sheets</h3>
+                <h3 className="text-sm font-bold uppercase text-gray-800">Expected Format</h3>
                 <div className="space-y-2 text-xs text-gray-600">
-                  <p><span className="font-bold text-gray-800">Meta:</span> Title, Course, Subject, Duration, Remarks, Is Active</p>
-                  <p><span className="font-bold text-gray-800">MCQ:</span> Question, Option A, Option B, Option C, Option D, Correct Answer, Marks</p>
-                  <p><span className="font-bold text-gray-800">Note:</span> Sheet me sirf MCQ rows rakhein.</p>
+                  <p><span className="font-bold text-gray-800">MCQs:</span> Question, Option 1, Option 2, Option 3, Option 4, Correct Answer, Marks</p>
                 </div>
 
                 <div className="rounded-md border border-gray-200 bg-white p-3 text-[11px] text-gray-600">
@@ -779,6 +843,14 @@ const AddFinalExamQuestionPaper = () => {
                 </div>
 
                 <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDownloadTemplate}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700"
+                  >
+                    <Download size={16} />
+                    Download Template
+                  </button>
                   <button
                     type="button"
                     onClick={handleImportExcel}

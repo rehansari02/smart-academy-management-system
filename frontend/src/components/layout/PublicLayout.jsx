@@ -130,10 +130,21 @@ const PublicNavbar = () => {
             <img src={logoImage} alt="Logo" className="h-9 w-auto object-contain" />
           </div>
 
-          {/* Mobile Menu Button */}
-          <button className="md:hidden p-2 text-white hover:bg-blue-800 rounded-lg transition-colors absolute right-0" onClick={() => setIsOpen(!isOpen)}>
-            {isOpen ? <X size={28} /> : <Menu size={28} />}
-          </button>
+          {/* Mobile Right Controls: Login button + Menu Toggle */}
+          <div className="md:hidden flex items-center gap-2">
+            {!user ? (
+              <Link to="/login" className="bg-white text-blue-900 border border-white/20 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1 shadow-sm hover:bg-blue-50">
+                <LogIn size={14} /> Login
+              </Link>
+            ) : (
+              <Link to="/home" className="bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                Dashboard
+              </Link>
+            )}
+            <button className="p-2 text-white hover:bg-blue-800 rounded-lg transition-colors" onClick={() => setIsOpen(!isOpen)}>
+              {isOpen ? <X size={26} /> : <Menu size={26} />}
+            </button>
+          </div>
 
           {/* Desktop Menu - Centered */}
           <div className="hidden md:flex items-center justify-center gap-2.5">
@@ -360,13 +371,17 @@ const PublicNavbar = () => {
                 </div>
               ))}
 
-              {user && (
-                <div className="pt-6 border-t border-gray-200">
+              <div className="pt-6 border-t border-gray-200 mt-auto">
+                {user ? (
                   <Link to="/home" className="flex items-center justify-center gap-2 bg-accent text-white py-3 rounded-xl font-bold shadow-md hover:shadow-lg transition-all" onClick={() => setIsOpen(false)}>
                     <ArrowRight size={18} /> Go to Dashboard
                   </Link>
-                </div>
-              )}
+                ) : (
+                  <Link to="/login" className="flex items-center justify-center gap-2 bg-primary text-white py-3.5 rounded-xl font-bold uppercase tracking-wider shadow-lg hover:shadow-primary/30 transition-all text-sm" onClick={() => setIsOpen(false)}>
+                    <LogIn size={18} /> Login
+                  </Link>
+                )}
+              </div>
             </div>
           </motion.div>
         )}

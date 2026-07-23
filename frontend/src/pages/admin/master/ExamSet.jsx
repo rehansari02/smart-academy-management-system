@@ -2,13 +2,52 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { BookOpenCheck, CalendarDays, CheckSquare, GraduationCap, Loader, Lock, RefreshCw, Save, Search, ShieldCheck, Users, X } from 'lucide-react';
+import {
+  BookOpenCheck,
+  Building2,
+  CalendarDays,
+  CheckSquare,
+  Eye,
+  GraduationCap,
+  Loader,
+  Lock,
+  Phone,
+  RefreshCw,
+  Save,
+  Search,
+  ShieldCheck,
+  UserCheck,
+  Users,
+  X
+} from 'lucide-react';
+import axios from 'axios';
 import { fetchEmployees, fetchExamSchedules, fetchExams, updateExamSchedule } from '../../../features/master/masterSlice';
 
-const getStudentName = (student) => [student?.firstName, student?.lastName].filter(Boolean).join(' ') || 'Student';
 const getSubjectName = (row) => row?.subject?.name || row?.subject?.printedName || row?.name || 'Subject';
 const getSubjectId = (row) => row?.subject?._id || row?.subject;
 const getEmployeeName = (employee) => employee?.name || [employee?.firstName, employee?.lastName].filter(Boolean).join(' ') || 'Employee';
+
+const getEmployeesForBranch = (employeesList, branchName) => {
+  if (!Array.isArray(employeesList)) return [];
+  if (!branchName) return employeesList;
+
+  const targetName = branchName.toLowerCase().replace(/branch/i, '').trim();
+
+  const filtered = employeesList.filter((emp) => {
+    const empBranchName = (
+      emp.branchId?.name ||
+      emp.branchName ||
+      emp.branch ||
+      ''
+    ).toLowerCase().trim();
+
+    if (!empBranchName) return true;
+
+    return empBranchName.includes(targetName) || targetName.includes(empBranchName);
+  });
+
+  return filtered.length > 0 ? filtered : employeesList;
+};
 
 const getDateKey = (date) => {
   if (!date) return 'no-date';
@@ -62,24 +101,22 @@ const ExamSet = () => {
   const { exams, examSchedules, employees, isLoading } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
   const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
+
   const [selectedExamName, setSelectedExamName] = useState('');
   const [testingDate, setTestingDate] = useState('');
-  const [dateSettings, setDateSettings] = useState({});
-  const [savingDate, setSavingDate] = useState('');
-  const [absentModalOpen, setAbsentModalOpen] = useState(false);
-  const [absentLoading, setAbsentLoading] = useState(false);
-  const [absentRows, setAbsentRows] = useState([]);
-  const [selectedAbsentRows, setSelectedAbsentRows] = useState({});
-  const [creatingReExam, setCreatingReExam] = useState(false);
-  const [reExamForm, setReExamForm] = useState({
-    reExamName: '',
-    date: '',
-    startTime: '',
-    endTime: '',
-    examiner: '',
-    conductPasswordEnabled: true,
-    conductPassword: ''
-  });
+  const [branchSettings, setBranchSettings] = useState({});
+  const [savingKey, setSavingKey] = useState('');
+
+  // Student List & Attendance Modal States
+  const [studentModalOpen, setStudentModalOpen] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalDateLabel, setModalDateLabel] = useState('');
+  const [modalDateKey, setModalDateKey] = useState('');
+  const [modalScheduleIds, setModalScheduleIds] = useState([]);
+  const [modalStudentList, setModalStudentList] = useState([]);
+  const [modalSearchTerm, setModalSearchTerm] = useState('');
+  const [attendanceMap, setAttendanceMap] = useState({});
+  const [isSavingAttendance, setIsSavingAttendance] = useState(false);
 
   useEffect(() => {
     dispatch(fetchExams());
@@ -119,6 +156,14 @@ const ExamSet = () => {
       .sort((a, b) => (a?.course?.name || '').localeCompare(b?.course?.name || ''));
   }, [examSchedules, selectedExamName]);
 
+  const currentEmployee = useMemo(() => {
+    if (!user) return null;
+    return (employees || []).find(
+      (e) => String(e.userAccount) === String(user._id) || String(e._id) === String(user.employeeId)
+    );
+  }, [employees, user]);
+
+  // Group by Date -> Branch
   const dateGroups = useMemo(() => {
     const groupMap = new Map();
 
@@ -138,7 +183,11 @@ const ExamSet = () => {
         group.rows.push({ schedule, row, rowIndex });
         group.scheduleMap.set(schedule._id, schedule);
         (schedule.attendees || []).forEach((student) => {
-          group.studentMap.set(student._id || `${schedule._id}-${student.regNo || student.mobile || student.name}`, student);
+          const studentObj = {
+            ...student,
+            courseName: schedule.course?.name || 'Course'
+          };
+          group.studentMap.set(student._id || `${schedule._id}-${student.regNo || student.mobile || student.name}`, studentObj);
         });
       });
     });
@@ -153,44 +202,114 @@ const ExamSet = () => {
     });
   }, [selectedSchedules]);
 
-  useEffect(() => {
-    setDateSettings((prev) => {
-      const next = { ...prev };
-      dateGroups.forEach((group) => {
-        if (!next[group.dateKey]) {
-          const schedules = [...group.scheduleMap.values()];
-          const firstScheduleWithExaminer = schedules.find((schedule) => schedule.examiner);
-          const firstExaminer = firstScheduleWithExaminer?.examiner?._id || firstScheduleWithExaminer?.examiner || '';
-          const hasRowPassword = group.rows.some(({ row }) => row.conductPasswordEnabled || row.conductPasswordHash || row.conductPasswordText);
-          next[group.dateKey] = {
-            examiner: firstExaminer,
-            conductPasswordEnabled: hasRowPassword || true,
-            conductPassword: ''
-          };
+  // Helper to extract Branch Groups for a specific date group (filtered per teacher assignment)
+  const getBranchGroupsForDate = (dateGroup) => {
+    const branchMap = new Map();
+    const empIdStr = currentEmployee ? String(currentEmployee._id) : '';
+
+    dateGroup.rows.forEach(({ schedule, row, rowIndex }) => {
+      const branchConfigs = schedule.branchExaminers || [];
+
+      const attendees = schedule.attendees || [];
+      const branchBuckets = new Map();
+
+      attendees.forEach((student) => {
+        const bName = student.branchName || 'Main Branch';
+        const bId = student.branchId || null;
+        if (!branchBuckets.has(bName)) {
+          branchBuckets.set(bName, { branchName: bName, branchId: bId, students: [] });
         }
+        branchBuckets.get(bName).students.push(student);
+      });
+
+      if (branchBuckets.size === 0) {
+        const defaultName = 'Main Branch';
+        branchBuckets.set(defaultName, { branchName: defaultName, branchId: null, students: [] });
+      }
+
+      branchBuckets.forEach((bData, bName) => {
+        const existingConfig = branchConfigs.find((b) => {
+          const sameBranch = String(b.branchName || '').toLowerCase() === bName.toLowerCase();
+          const sameDate = !b.examDate || b.examDate === dateGroup.dateKey;
+          return sameBranch && sameDate;
+        });
+
+        const mainExp = existingConfig?.examiner?._id || existingConfig?.examiner || '';
+        const altExp = existingConfig?.alternateExaminer?._id || existingConfig?.alternateExaminer || '';
+
+        const isBranchMain = String(existingConfig?.examiner?._id || existingConfig?.examiner || '') === empIdStr;
+        const isBranchAlt = String(existingConfig?.alternateExaminer?._id || existingConfig?.alternateExaminer || '') === empIdStr;
+
+        // If user is not Super Admin, verify teacher is assigned to THIS course & branch on THIS specific date
+        const isAssignedToThisCourseAndBranch = isSuperAdmin || isBranchMain || isBranchAlt;
+
+        if (!isAssignedToThisCourseAndBranch) {
+          return; // Skip courses/students not assigned to this teacher on THIS date
+        }
+
+        const pEnabled = existingConfig ? Boolean(existingConfig.conductPasswordEnabled) : Boolean(schedule.conductPasswordEnabled);
+
+        if (!branchMap.has(bName)) {
+          branchMap.set(bName, {
+            branchName: bName,
+            branchId: bData.branchId,
+            studentMap: new Map(),
+            scheduleMap: new Map(),
+            rows: [],
+            initialMain: mainExp,
+            initialAlt: altExp,
+            initialPasswordEnabled: pEnabled
+          });
+        }
+
+        const bGroup = branchMap.get(bName);
+        bData.students.forEach((s) => {
+          const studentObj = {
+            ...s,
+            courseName: schedule.course?.name || 'Course'
+          };
+          bGroup.studentMap.set(s._id || s.regNo, studentObj);
+        });
+        bGroup.scheduleMap.set(schedule._id, schedule);
+        bGroup.rows.push({ schedule, row, rowIndex });
+      });
+    });
+
+    return [...branchMap.values()].sort((a, b) => a.branchName.localeCompare(b.branchName));
+  };
+
+  // Initialize branch settings
+  useEffect(() => {
+    setBranchSettings((prev) => {
+      const next = { ...prev };
+      dateGroups.forEach((dateGroup) => {
+        const branches = getBranchGroupsForDate(dateGroup);
+        branches.forEach((b) => {
+          const settingKey = `${dateGroup.dateKey}_${b.branchName}`;
+          if (!next[settingKey]) {
+            next[settingKey] = {
+              examiner: b.initialMain,
+              alternateExaminer: b.initialAlt,
+              conductPasswordEnabled: b.initialPasswordEnabled,
+              conductPassword: ''
+            };
+          }
+        });
       });
       return next;
     });
   }, [dateGroups]);
 
   const visibleDateGroups = useMemo(() => {
-    if (!testingDate) return dateGroups;
-    return dateGroups.filter((group) => group.dateKey === testingDate);
-  }, [dateGroups, testingDate]);
-
-  const visibleScheduleIds = useMemo(() => {
-    if (!testingDate) return null;
-    const ids = new Set();
-    visibleDateGroups.forEach((group) => {
-      group.scheduleMap.forEach((schedule) => ids.add(schedule._id));
-    });
-    return ids;
-  }, [testingDate, visibleDateGroups]);
-
-  const visibleSchedules = useMemo(() => {
-    if (!visibleScheduleIds) return selectedSchedules;
-    return selectedSchedules.filter((schedule) => visibleScheduleIds.has(schedule._id));
-  }, [selectedSchedules, visibleScheduleIds]);
+    let groups = dateGroups;
+    if (testingDate) {
+      groups = groups.filter((group) => group.dateKey === testingDate);
+    }
+    if (!isSuperAdmin) {
+      groups = groups.filter((group) => getBranchGroupsForDate(group).length > 0);
+    }
+    return groups;
+  }, [dateGroups, testingDate, isSuperAdmin, currentEmployee]);
 
   const totalSubjects = visibleDateGroups.reduce((total, group) => total + group.rows.length, 0);
   const totalStudents = visibleDateGroups.reduce((total, group) => total + group.studentMap.size, 0);
@@ -201,356 +320,620 @@ const ExamSet = () => {
     dispatch(fetchExamSchedules(selectedExamName ? { examName: selectedExamName } : undefined));
   };
 
-  const loadAbsentStudents = async () => {
-    if (!selectedExamName) {
-      toast.error('Select exam name first.');
-      return;
-    }
-    navigate(`/master/exam-set/absent?examName=${encodeURIComponent(selectedExamName)}`);
+  const updateBranchSetting = (settingKey, field, value) => {
+    setBranchSettings((prev) => ({
+      ...prev,
+      [settingKey]: { ...(prev[settingKey] || {}), [field]: value }
+    }));
   };
 
-  const toggleAbsentRow = (rowKey) => {
-    setSelectedAbsentRows((prev) => ({ ...prev, [rowKey]: !prev[rowKey] }));
-  };
+  const openStudentModal = (title, studentMapOrArray, dateLabel, dateKey, scheduleMapOrList) => {
+    const list = Array.isArray(studentMapOrArray)
+      ? studentMapOrArray
+      : [...studentMapOrArray.values()];
 
-  const selectedAbsentList = absentRows.filter((row) => selectedAbsentRows[row.key]);
+    const schedules = scheduleMapOrList
+      ? (Array.isArray(scheduleMapOrList) ? scheduleMapOrList : [...scheduleMapOrList.values()])
+      : [];
 
-  const createAbsentReExam = async () => {
-    if (selectedAbsentList.length === 0) {
-      toast.error('Select at least one absent student.');
-      return;
-    }
-    if (!reExamForm.date || !reExamForm.startTime || !reExamForm.endTime) {
-      toast.error('Re-exam date and time are required.');
-      return;
-    }
-    if (reExamForm.conductPasswordEnabled && !String(reExamForm.conductPassword || '').trim()) {
-      toast.error('Password is required for re-exam.');
-      return;
-    }
+    const scheduleIds = schedules.map((s) => s._id);
 
-    setCreatingReExam(true);
-    try {
-      const payload = {
-        examName: selectedExamName,
-        ...reExamForm,
-        selectedRows: selectedAbsentList.map((row) => ({
-          scheduleId: row.scheduleId,
-          subjectId: row.subject?._id || row.subject,
-          studentId: row.student?._id
-        }))
-      };
-      const res = await axios.post(`${API_URL}exam-schedule/absent-reexam`, payload);
-      toast.success(res.data?.message || 'Re-exam schedule created');
-      setAbsentModalOpen(false);
-      setAbsentRows([]);
-      setSelectedAbsentRows({});
-      setReExamForm((prev) => ({ ...prev, conductPassword: '' }));
-      dispatch(fetchExamSchedules(selectedExamName ? { examName: selectedExamName } : undefined));
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to create re-exam schedule');
-    } finally {
-      setCreatingReExam(false);
-    }
-  };
+    // Build initial attendance map with default preset = 'Present'
+    const initialAtt = {};
+    list.forEach((st) => {
+      const sId = String(st._id);
+      let existingStatus = 'Present'; // DEFAULT PRESET IS PRESENT
 
-  const updateDateSetting = (dateKey, field, value) => {
-    setDateSettings((prev) => ({ ...prev, [dateKey]: { ...(prev[dateKey] || {}), [field]: value } }));
-  };
-
-  const handleSaveDateSettings = async (group) => {
-    if (!isSuperAdmin) {
-      toast.error('Only Super Admin can update exam set settings.');
-      return;
-    }
-
-    const current = dateSettings[group.dateKey] || {};
-    const password = String(current.conductPassword || '').trim();
-    const hasExistingPassword = group.rows.every(({ row }) => row.conductPasswordHash || row.conductPasswordText);
-
-    if (current.conductPasswordEnabled && !password && !hasExistingPassword) {
-      toast.error('Day password is required for this date.');
-      return;
-    }
-
-    setSavingDate(group.dateKey);
-    const schedules = [...group.scheduleMap.values()];
-
-    for (const schedule of schedules) {
-      const result = await dispatch(updateExamSchedule({
-        id: schedule._id,
-        data: {
-          examiner: current.examiner || '',
-          timeTable: buildTimeTablePayload(schedule, group.dateKey, current)
+      for (const sched of schedules) {
+        const att = (sched.attendance || []).find(
+          (a) => String(a.student?._id || a.student) === sId && (!a.examDate || a.examDate === dateKey)
+        );
+        if (att) {
+          existingStatus = att.status || 'Present';
+          break;
         }
+      }
+      initialAtt[sId] = existingStatus;
+    });
+
+    setModalTitle(title);
+    setModalDateLabel(dateLabel);
+    setModalDateKey(dateKey);
+    setModalScheduleIds(scheduleIds);
+    setModalStudentList(list);
+    setAttendanceMap(initialAtt);
+    setModalSearchTerm('');
+    setStudentModalOpen(true);
+  };
+
+  const handleToggleAttendance = (studentId, status) => {
+    setAttendanceMap((prev) => ({
+      ...prev,
+      [studentId]: status
+    }));
+  };
+
+  const handleSaveAttendance = async () => {
+    if (!modalDateKey || modalScheduleIds.length === 0) {
+      toast.error('Unable to save attendance: missing schedule information.');
+      return;
+    }
+
+    try {
+      setIsSavingAttendance(true);
+      const records = Object.entries(attendanceMap).map(([studentId, status]) => ({
+        studentId,
+        status
       }));
 
-      if (!updateExamSchedule.fulfilled.match(result)) {
-        setSavingDate('');
-        toast.error(result.payload || `Failed to save ${schedule.course?.name || 'course'} settings`);
+      await axios.post(`${import.meta.env.VITE_API_URL}/master/exam-schedule/attendance`, {
+        scheduleIds: modalScheduleIds,
+        examDate: modalDateKey,
+        attendanceRecords: records
+      }, { withCredentials: true });
+
+      toast.success('Exam Attendance saved successfully!');
+      dispatch(fetchExamSchedules(selectedExamName ? { examName: selectedExamName } : undefined));
+      setStudentModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error(err.response?.data?.message || 'Failed to save exam attendance');
+    } finally {
+      setIsSavingAttendance(false);
+    }
+  };
+
+  const filteredModalStudents = useMemo(() => {
+    if (!modalSearchTerm.trim()) return modalStudentList;
+    const term = modalSearchTerm.toLowerCase().trim();
+    return modalStudentList.filter((s) => {
+      const name = `${s.firstName || ''} ${s.lastName || ''}`.toLowerCase();
+      const reg = String(s.regNo || s.enrollmentNo || '').toLowerCase();
+      const mob = String(s.mobileStudent || s.mobileParent || '').toLowerCase();
+      const branch = String(s.branchName || '').toLowerCase();
+      const course = String(s.courseName || '').toLowerCase();
+      return name.includes(term) || reg.includes(term) || mob.includes(term) || branch.includes(term) || course.includes(term);
+    });
+  }, [modalStudentList, modalSearchTerm]);
+
+  const handleSaveBranchSettings = async (dateGroup, branchGroup) => {
+    if (!isSuperAdmin) {
+      toast.error('Only Super Admin can update examiner settings.');
+      return;
+    }
+
+    const settingKey = `${dateGroup.dateKey}_${branchGroup.branchName}`;
+    const current = branchSettings[settingKey] || {};
+    const password = String(current.conductPassword || '').trim();
+
+    if (current.conductPasswordEnabled && !password) {
+      const hasSavedPass = [...branchGroup.scheduleMap.values()].some((s) => s.conductPasswordHash || s.conductPasswordText);
+      if (!hasSavedPass) {
+        toast.error(`Password is required for ${branchGroup.branchName}.`);
         return;
       }
     }
 
-    setSavingDate('');
-    toast.success('Date-wise exam set saved');
-    updateDateSetting(group.dateKey, 'conductPassword', '');
+    setSavingKey(settingKey);
+    const schedules = [...branchGroup.scheduleMap.values()];
+
+    for (const schedule of schedules) {
+      const existingBranchExaminers = Array.isArray(schedule.branchExaminers) ? [...schedule.branchExaminers] : [];
+      const updatedBranchExaminers = existingBranchExaminers.filter((b) => {
+        const sameBranch = String(b.branchName || '').toLowerCase() === branchGroup.branchName.toLowerCase();
+        const sameDate = b.examDate === dateGroup.dateKey;
+        return !(sameBranch && sameDate);
+      });
+
+      updatedBranchExaminers.push({
+        examDate: dateGroup.dateKey,
+        branchId: branchGroup.branchId || undefined,
+        branchName: branchGroup.branchName,
+        examiner: current.examiner || null,
+        alternateExaminer: current.alternateExaminer || null,
+        conductPasswordEnabled: Boolean(current.conductPasswordEnabled),
+        conductPassword: current.conductPassword || ''
+      });
+
+      const result = await dispatch(updateExamSchedule({
+        id: schedule._id,
+        data: {
+          examiner: current.examiner || schedule.examiner || '',
+          alternateExaminer: current.alternateExaminer || schedule.alternateExaminer || '',
+          branchExaminers: updatedBranchExaminers,
+          timeTable: buildTimeTablePayload(schedule, dateGroup.dateKey, current)
+        }
+      }));
+
+      if (!updateExamSchedule.fulfilled.match(result)) {
+        setSavingKey('');
+        toast.error(result.payload || `Failed to save ${branchGroup.branchName} settings`);
+        return;
+      }
+    }
+
+    setSavingKey('');
+    toast.success(`Saved examiners & password for ${branchGroup.branchName}`);
+    updateBranchSetting(settingKey, 'conductPassword', '');
     dispatch(fetchExamSchedules(selectedExamName ? { examName: selectedExamName } : undefined));
   };
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="container mx-auto p-4 md:p-6 space-y-6">
+      {/* Header Bar */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Exam Set</h2>
-          <p className="mt-1 text-sm text-gray-500">Set one examiner and one day password for all subjects scheduled on the same date.</p>
+          <h1 className="text-2xl font-black text-gray-800 tracking-tight flex items-center gap-2">
+            <ShieldCheck className="text-indigo-600" size={26} />
+            Exam Set & Branch Examiners
+          </h1>
+          <p className="mt-1 text-xs md:text-sm text-gray-500 font-medium">
+            {isSuperAdmin
+              ? 'Assign Main & Alternate Examiners branch-wise for each exam date.'
+              : 'Showing only your assigned courses, branches, and student lists.'}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={loadAbsentStudents} disabled={!selectedExamName} className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">
-            <Users size={16} /> Absent Student Exam
+          <button
+            type="button"
+            onClick={() => navigate(`/master/exam-set/absent?examName=${encodeURIComponent(selectedExamName)}`)}
+            disabled={!selectedExamName}
+            className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50 transition cursor-pointer"
+          >
+            <Users size={15} /> Absent Student Re-Exam
           </button>
-          <button type="button" onClick={handleRefresh} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50">
-            <RefreshCw size={16} /> Refresh
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-700 shadow-sm hover:bg-gray-50 transition cursor-pointer"
+          >
+            <RefreshCw size={15} /> Refresh
           </button>
         </div>
       </div>
 
-      <div className="mb-6 rounded-lg border-t-4 border-primary bg-white p-4 shadow">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto] md:items-end">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      {/* Filter & Metrics Card */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Select Exam Name</label>
-              <select value={selectedExamName} onChange={(e) => { setSelectedExamName(e.target.value); setTestingDate(''); }} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
-                <option value="">-- Select Exam --</option>
-                {examOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Select Exam</label>
+              <select
+                value={selectedExamName}
+                onChange={(e) => { setSelectedExamName(e.target.value); setTestingDate(''); }}
+                className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 py-2.5 text-sm font-semibold text-gray-800 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 transition"
+              >
+                <option value="">-- Select Exam Schedule --</option>
+                {examOptions.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Testing Date</label>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Filter By Date</label>
               <div className="flex gap-2">
-                <input type="date" value={testingDate} onChange={(e) => setTestingDate(e.target.value)} disabled={!selectedExamName} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-gray-100" />
-                {testingDate && <button type="button" onClick={() => setTestingDate('')} className="rounded-lg border border-gray-300 bg-white px-3 text-xs font-bold text-gray-700 hover:bg-gray-50">All</button>}
+                <input
+                  type="date"
+                  value={testingDate}
+                  onChange={(e) => setTestingDate(e.target.value)}
+                  disabled={!selectedExamName}
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 py-2.5 text-sm font-semibold text-gray-800 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 disabled:opacity-50 transition"
+                />
+                {testingDate && (
+                  <button
+                    type="button"
+                    onClick={() => setTestingDate('')}
+                    className="rounded-xl border border-gray-200 bg-white px-3 text-xs font-bold text-gray-600 hover:bg-gray-50 cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
-              {testingDate && <p className="mt-1 text-xs font-semibold text-indigo-700">Showing only {formatDateLabel(testingDate)} for testing.</p>}
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border bg-gray-50 px-4 py-2"><div className="text-lg font-black text-gray-900">{visibleSchedules.length}</div><div className="text-[10px] font-bold uppercase text-gray-500">Courses</div></div>
-            <div className="rounded-lg border bg-gray-50 px-4 py-2"><div className="text-lg font-black text-gray-900">{visibleDateGroups.length}</div><div className="text-[10px] font-bold uppercase text-gray-500">Dates</div></div>
-            <div className="rounded-lg border bg-gray-50 px-4 py-2"><div className="text-lg font-black text-gray-900">{totalSubjects}</div><div className="text-[10px] font-bold uppercase text-gray-500">Subjects</div></div>
-            <div className="rounded-lg border bg-gray-50 px-4 py-2"><div className="text-lg font-black text-gray-900">{totalStudents}</div><div className="text-[10px] font-bold uppercase text-gray-500">Students</div></div>
+
+          <div className="grid grid-cols-4 gap-2 text-center pt-2 lg:pt-0">
+            <div className="rounded-xl border border-gray-100 bg-slate-50/80 px-3 py-2">
+              <div className="text-base font-black text-gray-900">{selectedSchedules.length}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Courses</div>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-slate-50/80 px-3 py-2">
+              <div className="text-base font-black text-gray-900">{visibleDateGroups.length}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Dates</div>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-slate-50/80 px-3 py-2">
+              <div className="text-base font-black text-gray-900">{totalSubjects}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Subjects</div>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-slate-50/80 px-3 py-2">
+              <div className="text-base font-black text-gray-900">{totalStudents}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Students</div>
+            </div>
           </div>
         </div>
       </div>
 
+      {/* Main Content Area */}
       {!selectedExamName ? (
-        <div className="rounded-lg border border-dashed bg-white p-10 text-center text-gray-500 shadow-sm"><Search className="mx-auto mb-3 text-gray-400" size={32} /><p className="text-sm font-semibold">Select an exam name.</p></div>
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-12 text-center text-gray-400 shadow-sm">
+          <Search className="mx-auto mb-3 text-gray-300" size={40} />
+          <p className="text-sm font-semibold text-gray-600">Please select an exam name from the dropdown above.</p>
+        </div>
       ) : isLoading ? (
-        <div className="flex min-h-[240px] items-center justify-center rounded-lg bg-white text-gray-500 shadow-sm"><Loader className="mr-2 animate-spin" size={20} /> Loading exam set...</div>
+        <div className="flex min-h-[260px] items-center justify-center rounded-2xl bg-white text-gray-500 shadow-sm">
+          <Loader className="mr-2 animate-spin text-indigo-600" size={24} /> Loading exam schedules...
+        </div>
       ) : selectedSchedules.length === 0 ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-amber-700">No course schedule found for this exam name.</div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-8 text-center text-sm font-semibold text-amber-700">
+          No schedules found for this exam name.
+        </div>
       ) : (
-        <div className="space-y-6">
-          <div className="space-y-4">
-            {visibleDateGroups.length === 0 && testingDate ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm font-semibold text-amber-700">No subjects scheduled on {formatDateLabel(testingDate)}.</div>
-            ) : null}
-            {visibleDateGroups.map((group) => {
-              const current = dateSettings[group.dateKey] || {};
-              const isToday = group.dateKey === getTodayKey();
-              const courses = [...group.scheduleMap.values()];
+        <div className="space-y-8">
+          {visibleDateGroups.map((dateGroup) => {
+            const isToday = dateGroup.dateKey === getTodayKey();
+            const branchGroups = getBranchGroupsForDate(dateGroup);
 
-              return (
-                <section key={group.dateKey} className="overflow-hidden rounded-lg border bg-white shadow-sm">
-                  <div className="flex flex-col gap-3 border-b bg-indigo-600 px-4 py-3 text-white md:flex-row md:items-center md:justify-between">
+            return (
+              <div key={dateGroup.dateKey} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition">
+                {/* Date Header */}
+                <div className="flex flex-col gap-3 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white backdrop-blur">
+                      <CalendarDays size={20} />
+                    </div>
                     <div>
-                      <h3 className="flex flex-wrap items-center gap-2 text-base font-black">
-                        <CalendarDays size={18} /> {formatDateLabel(group.dateKey)}
-                        {isToday && <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black uppercase text-indigo-700">Today</span>}
-                      </h3>
-                      <div className="mt-1 flex flex-wrap gap-3 text-xs font-semibold text-indigo-100">
-                        <span className="inline-flex items-center gap-1"><BookOpenCheck size={13} /> {group.rows.length} Subjects</span>
-                        <span className="inline-flex items-center gap-1"><Users size={13} /> {courses.length} Courses</span>
-                        <span className="inline-flex items-center gap-1"><GraduationCap size={13} /> {group.studentMap.size} Students</span>
-                      </div>
-                    </div>
-                    <span className="w-fit rounded-full bg-white/15 px-3 py-1 text-xs font-black text-white">Date-wise Settings</span>
-                  </div>
-
-                  <div className="border-b bg-slate-50 p-4">
-                    <h4 className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-gray-600"><ShieldCheck size={15} className="text-indigo-600" /> One-Day Examiner & Password</h4>
-                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto_1fr_auto] lg:items-end">
-                      <div>
-                        <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Examiner</label>
-                        <select value={current.examiner || ''} onChange={(e) => updateDateSetting(group.dateKey, 'examiner', e.target.value)} disabled={!isSuperAdmin} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-gray-100">
-                          <option value="">Select Examiner</option>
-                          {(employees || []).map((employee) => <option key={employee._id} value={employee._id}>{getEmployeeName(employee)}</option>)}
-                        </select>
-                      </div>
-                      <label className="flex h-10 items-center gap-2 rounded-lg border bg-white px-3 text-xs font-bold text-gray-700">
-                        <input type="checkbox" checked={Boolean(current.conductPasswordEnabled)} onChange={(e) => updateDateSetting(group.dateKey, 'conductPasswordEnabled', e.target.checked)} disabled={!isSuperAdmin} className="h-4 w-4" />
-                        <Lock size={14} /> Password
-                      </label>
-                      <div>
-                        <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Day Password</label>
-                        <input type="text" value={current.conductPassword || ''} onChange={(e) => updateDateSetting(group.dateKey, 'conductPassword', e.target.value)} disabled={!isSuperAdmin || !current.conductPasswordEnabled} placeholder={current.conductPasswordEnabled ? 'Enter password for this date' : 'Enable password first'} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-gray-100" />
-                      </div>
-                      <button type="button" onClick={() => handleSaveDateSettings(group)} disabled={!isSuperAdmin || savingDate === group.dateKey} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 text-sm font-bold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60">
-                        {savingDate === group.dateKey ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />} Save Date
-                      </button>
-                    </div>
-                    {!isSuperAdmin && <p className="mt-2 text-xs font-semibold text-amber-700">Only Super Admin can update examiner and password settings.</p>}
-                  </div>
-
-                  <div className="overflow-x-auto p-4">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-gray-50 text-left text-[10px] font-bold uppercase text-gray-500">
-                        <tr><th className="px-3 py-2 text-center">#</th><th className="px-3 py-2">Course</th><th className="px-3 py-2">Subject</th><th className="px-3 py-2">Time</th><th className="px-3 py-2 text-center">Students</th></tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {group.rows.map(({ schedule, row }, index) => (
-                          <tr key={`${schedule._id}-${row._id || index}`} className="hover:bg-indigo-50/40">
-                            <td className="px-3 py-2 text-center text-xs font-bold text-gray-400">{index + 1}</td>
-                            <td className="px-3 py-2 font-bold text-gray-800">{schedule.course?.name || 'Course'}</td>
-                            <td className="px-3 py-2 font-semibold text-gray-700">{getSubjectName(row)}</td>
-                            <td className="px-3 py-2 text-gray-600">{row.startTime && row.endTime ? `${row.startTime} - ${row.endTime}` : row.startTime || row.endTime || '-'}</td>
-                            <td className="px-3 py-2 text-center font-bold text-gray-700">{schedule.attendees?.length || 0}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              );
-            })}
-          </div>
-
-          <div className="space-y-5">
-            {visibleSchedules.map((schedule) => (
-              <section key={schedule._id} className="overflow-hidden rounded-lg border bg-white shadow-sm">
-                <div className="flex flex-col gap-3 border-b bg-blue-600 px-4 py-3 text-white md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <h3 className="text-base font-black">{schedule.course?.name || 'Course'}</h3>
-                    <div className="mt-1 flex flex-wrap gap-3 text-xs font-semibold text-blue-100">
-                      <span className="inline-flex items-center gap-1"><CalendarDays size={13} /> {schedule.examName}</span>
-                      <span className="inline-flex items-center gap-1"><BookOpenCheck size={13} /> {schedule.timeTable?.length || 0} Subjects</span>
-                      <span className="inline-flex items-center gap-1"><Users size={13} /> {schedule.attendees?.length || 0} Students</span>
+                      <h2 className="text-lg font-extrabold tracking-tight flex items-center gap-2">
+                        {formatDateLabel(dateGroup.dateKey)}
+                        {isToday && (
+                          <span className="rounded-full bg-emerald-500 px-2.5 py-0.5 text-[10px] font-black uppercase text-white shadow-sm">
+                            Today
+                          </span>
+                        )}
+                      </h2>
+                      <p className="text-xs text-indigo-200 font-medium">
+                        {branchGroups.length} Branch(es) • {dateGroup.rows.length} Subject(s) • {dateGroup.studentMap.size} Student(s)
+                      </p>
                     </div>
                   </div>
-                  <span className={`w-fit rounded-full px-3 py-1 text-xs font-black ${schedule.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{schedule.isActive ? 'Active' : 'Inactive'}</span>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* View All Date Students Button */}
+                    <button
+                      type="button"
+                      onClick={() => openStudentModal(`Date: ${formatDateLabel(dateGroup.dateKey)}`, dateGroup.studentMap, formatDateLabel(dateGroup.dateKey), dateGroup.dateKey, dateGroup.scheduleMap)}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-white/15 px-3.5 py-2 text-xs font-bold text-white backdrop-blur hover:bg-white/25 transition cursor-pointer"
+                    >
+                      <Users size={14} /> Student List & Attendance ({dateGroup.studentMap.size})
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-0 lg:grid-cols-2">
-                  <div className="border-b p-4 lg:border-b-0 lg:border-r">
-                    <h4 className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-gray-600"><BookOpenCheck size={15} className="text-blue-600" /> Subjects</h4>
-                    <div className="overflow-x-auto rounded-lg border">
-                      <table className="min-w-full text-sm">
-                        <thead className="bg-gray-50 text-left text-[10px] font-bold uppercase text-gray-500"><tr><th className="px-3 py-2 text-center">#</th><th className="px-3 py-2">Subject</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Time</th></tr></thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {schedule.timeTable?.length ? schedule.timeTable.map((row, index) => (
-                            <tr key={row._id || index} className="hover:bg-blue-50/40"><td className="px-3 py-2 text-center text-xs font-bold text-gray-400">{index + 1}</td><td className="px-3 py-2 font-bold text-gray-800">{getSubjectName(row)}</td><td className="px-3 py-2 text-gray-600">{row.date ? new Date(row.date).toLocaleDateString('en-IN') : '-'}</td><td className="px-3 py-2 text-gray-600">{row.startTime && row.endTime ? `${row.startTime} - ${row.endTime}` : row.startTime || row.endTime || '-'}</td></tr>
-                          )) : <tr><td colSpan="4" className="px-3 py-6 text-center text-gray-400">No subjects found.</td></tr>}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    <h4 className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-gray-600"><GraduationCap size={15} className="text-green-600" /> Students</h4>
-                    <div className="max-h-[360px] overflow-auto rounded-lg border">
-                      <table className="min-w-full text-sm">
-                        <thead className="sticky top-0 bg-gray-50 text-left text-[10px] font-bold uppercase text-gray-500"><tr><th className="px-3 py-2 text-center">#</th><th className="px-3 py-2">Reg No</th><th className="px-3 py-2">Student</th><th className="px-3 py-2">Branch</th></tr></thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {schedule.attendees?.length ? schedule.attendees.map((student, index) => (
-                            <tr key={student._id || index} className="hover:bg-green-50/40"><td className="px-3 py-2 text-center text-xs font-bold text-gray-400">{index + 1}</td><td className="px-3 py-2 font-mono text-gray-700">{student.regNo || '-'}</td><td className="px-3 py-2 font-bold text-primary">{getStudentName(student)}</td><td className="px-3 py-2 text-gray-600">{student.branchName || '-'}</td></tr>
-                          )) : <tr><td colSpan="4" className="px-3 py-6 text-center text-gray-400">No students found.</td></tr>}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                {/* Branch Cards under this Date */}
+                <div className="p-4 md:p-6 space-y-6 bg-slate-50/40">
+                  {branchGroups.map((bGroup) => {
+                    const settingKey = `${dateGroup.dateKey}_${bGroup.branchName}`;
+                    const current = branchSettings[settingKey] || {};
+                    const isSavingThis = savingKey === settingKey;
+
+                    return (
+                      <div key={bGroup.branchName} className="rounded-xl border border-gray-200 bg-white p-4 shadow-xs transition hover:border-indigo-200">
+                        {/* Branch Title Bar */}
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                          <div className="flex items-center gap-2.5">
+                            <Building2 className="text-indigo-600" size={18} />
+                            <h3 className="text-base font-black text-gray-900">{bGroup.branchName}</h3>
+                            <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
+                              {bGroup.studentMap.size} Student(s)
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {/* View Branch Students Clickable Button */}
+                            <button
+                              type="button"
+                              onClick={() => openStudentModal(`${bGroup.branchName}`, bGroup.studentMap, formatDateLabel(dateGroup.dateKey), dateGroup.dateKey, bGroup.scheduleMap)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer"
+                            >
+                              <Users size={14} /> Student List & Attendance ({bGroup.studentMap.size})
+                            </button>
+                            <div className="flex items-center gap-1 text-xs font-bold text-gray-500 pl-2">
+                              <BookOpenCheck size={14} className="text-gray-400" />
+                              {bGroup.rows.length} Subjects
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Examiner Controls for this Branch */}
+                        <div className="rounded-xl bg-slate-50/90 p-3.5 border border-slate-100 mb-4">
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto_1fr_auto] lg:items-end">
+                            <div>
+                              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-gray-600">
+                                Main Examiner (Primary Teacher)
+                              </label>
+                              <select
+                                value={current.examiner || ''}
+                                onChange={(e) => updateBranchSetting(settingKey, 'examiner', e.target.value)}
+                                disabled={!isSuperAdmin}
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 disabled:bg-gray-100"
+                              >
+                                <option value="">-- Select Main Examiner --</option>
+                                {getEmployeesForBranch(employees, bGroup.branchName).map((emp) => (
+                                  <option key={emp._id} value={emp._id}>
+                                    {getEmployeeName(emp)} ({emp.branchId?.name || emp.branchName || 'Main'})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-gray-600">
+                                Alternate Examiner (Substitute)
+                              </label>
+                              <select
+                                value={current.alternateExaminer || ''}
+                                onChange={(e) => updateBranchSetting(settingKey, 'alternateExaminer', e.target.value)}
+                                disabled={!isSuperAdmin}
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 disabled:bg-gray-100"
+                              >
+                                <option value="">-- Select Alternate (Optional) --</option>
+                                {getEmployeesForBranch(employees, bGroup.branchName)
+                                  .filter((emp) => String(emp._id) !== String(current.examiner))
+                                  .map((emp) => (
+                                    <option key={emp._id} value={emp._id}>
+                                      {getEmployeeName(emp)} ({emp.branchId?.name || emp.branchName || 'Main'})
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+
+                            <label className="flex h-9 items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 text-xs font-bold text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(current.conductPasswordEnabled)}
+                                onChange={(e) => updateBranchSetting(settingKey, 'conductPasswordEnabled', e.target.checked)}
+                                disabled={!isSuperAdmin}
+                                className="h-3.5 w-3.5 text-indigo-600 rounded cursor-pointer"
+                              />
+                              <Lock size={13} className="text-gray-500" /> Password
+                            </label>
+
+                            <div>
+                              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-gray-600">Day Password</label>
+                              <input
+                                type="text"
+                                value={current.conductPassword || ''}
+                                onChange={(e) => updateBranchSetting(settingKey, 'conductPassword', e.target.value)}
+                                disabled={!isSuperAdmin || !current.conductPasswordEnabled}
+                                placeholder={current.conductPasswordEnabled ? 'Enter Password' : 'Password Disabled'}
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 disabled:bg-gray-100"
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleSaveBranchSettings(dateGroup, bGroup)}
+                              disabled={!isSuperAdmin || isSavingThis}
+                              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 transition cursor-pointer"
+                            >
+                              {isSavingThis ? <RefreshCw className="animate-spin" size={14} /> : <Save size={14} />} Save Branch
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Subject Table */}
+                        <div className="overflow-x-auto rounded-lg border border-gray-200">
+                          <table className="min-w-full text-xs">
+                            <thead className="bg-gray-50/80 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                              <tr>
+                                <th className="px-3 py-2 text-center w-10">#</th>
+                                <th className="px-3 py-2">Course</th>
+                                <th className="px-3 py-2">Subject</th>
+                                <th className="px-3 py-2">Timing</th>
+                                <th className="px-3 py-2 text-center">Students</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 font-medium">
+                              {bGroup.rows.map(({ schedule, row }, index) => (
+                                <tr key={`${schedule._id}-${row._id || index}`} className="hover:bg-slate-50/80">
+                                  <td className="px-3 py-2 text-center font-bold text-gray-400">{index + 1}</td>
+                                  <td className="px-3 py-2 font-bold text-gray-900">{schedule.course?.name || 'Course'}</td>
+                                  <td className="px-3 py-2 font-semibold text-gray-700">{getSubjectName(row)}</td>
+                                  <td className="px-3 py-2 text-gray-600">
+                                    {row.startTime && row.endTime ? `${row.startTime} - ${row.endTime}` : row.startTime || row.endTime || '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-center font-bold text-indigo-600">
+                                    {(schedule.attendees || []).filter((s) => (s.branchName || 'Main Branch') === bGroup.branchName).length}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </section>
-            ))}
-          </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {absentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between bg-amber-600 px-5 py-4 text-white">
-              <div>
-                <h3 className="text-lg font-black">Absent Student Re-Exam</h3>
-                <p className="text-xs font-semibold text-amber-100">{selectedExamName} | {absentRows.length} absent subject rows</p>
+      {/* Spacious Larger Student List & Attendance Modal */}
+      {studentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 md:p-6 backdrop-blur-xs animate-fadeIn">
+          <div className="w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl transition-all flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-gray-100 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 px-6 py-4 text-white shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-white backdrop-blur">
+                  <GraduationCap size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold">Scheduled Students List & Attendance</h3>
+                  <p className="text-xs text-indigo-200">
+                    {modalTitle} • Exam Date: {modalDateLabel}
+                  </p>
+                </div>
               </div>
-              <button type="button" onClick={() => setAbsentModalOpen(false)} className="rounded-full bg-white/20 p-1 hover:bg-white/30"><X size={20} /></button>
+              <button
+                type="button"
+                onClick={() => setStudentModalOpen(false)}
+                className="rounded-xl p-2 text-indigo-200 hover:bg-white/10 hover:text-white transition cursor-pointer"
+              >
+                <X size={22} />
+              </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5">
-              <div className="mb-4 grid grid-cols-1 gap-3 rounded-lg border bg-slate-50 p-4 lg:grid-cols-6">
-                <div className="lg:col-span-2">
-                  <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Re-Exam Name</label>
-                  <input type="text" value={reExamForm.reExamName} onChange={(e) => setReExamForm((prev) => ({ ...prev, reExamName: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+            {/* Modal Body */}
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-3 text-gray-400" size={18} />
+                  <input
+                    type="text"
+                    value={modalSearchTerm}
+                    onChange={(e) => setModalSearchTerm(e.target.value)}
+                    placeholder="Search by student name, reg no, course, or contact number..."
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/50 pl-10 pr-4 py-2.5 text-sm font-semibold text-gray-800 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 transition"
+                  />
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Date</label>
-                  <input type="date" value={reExamForm.date} onChange={(e) => setReExamForm((prev) => ({ ...prev, date: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Start Time</label>
-                  <input type="text" value={reExamForm.startTime} onChange={(e) => setReExamForm((prev) => ({ ...prev, startTime: e.target.value }))} placeholder="10:00 AM" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold uppercase text-gray-600">End Time</label>
-                  <input type="text" value={reExamForm.endTime} onChange={(e) => setReExamForm((prev) => ({ ...prev, endTime: e.target.value }))} placeholder="12:00 PM" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Examiner</label>
-                  <select value={reExamForm.examiner} onChange={(e) => setReExamForm((prev) => ({ ...prev, examiner: e.target.value }))} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
-                    <option value="">Select</option>
-                    {(employees || []).map((employee) => <option key={employee._id} value={employee._id}>{getEmployeeName(employee)}</option>)}
-                  </select>
-                </div>
-                <label className="flex h-10 items-center gap-2 rounded-lg border bg-white px-3 text-xs font-bold text-gray-700 lg:col-span-1">
-                  <input type="checkbox" checked={Boolean(reExamForm.conductPasswordEnabled)} onChange={(e) => setReExamForm((prev) => ({ ...prev, conductPasswordEnabled: e.target.checked }))} className="h-4 w-4" />
-                  <Lock size={14} /> Password
-                </label>
-                <div className="lg:col-span-2">
-                  <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Re-Exam Password</label>
-                  <input type="text" value={reExamForm.conductPassword} onChange={(e) => setReExamForm((prev) => ({ ...prev, conductPassword: e.target.value }))} disabled={!reExamForm.conductPasswordEnabled} placeholder="Enter password" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-gray-100" />
-                </div>
-                <div className="flex items-end lg:col-span-3">
-                  <button type="button" onClick={createAbsentReExam} disabled={creatingReExam || selectedAbsentList.length === 0} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 text-sm font-bold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60">
-                    {creatingReExam ? <RefreshCw className="animate-spin" size={16} /> : <CheckSquare size={16} />} Create Re-Exam For Selected ({selectedAbsentList.length})
-                  </button>
+                <div className="flex items-center gap-3 text-xs font-bold shrink-0">
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-xl">
+                    Present: {Object.values(attendanceMap).filter(s => s === 'Present').length}
+                  </span>
+                  <span className="bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-xl">
+                    Absent: {Object.values(attendanceMap).filter(s => s === 'Absent').length}
+                  </span>
                 </div>
               </div>
 
-              {absentLoading ? (
-                <div className="flex min-h-[220px] items-center justify-center text-gray-500"><Loader className="mr-2 animate-spin" size={20} /> Loading absent students...</div>
-              ) : absentRows.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-10 text-center text-gray-500">No absent students found for ended exam subjects.</div>
-              ) : (
-                <div className="overflow-auto rounded-lg border">
-                  <table className="min-w-full text-sm">
-                    <thead className="sticky top-0 bg-gray-50 text-left text-[10px] font-bold uppercase text-gray-500">
-                      <tr><th className="px-3 py-2 text-center">Select</th><th className="px-3 py-2">Reg No</th><th className="px-3 py-2">Student</th><th className="px-3 py-2">Course</th><th className="px-3 py-2">Subject</th><th className="px-3 py-2">Original Date</th><th className="px-3 py-2">Time</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {absentRows.map((row) => (
-                        <tr key={row.key} className="hover:bg-amber-50/50">
-                          <td className="px-3 py-2 text-center"><input type="checkbox" checked={Boolean(selectedAbsentRows[row.key])} onChange={() => toggleAbsentRow(row.key)} className="h-4 w-4" /></td>
-                          <td className="px-3 py-2 font-mono text-gray-700">{row.student?.regNo || '-'}</td>
-                          <td className="px-3 py-2 font-bold text-primary">{row.student?.name || 'Student'}</td>
-                          <td className="px-3 py-2 font-semibold text-gray-800">{row.course?.name || 'Course'}</td>
-                          <td className="px-3 py-2 font-semibold text-gray-800">{row.subject?.name || row.subject?.printedName || 'Subject'}</td>
-                          <td className="px-3 py-2 text-gray-600">{row.originalDate ? new Date(row.originalDate).toLocaleDateString('en-IN') : '-'}</td>
-                          <td className="px-3 py-2 text-gray-600">{row.originalStartTime && row.originalEndTime ? `${row.originalStartTime} - ${row.originalEndTime}` : '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              {/* Taller & Roomier Student Table */}
+              <div className="rounded-xl border border-gray-200 shadow-xs overflow-hidden">
+                <table className="min-w-full text-xs md:text-sm">
+                  <thead className="bg-slate-100 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 text-center w-12">#</th>
+                      <th className="px-4 py-3">Reg / Roll No</th>
+                      <th className="px-4 py-3">Student Name</th>
+                      <th className="px-4 py-3">Course</th>
+                      <th className="px-4 py-3">Branch</th>
+                      <th className="px-4 py-3">Contact No</th>
+                      <th className="px-4 py-3 text-center w-48">Exam Attendance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 font-medium">
+                    {filteredModalStudents.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="px-4 py-12 text-center text-gray-400 text-sm">
+                          No scheduled students found matching your search.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredModalStudents.map((student, index) => {
+                        const sId = String(student._id);
+                        const currentStatus = attendanceMap[sId] || 'Present';
+
+                        return (
+                          <tr key={sId || index} className="hover:bg-indigo-50/40 transition">
+                            <td className="px-4 py-3 text-center font-bold text-gray-400">{index + 1}</td>
+                            <td className="px-4 py-3 font-bold text-indigo-700 font-mono">
+                              {student.regNo || student.enrollmentNo || '-'}
+                            </td>
+                            <td className="px-4 py-3 font-bold text-gray-900">
+                              {student.firstName || student.lastName
+                                ? `${student.firstName || ''} ${student.lastName || ''}`
+                                : student.studentName || 'Student'}
+                            </td>
+                            <td className="px-4 py-3 font-bold text-slate-700">
+                              {student.courseName || student.course?.name || 'Course'}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 font-semibold">
+                              {student.branchName || 'Main Branch'}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 font-medium">
+                              <span className="inline-flex items-center gap-1.5">
+                                <Phone size={13} className="text-gray-400" />
+                                {student.mobileStudent || student.mobileParent || '-'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleAttendance(sId, 'Present')}
+                                  className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                    currentStatus === 'Present'
+                                      ? 'bg-emerald-600 text-white shadow-xs'
+                                      : 'text-gray-600 hover:text-emerald-700'
+                                  }`}
+                                >
+                                  Present
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleAttendance(sId, 'Absent')}
+                                  className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                    currentStatus === 'Absent'
+                                      ? 'bg-rose-600 text-white shadow-xs'
+                                      : 'text-gray-600 hover:text-rose-700'
+                                  }`}
+                                >
+                                  Absent
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-gray-100 bg-gray-50 px-6 py-3.5 shrink-0">
+              <div className="text-xs font-semibold text-gray-500">
+                Default preset is <span className="font-bold text-emerald-700">Present</span>. Toggle to <span className="font-bold text-rose-600">Absent</span> for missing students.
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStudentModalOpen(false)}
+                  className="rounded-xl border border-gray-300 bg-white px-5 py-2 text-xs font-bold text-gray-700 shadow-xs hover:bg-gray-100 cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAttendance}
+                  disabled={isSavingAttendance}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-6 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 cursor-pointer transition"
+                >
+                  {isSavingAttendance ? <RefreshCw className="animate-spin" size={14} /> : <CheckSquare size={15} />} Save Attendance
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -560,4 +943,3 @@ const ExamSet = () => {
 };
 
 export default ExamSet;
-

@@ -28,6 +28,10 @@ const buildSubjectRows = (course, existingSubjects = []) => {
 
   const courseSubjects = [...(course?.subjects || [])]
     .filter((item) => item.subject)
+    .filter((item) => {
+      const name = String(item.subject?.name || item.subject?.printedName || '').toLowerCase();
+      return !name.includes('project') && !name.includes('discipline');
+    })
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
   return courseSubjects.map((item) => {

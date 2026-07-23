@@ -74,7 +74,12 @@ const FinalExamQuestionPaperSubjects = () => {
             </tr>
           </thead>
           <tbody>
-            {paper.subjects?.length ? paper.subjects.map((subjectRow, index) => {
+            {paper.subjects?.length ? paper.subjects
+              .filter((subjectRow) => {
+                const name = String(getSubjectName(subjectRow)).toLowerCase();
+                return !name.includes('project') && !name.includes('discipline');
+              })
+              .map((subjectRow, index) => {
               const subjectId = getSubjectId(subjectRow);
               return (
                 <tr key={subjectId || index} className="hover:bg-blue-50 text-sm border-b border-gray-100">

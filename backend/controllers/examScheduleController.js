@@ -79,6 +79,7 @@ const getScheduleRowStatus = (row, now = new Date()) => {
 
 const getSchedulePasswordSnapshot = (schedule) => ({
     examiner: schedule.examiner || null,
+    alternateExaminer: schedule.alternateExaminer || null,
     conductPasswordEnabled: Boolean(
         schedule.conductPasswordEnabled ||
         (schedule.timeTable || []).some((row) => row.conductPasswordEnabled)
@@ -238,12 +239,25 @@ const canViewExamScheduleConduct = async (req, schedule) => {
     }).select('_id').lean();
 
     const scheduleExaminerId = schedule?.examiner?._id || schedule?.examiner;
+    const alternateExaminerId = schedule?.alternateExaminer?._id || schedule?.alternateExaminer;
 
-    return Boolean(
+    const isDirectExaminer = Boolean(
         employee?._id &&
-        scheduleExaminerId &&
-        String(employee._id) === String(scheduleExaminerId)
+        ((scheduleExaminerId && String(employee._id) === String(scheduleExaminerId)) ||
+         (alternateExaminerId && String(employee._id) === String(alternateExaminerId)))
     );
+
+    if (isDirectExaminer) return true;
+
+    return (schedule?.branchExaminers || []).some((b) => {
+        const bMain = b.examiner?._id || b.examiner;
+        const bAlt = b.alternateExaminer?._id || b.alternateExaminer;
+        return Boolean(
+            employee?._id &&
+            ((bMain && String(employee._id) === String(bMain)) ||
+             (bAlt && String(employee._id) === String(bAlt)))
+        );
+    });
 };
 
 const normalizeConductPassword = async (password, enabled) => {
@@ -336,9 +350,29 @@ const getExamSchedules = asyncHandler(async (req, res) => {
         query.attendees = { $in: students.map(student => student._id) };
     }
 
+    const isSuperAdmin = req.user && (req.user.role === 'Super Admin' || req.user.type === 'Super Admin');
+    if (!isSuperAdmin && req.user) {
+        const employee = await Employee.findOne({
+            userAccount: req.user._id,
+            isDeleted: { $ne: true }
+        }).select('_id').lean();
+
+        if (employee) {
+            query.$or = [
+                { examiner: employee._id },
+                { alternateExaminer: employee._id },
+                { 'branchExaminers.examiner': employee._id },
+                { 'branchExaminers.alternateExaminer': employee._id }
+            ];
+        }
+    }
+
     const schedules = await ExamSchedule.find(query)
         .populate('course', 'name')
         .populate('examiner', 'name designation role')
+        .populate('alternateExaminer', 'name designation role')
+        .populate('branchExaminers.examiner', 'name designation role')
+        .populate('branchExaminers.alternateExaminer', 'name designation role')
         .populate('attendees', 'firstName lastName regNo branchId branchName')
         .populate('timeTable.subject', 'name')
         .sort({ createdAt: -1 });
@@ -349,7 +383,7 @@ const getExamSchedules = asyncHandler(async (req, res) => {
 // @desc    Create Exam Schedule
 // @route   POST /api/master/exam-schedule
 const createExamSchedule = asyncHandler(async (req, res) => {
-    const { course, examName, remarks, isActive, attendees, timeTable, examiner, conductPasswordEnabled, conductPassword } = req.body;
+    const { course, examName, remarks, isActive, attendees, timeTable, examiner, alternateExaminer, branchExaminers, conductPasswordEnabled, conductPassword } = req.body;
     const passwordEnabled = Boolean(conductPasswordEnabled);
     const normalizedPassword = await normalizeConductPassword(conductPassword, passwordEnabled);
     let normalizedTimeTable = [];
@@ -358,6 +392,30 @@ const createExamSchedule = asyncHandler(async (req, res) => {
     } catch (error) {
         res.status(400);
         throw new Error(error.message);
+    }
+
+    let processedBranchExaminers = [];
+    if (Array.isArray(branchExaminers)) {
+        for (const item of branchExaminers) {
+            const pEnabled = Boolean(item.conductPasswordEnabled);
+            let pText = item.conductPasswordText || '';
+            let pHash = item.conductPasswordHash || '';
+            if (item.conductPassword) {
+                const norm = await normalizeConductPassword(item.conductPassword, pEnabled);
+                pText = norm.passwordText;
+                pHash = norm.passwordHash;
+            }
+            processedBranchExaminers.push({
+                examDate: item.examDate || '',
+                branchId: item.branchId || undefined,
+                branchName: item.branchName || '',
+                examiner: item.examiner || null,
+                alternateExaminer: item.alternateExaminer || null,
+                conductPasswordEnabled: pEnabled,
+                conductPasswordText: pText,
+                conductPasswordHash: pHash
+            });
+        }
     }
     
     const schedule = await ExamSchedule.create({
@@ -368,6 +426,8 @@ const createExamSchedule = asyncHandler(async (req, res) => {
         attendees,
         timeTable: normalizedTimeTable,
         examiner: examiner || undefined,
+        alternateExaminer: alternateExaminer || undefined,
+        branchExaminers: processedBranchExaminers,
         conductPasswordEnabled: passwordEnabled,
         conductPasswordText: normalizedPassword.passwordText,
         conductPasswordHash: normalizedPassword.passwordHash
@@ -385,7 +445,12 @@ const createExamSchedule = asyncHandler(async (req, res) => {
     }
 
     // Populate course immediately for frontend return
-    const populated = await ExamSchedule.findById(schedule._id).populate('course', 'name').populate('examiner', 'name designation role');
+    const populated = await ExamSchedule.findById(schedule._id)
+        .populate('course', 'name')
+        .populate('examiner', 'name designation role')
+        .populate('alternateExaminer', 'name designation role')
+        .populate('branchExaminers.examiner', 'name designation role')
+        .populate('branchExaminers.alternateExaminer', 'name designation role');
     queueExamScheduleSms(schedule._id);
     res.status(201).json(populated);
 });
@@ -393,7 +458,7 @@ const createExamSchedule = asyncHandler(async (req, res) => {
 // @desc    Update Exam Schedule
 // @route   PUT /api/master/exam-schedule/:id
 const updateExamSchedule = asyncHandler(async (req, res) => {
-    const { course, examName, remarks, isActive, attendees, timeTable, examiner, conductPasswordEnabled, conductPassword } = req.body;
+    const { course, examName, remarks, isActive, attendees, timeTable, examiner, alternateExaminer, branchExaminers, conductPasswordEnabled, conductPassword } = req.body;
     const schedule = await ExamSchedule.findById(req.params.id);
     if (schedule) {
         const existingRows = Array.isArray(schedule.timeTable) ? schedule.timeTable : [];
@@ -413,6 +478,42 @@ const updateExamSchedule = asyncHandler(async (req, res) => {
         schedule.attendees = attendees || schedule.attendees;
         schedule.timeTable = normalizedTimeTable;
         if (examiner !== undefined) schedule.examiner = examiner || null;
+        if (alternateExaminer !== undefined) schedule.alternateExaminer = alternateExaminer || null;
+        
+        if (branchExaminers !== undefined && Array.isArray(branchExaminers)) {
+            const processedBranchExaminers = [];
+            for (const item of branchExaminers) {
+                const pEnabled = Boolean(item.conductPasswordEnabled);
+                let pText = item.conductPasswordText || '';
+                let pHash = item.conductPasswordHash || '';
+                if (item.conductPassword) {
+                    const norm = await normalizeConductPassword(item.conductPassword, pEnabled);
+                    pText = norm.passwordText;
+                    pHash = norm.passwordHash;
+                } else {
+                    const existingEntry = (schedule.branchExaminers || []).find(b => 
+                        (String(b.branchName || '').toLowerCase() === String(item.branchName || '').toLowerCase() || String(b.branchId || '') === String(item.branchId || '')) &&
+                        (!b.examDate || b.examDate === item.examDate)
+                    );
+                    if (existingEntry) {
+                        pText = existingEntry.conductPasswordText || '';
+                        pHash = existingEntry.conductPasswordHash || '';
+                    }
+                }
+                processedBranchExaminers.push({
+                    examDate: item.examDate || '',
+                    branchId: item.branchId || undefined,
+                    branchName: item.branchName || '',
+                    examiner: item.examiner || null,
+                    alternateExaminer: item.alternateExaminer || null,
+                    conductPasswordEnabled: pEnabled,
+                    conductPasswordText: pText,
+                    conductPasswordHash: pHash
+                });
+            }
+            schedule.branchExaminers = processedBranchExaminers;
+        }
+
         if (conductPasswordEnabled !== undefined) schedule.conductPasswordEnabled = Boolean(conductPasswordEnabled);
         if (conductPasswordEnabled !== undefined) {
             const passwordOn = Boolean(conductPasswordEnabled);
@@ -445,7 +546,14 @@ const updateExamSchedule = asyncHandler(async (req, res) => {
             console.log(`Updated ${updateResult.modifiedCount} ExamRequests to Approved during update`);
         }
 
-        const populated = await ExamSchedule.findById(updated._id).populate('course', 'name').populate('examiner', 'name designation role');
+        const populated = await ExamSchedule.findById(updated._id)
+            .populate('course', 'name')
+            .populate('examiner', 'name designation role')
+            .populate('alternateExaminer', 'name designation role')
+            .populate('branchExaminers.examiner', 'name designation role')
+            .populate('branchExaminers.alternateExaminer', 'name designation role');
+        res.json(populated);
+        res.json(populated);
         res.json(populated);
     } else {
         res.status(404); throw new Error('Schedule not found');
@@ -474,6 +582,7 @@ const getExamScheduleDetails = asyncHandler(async (req, res) => {
             select: 'firstName lastName regNo admissionDate mobileStudent course'
         })
         .populate('examiner', 'name designation role')
+        .populate('alternateExaminer', 'name designation role')
         .populate('timeTable.subject', 'name');
 
     if (!schedule) {
@@ -1036,6 +1145,47 @@ const getMyExamSchedules = asyncHandler(async (req, res) => {
     });
 });
 
+// @desc    Save/Update Exam Attendance for date and student list
+// @route   POST /api/master/exam-schedule/attendance
+const saveExamAttendance = asyncHandler(async (req, res) => {
+    const { scheduleIds, examDate, attendanceRecords } = req.body;
+
+    if (!Array.isArray(scheduleIds) || scheduleIds.length === 0 || !examDate || !Array.isArray(attendanceRecords)) {
+        res.status(400);
+        throw new Error('Invalid attendance payload');
+    }
+
+    const schedules = await ExamSchedule.find({ _id: { $in: scheduleIds } });
+    if (!schedules || schedules.length === 0) {
+        res.status(404);
+        throw new Error('Exam schedules not found');
+    }
+
+    for (const schedule of schedules) {
+        if (!Array.isArray(schedule.attendance)) {
+            schedule.attendance = [];
+        }
+
+        const studentIdsInRec = new Set(attendanceRecords.map(r => String(r.studentId)));
+        schedule.attendance = schedule.attendance.filter(
+            (a) => !(a.examDate === examDate && studentIdsInRec.has(String(a.student)))
+        );
+
+        attendanceRecords.forEach((rec) => {
+            schedule.attendance.push({
+                student: rec.studentId,
+                examDate,
+                status: rec.status === 'Absent' ? 'Absent' : 'Present',
+                updatedAt: new Date()
+            });
+        });
+
+        await schedule.save();
+    }
+
+    res.json({ message: 'Exam attendance saved successfully' });
+});
+
 module.exports = { 
     getExamSchedules, 
     createExamSchedule, 
@@ -1047,7 +1197,8 @@ module.exports = {
     getExamStudentMarks,
     getExamStudentMarksDetail,
     getAbsentExamStudents,
-    createAbsentReExamSchedules
+    createAbsentReExamSchedules,
+    saveExamAttendance
 };
 
 

@@ -10,6 +10,16 @@ const bcrypt = require('bcryptjs');
 const SyllabusLog = require('../models/SyllabusLog');
 const StudentSyllabusResponse = require('../models/StudentSyllabusResponse');
 
+const getDateKey = (date) => {
+    if (!date) return 'no-date';
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return 'no-date';
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const getActiveStudentForUser = async (userId, populateCourse = false) => {
     const query = Student.findOne({ userId, isDeleted: false });
     if (populateCourse) {
@@ -780,6 +790,12 @@ const getStudentExamSchedules = async (req, res) => {
                 const subjectId = row.subject?._id || row.subject;
                 const attempt = attemptMap.get(`${String(schedule._id)}:${String(subjectId)}`);
                 const window = getScheduleSubjectWindow(row);
+                const rowDateKey = getDateKey(row.date);
+                const attendanceEntry = (schedule.attendance || []).find(
+                    (a) => String(a.student?._id || a.student) === String(student._id) && (!a.examDate || a.examDate === rowDateKey)
+                );
+                const isExplicitlyAbsent = attendanceEntry?.status === 'Absent';
+
                 return {
                     subject: row.subject,
                     date: row.date,
@@ -790,7 +806,7 @@ const getStudentExamSchedules = async (req, res) => {
                     total: row.total,
                     status: window.status,
                     isSubmitted: Boolean(attempt?.isSubmitted),
-                    isAbsent: window.status === 'ended' && !attempt
+                    isAbsent: isExplicitlyAbsent || (window.status === 'ended' && !attempt)
                 };
             })
         }));
@@ -845,6 +861,7 @@ const getStudentExamConduct = async (req, res) => {
         })
             .populate('course', 'name shortName')
             .populate('examiner', 'name designation role')
+            .populate('alternateExaminer', 'name designation role')
             .populate('timeTable.subject', 'name printedName')
             .sort({ createdAt: -1 });
 
@@ -874,6 +891,7 @@ const getStudentExamConduct = async (req, res) => {
             isReExam: Boolean(schedule.isReExam),
             scheduleType: schedule.scheduleType || (schedule.isReExam ? 'reExam' : 'regular'),
             examiner: schedule.examiner,
+            alternateExaminer: schedule.alternateExaminer,
             conductPasswordEnabled: Boolean(schedule.conductPasswordEnabled),
             hasConductPassword: Boolean(schedule.conductPasswordHash || schedule.conductPasswordText),
             course: schedule.course,
@@ -882,6 +900,14 @@ const getStudentExamConduct = async (req, res) => {
                 const subjectId = row.subject?._id || row.subject;
                 const attempt = attemptMap.get(`${String(schedule._id)}:${String(subjectId)}`);
                 const isCourseSubject = courseSubjects.some((subject) => String(subject?._id || subject) === String(subjectId));
+                
+                const rowDateKey = getDateKey(row.date);
+                const attendanceEntry = (schedule.attendance || []).find(
+                    (a) => String(a.student?._id || a.student) === String(student._id) && (!a.examDate || a.examDate === rowDateKey)
+                );
+                const isExplicitlyAbsent = attendanceEntry?.status === 'Absent';
+                const isAbsent = isExplicitlyAbsent || (window.status === 'ended' && !attempt);
+
                 return {
                     subject: row.subject,
                     date: row.date,
@@ -891,8 +917,8 @@ const getStudentExamConduct = async (req, res) => {
                     practical: row.practical,
                     total: row.total,
                     status: window.status,
-                    canOpen: window.canOpen && isCourseSubject,
-                    isAbsent: window.status === 'ended' && !attempt,
+                    canOpen: window.canOpen && isCourseSubject && !isExplicitlyAbsent,
+                    isAbsent,
                     isCourseSubject,
                     conductPasswordEnabled: Boolean(row.conductPasswordEnabled || schedule.conductPasswordEnabled),
                     hasConductPassword: Boolean(
@@ -973,6 +999,14 @@ const openStudentExamConduct = async (req, res) => {
         const row = getScheduleSubjectRow(schedule, subjectId);
         if (!row) {
             return res.status(404).json({ message: 'Subject not found in schedule' });
+        }
+
+        const rowDateKey = getDateKey(row.date);
+        const attendanceEntry = (schedule.attendance || []).find(
+            (a) => String(a.student?._id || a.student) === String(student._id) && (!a.examDate || a.examDate === rowDateKey)
+        );
+        if (attendanceEntry?.status === 'Absent') {
+            return res.status(403).json({ message: 'You have been marked ABSENT for this exam date and cannot attempt the paper.' });
         }
 
         const window = getScheduleSubjectWindow(row);

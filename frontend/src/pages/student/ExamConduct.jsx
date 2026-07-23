@@ -259,7 +259,9 @@ const ExamConduct = () => {
                     <h2 className="text-lg font-bold text-gray-900">{schedule.examName}</h2>
                   </div>
                   <p className="text-sm text-gray-500 mt-1">
-                    {schedule.course?.name || 'Course'}{schedule.examiner?.name ? ` - Examiner: ${schedule.examiner.name}` : ''}
+                    {schedule.course?.name || 'Course'}
+                    {schedule.examiner?.name ? ` - Main Examiner: ${schedule.examiner.name}` : ''}
+                    {schedule.alternateExaminer?.name ? ` | Alternate: ${schedule.alternateExaminer.name}` : ''}
                   </p>
                 </div>
                 <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold border ${statusStyles[schedule.currentStatus] || statusStyles.ended}`}>

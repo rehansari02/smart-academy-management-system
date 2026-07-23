@@ -133,7 +133,7 @@ const HeroBannerVisual = ({ items, mobile = false }) => {
             <img
               src={getMediaUrl(item.image) || HeroImage2}
               alt={item.title || 'Smart Institute banner'}
-              className="hero-banner-image h-full w-full object-cover object-center"
+              className={`hero-banner-image h-full w-full ${mobile ? 'object-contain bg-[#0a1931]' : 'object-cover'} object-center`}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[#0a1931]/30 via-transparent to-white/10" />
           </SwiperSlide>
@@ -446,18 +446,15 @@ const HomePage = () => {
                 </div>
               </div>
 
-              {/* Right column: Spacer on desktop/tablet, centered circle on mobile */}
-              <div className="lg:col-span-5 md:col-span-5 h-[350px] sm:h-[450px] md:h-auto relative flex items-center justify-center">
-                {/* On mobile, show the circle */}
-                <div className="md:hidden relative w-full h-full flex items-center justify-center">
-                  {/* Dotted pattern */}
-                  <div className="absolute -bottom-4 left-4 w-20 h-20 opacity-15 bg-[radial-gradient(#f15a24_2px,transparent_2px)] [background-size:12px_12px] hidden sm:block"></div>
+              {/* Right column: Spacer on desktop/tablet, centered square card on mobile */}
+              <div className="lg:col-span-5 md:col-span-5 h-auto md:h-auto relative flex items-center justify-center">
+                {/* On mobile, show square card */}
+                <div className="md:hidden relative w-full flex items-center justify-center py-4 px-2">
+                  {/* Dotted pattern accent */}
+                  <div className="absolute -bottom-2 -right-2 w-24 h-24 opacity-20 bg-[radial-gradient(#f15a24_2px,transparent_2px)] [background-size:12px_12px]"></div>
 
-                  {/* Orange stroke circle */}
-                  <div className="absolute w-[330px] h-[330px] sm:w-[440px] sm:h-[440px] rounded-full border border-[#f15a24] pointer-events-none"></div>
-
-                  {/* Banner image circle container */}
-                  <div className="absolute left-[-20px] top-1/2 -translate-y-1/2 w-[420px] lg:w-[520px] h-[420px] lg:h-[520px] rounded-full overflow-hidden border-[8px] border-white shadow-xl bg-slate-50 flex items-center justify-center">
+                  {/* Banner Card Container (16:10 ratio for full image visibility) */}
+                  <div className="w-full max-w-[360px] sm:max-w-[480px] aspect-[16/10] rounded-2xl sm:rounded-3xl overflow-hidden border-4 sm:border-8 border-white shadow-2xl bg-[#0a1931] relative z-10">
                     <HeroBannerVisual items={heroImages} mobile />
                   </div>
                 </div>
