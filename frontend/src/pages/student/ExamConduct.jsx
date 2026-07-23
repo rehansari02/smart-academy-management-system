@@ -80,8 +80,8 @@ const ExamConduct = () => {
     const isSubmitted = Boolean(item.isSubmitted);
     const isAbsent = Boolean(item.isAbsent);
 
-    if (isSubmitted) return { label: 'Submitted', action: 'Submitted', style: 'live', disabled: true, icon: Lock };
     if (isAbsent) return { label: 'Absent', action: 'Absent', style: 'absent', disabled: true, icon: Lock };
+    if (isSubmitted) return { label: 'Submitted', action: 'Submitted', style: 'live', disabled: true, icon: Lock };
     if (isLive) return { label: schedule.isReExam ? 'Re-Exam Live' : 'Live', action: 'Open Exam', style: 'live', disabled: false, icon: PlayCircle };
     if (isUpcoming) return { label: 'Coming Soon', action: 'Coming Soon', style: 'upcoming', disabled: true, icon: Lock };
     if (schedule.isReExam) return { label: 'Re-Exam Closed', action: 'Closed', style: 'ended', disabled: true, icon: Lock };
@@ -133,10 +133,13 @@ const ExamConduct = () => {
                     <button
                       type="button"
                       disabled={state.disabled}
-                      onClick={() => navigate(`/student/exam/${schedule._id}/${item.subject?._id || item.subject}`)}
+                      onClick={() => {
+                        if (state.disabled) return;
+                        navigate(`/student/exam/${schedule._id}/${item.subject?._id || item.subject}`);
+                      }}
                       className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
                         state.disabled
-                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed pointer-events-none opacity-80'
                           : 'bg-primary text-white hover:bg-blue-800'
                       }`}
                     >

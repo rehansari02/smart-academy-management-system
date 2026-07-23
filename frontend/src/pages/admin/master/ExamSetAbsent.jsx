@@ -2,16 +2,47 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, CalendarDays, CheckSquare, Loader, RefreshCw, Search, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckSquare,
+  Loader,
+  RefreshCw,
+  Search,
+  Users,
+  Building2,
+  Lock,
+  Clock,
+  BookOpenCheck,
+  ShieldCheck,
+  Phone
+} from 'lucide-react';
 import { toast } from 'react-toastify';
 import { fetchExamSchedules, fetchExams } from '../../../features/master/masterSlice';
 import TimePicker12Hour from '../../../components/common/TimePicker12Hour';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/master/`;
 
-const formatDate = (value) => {
-  if (!value) return '-';
-  return new Date(value).toLocaleDateString('en-IN');
+const formatDateLabel = (value) => {
+  if (!value || value === 'no-date') return 'No Date Assigned';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleDateString('en-IN', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+};
+
+const getDateKey = (value) => {
+  if (!value) return 'no-date';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'no-date';
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const formatTime12Hour = (value) => {
@@ -38,10 +69,12 @@ const ExamSetAbsent = () => {
   const [rows, setRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState({});
   const [rowTimes, setRowTimes] = useState({});
+  const [branchPresets, setBranchPresets] = useState({});
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [password, setPassword] = useState('');
   const [passwordEnabled, setPasswordEnabled] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     dispatch(fetchExams());
@@ -78,13 +111,20 @@ const ExamSetAbsent = () => {
       const res = await axios.get(`${API_URL}exam-schedule/absent-students`, { params: { examName } });
       const nextRows = Array.isArray(res.data?.rows) ? res.data.rows : [];
       setRows(nextRows);
-      setRowTimes((prev) => {
-        const next = {};
-        nextRows.forEach((row) => {
-          next[row.key] = prev[row.key] || { date: '', startTime: DEFAULT_START_TIME, endTime: DEFAULT_END_TIME };
-        });
-        return next;
+
+      // Auto check all absent rows by default
+      const autoSelected = {};
+      const nextRowTimes = {};
+      nextRows.forEach((row) => {
+        autoSelected[row.key] = true;
+        nextRowTimes[row.key] = rowTimes[row.key] || {
+          date: '',
+          startTime: DEFAULT_START_TIME,
+          endTime: DEFAULT_END_TIME
+        };
       });
+      setSelectedRows(autoSelected);
+      setRowTimes(nextRowTimes);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to load absent students');
     } finally {
@@ -96,7 +136,65 @@ const ExamSetAbsent = () => {
     if (selectedExamName) loadAbsentRows(selectedExamName);
   }, []);
 
-  const selectedList = rows.filter((row) => selectedRows[row.key]);
+  const filteredRows = useMemo(() => {
+    if (!searchTerm.trim()) return rows;
+    const term = searchTerm.toLowerCase().trim();
+    return rows.filter((row) => {
+      const name = String(row.student?.name || '').toLowerCase();
+      const reg = String(row.student?.regNo || '').toLowerCase();
+      const course = String(row.course?.name || '').toLowerCase();
+      const subject = String(row.subject?.name || row.subject?.printedName || '').toLowerCase();
+      const branch = String(row.student?.branchName || '').toLowerCase();
+      return name.includes(term) || reg.includes(term) || course.includes(term) || subject.includes(term) || branch.includes(term);
+    });
+  }, [rows, searchTerm]);
+
+  // Group filtered rows by Date -> Branch (mirroring ExamSet.jsx layout)
+  const dateGroups = useMemo(() => {
+    const groupMap = new Map();
+
+    filteredRows.forEach((row) => {
+      const dateKey = getDateKey(row.originalDate);
+      if (!groupMap.has(dateKey)) {
+        groupMap.set(dateKey, {
+          dateKey,
+          originalDate: row.originalDate,
+          rows: [],
+          branchMap: new Map()
+        });
+      }
+
+      const dateGroup = groupMap.get(dateKey);
+      dateGroup.rows.push(row);
+
+      const branchName = row.student?.branchName || 'Main Branch';
+      if (!dateGroup.branchMap.has(branchName)) {
+        dateGroup.branchMap.set(branchName, {
+          branchName,
+          rows: []
+        });
+      }
+      dateGroup.branchMap.get(branchName).rows.push(row);
+    });
+
+    return [...groupMap.values()].sort((a, b) => {
+      if (a.dateKey === 'no-date') return 1;
+      if (b.dateKey === 'no-date') return -1;
+      return a.dateKey.localeCompare(b.dateKey);
+    });
+  }, [filteredRows]);
+
+  const selectedList = useMemo(() => rows.filter((row) => selectedRows[row.key]), [rows, selectedRows]);
+
+  const uniqueCoursesCount = useMemo(() => {
+    const set = new Set(rows.map((r) => r.course?._id || r.course?.name).filter(Boolean));
+    return set.size;
+  }, [rows]);
+
+  const uniqueBranchesCount = useMemo(() => {
+    const set = new Set(rows.map((r) => r.student?.branchName || 'Main Branch'));
+    return set.size;
+  }, [rows]);
 
   const updateExamName = (examName) => {
     setSelectedExamName(examName);
@@ -106,12 +204,48 @@ const ExamSetAbsent = () => {
 
   const toggleAll = (checked) => {
     const next = {};
-    if (checked) rows.forEach((row) => { next[row.key] = true; });
+    if (checked) filteredRows.forEach((row) => { next[row.key] = true; });
     setSelectedRows(next);
+  };
+
+  const toggleBranchAll = (branchRows, checked) => {
+    setSelectedRows((prev) => {
+      const next = { ...prev };
+      branchRows.forEach((r) => { next[r.key] = checked; });
+      return next;
+    });
   };
 
   const updateRowTime = (key, field, value) => {
     setRowTimes((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), [field]: value } }));
+  };
+
+  const updateBranchPreset = (presetKey, field, value) => {
+    setBranchPresets((prev) => ({
+      ...prev,
+      [presetKey]: { ...(prev[presetKey] || {}), [field]: value }
+    }));
+  };
+
+  const applyBranchPresetToRows = (presetKey, branchRows) => {
+    const preset = branchPresets[presetKey] || {};
+    if (!preset.date) {
+      toast.error('Select Re-Exam Date first.');
+      return;
+    }
+
+    setRowTimes((prev) => {
+      const next = { ...prev };
+      branchRows.forEach((r) => {
+        next[r.key] = {
+          date: preset.date,
+          startTime: preset.startTime || DEFAULT_START_TIME,
+          endTime: preset.endTime || DEFAULT_END_TIME
+        };
+      });
+      return next;
+    });
+    toast.success(`Applied date & time to ${branchRows.length} student(s) in this branch`);
   };
 
   const createReExam = async () => {
@@ -120,7 +254,7 @@ const ExamSetAbsent = () => {
       return;
     }
     if (selectedList.length === 0) {
-      toast.error('Select absent students.');
+      toast.error('Select at least one absent student.');
       return;
     }
     if (passwordEnabled && !password.trim()) {
@@ -133,7 +267,7 @@ const ExamSetAbsent = () => {
       return !time.date || !time.startTime || !time.endTime;
     });
     if (missingTime) {
-      toast.error('Set re-exam date and time for every selected row.');
+      toast.error(`Set re-exam date and time for student: ${missingTime.student?.name || 'selected student'}.`);
       return;
     }
 
@@ -153,7 +287,7 @@ const ExamSetAbsent = () => {
         }))
       };
       const res = await axios.post(`${API_URL}exam-schedule/absent-reexam`, payload);
-      toast.success(res.data?.message || 'Re-exam timetable created');
+      toast.success(res.data?.message || 'Re-exam timetable created successfully!');
       setPassword('');
       await loadAbsentRows(selectedExamName);
       dispatch(fetchExamSchedules({ examName: selectedExamName }));
@@ -165,113 +299,356 @@ const ExamSetAbsent = () => {
   };
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="container mx-auto p-4 md:p-6 space-y-6">
+      {/* Top Header Bar */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <button type="button" onClick={() => navigate('/master/exam-set')} className="mb-3 inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50">
-            <ArrowLeft size={16} /> Back
+          <button
+            type="button"
+            onClick={() => navigate('/master/exam-set')}
+            className="mb-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 shadow-xs hover:bg-gray-50 transition cursor-pointer"
+          >
+            <ArrowLeft size={16} /> Back to Exam Set
           </button>
-          <h2 className="text-2xl font-bold text-gray-800">Absent Student Exam</h2>
-          <p className="mt-1 text-sm text-gray-500">Same exam name me absent students ke pending subjects ka re-exam timetable banao.</p>
+          <h1 className="text-2xl font-black text-gray-800 tracking-tight flex items-center gap-2">
+            <ShieldCheck className="text-amber-600" size={26} />
+            Absent Student Re-Exam Schedule
+          </h1>
+          <p className="mt-1 text-xs md:text-sm text-gray-500 font-medium">
+            Schedule re-exam date & time branch-wise for absent students under exam schedule: <span className="font-bold text-amber-700">{selectedExamName || 'Select Exam'}</span>
+          </p>
         </div>
-        <button type="button" onClick={() => loadAbsentRows()} disabled={!selectedExamName || loading} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60">
-          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => loadAbsentRows()}
+            disabled={!selectedExamName || loading}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-700 shadow-xs hover:bg-gray-50 disabled:opacity-60 transition cursor-pointer"
+          >
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
 
-      <div className="mb-6 rounded-lg border-t-4 border-amber-500 bg-white p-4 shadow">
+      {/* Filter & Metrics Card (Mirrors ExamSet.jsx) */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm space-y-4">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-          <div>
-            <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Select Exam Name</label>
-            <select value={selectedExamName} onChange={(e) => updateExamName(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
-              <option value="">-- Select Exam --</option>
-              {examOptions.map((name) => <option key={name} value={name}>{name}</option>)}
-            </select>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Select Exam Schedule</label>
+              <select
+                value={selectedExamName}
+                onChange={(e) => updateExamName(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 py-2.5 text-sm font-semibold text-gray-800 outline-none focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-500/10 transition"
+              >
+                <option value="">-- Select Exam Schedule --</option>
+                {examOptions.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Search Students / Subjects</label>
+              <div className="relative">
+                <Search className="absolute left-3.5 top-3 text-gray-400" size={16} />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Filter by student name, reg no, course..."
+                  disabled={!selectedExamName}
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50/50 pl-10 pr-3.5 py-2.5 text-sm font-semibold text-gray-800 outline-none focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-500/10 disabled:opacity-50 transition"
+                />
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-center">
-            <div className="rounded-lg border bg-gray-50 px-4 py-2"><div className="text-lg font-black text-gray-900">{rows.length}</div><div className="text-[10px] font-bold uppercase text-gray-500">Absent Rows</div></div>
-            <div className="rounded-lg border bg-gray-50 px-4 py-2"><div className="text-lg font-black text-gray-900">{selectedList.length}</div><div className="text-[10px] font-bold uppercase text-gray-500">Selected</div></div>
+
+          <div className="grid grid-cols-4 gap-2 text-center pt-2 lg:pt-0">
+            <div className="rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2">
+              <div className="text-base font-black text-amber-900">{rows.length}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Absent Rows</div>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-slate-50/80 px-3 py-2">
+              <div className="text-base font-black text-gray-900">{uniqueCoursesCount}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Courses</div>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-slate-50/80 px-3 py-2">
+              <div className="text-base font-black text-gray-900">{uniqueBranchesCount}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Branches</div>
+            </div>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2">
+              <div className="text-base font-black text-emerald-800">{selectedList.length}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Selected</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Global Re-Exam Password Controls */}
+        <div className="rounded-xl bg-slate-50 p-3.5 border border-slate-200">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr_auto] sm:items-end">
+            <label className="flex h-10 items-center gap-2 rounded-xl border border-gray-300 bg-white px-3.5 text-xs font-bold text-gray-700 shadow-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={passwordEnabled}
+                onChange={(e) => setPasswordEnabled(e.target.checked)}
+                className="h-4 w-4 text-amber-600 rounded cursor-pointer"
+              />
+              <Lock size={14} className="text-amber-600" /> Re-Exam Password
+            </label>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-gray-600">Re-Exam Password</label>
+              <input
+                type="text"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={!passwordEnabled}
+                placeholder={passwordEnabled ? "Enter password required by students for this re-exam..." : "Password disabled"}
+                className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2 text-xs font-bold outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 disabled:bg-gray-100"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={createReExam}
+              disabled={creating || selectedList.length === 0}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-xs font-extrabold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition cursor-pointer"
+            >
+              {creating ? <RefreshCw className="animate-spin" size={16} /> : <CheckSquare size={16} />}
+              Create Re-Exam Timetable ({selectedList.length})
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="mb-6 rounded-lg border bg-white p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_1fr_auto] md:items-end">
-          <label className="flex h-10 items-center gap-2 rounded-lg border bg-white px-3 text-xs font-bold text-gray-700">
-            <input type="checkbox" checked={passwordEnabled} onChange={(e) => setPasswordEnabled(e.target.checked)} className="h-4 w-4" />
-            Password
-          </label>
-          <div>
-            <label className="mb-1 block text-xs font-bold uppercase text-gray-600">Re-Exam Password</label>
-            <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!passwordEnabled} placeholder="Enter password for re-exam" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:bg-gray-100" />
-          </div>
-          <button type="button" onClick={createReExam} disabled={creating || selectedList.length === 0} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 text-sm font-bold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60">
-            {creating ? <RefreshCw className="animate-spin" size={16} /> : <CheckSquare size={16} />} Create Re-Exam Timetable
-          </button>
-        </div>
-      </div>
-
+      {/* Main Content Layout */}
       {!selectedExamName ? (
-        <div className="rounded-lg border border-dashed bg-white p-10 text-center text-gray-500 shadow-sm"><Search className="mx-auto mb-3 text-gray-400" size={32} /><p className="text-sm font-semibold">Select an exam name.</p></div>
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-12 text-center text-gray-400 shadow-sm">
+          <Search className="mx-auto mb-3 text-gray-300" size={40} />
+          <p className="text-sm font-semibold text-gray-600">Please select an exam name from the dropdown above.</p>
+        </div>
       ) : loading ? (
-        <div className="flex min-h-[240px] items-center justify-center rounded-lg bg-white text-gray-500 shadow-sm"><Loader className="mr-2 animate-spin" size={20} /> Loading absent students...</div>
+        <div className="flex min-h-[260px] items-center justify-center rounded-2xl bg-white text-gray-500 shadow-sm">
+          <Loader className="mr-2 animate-spin text-amber-600" size={24} /> Loading absent students...
+        </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-6 text-center text-green-700">No absent students found for pending re-exam.</div>
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-8 text-center text-sm font-semibold text-emerald-800">
+          No absent students found for pending re-exam under this schedule.
+        </div>
       ) : (
-        <div className="overflow-auto rounded-lg border bg-white shadow-sm">
-          <table className="min-w-[1320px] w-full table-fixed text-sm">
-            <colgroup>
-              <col style={{ width: 48 }} />
-              <col style={{ width: 112 }} />
-              <col style={{ width: 176 }} />
-              <col style={{ width: 176 }} />
-              <col style={{ width: 176 }} />
-              <col style={{ width: 112 }} />
-              <col style={{ width: 152 }} />
-              <col style={{ width: 160 }} />
-              <col style={{ width: 152 }} />
-              <col style={{ width: 152 }} />
-            </colgroup>
-            <thead className="sticky top-0 bg-gray-50 text-left text-[10px] font-bold uppercase text-gray-500">
-              <tr>
-                <th className="px-3 py-2 text-center"><input type="checkbox" checked={rows.length > 0 && selectedList.length === rows.length} onChange={(e) => toggleAll(e.target.checked)} className="h-4 w-4" /></th>
-                <th className="px-3 py-2">Reg No</th>
-                <th className="px-3 py-2">Student</th>
-                <th className="px-3 py-2">Course</th>
-                <th className="px-3 py-2">Absent Subject</th>
-                <th className="px-3 py-2">Original Date</th>
-                <th className="px-3 py-2">Original Time</th>
-                <th className="px-3 py-2">Re-Exam Date</th>
-                <th className="px-3 py-2">Start Time</th>
-                <th className="px-3 py-2">End Time</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {rows.map((row) => {
-                const checked = Boolean(selectedRows[row.key]);
-                const time = rowTimes[row.key] || {};
-                return (
-                  <tr key={row.key} className={checked ? 'bg-amber-50/60' : 'hover:bg-gray-50'}>
-                    <td className="px-3 py-2 text-center"><input type="checkbox" checked={checked} onChange={() => setSelectedRows((prev) => ({ ...prev, [row.key]: !prev[row.key] }))} className="h-4 w-4" /></td>
-                    <td className="truncate px-3 py-2 font-mono text-gray-700" title={row.student?.regNo || '-'}>{row.student?.regNo || '-'}</td>
-                    <td className="truncate px-3 py-2 font-bold text-primary" title={row.student?.name || 'Student'}>{row.student?.name || 'Student'}</td>
-                    <td className="truncate px-3 py-2 font-semibold text-gray-800" title={row.course?.name || 'Course'}>{row.course?.name || 'Course'}</td>
-                    <td className="truncate px-3 py-2 font-semibold text-gray-800" title={row.subject?.name || row.subject?.printedName || 'Subject'}>{row.subject?.name || row.subject?.printedName || 'Subject'}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-gray-600">{formatDate(row.originalDate)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-gray-600">{row.originalStartTime && row.originalEndTime ? `${row.originalStartTime} - ${row.originalEndTime}` : '-'}</td>
-                    <td className="px-3 py-2"><input type="date" value={time.date || ''} onChange={(e) => updateRowTime(row.key, 'date', e.target.value)} disabled={!checked} className="h-10 w-full rounded border border-gray-300 px-2 text-xs disabled:bg-gray-100" /></td>
-                    <td className="px-2 py-2"><TimePicker12Hour value={time.startTime || DEFAULT_START_TIME} onChange={(value) => updateRowTime(row.key, 'startTime', value)} disabled={!checked} compact /></td>
-                    <td className="px-2 py-2"><TimePicker12Hour value={time.endTime || DEFAULT_END_TIME} onChange={(value) => updateRowTime(row.key, 'endTime', value)} disabled={!checked} compact /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="space-y-8">
+          {dateGroups.map((dateGroup) => {
+            const branchGroups = [...dateGroup.branchMap.values()].sort((a, b) => a.branchName.localeCompare(b.branchName));
+
+            return (
+              <div key={dateGroup.dateKey} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition">
+                {/* Original Date Banner Header (Matching ExamSet.jsx style) */}
+                <div className="flex flex-col gap-3 bg-gradient-to-r from-amber-900 via-amber-800 to-slate-900 px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white backdrop-blur">
+                      <CalendarDays size={20} />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-extrabold tracking-tight flex items-center gap-2">
+                        Original Exam Date: {formatDateLabel(dateGroup.originalDate)}
+                      </h2>
+                      <p className="text-xs text-amber-200 font-medium">
+                        {branchGroups.length} Branch(es) • {dateGroup.rows.length} Absent Subject Record(s)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleBranchAll(dateGroup.rows, true)}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-1.5 text-xs font-bold text-white backdrop-blur hover:bg-white/25 transition cursor-pointer"
+                    >
+                      <CheckSquare size={14} /> Select All Date Rows ({dateGroup.rows.length})
+                    </button>
+                  </div>
+                </div>
+
+                {/* Branch Cards under this Date */}
+                <div className="p-4 md:p-6 space-y-6 bg-slate-50/40">
+                  {branchGroups.map((bGroup) => {
+                    const presetKey = `${dateGroup.dateKey}_${bGroup.branchName}`;
+                    const preset = branchPresets[presetKey] || { date: '', startTime: DEFAULT_START_TIME, endTime: DEFAULT_END_TIME };
+                    const allBranchSelected = bGroup.rows.every((r) => selectedRows[r.key]);
+
+                    return (
+                      <div key={bGroup.branchName} className="rounded-xl border border-gray-200 bg-white p-4 shadow-xs transition hover:border-amber-200">
+                        {/* Branch Bar */}
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                          <div className="flex items-center gap-2.5">
+                            <Building2 className="text-amber-600" size={18} />
+                            <h3 className="text-base font-black text-gray-900">{bGroup.branchName}</h3>
+                            <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-800 border border-amber-200">
+                              {bGroup.rows.length} Absent Row(s)
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <label className="flex items-center gap-2 text-xs font-bold text-gray-700 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={allBranchSelected}
+                                onChange={(e) => toggleBranchAll(bGroup.rows, e.target.checked)}
+                                className="h-3.5 w-3.5 text-amber-600 rounded cursor-pointer"
+                              />
+                              Select Branch Students
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* Quick Branch Re-Exam Time Settings Bar */}
+                        <div className="rounded-xl bg-amber-50/50 border border-amber-200/80 p-3.5 mb-4">
+                          <div className="text-xs font-bold text-amber-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <Clock size={14} className="text-amber-700" />
+                            Quick Branch Re-Exam Time Assigner ({bGroup.branchName})
+                          </div>
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
+                            <div>
+                              <label className="mb-1 block text-[11px] font-bold text-gray-600 uppercase">Re-Exam Date</label>
+                              <input
+                                type="date"
+                                value={preset.date || ''}
+                                onChange={(e) => updateBranchPreset(presetKey, 'date', e.target.value)}
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="mb-1 block text-[11px] font-bold text-gray-600 uppercase">Start Time</label>
+                              <TimePicker12Hour
+                                value={preset.startTime || DEFAULT_START_TIME}
+                                onChange={(val) => updateBranchPreset(presetKey, 'startTime', val)}
+                                compact
+                              />
+                            </div>
+
+                            <div>
+                              <label className="mb-1 block text-[11px] font-bold text-gray-600 uppercase">End Time</label>
+                              <TimePicker12Hour
+                                value={preset.endTime || DEFAULT_END_TIME}
+                                onChange={(val) => updateBranchPreset(presetKey, 'endTime', val)}
+                                compact
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => applyBranchPresetToRows(presetKey, bGroup.rows)}
+                              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-amber-700 px-4 text-xs font-bold text-white shadow-xs hover:bg-amber-800 transition cursor-pointer"
+                            >
+                              Apply to {bGroup.rows.length} Row(s)
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Branch Absent Students Table (Structured Roomy Table) */}
+                        <div className="overflow-x-auto rounded-xl border border-gray-200">
+                          <table className="min-w-full text-xs">
+                            <thead className="bg-slate-100 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 border-b border-gray-200">
+                              <tr>
+                                <th className="px-3 py-2.5 text-center w-10">
+                                  <input
+                                    type="checkbox"
+                                    checked={allBranchSelected}
+                                    onChange={(e) => toggleBranchAll(bGroup.rows, e.target.checked)}
+                                    className="h-3.5 w-3.5 text-amber-600 rounded cursor-pointer"
+                                  />
+                                </th>
+                                <th className="px-3 py-2.5">Reg No</th>
+                                <th className="px-3 py-2.5">Student Name</th>
+                                <th className="px-3 py-2.5">Course</th>
+                                <th className="px-3 py-2.5">Absent Subject</th>
+                                <th className="px-3 py-2.5">Original Time</th>
+                                <th className="px-3 py-2.5">Re-Exam Date</th>
+                                <th className="px-3 py-2.5">Start Time</th>
+                                <th className="px-3 py-2.5">End Time</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 font-medium">
+                              {bGroup.rows.map((row) => {
+                                const isChecked = Boolean(selectedRows[row.key]);
+                                const time = rowTimes[row.key] || {};
+
+                                return (
+                                  <tr key={row.key} className={isChecked ? 'bg-amber-50/50 hover:bg-amber-50/80 transition' : 'hover:bg-slate-50 transition opacity-75'}>
+                                    <td className="px-3 py-2.5 text-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => setSelectedRows((prev) => ({ ...prev, [row.key]: !prev[row.key] }))}
+                                        className="h-4 w-4 text-amber-600 rounded cursor-pointer"
+                                      />
+                                    </td>
+                                    <td className="px-3 py-2.5 font-bold text-amber-800 font-mono">
+                                      {row.student?.regNo || '-'}
+                                    </td>
+                                    <td className="px-3 py-2.5 font-bold text-gray-900">
+                                      {row.student?.name || 'Student'}
+                                    </td>
+                                    <td className="px-3 py-2.5 font-semibold text-slate-700">
+                                      {row.course?.name || 'Course'}
+                                    </td>
+                                    <td className="px-3 py-2.5 font-bold text-indigo-700">
+                                      {row.subject?.name || row.subject?.printedName || 'Subject'}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+                                      {row.originalStartTime && row.originalEndTime ? `${row.originalStartTime} - ${row.originalEndTime}` : '-'}
+                                    </td>
+                                    <td className="px-3 py-2.5">
+                                      <input
+                                        type="date"
+                                        value={time.date || ''}
+                                        onChange={(e) => updateRowTime(row.key, 'date', e.target.value)}
+                                        disabled={!isChecked}
+                                        className="h-9 w-full min-w-[130px] rounded-lg border border-gray-300 bg-white px-2.5 text-xs font-bold text-gray-800 outline-none focus:border-amber-500 disabled:bg-gray-100"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-2.5">
+                                      <TimePicker12Hour
+                                        value={time.startTime || DEFAULT_START_TIME}
+                                        onChange={(val) => updateRowTime(row.key, 'startTime', val)}
+                                        disabled={!isChecked}
+                                        compact
+                                      />
+                                    </td>
+                                    <td className="px-2 py-2.5">
+                                      <TimePicker12Hour
+                                        value={time.endTime || DEFAULT_END_TIME}
+                                        onChange={(val) => updateRowTime(row.key, 'endTime', val)}
+                                        disabled={!isChecked}
+                                        compact
+                                      />
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
-        <div className="flex items-start gap-2"><CalendarDays size={18} className="mt-0.5" /><span>The re-exam will be created under the same exam name. In the student panel, the original subject will show as `Absent`, and the re-exam timetable will appear in a separate section.</span></div>
+      {/* Info Box */}
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-900 shadow-xs">
+        <div className="flex items-start gap-2.5">
+          <CalendarDays size={20} className="mt-0.5 text-amber-700 shrink-0" />
+          <span>
+            <strong>Re-Exam Timetable Note:</strong> Creating a re-exam timetable adds a new re-exam entry under the same exam name (<span className="font-bold">{selectedExamName || 'Exam'}</span>). In the student portal, the original exam subject displays status <span className="font-bold text-rose-700">Absent</span>, and the new re-exam schedule appears in a dedicated Re-Exam timetable section.
+          </span>
+        </div>
       </div>
     </div>
   );

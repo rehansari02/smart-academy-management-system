@@ -10,6 +10,7 @@ const bcrypt = require('bcryptjs');
 const SyllabusLog = require('../models/SyllabusLog');
 const StudentSyllabusResponse = require('../models/StudentSyllabusResponse');
 
+// Returns YYYY-MM-DD using LOCAL time (server timezone)
 const getDateKey = (date) => {
     if (!date) return 'no-date';
     const parsed = new Date(date);
@@ -18,6 +19,62 @@ const getDateKey = (date) => {
     const month = String(parsed.getMonth() + 1).padStart(2, '0');
     const day = String(parsed.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+};
+
+// Returns YYYY-MM-DD using UTC — used when comparing against frontend-stored dates
+// which are produced in the browser's local timezone (e.g. IST)
+const getDateKeyUTC = (date) => {
+    if (!date) return 'no-date';
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return 'no-date';
+    const year = parsed.getUTCFullYear();
+    const month = String(parsed.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+// Return all plausible date-key variants for a date value (handles timezone shifts)
+const getDateKeyVariants = (date) => {
+    const local = getDateKey(date);
+    const utc = getDateKeyUTC(date);
+    const set = new Set([local, utc]);
+    // Also try +5:30 (IST) in case server is UTC and frontend stored IST date
+    if (date) {
+        const parsed = new Date(date);
+        if (!Number.isNaN(parsed.getTime())) {
+            const ist = new Date(parsed.getTime() + (5 * 60 + 30) * 60 * 1000);
+            const istKey = `${ist.getUTCFullYear()}-${String(ist.getUTCMonth() + 1).padStart(2, '0')}-${String(ist.getUTCDate()).padStart(2, '0')}`;
+            set.add(istKey);
+        }
+    }
+    return [...set].filter((k) => k && k !== 'no-date');
+};
+
+const isStudentAbsentForScheduleRow = (schedule, studentId, rowDateKey) => {
+    const records = (schedule.attendance || []).filter(
+        (a) => String(a.student?._id || a.student) === String(studentId)
+    );
+    if (records.length === 0) return false;
+
+    // The rowDateKey might be in a different timezone than examDate stored by frontend.
+    // Collect all plausible date keys for the row date.
+    // Also fall back: if rowDateKey is 'no-date', match any record.
+    const dateRecords = records.filter((a) => {
+        if (!a.examDate || !rowDateKey || rowDateKey === 'no-date') return true;
+        // Direct match first
+        if (a.examDate === rowDateKey) return true;
+        // The stored examDate was set by frontend (browser local time).
+        // rowDateKey is from backend local time. Try all variants.
+        const rowVariants = getDateKeyVariants(rowDateKey);
+        if (rowVariants.includes(a.examDate)) return true;
+        // Also convert stored examDate via all variants
+        const storedVariants = getDateKeyVariants(a.examDate);
+        return storedVariants.some((v) => v === rowDateKey || rowVariants.includes(v));
+    });
+
+    // If no attendance record matches this specific date → student is NOT absent for this row
+    if (dateRecords.length === 0) return false;
+    return dateRecords.some((a) => a.status === 'Absent');
 };
 
 const getActiveStudentForUser = async (userId, populateCourse = false) => {
@@ -791,10 +848,7 @@ const getStudentExamSchedules = async (req, res) => {
                 const attempt = attemptMap.get(`${String(schedule._id)}:${String(subjectId)}`);
                 const window = getScheduleSubjectWindow(row);
                 const rowDateKey = getDateKey(row.date);
-                const attendanceEntry = (schedule.attendance || []).find(
-                    (a) => String(a.student?._id || a.student) === String(student._id) && (!a.examDate || a.examDate === rowDateKey)
-                );
-                const isExplicitlyAbsent = attendanceEntry?.status === 'Absent';
+                const isExplicitlyAbsent = isStudentAbsentForScheduleRow(schedule, student._id, rowDateKey);
 
                 return {
                     subject: row.subject,
@@ -902,10 +956,7 @@ const getStudentExamConduct = async (req, res) => {
                 const isCourseSubject = courseSubjects.some((subject) => String(subject?._id || subject) === String(subjectId));
                 
                 const rowDateKey = getDateKey(row.date);
-                const attendanceEntry = (schedule.attendance || []).find(
-                    (a) => String(a.student?._id || a.student) === String(student._id) && (!a.examDate || a.examDate === rowDateKey)
-                );
-                const isExplicitlyAbsent = attendanceEntry?.status === 'Absent';
+                const isExplicitlyAbsent = isStudentAbsentForScheduleRow(schedule, student._id, rowDateKey);
                 const isAbsent = isExplicitlyAbsent || (window.status === 'ended' && !attempt);
 
                 return {
@@ -1002,10 +1053,8 @@ const openStudentExamConduct = async (req, res) => {
         }
 
         const rowDateKey = getDateKey(row.date);
-        const attendanceEntry = (schedule.attendance || []).find(
-            (a) => String(a.student?._id || a.student) === String(student._id) && (!a.examDate || a.examDate === rowDateKey)
-        );
-        if (attendanceEntry?.status === 'Absent') {
+        const isExplicitlyAbsent = isStudentAbsentForScheduleRow(schedule, student._id, rowDateKey);
+        if (isExplicitlyAbsent) {
             return res.status(403).json({ message: 'You have been marked ABSENT for this exam date and cannot attempt the paper.' });
         }
 

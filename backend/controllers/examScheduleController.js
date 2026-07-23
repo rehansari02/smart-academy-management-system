@@ -896,6 +896,16 @@ const getExamStudentMarksDetail = asyncHandler(async (req, res) => {
     res.json(await buildAttemptReviewDetail(attempt));
 });
 
+const getDateKey = (date) => {
+    if (!date) return '';
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return '';
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const getAbsentExamStudents = asyncHandler(async (req, res) => {
     const examName = String(req.query.examName || '').trim();
     if (!examName) return res.json({ examName: '', rows: [] });
@@ -942,13 +952,23 @@ const getAbsentExamStudents = asyncHandler(async (req, res) => {
         (schedule.timeTable || []).forEach((timeRow) => {
             const subjectId = timeRow.subject?._id || timeRow.subject;
             const rowStatus = getScheduleRowStatus(timeRow);
-            if (rowStatus.status !== 'ended') return;
+            const timeRowDateKey = getDateKey(timeRow.date);
 
             (schedule.attendees || []).forEach((student) => {
                 if (!student || student.isDeleted || student.isCancelled) return;
                 if (!schedule.isReExam && reExamMap.has(`${String(schedule.course?._id || schedule.course)}:${String(subjectId)}:${String(student._id)}`)) return;
                 const attempt = attemptMap.get(`${String(schedule._id)}:${String(subjectId)}:${String(student._id)}`);
                 if (attempt) return;
+
+                const attendanceEntry = (schedule.attendance || []).find(
+                    (a) => String(a.student?._id || a.student) === String(student._id) &&
+                           (!a.examDate || !timeRowDateKey || a.examDate === timeRowDateKey || getDateKey(a.examDate) === timeRowDateKey)
+                );
+                const isExplicitlyAbsent = attendanceEntry?.status === 'Absent';
+                const isExplicitlyPresent = attendanceEntry?.status === 'Present';
+
+                const isAbsent = isExplicitlyAbsent || (rowStatus.status === 'ended' && !isExplicitlyPresent);
+                if (!isAbsent) return;
 
                 rows.push({
                     key: `${schedule._id}-${subjectId}-${student._id}`,
