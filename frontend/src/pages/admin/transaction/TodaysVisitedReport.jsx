@@ -1813,7 +1813,8 @@ const TodaysVisitedReport = () => {
                         </select>
                     </div>
                     <table className="w-full border-collapse min-w-[1100px]">
-                        {filters.reportType === 'visited' ? (
+                        {
+                        filters.reportType === 'visited' ? (
                             <thead>
                                 <tr className="bg-orange-700 text-white text-left text-xs uppercase tracking-wider">
                                     {canTransferRecords && (
@@ -1830,11 +1831,11 @@ const TodaysVisitedReport = () => {
                                     <th className="p-2 border font-semibold">Inquiry Date</th>
                                     <th className="p-2 border font-semibold">Visitor Date</th>
                                     {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
-                                    <th className="p-2 border font-semibold">Filled By</th>
-                                    <th className="p-2 border font-semibold">Reference By</th>
                                     <th className="p-2 border font-semibold">Student Name</th>
                                     <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                                     <th className="p-2 border font-semibold text-center">Status</th>
+                                    <th className="p-2 border font-semibold">Filled By</th>
+                                    <th className="p-2 border font-semibold">Reference By</th>
                                     <th className="p-2 border font-semibold">Followup</th>
                                     <th className="p-2 border font-semibold w-36">Followup Details</th>
                                     <th className="p-2 border font-semibold">Followup By</th>
@@ -1858,11 +1859,11 @@ const TodaysVisitedReport = () => {
                                     <th className="p-2 border font-semibold w-12 text-center">Sr. No.</th>
                                     <th className="p-2 border font-semibold">Inquiry Date</th>
                                     {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
-                                    <th className="p-2 border font-semibold">Filled By</th>
-                                    <th className="p-2 border font-semibold">Reference By</th>
                                     <th className="p-2 border font-semibold">Student Name</th>
                                     <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                                     <th className="p-2 border font-semibold text-center">Status</th>
+                                    <th className="p-2 border font-semibold">Filled By</th>
+                                    <th className="p-2 border font-semibold">Reference By</th>
                                     <th className="p-2 border font-semibold">Followup</th>
                                     <th className="p-2 border font-semibold w-36">Followup Details</th>
                                     <th className="p-2 border font-semibold">Followup By</th>
@@ -1909,8 +1910,6 @@ const TodaysVisitedReport = () => {
                                                 {formatDate(visitor.visitingDate)}
                                             </td>
                                             {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{visitor.branchId?.name || '-'}</td>}
-                                            <td className="p-2 border text-gray-600 font-medium">{getFilledBy(visitor)}</td>
-                                            <td className="p-2 border text-gray-600 font-medium">{getReferenceBy(visitor)}</td>
                                             <td className="p-2 border font-bold text-gray-800">{getFullName(visitor.inquiryId && typeof visitor.inquiryId === 'object' ? visitor.inquiryId : visitor)}</td>
                                             <td className="p-0 border align-top w-36">
                                                 <div className="flex border-b border-gray-200 last:border-b-0">
@@ -2045,8 +2044,6 @@ const TodaysVisitedReport = () => {
                                             <td className="p-2 border text-center text-gray-400 font-medium">{index + 1}</td>
                                             <td className="p-2 border font-semibold text-gray-700">{originalDate ? formatDate(originalDate) : '-'}</td>
                                             {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{branchName || '-'}</td>}
-                                            <td className="p-2 border text-gray-600 font-medium">{filledBy}</td>
-                                            <td className="p-2 border text-gray-600 font-medium">{referenceBy}</td>
                                             <td className="p-2 border font-bold text-gray-800">{personName}</td>
                                             <td className="p-0 border align-top w-36">
                                                 <div className="flex border-b border-gray-200 last:border-b-0">
@@ -2079,6 +2076,8 @@ const TodaysVisitedReport = () => {
                                                     {status || 'Open'}
                                                 </span>
                                             </td>
+                                            <td className="p-2 border text-gray-600 font-medium">{filledBy}</td>
+                                            <td className="p-2 border text-gray-600 font-medium">{referenceBy}</td>
                                             <td className="p-2 border text-gray-700 font-medium">
                                                 {followUpDate ? (
                                                     <div className="flex flex-col">

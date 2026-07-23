@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { 
   Building2, 
@@ -53,6 +53,7 @@ import { fetchBatches, fetchCourses } from '../../../features/master/masterSlice
 import { fetchEmployees } from '../../../features/employee/employeeSlice';
 import { useUserRights } from '../../../hooks/useUserRights';
 import StudentDetailView from './StudentDetailView';
+import SyllabusReportDashboardModal from './SyllabusReportDashboardModal';
 import logo from '../../../assets/logo2.png';
 
 // Helper to shorten 24-char hex MongoDB ObjectID to a 16-char base64url string
@@ -328,6 +329,8 @@ const compareBatchOrder = (a, b) => {
 const SyllabusManagement = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isReportDashboardRoute = location.pathname.includes('/syllabus-management/report-dashboard');
   
   const params = useParams();
   const isQuickStudentReportRoute = Boolean(params.reportStudentId);
@@ -501,6 +504,15 @@ const SyllabusManagement = () => {
 
   // Detailed student progress view
   const [activeDetailStudent, setActiveDetailStudent] = useState(null);
+  const [overallReportModalOpen, setOverallReportModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (isReportDashboardRoute) {
+      setOverallReportModalOpen(true);
+    } else {
+      setOverallReportModalOpen(false);
+    }
+  }, [isReportDashboardRoute]);
 
   useEffect(() => {
     if (studentId) {
@@ -2651,15 +2663,25 @@ const SyllabusManagement = () => {
               </div>
             </div>
             {/* â”€â”€ Manage Teacher Access button â”€ only visible if permitted â”€â”€ */}
-            {showTeacher && (
+            <div className="flex flex-wrap items-center gap-3">
+              {showTeacher && (
+                <button
+                  onClick={() => navigate('/master/teacher-subject-management')}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-black text-white shadow-md hover:bg-emerald-700 active:scale-95 transition-all cursor-pointer"
+                >
+                  <UserCheck size={16} />
+                  Manage Teacher Access
+                </button>
+              )}
               <button
-                onClick={() => navigate('/master/teacher-subject-management')}
-                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-black text-white shadow-lg hover:bg-emerald-400 active:scale-95 transition-all"
+                onClick={() => navigate('/master/syllabus-management/report-dashboard')}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white shadow-md hover:bg-indigo-700 active:scale-95 transition-all cursor-pointer"
+                title="Open Overall Syllabus Executive Report Dashboard"
               >
-                <UserCheck size={16} />
-                Manage Teacher Access
+                <BarChart3 size={16} />
+                Syllabus Report
               </button>
-            )}
+            </div>
           </div>
         </div>
 
@@ -2940,25 +2962,22 @@ const SyllabusManagement = () => {
                 </div>
 
                 {filteredSubjects.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+                    <table className="w-full text-left border-collapse bg-white">
                       <thead>
-                        <tr className="border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-400 bg-slate-50/70">
-                          <th className="py-3 px-4">Order</th>
-                          <th className="py-3 px-4">Subject</th>
-                          <th className="py-3 px-4 text-center">Assigned Teacher</th>
-                          <th className="py-3 px-4 text-center">Days to Complete</th>
-                          <th className="py-3 px-4 text-center">Pages</th>
-                          <th className="py-3 px-4 text-center">Projects Count</th>
-                          <th className="py-3 px-4 text-center">Chapters Count</th>
-                          <th className="py-3 px-4 text-center">Actions</th>
+                        <tr className="bg-[#0a1931] text-white text-xs font-extrabold uppercase tracking-wider">
+                          <th className="py-3.5 px-4 w-12 text-center">#</th>
+                          <th className="py-3.5 px-4">Subject Name</th>
+                          <th className="py-3.5 px-4 text-center">Assigned Teacher</th>
+                          <th className="py-3.5 px-4 text-center">Days / Pages</th>
+                          <th className="py-3.5 px-4 text-center">Chapters / Projects</th>
+                          <th className="py-3.5 px-4 text-center">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-700">
                         {filteredSubjects.map((sub, idx) => {
                           const subId = sub.subject?._id;
                           const isExpanded = !!expandedSubjects[subId];
-                          const isChaptersExpanded = !!expandedChapters[subId];
                           const projectList = sub.subject?.projects || [];
                           const chapterList = sub.subject?.chapters || [];
 
@@ -2968,23 +2987,39 @@ const SyllabusManagement = () => {
 
                           return (
                             <React.Fragment key={subId || idx}>
-                              <tr className="hover:bg-slate-50/50 transition">
-                                <td className="py-4 px-4 font-bold text-slate-400">
-                                  {sub.sortOrder || idx + 1}
+                              <tr className="hover:bg-slate-50/80 transition duration-150">
+                                <td className="py-4 px-4 text-center">
+                                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 font-black text-slate-700 text-xs">
+                                    {sub.sortOrder || idx + 1}
+                                  </span>
                                 </td>
                                 <td className="py-4 px-4">
-                                  <div className="flex flex-col">
+                                  <div className="flex flex-col gap-1">
                                     <div className="flex items-center gap-2">
-                                      <BookOpenCheck size={16} className="text-indigo-500 shrink-0" />
-                                      <span className="font-black text-slate-900">{sub.subject?.name || 'Unnamed Subject'}</span>
+                                      <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+                                        <BookOpenCheck size={18} />
+                                      </div>
+                                      <span className="font-extrabold text-slate-900 text-base">{sub.subject?.name || 'Unnamed Subject'}</span>
                                     </div>
-                                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                    <div className="flex items-center gap-2 mt-1">
                                       {(projectList.length > 0 || chapterList.length > 0) && (
                                         <button 
                                           onClick={() => toggleSubjectExpanded(subId)}
-                                          className="inline-flex items-center gap-1 text-[11px] font-bold text-primary hover:underline"
+                                          className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-md transition-all ${
+                                            isExpanded 
+                                              ? 'bg-amber-100 text-amber-800 border border-amber-300' 
+                                              : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
+                                          }`}
                                         >
-                                          {isExpanded ? 'Hide Syllabus' : `Show Syllabus (${chapterList.length} Ch, ${projectList.length} Proj)`}
+                                          {isExpanded ? (
+                                            <>
+                                              <ChevronUp size={14} /> Hide Details
+                                            </>
+                                          ) : (
+                                            <>
+                                              <ChevronDown size={14} /> Show Syllabus Details ({chapterList.length} Ch, {projectList.length} Proj)
+                                            </>
+                                          )}
                                         </button>
                                       )}
                                     </div>
@@ -2994,44 +3029,54 @@ const SyllabusManagement = () => {
                                   {matchingTeachers.length > 0 ? (
                                     <div className="flex flex-wrap gap-1 justify-center">
                                       {matchingTeachers.map((tName, tIdx) => (
-                                        <span key={tIdx} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
-                                          {tName}
+                                        <span key={tIdx} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-extrabold text-emerald-800 shadow-2xs">
+                                          <UserCheck size={13} className="text-emerald-600" /> {tName}
                                         </span>
                                       ))}
                                     </div>
                                   ) : (
-                                    <span className="text-xs font-bold text-slate-400">Not Assigned</span>
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-700">
+                                      <AlertCircle size={13} className="text-amber-600" /> Not Assigned
+                                    </span>
                                   )}
                                 </td>
-                                <td className="py-4 px-4 text-center font-mono font-bold text-slate-800">
-                                  {sub.subject?.daysToComplete || 0} days
+                                <td className="py-4 px-4 text-center">
+                                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                    <span className="inline-flex items-center gap-1 rounded-lg bg-sky-50 border border-sky-200 px-2.5 py-1 font-mono text-xs font-extrabold text-sky-800">
+                                      <Clock size={13} className="text-sky-600" /> {sub.subject?.daysToComplete || 0}d
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 rounded-lg bg-purple-50 border border-purple-200 px-2.5 py-1 font-mono text-xs font-extrabold text-purple-800">
+                                      <FileText size={13} className="text-purple-600" /> {sub.subject?.totalPages || 0} pgs
+                                    </span>
+                                  </div>
                                 </td>
-                                <td className="py-4 px-4 text-center font-mono font-bold text-slate-800">
-                                  {sub.subject?.totalPages || 0} pages
-                                </td>
-                                <td className="py-4 px-4 text-center font-mono font-bold text-slate-800">
-                                  {projectList.length || sub.subject?.projectsCount || 0}
-                                </td>
-                                <td className="py-4 px-4 text-center font-mono font-bold text-slate-800">
-                                  {chapterList.length || sub.subject?.chaptersCount || 0}
+                                <td className="py-4 px-4 text-center">
+                                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                    <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 border border-blue-200 px-2.5 py-1 text-xs font-extrabold text-blue-800">
+                                      <BookOpenCheck size={13} className="text-blue-600" /> {chapterList.length || sub.subject?.chaptersCount || 0} Ch
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1 text-xs font-extrabold text-amber-800">
+                                      <FolderCheck size={13} className="text-amber-600" /> {projectList.length || sub.subject?.projectsCount || 0} Proj
+                                    </span>
+                                  </div>
                                 </td>
                                 <td className="py-4 px-4 whitespace-nowrap">
-                                  <div className="flex items-center justify-center gap-1.5 flex-nowrap">
+                                  <div className="flex items-center justify-center gap-2 flex-nowrap">
                                     {showEdit && (
                                       <button
                                         onClick={() => handleEditPageClick(sub)}
-                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition shrink-0"
+                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-slate-100 transition shadow-2xs shrink-0"
                                         title="Edit Subject parameters"
                                       >
-                                        <Edit3 size={12} /> Edit
+                                        <Edit3 size={13} /> Edit
                                       </button>
                                     )}
                                     <button
                                       onClick={() => handleStudentsPageClick(sub)}
-                                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-indigo-700 transition shrink-0"
+                                      className="inline-flex items-center gap-1 rounded-lg bg-[#1565C0] px-3 py-1.5 text-xs font-extrabold text-white hover:bg-blue-700 transition shadow-md shrink-0"
                                       title="View enrolled students"
                                     >
-                                      <Users size={12} /> Students
+                                      <Users size={13} /> Students
                                     </button>
                                     {showTeacher && (
                                       <button
@@ -3041,10 +3086,10 @@ const SyllabusManagement = () => {
                                           setSaCourseId(courseId);
                                           setSaOpen(true);
                                         }}
-                                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700 transition shrink-0"
+                                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-extrabold text-white hover:bg-emerald-700 transition shadow-md shrink-0"
                                         title="Manage Teacher Access"
                                       >
-                                        <UserCheck size={12} /> Teacher
+                                        <UserCheck size={13} /> Teacher
                                       </button>
                                     )}
                                   </div>
@@ -3247,14 +3292,14 @@ const SyllabusManagement = () => {
                 <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 bg-slate-100/80 text-xs font-black uppercase tracking-wider text-slate-500">
-                        <th className="py-3.5 px-4">#</th>
-                        <th className="py-3.5 px-4">Student</th>
-                        <th className="py-3.5 px-4">Course Period</th>
+                      <tr className="bg-[#0a1931] text-white text-xs font-extrabold uppercase tracking-wider">
+                        <th className="py-3.5 px-4 text-center">#</th>
+                        <th className="py-3.5 px-4">Student Info</th>
+                        <th className="py-3.5 px-4">Course Window</th>
                         <th className="py-3.5 px-4">Status</th>
                         <th className="py-3.5 px-4">Completed On</th>
                         <th className="py-3.5 px-4">Teacher</th>
-                        <th className="py-3.5 px-4">Current Chapter</th>
+                        <th className="py-3.5 px-4">Running Chapter</th>
                         <th className="py-3.5 px-4">Days Taken</th>
                         <th className="py-3.5 px-4">Days Left / Extra</th>
                         <th className="py-3.5 px-4 text-center">Actions</th>
@@ -3266,109 +3311,126 @@ const SyllabusManagement = () => {
                         const endDate = getCourseEndDate(student, holidays, branchId);
                         const remaining = getDaysRemainingText(student, holidays, branchId);
                         const summary = batchSummaries[student._id];
+                        const initials = (student.name || 'S').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
                         return (
-                          <tr key={student._id} className="hover:bg-indigo-50/30 transition-all cursor-pointer" onClick={() => handleViewStudentLog(student._id)}>
-                            <td className="py-3.5 px-4">
-                              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 font-black text-indigo-700 text-xs">{index + 1}</span>
+                          <tr key={student._id} className="hover:bg-slate-50/80 transition-all cursor-pointer" onClick={() => handleViewStudentLog(student._id)}>
+                            <td className="py-3.5 px-4 text-center">
+                              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 font-black text-indigo-700 text-xs shadow-2xs">{index + 1}</span>
                             </td>
                             <td className="py-3.5 px-4">
-                              <div className="font-extrabold text-slate-900">{student.name}</div>
-                              <div className="text-[11px] font-semibold text-slate-400">{student.enrollmentNo || 'â€”'}</div>
-                            </td>
-                            <td className="py-3.5 px-4">
-                              <span className="text-sm font-bold text-slate-600 whitespace-nowrap">
-                                {startDate ? startDate.format('DD-MM-YY') : 'â€”'}
-                                {' '}to{' '}
-                                {endDate ? endDate.format('DD-MM-YY') : 'â€”'}
-                              </span>
-                              <div className="mt-1 text-[11px] font-bold text-slate-400">
-                                Course window
+                              <div className="flex items-center gap-3">
+                                <div className="h-9 w-9 shrink-0 rounded-full bg-[#0a1931] text-white font-extrabold text-xs flex items-center justify-center shadow-xs">
+                                  {initials}
+                                </div>
+                                <div>
+                                  <div className="font-extrabold text-slate-900 text-sm">{student.name}</div>
+                                  <div className="text-[11px] font-semibold text-slate-400">Reg: {student.enrollmentNo || '—'}</div>
+                                </div>
                               </div>
                             </td>
                             <td className="py-3.5 px-4">
-                              <span className={"inline-block rounded-lg px-2.5 py-1 text-xs font-extrabold " + remaining.colorClass}>
+                              <span className="text-xs font-extrabold text-slate-700 whitespace-nowrap">
+                                {startDate ? startDate.format('DD MMM YYYY') : '—'}
+                                {' '}→{' '}
+                                {endDate ? endDate.format('DD MMM YYYY') : '—'}
+                              </span>
+                              <div className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">
+                                Enrollment window
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className={"inline-block rounded-lg px-3 py-1 text-xs font-black shadow-2xs " + remaining.colorClass}>
                                 {remaining.text}
                               </span>
                             </td>
-                                                        <td className="py-3.5 px-4 align-top">
+                            <td className="py-3.5 px-4 align-middle">
                               {summary?.subjectCompletedAt ? (
-                                <div className="flex flex-col gap-1">
-                                  <span className="text-sm font-extrabold text-emerald-700">
-                                    {moment(summary.subjectCompletedAt).format('DD MMM YYYY')}
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-extrabold text-emerald-700 flex items-center gap-1">
+                                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" /> {moment(summary.subjectCompletedAt).format('DD MMM YYYY')}
                                   </span>
-                                  <span className="text-[11px] font-bold text-slate-400">
-                                    Subject completed
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                    Completed
                                   </span>
                                 </div>
                               ) : (
-                                <span className="text-sm font-bold text-slate-400">In progress</span>
+                                <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-md">
+                                  <Clock size={13} className="text-slate-400 shrink-0" /> In Progress
+                                </span>
                               )}
                             </td>
-                            <td className="py-3.5 px-4 align-top">
+                            <td className="py-3.5 px-4 align-middle">
                               {summary ? (
-                                <div className="flex flex-col gap-1">
-                                  <span className="text-sm font-extrabold text-slate-900">
-                                    {summary.currentTeacherName || '—'}
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-extrabold text-slate-900 flex items-center gap-1">
+                                    <UserCheck size={13} className="text-emerald-600 shrink-0" /> {summary.currentTeacherName || '—'}
                                   </span>
-                                  <span className="text-[11px] font-bold text-slate-400">
-                                    Latest syllabus activity
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                    Latest Teacher
                                   </span>
                                 </div>
                               ) : (
-                                <span className="text-sm font-bold text-slate-400">No logs yet</span>
+                                <span className="text-xs font-bold text-slate-400">—</span>
                               )}
                             </td>
-                            <td className="py-3.5 px-4 align-top">
+                            <td className="py-3.5 px-4 align-middle">
                               {summary ? (
-                                <div className="flex flex-col gap-1">
-                                  <span className="max-w-[220px] truncate text-sm font-extrabold text-slate-900" title={summary.currentChapterName || '—'}>
-                                    {summary.currentChapterName || '—'}
+                                <div className="flex flex-col">
+                                  <span className="max-w-[200px] truncate text-xs font-extrabold text-indigo-900 flex items-center gap-1" title={summary.currentChapterName || '—'}>
+                                    <BookOpenCheck size={13} className="text-indigo-600 shrink-0" /> {summary.currentChapterName || '—'}
                                   </span>
-                                  <span className="text-[11px] font-bold text-slate-400">
-                                    Current running chapter
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                    Active Chapter
                                   </span>
                                 </div>
                               ) : (
-                                <span className="text-sm font-bold text-slate-400">No chapter yet</span>
+                                <span className="text-xs font-bold text-slate-400">—</span>
                               )}
                             </td>
-                            <td className="py-3.5 px-4 align-top">
+                            <td className="py-3.5 px-4 align-middle">
                               {summary ? (
-                                <div className="flex flex-col gap-1">
-                                  <span className="text-sm font-extrabold text-sky-700">
-                                    {summary.actualDaysTaken ?? summary.elapsedDays ?? 0} day(s)
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-extrabold text-sky-800 flex items-center gap-1">
+                                    <Clock size={13} className="text-sky-600 shrink-0" /> {summary.actualDaysTaken ?? summary.elapsedDays ?? 0} d
                                   </span>
-                                  <span className="text-[11px] font-bold text-slate-400">
-                                    Started to completion
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                    Days Spent
                                   </span>
                                 </div>
                               ) : (
-                                <span className="text-sm font-bold text-slate-400">—</span>
+                                <span className="text-xs font-bold text-slate-400">—</span>
                               )}
                             </td>
-                            <td className="py-3.5 px-4 align-top">
+                            <td className="py-3.5 px-4 align-middle">
                               {summary ? (
-                                <div className="flex flex-col gap-1">
-                                  <span className={"text-sm font-extrabold " + (summary.daysOverTarget > 0 ? 'text-rose-700' : 'text-emerald-700')}>
-                                    {summary.daysOverTarget > 0
-                                      ? `${summary.daysOverTarget} extra day(s)`
-                                      : `${summary.daysRemainingToTarget ?? summary.daysToComplete ?? selectedSubject?.daysToComplete ?? 0} day(s) left`}
+                                <div className="flex flex-col">
+                                  <span className={"text-xs font-extrabold flex items-center gap-1 " + (summary.daysOverTarget > 0 ? 'text-rose-700' : 'text-emerald-700')}>
+                                    {summary.daysOverTarget > 0 ? (
+                                      <>
+                                        <AlertCircle size={13} className="text-rose-600 shrink-0" /> {summary.daysOverTarget} extra days
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CheckCircle2 size={13} className="text-emerald-600 shrink-0" /> {summary.daysRemainingToTarget ?? summary.daysToComplete ?? selectedSubject?.daysToComplete ?? 0} days left
+                                      </>
+                                    )}
                                   </span>
-                                  <span className="text-[11px] font-bold text-slate-400">
-                                    Target {summary.daysToComplete || selectedSubject?.daysToComplete || 0} days
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                    Target {summary.daysToComplete || selectedSubject?.daysToComplete || 0} d
                                   </span>
                                 </div>
                               ) : (
-                                <span className="text-sm font-bold text-slate-400">—</span>
+                                <span className="text-xs font-bold text-slate-400">—</span>
                               )}
                             </td>
-                            <td className="py-3.5 px-4 text-center">
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); handleViewStudentLog(student._id); }}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 active:scale-95 transition-all shadow-sm"
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-[#1565C0] px-3.5 py-1.5 text-xs font-extrabold text-white hover:bg-blue-700 transition-all shadow-md active:scale-95"
                               >
-                                <Eye size={13} /> View Log
+                                <Eye size={13} /> View Progress
                               </button>
                             </td>
                           </tr>
@@ -4530,8 +4592,27 @@ const SyllabusManagement = () => {
         </div>
       </div>
     )}
-        </div>
-      </div>
+      {/* --- OVERALL SYLLABUS EXECUTIVE REPORT DASHBOARD MODAL --- */}
+      <SyllabusReportDashboardModal
+        isOpen={overallReportModalOpen}
+        onClose={() => {
+          setOverallReportModalOpen(false);
+          if (isReportDashboardRoute) {
+            navigate('/master/syllabus-management');
+          }
+        }}
+        isSuperAdmin={isSuperAdmin}
+        user={user}
+        branches={branches}
+        batches={batches}
+        courses={courses}
+        assignedCombos={assignedCombos}
+        onSelectSubjectRow={(row) => {
+          navigate(`/master/syllabus-management/${encodeId(row.branchId)}/${encodeId(row.batchId)}/${encodeId(row.courseId)}`);
+        }}
+      />
+    </div>
+    </div>
     </div>
     </>
   );

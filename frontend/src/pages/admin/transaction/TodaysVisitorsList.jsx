@@ -897,11 +897,11 @@ const TodaysVisitorsList = () => {
                                 <th className="p-2 border font-semibold w-12 text-center">Sr. No.</th>
                                 <th className="p-2 border font-semibold">Inquiry Date</th>
                                 {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
-                                <th className="p-2 border font-semibold">Filled By</th>
-                                <th className="p-2 border font-semibold">Reference By</th>
                                 <th className="p-2 border font-semibold">Student Name</th>
                                 <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                                 <th className="p-2 border font-semibold text-center">Status</th>
+                                <th className="p-2 border font-semibold">Filled By</th>
+                                <th className="p-2 border font-semibold">Reference By</th>
                                 <th className="p-2 border font-semibold">Followup</th>
                                 <th className="p-2 border font-semibold w-36">Followup Details</th>
                                 <th className="p-2 border font-semibold">Followup By</th>
@@ -927,8 +927,6 @@ const TodaysVisitorsList = () => {
                                         <td className="p-2 text-center">{index + 1}</td>
                                         <td className="p-2">{inquiryDate ? formatDate(inquiryDate) : '-'}</td>
                                         {user?.role === 'Super Admin' && <td className="p-2 text-gray-600">{visitor.branchId?.name || '-'}</td>}
-                                        <td className="p-2 text-gray-700 font-medium">{getCreatedByName(visitor)}</td>
-                                        <td className="p-2">{visitor.reference || '-'}</td>
                                         <td className="p-2 font-bold text-gray-800">{visitor.studentName || '-'}</td>
                                         <td className="p-0 border align-top w-36">
                                             <div className="flex border-b border-gray-200 last:border-b-0">
@@ -961,6 +959,8 @@ const TodaysVisitorsList = () => {
                                                 {status}
                                             </span>
                                         </td>
+                                        <td className="p-2 text-gray-700 font-medium">{getCreatedByName(visitor)}</td>
+                                        <td className="p-2">{visitor.reference || '-'}</td>
                                         <td className="p-2 text-gray-700 font-medium">{formatDateTime(followupDate)}</td>
                                         <td className="p-2 text-gray-600 truncate max-w-xs" title={latestFollowup.remark || visitor.remarks || ''}>{latestFollowup.remark || visitor.remarks || '-'}</td>
                                         <td className="p-2 text-gray-700">{followupBy}</td>

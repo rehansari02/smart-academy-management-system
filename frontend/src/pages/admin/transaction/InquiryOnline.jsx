@@ -336,11 +336,11 @@ const InquiryOnline = () => {
                             <th>Sr. No.</th>
                             <th>Inquiry Date</th>
                             <th>Branch</th>
-                            <th>Filled By</th>
-                            <th>Reference By</th>
                             <th>Student Name</th>
                             <th>Contact (H/S/P)</th>
                             <th>Status</th>
+                            <th>Filled By</th>
+                            <th>Reference By</th>
                             <th>Followup</th>
                             <th>Followup Details</th>
                             <th>Followup By</th>
@@ -353,8 +353,6 @@ const InquiryOnline = () => {
                                 <td>${index + 1}</td>
                                 <td>${escapeHtml(item.inquiryDate ? formatDate(item.inquiryDate) : '-')}</td>
                                 <td>${escapeHtml(item.branchName || '-')}</td>
-                                <td>${escapeHtml(item.filledBy || '-')}</td>
-                                <td>${escapeHtml(item.referenceBy || '-')}</td>
                                 <td>${escapeHtml(item.studentName || '-')}</td>
                                 <td>
                                     H: ${escapeHtml(item.contactHome || '-')}<br>
@@ -362,6 +360,8 @@ const InquiryOnline = () => {
                                     P: ${escapeHtml(item.contactParent || '-')}
                                 </td>
                                 <td>${escapeHtml(item.status || '-')}</td>
+                                <td>${escapeHtml(item.filledBy || '-')}</td>
+                                <td>${escapeHtml(item.referenceBy || '-')}</td>
                                 <td>${escapeHtml(item.followUpDate ? `${formatDate(item.followUpDate)} ${new Date(item.followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-')}</td>
                                 <td>${escapeHtml(item.followUpDetails || '-')}</td>
                                 <td>${escapeHtml(item.followUpBy || '-')}</td>
@@ -933,11 +933,11 @@ const InquiryOnline = () => {
                             <th className="p-2 border font-semibold w-12">Sr. No.</th>
                             <th className="p-2 border font-semibold">Inquiry Date</th>
                             {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Branch</th>}
-                            {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Filled By</th>}
-                            {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Reference By</th>}
                             <th className="p-2 border font-semibold">Student Name</th>
                             <th className="p-2 border font-semibold text-center w-36">Contact (H/S/P)</th>
                             <th className="p-2 border font-semibold text-center">Status</th>
+                            {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Filled By</th>}
+                            {user?.role === 'Super Admin' && <th className="p-2 border font-semibold">Reference By</th>}
                             <th className="p-2 border font-semibold">Followup</th>
                             <th className="p-2 border font-semibold w-36">Followup Details</th>
                             <th className="p-2 border font-semibold">Followup By</th>
@@ -959,11 +959,6 @@ const InquiryOnline = () => {
                                 <td className="p-2 border text-center">{((inquiryPagination?.page || 1) - 1) * (inquiryPagination?.pageSize || 10) + index + 1}</td>
                                 <td className="p-2 border text-gray-700">{formatDate(inquiry.inquiryDate)}</td>
                                 {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{inquiry.branchId?.name || '-'}</td>}
-                                {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{getFilledBy(inquiry)}</td>}
-                                {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">
-                                    <div>{getHandleBy(inquiry)}</div>
-                                    {assignedByAdmin && <span className="inline-block mt-1 rounded border border-red-300 bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase text-red-700">Assigned</span>}
-                                </td>}
                                 <td className="p-2 border font-bold text-gray-800">{[inquiry.firstName, inquiry.middleName, inquiry.lastName].filter(Boolean).join(' ')}</td>
                                 <td className="p-0 border align-top">
                                     <div className="flex border-b border-gray-200 last:border-b-0">
@@ -993,6 +988,11 @@ const InquiryOnline = () => {
                                         {inquiry.status}
                                     </span>
                                 </td>
+                                {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">{getFilledBy(inquiry)}</td>}
+                                {user?.role === 'Super Admin' && <td className="p-2 border text-gray-600">
+                                    <div>{getHandleBy(inquiry)}</div>
+                                    {assignedByAdmin && <span className="inline-block mt-1 rounded border border-red-300 bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase text-red-700">Assigned</span>}
+                                </td>}
                                 <td className="p-2 border text-gray-700">
                                     {inquiry.followUpDate ? `${formatDate(inquiry.followUpDate)} ${new Date(inquiry.followUpDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '-'}
                                 </td>

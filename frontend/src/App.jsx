@@ -896,6 +896,16 @@ function App() {
                 }
               />
               <Route
+                path="/master/syllabus-management/report-dashboard"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <SyllabusManagement />
+                    </Suspense>
+                  </PrivateRoute>
+                }
+              />
+              <Route
                 path="/master/syllabus-management/report/:reportBranchId/:reportBatchId/:reportCourseId/:reportSubjectId/:reportStudentId"
                 element={
                   <PrivateRoute>

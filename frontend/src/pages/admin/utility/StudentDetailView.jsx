@@ -18,6 +18,8 @@ import {
   ListTodo,
   Trophy,
   History,
+  Printer,
+  FileText,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import moment from 'moment';
@@ -58,6 +60,14 @@ const StudentDetailView = ({
   const [incompleteChapter, setIncompleteChapter] = useState(null);
   const [incompleteIndex, setIncompleteIndex] = useState(null);
   const [incompleteReason, setIncompleteReason] = useState('');
+  const [showProgressReportModal, setShowProgressReportModal] = useState(false);
+
+  const totalChaptersCount = chapterStatuses.length;
+  const completedChaptersCount = chapterStatuses.filter(c => c.status === 'Completed').length;
+  const runningChaptersCount = chapterStatuses.filter(c => c.status === 'Running').length;
+  const totalProjectsCount = chapterStatuses.reduce((acc, c) => acc + (c.projects?.length || 0), 0);
+  const completedProjectsCount = chapterStatuses.reduce((acc, c) => acc + (c.projects?.filter(p => p.completed)?.length || 0), 0);
+  const progressPercent = totalChaptersCount > 0 ? Math.round((completedChaptersCount / totalChaptersCount) * 100) : 0;
 
   const handleOpenIncompleteModal = (ch, index) => {
     setIncompleteChapter(ch);
@@ -557,6 +567,14 @@ const StudentDetailView = ({
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={() => setShowProgressReportModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 px-3.5 py-1.5 text-xs font-black text-white shadow-md transition-all active:scale-95 cursor-pointer"
+              title="Open printable Student Progress Report"
+            >
+              <Printer size={15} /> Progress Report
+            </button>
+            <button
               onClick={fetchChapterStatuses}
               disabled={loading}
               className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/25 disabled:opacity-50 transition"
@@ -600,6 +618,46 @@ const StudentDetailView = ({
 
       {/* Main Content */}
       <div className="p-5 space-y-5">
+        {/* Progress Summary */}
+        {!isLoading && chapterStatuses.length > 0 && (
+          <div className="rounded-xl bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp size={16} className="text-indigo-600" />
+              <span className="text-sm font-black text-indigo-800">Progress Summary</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-white rounded-lg border border-indigo-100 p-3 text-center shadow-2xs">
+                <p className="text-xl font-black text-indigo-700">
+                  {chapterStatuses.filter(c => c.status === 'Completed').length}
+                  <span className="text-sm font-semibold text-slate-400">/{chapterStatuses.length}</span>
+                </p>
+                <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500 mt-0.5">Chapters Done</p>
+              </div>
+              <div className="bg-white rounded-lg border border-indigo-100 p-3 text-center shadow-2xs">
+                <p className="text-xl font-black text-amber-600">
+                  {chapterStatuses.filter(c => c.status === 'Running').length}
+                </p>
+                <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500 mt-0.5">In Progress</p>
+              </div>
+              <div className="bg-white rounded-lg border border-indigo-100 p-3 text-center shadow-2xs">
+                <p className="text-xl font-black text-emerald-600">
+                  {chapterStatuses.reduce((sum, c) => sum + (c.projects?.filter(p => p.completed).length || 0), 0)}
+                  <span className="text-sm font-semibold text-slate-400">
+                    /{chapterStatuses.reduce((sum, c) => sum + (c.projects?.length || 0), 0)}
+                  </span>
+                </p>
+                <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500 mt-0.5">Projects Done</p>
+              </div>
+              <div className="bg-white rounded-lg border border-indigo-100 p-3 text-center shadow-2xs">
+                <p className="text-xl font-black text-rose-600">
+                  {chapterStatuses.reduce((sum, c) => sum + (c.projects?.filter(p => !p.completed).length || 0), 0)}
+                </p>
+                <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500 mt-0.5">Pending</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="flex items-center justify-center gap-2 py-12 text-indigo-600 font-bold">
             <RefreshCw size={20} className="animate-spin" /> Loading chapter data…
@@ -1182,46 +1240,6 @@ const StudentDetailView = ({
             })}
           </div>
         )}
-
-        {/* Progress Summary */}
-        {!isLoading && chapterStatuses.length > 0 && (
-          <div className="rounded-xl bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <TrendingUp size={16} className="text-indigo-600" />
-              <span className="text-sm font-black text-indigo-800">Progress Summary</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-white rounded-lg border border-indigo-100 p-3 text-center">
-                <p className="text-xl font-black text-indigo-700">
-                  {chapterStatuses.filter(c => c.status === 'Completed').length}
-                  <span className="text-sm font-semibold text-slate-400">/{chapterStatuses.length}</span>
-                </p>
-                <p className="text-[10px] font-bold text-slate-500">Chapters Done</p>
-              </div>
-              <div className="bg-white rounded-lg border border-indigo-100 p-3 text-center">
-                <p className="text-xl font-black text-amber-600">
-                  {chapterStatuses.filter(c => c.status === 'Running').length}
-                </p>
-                <p className="text-[10px] font-bold text-slate-500">In Progress</p>
-              </div>
-              <div className="bg-white rounded-lg border border-indigo-100 p-3 text-center">
-                <p className="text-xl font-black text-emerald-600">
-                  {chapterStatuses.reduce((sum, c) => sum + c.projects.filter(p => p.completed).length, 0)}
-                  <span className="text-sm font-semibold text-slate-400">
-                    /{chapterStatuses.reduce((sum, c) => sum + c.projects.length, 0)}
-                  </span>
-                </p>
-                <p className="text-[10px] font-bold text-slate-500">Projects Done</p>
-              </div>
-              <div className="bg-white rounded-lg border border-indigo-100 p-3 text-center">
-                <p className="text-xl font-black text-rose-600">
-                  {chapterStatuses.reduce((sum, c) => sum + c.projects.filter(p => !p.completed).length, 0)}
-                </p>
-                <p className="text-[10px] font-bold text-slate-500">Pending</p>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
 
@@ -1425,6 +1443,157 @@ const StudentDetailView = ({
         )}
         </>);
       })()}
+      {/* --- PROGRESS REPORT MODAL & PRINT CARD --- */}
+      {showProgressReportModal && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:bg-white print:static">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] print:max-h-none print:shadow-none print:w-full print:rounded-none">
+            {/* Modal Top Control Bar (Hidden on print) */}
+            <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between print:hidden">
+              <div className="flex items-center gap-2">
+                <Printer className="text-emerald-400" size={20} />
+                <span className="font-extrabold text-sm tracking-wide">Student Syllabus Progress Report</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+                >
+                  <Printer size={15} /> Print Progress Report
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowProgressReportModal(false)}
+                  className="text-slate-400 hover:text-white transition p-1 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Report Printable Content Container */}
+            <div className="p-6 overflow-y-auto space-y-5 print:p-0 print:overflow-visible text-slate-800">
+              {/* Header Brand */}
+              <div className="border-b-2 border-slate-900 pb-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                <div>
+                  <h1 className="text-2xl font-black tracking-tight text-[#0a1931] uppercase">SMART INSTITUTE</h1>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-0.5">Syllabus Progress & Completion Report</p>
+                </div>
+                <div className="text-right text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl">
+                  <div>Report Date: <span className="text-slate-900 font-extrabold">{moment().format('DD MMMM YYYY')}</span></div>
+                  <div className="mt-0.5">Student Name: <span className="text-indigo-700 font-extrabold">{student?.name}</span></div>
+                </div>
+              </div>
+
+              {/* Student & Course Details Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs">
+                <div>
+                  <span className="block font-bold text-slate-400 uppercase text-[10px]">Student Name</span>
+                  <span className="font-extrabold text-slate-900 text-sm truncate block">{student?.name || '—'}</span>
+                </div>
+                <div>
+                  <span className="block font-bold text-slate-400 uppercase text-[10px]">Enrollment No</span>
+                  <span className="font-extrabold text-indigo-700 text-sm block">{student?.enrollmentNo || '—'}</span>
+                </div>
+                <div>
+                  <span className="block font-bold text-slate-400 uppercase text-[10px]">Subject Name</span>
+                  <span className="font-extrabold text-emerald-800 text-sm truncate block">{selectedSubject?.name || '—'}</span>
+                </div>
+                <div>
+                  <span className="block font-bold text-slate-400 uppercase text-[10px]">Target Days</span>
+                  <span className="font-extrabold text-sky-800 text-sm block">{selectedSubject?.daysToComplete || 0} Days ({selectedSubject?.totalPages || 0} Pages)</span>
+                </div>
+              </div>
+
+              {/* Progress Summary Bar Cards */}
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                  <div className="text-2xl font-black text-emerald-700">{progressPercent}%</div>
+                  <div className="text-[11px] font-extrabold text-emerald-800 uppercase tracking-wide mt-0.5">Chapters Completed ({completedChaptersCount}/{totalChaptersCount})</div>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                  <div className="text-2xl font-black text-blue-700">{completedProjectsCount} / {totalProjectsCount}</div>
+                  <div className="text-[11px] font-extrabold text-blue-800 uppercase tracking-wide mt-0.5">Projects Finished</div>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <div className="text-2xl font-black text-amber-700">{remaining.text}</div>
+                  <div className="text-[11px] font-extrabold text-amber-800 uppercase tracking-wide mt-0.5">Course Window Status</div>
+                </div>
+              </div>
+
+              {/* Chapter-by-Chapter Progression Table */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-900 text-white font-extrabold uppercase">
+                      <th className="py-2.5 px-3 w-10 text-center">#</th>
+                      <th className="py-2.5 px-3">Chapter Name</th>
+                      <th className="py-2.5 px-3 text-center">Pages</th>
+                      <th className="py-2.5 px-3 text-center">Status</th>
+                      <th className="py-2.5 px-3 text-center">Started On</th>
+                      <th className="py-2.5 px-3 text-center">Completed On</th>
+                      <th className="py-2.5 px-3 text-center">Projects Done</th>
+                      <th className="py-2.5 px-3">Teacher</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 font-medium">
+                    {chapterStatuses.map((chData, idx) => {
+                      const ch = chData.chapter;
+                      const cStatus = chData.status || 'Not Started';
+                      const projs = chData.projects || [];
+                      const doneProjs = projs.filter(p => p.completed).length;
+
+                      return (
+                        <tr key={ch._id || idx} className="odd:bg-white even:bg-slate-50/60">
+                          <td className="py-2.5 px-3 text-center font-black text-slate-700">{idx + 1}</td>
+                          <td className="py-2.5 px-3 font-extrabold text-slate-900">{ch.name || ch}</td>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-600">
+                            {ch.startPage !== undefined ? `${ch.startPage} - ${ch.endPage}` : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-bold">
+                            <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-black ${
+                              cStatus === 'Completed' ? 'bg-emerald-100 text-emerald-800' :
+                              cStatus === 'Running' ? 'bg-sky-100 text-sky-800' :
+                              cStatus === 'Stopped' ? 'bg-rose-100 text-rose-800' :
+                              'bg-slate-100 text-slate-500'
+                            }`}>
+                              {cStatus}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-700">
+                            {chData.startedAt ? moment(chData.startedAt).format('DD/MM/YYYY') : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-700">
+                            {chData.completedAt ? moment(chData.completedAt).format('DD/MM/YYYY') : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-extrabold text-slate-800">
+                            {projs.length > 0 ? `${doneProjs} / ${projs.length}` : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 font-bold text-slate-700">
+                            {chData.currentTeacherName || '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Signatures Footer */}
+              <div className="pt-6 grid grid-cols-2 gap-8 text-center text-xs font-extrabold text-slate-700">
+                <div>
+                  <div className="border-b border-slate-400 mb-1.5 pb-8"></div>
+                  <span>Faculty / Instructor Signature</span>
+                </div>
+                <div>
+                  <div className="border-b border-slate-400 mb-1.5 pb-8"></div>
+                  <span>Authorized Stamp & Signature</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
