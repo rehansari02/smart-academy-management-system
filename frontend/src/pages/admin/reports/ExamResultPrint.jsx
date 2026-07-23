@@ -4,7 +4,7 @@ import axios from "axios";
 import moment from "moment";
 import { QRCodeSVG } from "qrcode.react";
 
-import markshettkl from "../../../assets/marksheetrhen.png";
+import markshettkl from "../../../assets/markshettkl.png";
 import certificateImg from "../../../assets/certificate.png";
 
 const ExamResultPrint = () => {
@@ -248,71 +248,37 @@ const ExamResultPrint = () => {
 
   // Helper to get matching subject details (name + subtext) based on input
   const getSubjectDetails = (name, index) => {
-    const n = (name || "").toUpperCase();
+    const rawName = String(name || "").trim();
+    const n = rawName.toUpperCase();
 
-    const defaults = [
-      {
-        name: "BASIC (I)",
-        subtext: "Os-XP/Windows7, Dos, Word, Excel, Powerpoint",
-      },
-      { name: "H.T.M.L. (II)", subtext: "Hyper Text Markup Language" },
-      { name: "TALLY (III)", subtext: "Tally.9, Tally ERP.9" },
-      {
-        name: "DESKTOP PUBLISHING- D.T.P. (IV)",
-        subtext: "Photoshop Cs3, Corel Draw, Pagemaker",
-      },
-      { name: "INTERNET & SEMINAR (V)", subtext: "Internet & Seminar" },
-      { name: "PROJECT", subtext: "" },
-      { name: "DISCIPLINE", subtext: "" },
-    ];
+    if (n === "PROJECT") return { name: "PROJECT", subtext: "" };
+    if (n === "DISCIPLINE" || n === "DESCIPLINE") return { name: "DISCIPLINE", subtext: "" };
 
-    // Match common roman numerals/indicators
-    if (n === "(I)" || n === "I") return defaults[0];
-    if (n === "(II)" || n === "II") return defaults[1];
-    if (n === "(III)" || n === "III") return defaults[2];
-    if (n === "(IV)" || n === "IV") return defaults[3];
-    if (n === "(V)" || n === "V") return defaults[4];
-    if (n === "PROJECT") return defaults[5];
-    if (n === "DISCIPLINE" || n === "DESCIPLINE") return defaults[6];
+    const romanNumerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+    const romanTag = romanNumerals[index] ? ` (${romanNumerals[index]})` : "";
 
-    // Intelligent keywords match
-    let matchedName = n;
-    let matchedSubtext = "";
-    if (n.includes("BASIC")) {
-      matchedName = "BASIC (I)";
-      matchedSubtext = defaults[0].subtext;
-    } else if (
-      n.includes("HTML") ||
-      n.includes("MARKUP") ||
-      n.includes("H.T.M.L")
-    ) {
-      matchedName = "H.T.M.L. (II)";
-      matchedSubtext = defaults[1].subtext;
-    } else if (n.includes("TALLY")) {
-      matchedName = "TALLY (III)";
-      matchedSubtext = defaults[2].subtext;
-    } else if (
-      n.includes("DESKTOP") ||
-      n.includes("DTP") ||
-      n.includes("PUBLISHING")
-    ) {
-      matchedName = "DESKTOP PUBLISHING- D.T.P. (IV)";
-      matchedSubtext = defaults[3].subtext;
-    } else if (n.includes("INTERNET") || n.includes("SEMINAR")) {
-      matchedName = "INTERNET & SEMINAR (V)";
-      matchedSubtext = defaults[4].subtext;
-    } else if (n.includes("PROJECT")) {
-      matchedName = "PROJECT";
-      matchedSubtext = "";
-    } else if (n.includes("DISCIPLINE") || n.includes("DESCIPLINE")) {
-      matchedName = "DISCIPLINE";
-      matchedSubtext = "";
-    } else {
-      if (index >= 0 && index < defaults.length) {
-        return defaults[index];
-      }
+    const defaultsMap = {
+      BASIC: { name: "BASIC (I)", subtext: "Os-XP/Windows7, Dos, Word, Excel, Powerpoint" },
+      HTML: { name: "H.T.M.L. (II)", subtext: "Hyper Text Markup Language" },
+      DTP: { name: "DESKTOP PUBLISHING- D.T.P. (IV)", subtext: "Photoshop Cs3, Corel Draw, Pagemaker" },
+      INTERNET: { name: "INTERNET & SEMINAR (V)", subtext: "Internet & Seminar" },
+    };
+
+    if (n.includes("BASIC") && !n.includes("(")) return defaultsMap.BASIC;
+    if ((n.includes("HTML") || n.includes("MARKUP")) && !n.includes("(")) return defaultsMap.HTML;
+    if ((n.includes("DTP") || n.includes("DESKTOP PUBLISHING")) && !n.includes("(")) return defaultsMap.DTP;
+    if ((n.includes("INTERNET") || n.includes("SEMINAR")) && !n.includes("(")) return defaultsMap.INTERNET;
+
+    // Use actual subject name with dynamic Roman numeral if no specific tag present
+    let displayName = n;
+    if (!n.includes("(") && !n.includes(")") && n !== "PROJECT" && n !== "DISCIPLINE") {
+      displayName = `${n}${romanTag}`;
     }
-    return { name: matchedName, subtext: matchedSubtext };
+
+    let subtext = "";
+    if (n.includes("TALLY")) subtext = "Tally.9, Tally ERP.9, Tally Prime";
+
+    return { name: displayName, subtext };
   };
 
   const formatMark = (val) => {
@@ -424,37 +390,38 @@ const ExamResultPrint = () => {
 
   // --- Dynamic Layout Calculations for Marksheet ---
   const numSubjects = marksData.length;
-  let rowHeight = "10.2mm";
+  let rowHeight = "9.6mm";
+  let headerRowHeight1 = "6.0mm";
+  let headerRowHeight2 = "5.5mm";
   let snameFontSize = "10px";
-  let ssubFontSize = "7px";
+  let ssubFontSize = "7.5px";
   let tableFontSize = "9.5px";
-  let spacerHeight = "2mm";
-  let headingMarginTop = "2mm";
-  let headingMarginBottom = "2mm";
-  let detailsMarginBottom = "3mm";
-  let botTableHeight = "10mm";
+  let spacerHeight = "1.8mm";
+  let headingMarginTop = "1.8mm";
+  let headingMarginBottom = "1.8mm";
+  let detailsMarginBottom = "2.0mm";
+  let botTableHeight = "8.5mm";
   let botTableFontSize = "9px";
-  let dateIssueMarginTop = "4mm";
+  let dateIssueMarginTop = "2.5mm";
 
-  if (numSubjects > 6) {
-    // More aggressive scaling to fit into the pre-printed space
-    const overflow = numSubjects - 6;
-    // Target: fit numSubjects into the space of 6 rows (approx 61mm)
-    const calculatedHeight = 61 / numSubjects;
-    rowHeight = `${Math.max(6.5, calculatedHeight)}mm`;
+  if (numSubjects >= 6) {
+    const extra = numSubjects - 5;
+    // Scale row heights gracefully while keeping fonts large, bold & crystal clear
+    rowHeight = `${Math.max(6.2, 8.8 - extra * 0.55)}mm`;
+    headerRowHeight1 = `${Math.max(4.8, 6.0 - extra * 0.25)}mm`;
+    headerRowHeight2 = `${Math.max(4.4, 5.5 - extra * 0.25)}mm`;
+    snameFontSize = `${Math.max(8.8, 10 - extra * 0.3)}px`;
+    ssubFontSize = `${Math.max(6.5, 7.5 - extra * 0.25)}px`;
+    tableFontSize = `${Math.max(8.5, 9.5 - extra * 0.3)}px`;
 
-    snameFontSize = `${Math.max(7, 10 - overflow * 0.7)}px`;
-    ssubFontSize = `${Math.max(5.5, 7 - overflow * 0.3)}px`;
-    tableFontSize = `${Math.max(7.5, 9.5 - overflow * 0.4)}px`;
+    spacerHeight = `${Math.max(0.8, 1.8 - extra * 0.25)}mm`;
+    headingMarginTop = `${Math.max(0.8, 1.8 - extra * 0.25)}mm`;
+    headingMarginBottom = `${Math.max(0.8, 1.8 - extra * 0.25)}mm`;
+    detailsMarginBottom = `${Math.max(1.0, 2.0 - extra * 0.2)}mm`;
 
-    spacerHeight = `${Math.max(1, 4 - overflow * 0.5)}mm`;
-    headingMarginTop = `${Math.max(0.5, 3 - overflow * 0.5)}mm`;
-    headingMarginBottom = `${Math.max(0.5, 3 - overflow * 0.5)}mm`;
-    detailsMarginBottom = `${Math.max(1, 3.5 - overflow * 0.5)}mm`;
-
-    botTableHeight = `${Math.max(6, 10 - overflow * 0.8)}mm`;
-    botTableFontSize = `${Math.max(7, 9 - overflow * 0.5)}px`;
-    dateIssueMarginTop = `${Math.max(2, 4 - overflow * 0.5)}mm`;
+    botTableHeight = `${Math.max(6.5, 8.5 - extra * 0.4)}mm`;
+    botTableFontSize = `${Math.max(8.2, 9.0 - extra * 0.25)}px`;
+    dateIssueMarginTop = `${Math.max(1.5, 2.5 - extra * 0.3)}mm`;
   }
 
   const isFemaleStudent = student?.gender?.toLowerCase() === "female";
@@ -499,7 +466,7 @@ const ExamResultPrint = () => {
       </div>
 
       {/* --- A4 Print Sheet --- */}
-      <div className="sheet bg-white w-[210mm] h-[297mm] relative overflow-hidden print:w-[210mm] print:h-[297mm] print:m-0 print:shadow-none shadow-2xl box-border">
+      <div className="sheet bg-white w-[210mm] h-[271.85mm] relative overflow-hidden print:w-[210mm] print:h-[271.85mm] print:m-0 print:shadow-none shadow-2xl box-border">
         {type === "Marksheet" ? (
           <>
             {/* Background pre-printed template image */}
@@ -717,7 +684,7 @@ const ExamResultPrint = () => {
                   }}
                 >
                   <thead>
-                    <tr style={{ height: "6.5mm" }}>
+                    <tr style={{ height: headerRowHeight1 }}>
                       <th
                         rowSpan="2"
                         style={{
@@ -792,7 +759,7 @@ const ExamResultPrint = () => {
                         WISE GRADE
                       </th>
                     </tr>
-                    <tr style={{ height: "6mm" }}>
+                    <tr style={{ height: headerRowHeight2 }}>
                       <th
                         style={{
                           width: "9%",
@@ -1508,7 +1475,7 @@ const ExamResultPrint = () => {
 
                     .sheet {
                         width: 210mm;
-                        height: 297mm;
+                        height: 271.85mm;
                         background: #fff;
                         position: relative;
                         overflow: hidden;
@@ -1516,10 +1483,12 @@ const ExamResultPrint = () => {
                     }
                     .bg-img {
                         position: absolute;
-                        inset: 0;
-                        width: 100%;
-                        height: 100%;
-                        object-fit: fill;
+                        top: 0;
+                        left: 0;
+                        width: 210mm;
+                        height: 271.85mm;
+                        object-fit: contain;
+                        object-position: top center;
                         z-index: 0;
                     }
                     .ov {
@@ -1596,7 +1565,7 @@ const ExamResultPrint = () => {
 
                     @media print {
                         @page { 
-                            size: A4 portrait; 
+                            size: 210mm 271.85mm; 
                             margin: 0; 
                         }
                         body {
@@ -1608,7 +1577,7 @@ const ExamResultPrint = () => {
                         .sheet {
                             box-shadow: none;
                             width: 210mm !important;
-                            height: 297mm !important;
+                            height: 271.85mm !important;
                             margin: 0 !important;
                             padding: 0 !important;
                         }
