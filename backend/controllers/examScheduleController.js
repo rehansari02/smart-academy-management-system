@@ -166,8 +166,12 @@ const getMcqCorrectOptionLetter = (mcq) => {
 
 const scoreAttemptAgainstPaper = (attempt, subjectPaper) => {
     const answers = Array.isArray(attempt?.answers) ? attempt.answers : [];
-    const mcqs = Array.isArray(subjectPaper?.mcqs) ? subjectPaper.mcqs : [];
-    const questionAnswers = Array.isArray(subjectPaper?.questionAnswers) ? subjectPaper.questionAnswers : [];
+    const mcqs = Array.isArray(attempt?.assignedMcqs) && attempt.assignedMcqs.length > 0
+        ? attempt.assignedMcqs
+        : (Array.isArray(subjectPaper?.mcqs) ? subjectPaper.mcqs : []);
+    const questionAnswers = Array.isArray(attempt?.assignedQuestionAnswers) && attempt.assignedQuestionAnswers.length > 0
+        ? attempt.assignedQuestionAnswers
+        : (Array.isArray(subjectPaper?.questionAnswers) ? subjectPaper.questionAnswers : []);
 
     let mcqCorrectCount = 0;
     let mcqWrongCount = 0;

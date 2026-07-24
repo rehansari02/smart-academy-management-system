@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
+import moment from 'moment';
+import { useReactToPrint } from 'react-to-print';
 import {
   ArrowLeft,
   CalendarDays,
@@ -15,11 +17,13 @@ import {
   Clock,
   BookOpenCheck,
   ShieldCheck,
-  Phone
+  Phone,
+  Printer
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { fetchExamSchedules, fetchExams } from '../../../features/master/masterSlice';
 import TimePicker12Hour from '../../../components/common/TimePicker12Hour';
+import logo from '../../../assets/logo2.png';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/master/`;
 
@@ -75,6 +79,29 @@ const ExamSetAbsent = () => {
   const [password, setPassword] = useState('');
   const [passwordEnabled, setPasswordEnabled] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedBranch, setSelectedBranch] = useState('all');
+
+  const componentRef = useRef(null);
+
+  const handleReactToPrint = useReactToPrint({
+    contentRef: componentRef,
+    content: () => componentRef.current,
+    documentTitle: `Absent_Student_Report_${selectedExamName || 'Exam'}_${moment().format('DD-MM-YYYY')}`,
+    onAfterPrint: () => toast.success('Report Sent to Printer')
+  });
+
+  const onPrintClick = () => {
+    try {
+      if (handleReactToPrint) {
+        handleReactToPrint();
+      } else {
+        window.print();
+      }
+    } catch (error) {
+      console.error('Print trigger error:', error);
+      window.print();
+    }
+  };
 
   useEffect(() => {
     dispatch(fetchExams());
@@ -136,10 +163,22 @@ const ExamSetAbsent = () => {
     if (selectedExamName) loadAbsentRows(selectedExamName);
   }, []);
 
+  const availableBranches = useMemo(() => {
+    const set = new Set();
+    rows.forEach((r) => {
+      set.add(r.student?.branchName || 'Main Branch');
+    });
+    return [...set].sort();
+  }, [rows]);
+
   const filteredRows = useMemo(() => {
-    if (!searchTerm.trim()) return rows;
+    let result = rows;
+    if (selectedBranch !== 'all') {
+      result = result.filter((row) => (row.student?.branchName || 'Main Branch') === selectedBranch);
+    }
+    if (!searchTerm.trim()) return result;
     const term = searchTerm.toLowerCase().trim();
-    return rows.filter((row) => {
+    return result.filter((row) => {
       const name = String(row.student?.name || '').toLowerCase();
       const reg = String(row.student?.regNo || '').toLowerCase();
       const course = String(row.course?.name || '').toLowerCase();
@@ -147,7 +186,30 @@ const ExamSetAbsent = () => {
       const branch = String(row.student?.branchName || '').toLowerCase();
       return name.includes(term) || reg.includes(term) || course.includes(term) || subject.includes(term) || branch.includes(term);
     });
-  }, [rows, searchTerm]);
+  }, [rows, selectedBranch, searchTerm]);
+
+  // Course-wise Absent Summary
+  const courseSummary = useMemo(() => {
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const courseName = row.course?.name || 'Course';
+      const dateLabel = formatDateLabel(row.originalDate);
+      const key = `${courseName}__${dateLabel}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          courseName,
+          dateLabel,
+          count: 0,
+          subjects: new Set()
+        });
+      }
+      const item = map.get(key);
+      item.count += 1;
+      const subName = row.subject?.name || row.subject?.printedName;
+      if (subName) item.subjects.add(subName);
+    });
+    return [...map.values()].sort((a, b) => a.courseName.localeCompare(b.courseName));
+  }, [filteredRows]);
 
   // Group filtered rows by Date -> Branch (mirroring ExamSet.jsx layout)
   const dateGroups = useMemo(() => {
@@ -298,6 +360,54 @@ const ExamSetAbsent = () => {
     }
   };
 
+  const createSingleReExam = async (row) => {
+    if (!selectedExamName) {
+      toast.error('Select exam name first.');
+      return;
+    }
+    const time = rowTimes[row.key] || {};
+    if (!time.date) {
+      toast.error(`Select Re-Exam Date for ${row.student?.name || 'this student'}.`);
+      return;
+    }
+    if (!time.startTime || !time.endTime) {
+      toast.error(`Set Start Time and End Time for ${row.student?.name || 'this student'}.`);
+      return;
+    }
+    if (passwordEnabled && !password.trim()) {
+      toast.error('Re-Exam Password is required.');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const payload = {
+        examName: selectedExamName,
+        conductPasswordEnabled: passwordEnabled,
+        conductPassword: password,
+        selectedRows: [
+          {
+            scheduleId: row.scheduleId,
+            subjectId: row.subject?._id || row.subject,
+            studentId: row.student?._id,
+            date: time.date,
+            startTime: formatTime12Hour(time.startTime),
+            endTime: formatTime12Hour(time.endTime)
+          }
+        ]
+      };
+      const res = await axios.post(`${API_URL}exam-schedule/absent-reexam`, payload);
+      toast.success(res.data?.message || `Re-exam scheduled for ${row.student?.name || 'student'} successfully!`);
+      await loadAbsentRows(selectedExamName);
+      dispatch(fetchExamSchedules({ examName: selectedExamName }));
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to create re-exam timetable');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
       {/* Top Header Bar */}
@@ -321,6 +431,14 @@ const ExamSetAbsent = () => {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
+            onClick={onPrintClick}
+            disabled={!selectedExamName || filteredRows.length === 0}
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 disabled:opacity-60 transition cursor-pointer"
+          >
+            <Printer size={15} /> Print Absent Report
+          </button>
+          <button
+            type="button"
             onClick={() => loadAbsentRows()}
             disabled={!selectedExamName || loading}
             className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-700 shadow-xs hover:bg-gray-50 disabled:opacity-60 transition cursor-pointer"
@@ -331,9 +449,9 @@ const ExamSetAbsent = () => {
       </div>
 
       {/* Filter & Metrics Card (Mirrors ExamSet.jsx) */}
-      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm space-y-4">
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm space-y-4 print:hidden">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Select Exam Schedule</label>
               <select
@@ -344,6 +462,21 @@ const ExamSetAbsent = () => {
                 <option value="">-- Select Exam Schedule --</option>
                 {examOptions.map((name) => (
                   <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Filter By Branch</label>
+              <select
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                disabled={!selectedExamName}
+                className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 py-2.5 text-sm font-semibold text-gray-800 outline-none focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-500/10 disabled:opacity-50 transition"
+              >
+                <option value="all">All Branches ({rows.length})</option>
+                {availableBranches.map((bName) => (
+                  <option key={bName} value={bName}>{bName}</option>
                 ))}
               </select>
             </div>
@@ -420,6 +553,48 @@ const ExamSetAbsent = () => {
             </button>
           </div>
         </div>
+
+        {/* Course-Wise Absent Summary Card (Screen View) */}
+        {selectedExamName && courseSummary.length > 0 && (
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 shadow-xs space-y-3 print:hidden">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-indigo-950 flex items-center gap-2">
+                <BookOpenCheck size={16} className="text-indigo-600" />
+                Course-Wise Absent Summary ({courseSummary.length} Course Group(s))
+              </h3>
+              <span className="text-[11px] font-bold text-indigo-700 bg-indigo-100/70 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                Branch: {selectedBranch === 'all' ? 'All Branches' : selectedBranch}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border border-indigo-100 bg-white">
+              <table className="min-w-full text-xs">
+                <thead className="bg-indigo-50/80 text-left text-[11px] font-bold uppercase tracking-wider text-indigo-900 border-b border-indigo-100">
+                  <tr>
+                    <th className="px-3 py-2">Course Name</th>
+                    <th className="px-3 py-2">Original Exam Date</th>
+                    <th className="px-3 py-2 text-center">Absent Students</th>
+                    <th className="px-3 py-2">Absent Subject(s)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-indigo-50 font-medium">
+                  {courseSummary.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-indigo-50/30">
+                      <td className="px-3 py-2 font-extrabold text-indigo-950">{item.courseName}</td>
+                      <td className="px-3 py-2 font-semibold text-gray-700">{item.dateLabel}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className="inline-block rounded-full bg-rose-100 px-2.5 py-0.5 font-bold text-rose-800 border border-rose-200">
+                          {item.count} Absent
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-slate-600 text-[11px]">{[...item.subjects].join(', ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Content Layout */}
@@ -568,6 +743,7 @@ const ExamSetAbsent = () => {
                                 <th className="px-3 py-2.5">Re-Exam Date</th>
                                 <th className="px-3 py-2.5">Start Time</th>
                                 <th className="px-3 py-2.5">End Time</th>
+                                <th className="px-3 py-2.5 text-center">Action</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 font-medium">
@@ -625,6 +801,18 @@ const ExamSetAbsent = () => {
                                         compact
                                       />
                                     </td>
+                                    <td className="px-3 py-2.5 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => createSingleReExam(row)}
+                                        disabled={creating || !time.date}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-40 transition cursor-pointer whitespace-nowrap"
+                                        title="Schedule Re-Exam for this student only"
+                                      >
+                                        <CheckSquare size={13} />
+                                        Schedule
+                                      </button>
+                                    </td>
                                   </tr>
                                 );
                               })}
@@ -642,13 +830,137 @@ const ExamSetAbsent = () => {
       )}
 
       {/* Info Box */}
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-900 shadow-xs">
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-900 shadow-xs print:hidden">
         <div className="flex items-start gap-2.5">
           <CalendarDays size={20} className="mt-0.5 text-amber-700 shrink-0" />
           <span>
             <strong>Re-Exam Timetable Note:</strong> Creating a re-exam timetable adds a new re-exam entry under the same exam name (<span className="font-bold">{selectedExamName || 'Exam'}</span>). In the student portal, the original exam subject displays status <span className="font-bold text-rose-700">Absent</span>, and the new re-exam schedule appears in a dedicated Re-Exam timetable section.
           </span>
         </div>
+      </div>
+
+      {/* Printable Report Area (Off-screen on webpage, 100% captured for printing) */}
+      <div className="fixed -left-[9999px] top-0 print:static print:left-0 print:block">
+        <div
+          ref={componentRef}
+          className="bg-white p-4 w-[210mm] print:w-full font-sans text-black"
+        >
+          {/* Header */}
+          <div className="flex justify-between items-start mb-6 border-b-2 border-blue-600 pb-4">
+            <div className="flex items-center gap-4">
+              <img src={logo} alt="Institute Logo" className="h-20 object-contain" />
+            </div>
+            <div className="text-right text-xs space-y-1">
+              <h2 className="text-xl font-bold text-blue-600 mb-1">
+                {selectedBranch === 'all' ? 'Smart Institute' : selectedBranch}
+              </h2>
+              <div className="text-gray-600 max-w-xs ml-auto">
+                309-A, 309-B, 3rd Floor, Sai Square Building, Bhestan Circle, Bhestan Surat Gujarat-395023 (INDIA)
+              </div>
+              <p className="font-semibold text-blue-800">
+                Ph. No. : 96017-49300, Mob. No. : 98988-30409
+              </p>
+              <p className="text-blue-500 underline">smartinstitutes@gmail.com</p>
+            </div>
+          </div>
+
+          {/* Title */}
+          <div className="text-center mb-6">
+            <h3 className="text-lg font-bold text-black uppercase underline decoration-2 underline-offset-4">
+              Absent Student Re-Exam Schedule Report
+            </h3>
+            <p className="text-xs text-gray-500 mt-1 font-semibold">
+              Exam Schedule: <span className="text-black font-bold">{selectedExamName || 'N/A'}</span> | Branch Filter: <span className="text-black font-bold">{selectedBranch === 'all' ? 'All Branches' : selectedBranch}</span> | Date: {moment().format('DD-MM-YYYY')}
+            </p>
+          </div>
+
+          {/* Section 1: Course-Wise Summary */}
+          {courseSummary.length > 0 && (
+            <div className="mb-6">
+              <h4 className="text-xs font-bold text-black uppercase tracking-wider mb-2">
+                1. Course-Wise Absent Summary
+              </h4>
+              <table className="w-full border-collapse border border-gray-400 text-[10px]">
+                <thead>
+                  <tr className="bg-blue-600 text-white print:bg-gray-200 print:text-black">
+                    <th className="border border-gray-400 p-1 w-8 text-center">Sr.</th>
+                    <th className="border border-gray-400 p-1 text-left">Course Name</th>
+                    <th className="border border-gray-400 p-1 text-left">Original Exam Date</th>
+                    <th className="border border-gray-400 p-1 text-center w-28">Absent Students</th>
+                    <th className="border border-gray-400 p-1 text-left">Absent Subject(s)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {courseSummary.map((item, idx) => (
+                    <tr key={idx} className="text-center hover:bg-gray-50 break-inside-avoid">
+                      <td className="border border-gray-400 p-1 font-bold">{idx + 1}</td>
+                      <td className="border border-gray-400 p-1 text-left font-bold text-gray-900">{item.courseName}</td>
+                      <td className="border border-gray-400 p-1 text-left">{item.dateLabel}</td>
+                      <td className="border border-gray-400 p-1 font-bold text-red-600">{item.count}</td>
+                      <td className="border border-gray-400 p-1 text-left">{[...item.subjects].join(', ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Section 2: Detailed Absent Student List */}
+          <div className="mb-6">
+            <h4 className="text-xs font-bold text-black uppercase tracking-wider mb-2">
+              2. Detailed Absent Student List ({filteredRows.length} Records)
+            </h4>
+            <table className="w-full border-collapse border border-gray-400 text-[10px]">
+              <thead>
+                <tr className="bg-blue-600 text-white print:bg-gray-200 print:text-black">
+                  <th className="border border-gray-400 p-1 w-8 text-center">Sr.</th>
+                  <th className="border border-gray-400 p-1 w-24">Reg. No</th>
+                  <th className="border border-gray-400 p-1 text-left">Student Full Name</th>
+                  <th className="border border-gray-400 p-1 text-left w-28">Branch</th>
+                  <th className="border border-gray-400 p-1 text-left">Course</th>
+                  <th className="border border-gray-400 p-1 text-left">Absent Subject</th>
+                  <th className="border border-gray-400 p-1 text-left w-36">Original Date & Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.length > 0 ? (
+                  filteredRows.map((row, idx) => (
+                    <tr key={row.key} className="text-center hover:bg-gray-50 break-inside-avoid">
+                      <td className="border border-gray-400 p-1">{idx + 1}</td>
+                      <td className="border border-gray-400 p-1 font-semibold">{row.student?.regNo || '-'}</td>
+                      <td className="border border-gray-400 p-1 text-left uppercase font-medium">{row.student?.name || '-'}</td>
+                      <td className="border border-gray-400 p-1 text-left">{row.student?.branchName || 'Main Branch'}</td>
+                      <td className="border border-gray-400 p-1 text-left">{row.course?.name || '-'}</td>
+                      <td className="border border-gray-400 p-1 text-left font-semibold text-blue-900">{row.subject?.name || row.subject?.printedName || '-'}</td>
+                      <td className="border border-gray-400 p-1 text-left">
+                        {formatDateLabel(row.originalDate)} ({row.originalStartTime && row.originalEndTime ? `${row.originalStartTime} - ${row.originalEndTime}` : '-'})
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="7" className="p-4 text-center text-gray-500 border border-gray-400">
+                      No absent records found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer Info */}
+          <div className="mt-8 text-[10px] text-gray-500 flex justify-between print:mt-auto pt-4 border-t border-gray-300">
+            <span>Printed On: {moment().format('DD-MM-YYYY hh:mm A')}</span>
+            <span>Total Absent Records: {filteredRows.length}</span>
+          </div>
+        </div>
+
+        <style type="text/css" media="print">
+          {`
+            @page { size: A4; margin: 10mm; }
+            body { -webkit-print-color-adjust: exact; }
+          `}
+        </style>
       </div>
     </div>
   );

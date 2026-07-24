@@ -15,7 +15,7 @@ import {
 
 import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { ArrowLeft, Save, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Save, RefreshCw, Plus, Minus, CheckCircle2 } from 'lucide-react';
 import axios from 'axios';
 
 const API_URL = `${import.meta.env.VITE_API_URL}/master/`;
@@ -327,6 +327,13 @@ const AddEditExamResult = () => {
     }
   }, [totals.percentage, setValue]);
 
+  const adjustMark = (index, field, delta) => {
+    const currentVal = Number(watch(`subjectMarks.${index}.${field}`)) || 0;
+    const maxM = Number(watch(`subjectMarks.${index}.maxMarks`)) || 100;
+    const newVal = Math.max(0, Math.min(maxM, currentVal + delta));
+    setValue(`subjectMarks.${index}.${field}`, newVal, { shouldValidate: true, shouldDirty: true, shouldTouch: true });
+  };
+
   const onSubmit = (data) => {
     const processedMarks = data.subjectMarks.map(s => ({
       ...s,
@@ -543,64 +550,124 @@ const AddEditExamResult = () => {
 
           {/* Subject-wise Marks Table */}
           {fields.length > 0 && (
-              <div className="border border-slate-100 rounded-2xl overflow-hidden bg-slate-50/30">
-                  <table className="w-full text-sm text-left border-collapse">
-                      <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-500 border-b border-slate-100">
-                          <tr>
-                              <th className="px-4 py-4 w-16 text-center">Sr No</th>
-                              <th className="px-6 py-4">Subject</th>
-                              <th className="px-6 py-4 w-36 text-center">Theory Marks</th>
-                              <th className="px-6 py-4 w-36 text-center">Practical Marks</th>
-                              <th className="px-6 py-4 w-32 text-center">Total</th>
-                              <th className="px-6 py-4 w-28 text-center">Max Marks</th>
-                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white">
-                          {fields.map((field, index) => (
-                              <tr key={field.id} className="hover:bg-slate-50/50 transition-colors">
-                                  <td className="px-4 py-4 text-center font-black text-slate-500">{index + 1}</td>
-                                  <td className="px-6 py-4 font-semibold text-slate-700">
-                                      {subjectMarksValues[index]?.subjectName}
-                                      {subjectMarksValues[index]?.attempted && (
-                                          <span className="ml-2 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700">
-                                              Online marks
-                                          </span>
-                                      )}
-                                      <input type="hidden" {...register(`subjectMarks.${index}.subjectId`)} />
-                                      <input type="hidden" {...register(`subjectMarks.${index}.subjectName`)} />
-                                  </td>
-                                  <td className="px-4 py-3">
-                                      <input 
-                                          type="number" 
-                                          {...register(`subjectMarks.${index}.theory`, { valueAsNumber: true })} 
-                                          className="w-full border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-2.5 rounded-xl text-center font-bold text-slate-800 outline-none transition-all" 
-                                      />
-                                  </td>
-                                  <td className="px-4 py-3">
-                                      <input 
-                                          type="number" 
-                                          {...register(`subjectMarks.${index}.practical`, { valueAsNumber: true })} 
-                                          className="w-full border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 p-2.5 rounded-xl text-center font-bold text-slate-800 outline-none transition-all" 
-                                      />
-                                  </td>
-                                  <td className="px-6 py-4 text-center font-black text-blue-600 text-base">
-                                      {(Number(subjectMarksValues[index]?.theory) || 0) + (Number(subjectMarksValues[index]?.practical) || 0)}
-                                  </td>
-                                  <td className="px-6 py-4 text-center font-semibold text-slate-400">
-                                      <input type="number" {...register(`subjectMarks.${index}.maxMarks`)} className="w-full bg-transparent text-center font-semibold text-slate-400 outline-none" readOnly />
-                                  </td>
+              <div className="space-y-3">
+                  {/* Online Exam Submitted Banner */}
+                  {subjectMarksValues?.some((s) => s.attempted) && (
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 text-xs font-bold shadow-2xs">
+                          <div className="flex items-center gap-2">
+                              <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                              <span>
+                                  <strong>Online Exam Submitted:</strong> Student's online test score has been auto-filled in the Theory Marks column below.
+                              </span>
+                          </div>
+                          <span className="text-[11px] text-emerald-800 bg-white/90 border border-emerald-300 rounded-lg px-2.5 py-1 shrink-0 font-black">
+                              Use + / - buttons to adjust marks
+                          </span>
+                      </div>
+                  )}
+
+                  <div className="border border-slate-100 rounded-2xl overflow-hidden bg-slate-50/30">
+                      <table className="w-full text-sm text-left border-collapse">
+                          <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-500 border-b border-slate-100">
+                              <tr>
+                                  <th className="px-4 py-4 w-16 text-center">Sr No</th>
+                                  <th className="px-6 py-4">Subject</th>
+                                  <th className="px-6 py-4 w-44 text-center">Theory Marks (+ / -)</th>
+                                  <th className="px-6 py-4 w-44 text-center">Practical Marks (+ / -)</th>
+                                  <th className="px-6 py-4 w-32 text-center">Total</th>
+                                  <th className="px-6 py-4 w-28 text-center">Max Marks</th>
                               </tr>
-                          ))}
-                      </tbody>
-                      <tfoot className="bg-slate-50 font-bold border-t border-slate-100">
-                          <tr>
-                              <td colSpan="2" className="px-6 py-5 text-right text-slate-500 text-xs font-black uppercase tracking-wider">GRAND TOTAL:</td>
-                              <td colSpan="2"></td>
-                              <td className="px-6 py-5 text-center text-xl font-black text-slate-800">{totals.obtained} / {totals.total}</td>
-                              <td className="px-6 py-5 text-center text-sm font-black text-emerald-600 bg-emerald-50/50 rounded-lg">{totals.percentage.toFixed(2)}%</td>
-                          </tr>
-                      </tfoot>
-                  </table>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 bg-white">
+                              {fields.map((field, index) => (
+                                  <tr key={field.id} className="hover:bg-slate-50/50 transition-colors">
+                                      <td className="px-4 py-4 text-center font-black text-slate-500">{index + 1}</td>
+                                      <td className="px-6 py-4 font-semibold text-slate-700">
+                                          <div className="flex items-center gap-2">
+                                              <span>{subjectMarksValues[index]?.subjectName}</span>
+                                              {subjectMarksValues[index]?.attempted && (
+                                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-200 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-800">
+                                                      <CheckCircle2 size={12} /> Online: {subjectMarksValues[index]?.theory} Marks
+                                                  </span>
+                                              )}
+                                          </div>
+                                          <input type="hidden" {...register(`subjectMarks.${index}.subjectId`)} />
+                                          <input type="hidden" {...register(`subjectMarks.${index}.subjectName`)} />
+                                      </td>
+
+                                      {/* Theory Marks Cell with Up/Down Stepper */}
+                                      <td className="px-3 py-3">
+                                          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl p-1 shadow-2xs focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-500">
+                                              <button
+                                                  type="button"
+                                                  onClick={() => adjustMark(index, 'theory', -1)}
+                                                  className="h-8 w-8 rounded-lg bg-white border border-slate-200 text-slate-700 font-black hover:bg-rose-50 hover:border-rose-300 hover:text-rose-600 transition flex items-center justify-center shrink-0 cursor-pointer shadow-2xs active:scale-95"
+                                                  title="Decrease Theory Mark (-1)"
+                                              >
+                                                  <Minus size={14} />
+                                              </button>
+                                              <input 
+                                                  type="number" 
+                                                  {...register(`subjectMarks.${index}.theory`, { valueAsNumber: true })} 
+                                                  className="w-full bg-transparent text-center font-black text-slate-800 text-base outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                                              />
+                                              <button
+                                                  type="button"
+                                                  onClick={() => adjustMark(index, 'theory', 1)}
+                                                  className="h-8 w-8 rounded-lg bg-white border border-slate-200 text-slate-700 font-black hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-600 transition flex items-center justify-center shrink-0 cursor-pointer shadow-2xs active:scale-95"
+                                                  title="Increase Theory Mark (+1)"
+                                              >
+                                                  <Plus size={14} />
+                                              </button>
+                                          </div>
+                                      </td>
+
+                                      {/* Practical Marks Cell with Up/Down Stepper */}
+                                      <td className="px-3 py-3">
+                                          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl p-1 shadow-2xs focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-500">
+                                              <button
+                                                  type="button"
+                                                  onClick={() => adjustMark(index, 'practical', -1)}
+                                                  className="h-8 w-8 rounded-lg bg-white border border-slate-200 text-slate-700 font-black hover:bg-rose-50 hover:border-rose-300 hover:text-rose-600 transition flex items-center justify-center shrink-0 cursor-pointer shadow-2xs active:scale-95"
+                                                  title="Decrease Practical Mark (-1)"
+                                              >
+                                                  <Minus size={14} />
+                                              </button>
+                                              <input 
+                                                  type="number" 
+                                                  {...register(`subjectMarks.${index}.practical`, { valueAsNumber: true })} 
+                                                  className="w-full bg-transparent text-center font-black text-slate-800 text-base outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                                              />
+                                              <button
+                                                  type="button"
+                                                  onClick={() => adjustMark(index, 'practical', 1)}
+                                                  className="h-8 w-8 rounded-lg bg-white border border-slate-200 text-slate-700 font-black hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-600 transition flex items-center justify-center shrink-0 cursor-pointer shadow-2xs active:scale-95"
+                                                  title="Increase Practical Mark (+1)"
+                                              >
+                                                  <Plus size={14} />
+                                              </button>
+                                          </div>
+                                      </td>
+
+                                      <td className="px-6 py-4 text-center font-black text-blue-600 text-base">
+                                          {(Number(subjectMarksValues[index]?.theory) || 0) + (Number(subjectMarksValues[index]?.practical) || 0)}
+                                      </td>
+                                      <td className="px-6 py-4 text-center font-semibold text-slate-400">
+                                          <input type="number" {...register(`subjectMarks.${index}.maxMarks`)} className="w-full bg-transparent text-center font-semibold text-slate-400 outline-none" readOnly />
+                                      </td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                          <tfoot className="bg-slate-50 font-bold border-t border-slate-100">
+                              <tr>
+                                  <td colSpan="2" className="px-6 py-5 text-right text-slate-500 text-xs font-black uppercase tracking-wider">GRAND TOTAL:</td>
+                                  <td colSpan="2"></td>
+                                  <td className="px-6 py-5 text-center text-xl font-black text-slate-800">{totals.obtained} / {totals.total}</td>
+                                  <td className="px-6 py-5 text-center text-sm font-black text-emerald-600 bg-emerald-50/50 rounded-lg">{totals.percentage.toFixed(2)}%</td>
+                              </tr>
+                          </tfoot>
+                      </table>
+                  </div>
               </div>
           )}
 

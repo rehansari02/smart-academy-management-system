@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import moment from 'moment';
-import { CalendarDays, Clock3, Lock, PlayCircle, ShieldAlert, UserCheck } from 'lucide-react';
+import { CalendarDays, Clock3, Lock, PlayCircle, ShieldAlert, Timer, UserCheck } from 'lucide-react';
 import Loading from '../../components/Loading';
+import { formatCountdownTime, getRowCountdownInfo } from '../../utils/examTimeUtils';
 
 const statusStyles = {
   live: 'bg-green-100 text-green-700 border-green-200',
+  countdown: 'bg-amber-500 text-white border-amber-600 animate-pulse shadow-xs',
   upcoming: 'bg-amber-100 text-amber-700 border-amber-200',
   ended: 'bg-gray-100 text-gray-600 border-gray-200',
   absent: 'bg-red-100 text-red-700 border-red-200',
@@ -19,23 +21,32 @@ const ExamConduct = () => {
   const [studentInfo, setStudentInfo] = useState(null);
   const [schedules, setSchedules] = useState([]);
   const [message, setMessage] = useState('');
+  const [nowTick, setNowTick] = useState(Date.now());
+
+  const fetchData = async () => {
+    try {
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/student-portal/exam-conduct`, {
+        withCredentials: true
+      });
+      setStudentInfo(data.student || null);
+      setSchedules(data.schedules || []);
+      window.dispatchEvent(new Event('exam-status-updated'));
+    } catch (error) {
+      setMessage(error.response?.data?.message || 'Exam conduct data load nahi hua');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/student-portal/exam-conduct`, {
-          withCredentials: true
-        });
-        setStudentInfo(data.student || null);
-        setSchedules(data.schedules || []);
-      } catch (error) {
-        setMessage(error.response?.data?.message || 'Exam conduct data load nahi hua');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchData();
+
+    // Tick every 1 second for live countdown
+    const timer = setInterval(() => {
+      setNowTick(Date.now());
+    }, 1000);
+
+    return () => clearInterval(timer);
   }, []);
 
   const allRows = useMemo(
@@ -48,9 +59,37 @@ const ExamConduct = () => {
     [schedules]
   );
 
-  const liveRows = allRows.filter(({ row }) => row.status === 'live' && row.canOpen);
-  const upcomingRows = allRows.filter(({ row }) => row.status === 'upcoming');
-  const submittedRows = allRows.filter(({ row }) => row.isSubmitted);
+  // Compute countdown info for every row
+  const rowsWithCountdown = useMemo(() => {
+    return allRows.map(({ schedule, row }) => {
+      const countdownInfo = getRowCountdownInfo(row, schedule);
+      return {
+        schedule,
+        row,
+        countdownInfo
+      };
+    });
+  }, [allRows, nowTick]);
+
+  const countdownBannerRow = useMemo(() => {
+    return rowsWithCountdown.find(({ countdownInfo }) => countdownInfo.isCountdown);
+  }, [rowsWithCountdown]);
+
+  const liveRows = useMemo(
+    () => rowsWithCountdown.filter(({ countdownInfo }) => countdownInfo.isLive && !countdownInfo.isSubmitted && !countdownInfo.isAbsent),
+    [rowsWithCountdown]
+  );
+
+  const upcomingRows = useMemo(
+    () => rowsWithCountdown.filter(({ countdownInfo, row }) => row.status === 'upcoming' && !countdownInfo.isCountdown && !countdownInfo.isLive),
+    [rowsWithCountdown]
+  );
+
+  const submittedRows = useMemo(
+    () => rowsWithCountdown.filter(({ countdownInfo }) => countdownInfo.isSubmitted),
+    [rowsWithCountdown]
+  );
+
   const regularSchedules = useMemo(() => schedules.filter((schedule) => !schedule.isReExam), [schedules]);
   const reExamGroups = useMemo(() => {
     const groups = new Map();
@@ -74,21 +113,45 @@ const ExamConduct = () => {
     }));
   }, [schedules]);
 
-  const getRowState = (item, schedule) => {
-    const isLive = item.status === 'live' && item.canOpen;
-    const isUpcoming = item.status === 'upcoming';
-    const isSubmitted = Boolean(item.isSubmitted);
+  const getRowState = (item, schedule, countdownInfo) => {
     const isAbsent = Boolean(item.isAbsent);
+    const isSubmitted = Boolean(item.isSubmitted);
 
-    if (isAbsent) return { label: 'Absent', action: 'Absent', style: 'absent', disabled: true, icon: Lock };
-    if (isSubmitted) return { label: 'Submitted', action: 'Submitted', style: 'live', disabled: true, icon: Lock };
-    if (isLive) return { label: schedule.isReExam ? 'Re-Exam Live' : 'Live', action: 'Open Exam', style: 'live', disabled: false, icon: PlayCircle };
-    if (isUpcoming) return { label: 'Coming Soon', action: 'Coming Soon', style: 'upcoming', disabled: true, icon: Lock };
-    if (schedule.isReExam) return { label: 'Re-Exam Closed', action: 'Closed', style: 'ended', disabled: true, icon: Lock };
+    if (isAbsent) {
+      return { label: 'Absent', action: 'Absent', style: 'absent', disabled: true, icon: Lock };
+    }
+    if (isSubmitted) {
+      return { label: 'Submitted', action: 'Submitted', style: 'live', disabled: true, icon: Lock };
+    }
+    if (countdownInfo.isCountdown) {
+      const formatted = formatCountdownTime(countdownInfo.remainingSeconds);
+      return {
+        label: `Starts in ${formatted}`,
+        action: `Starts in ${formatted}`,
+        style: 'countdown',
+        disabled: true,
+        icon: Timer
+      };
+    }
+    if (countdownInfo.isLive || (item.status === 'live' && item.canOpen)) {
+      return {
+        label: schedule.isReExam ? 'Re-Exam Live' : 'Live',
+        action: 'Open Exam',
+        style: 'live',
+        disabled: false,
+        icon: PlayCircle
+      };
+    }
+    if (item.status === 'upcoming') {
+      return { label: 'Coming Soon', action: 'Coming Soon', style: 'upcoming', disabled: true, icon: Lock };
+    }
+    if (schedule.isReExam) {
+      return { label: 'Re-Exam Closed', action: 'Closed', style: 'ended', disabled: true, icon: Lock };
+    }
     return { label: 'Closed', action: 'Closed', style: 'ended', disabled: true, icon: Lock };
   };
 
-  const renderRows = (rows) => (
+  const renderRows = (rowItems) => (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[840px] border-collapse">
         <thead>
@@ -102,9 +165,10 @@ const ExamConduct = () => {
           </tr>
         </thead>
         <tbody>
-          {rows.length > 0 ? (
-            rows.map(({ schedule, row: item }, index) => {
-              const state = getRowState(item, schedule);
+          {rowItems.length > 0 ? (
+            rowItems.map(({ schedule, row: item }, index) => {
+              const countdownInfo = getRowCountdownInfo(item, schedule);
+              const state = getRowState(item, schedule, countdownInfo);
               const Icon = state.icon;
               return (
                 <tr
@@ -125,7 +189,7 @@ const ExamConduct = () => {
                     </div>
                   </td>
                   <td className="p-3 text-center">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-[11px] font-bold border ${statusStyles[state.style] || statusStyles.ended}`}>
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusStyles[state.style] || statusStyles.ended}`}>
                       {state.label}
                     </span>
                   </td>
@@ -140,7 +204,7 @@ const ExamConduct = () => {
                       className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
                         state.disabled
                           ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed pointer-events-none opacity-80'
-                          : 'bg-primary text-white hover:bg-blue-800'
+                          : 'bg-primary text-white hover:bg-blue-800 shadow-xs'
                       }`}
                     >
                       <Icon size={14} />
@@ -168,6 +232,7 @@ const ExamConduct = () => {
 
   return (
     <div className="space-y-6">
+      {/* Top Header Card */}
       <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
@@ -193,6 +258,38 @@ const ExamConduct = () => {
         </section>
       )}
 
+      {/* 15-Minute Countdown Banner */}
+      {countdownBannerRow && (
+        <section className="border-2 border-amber-500 bg-amber-500/10 rounded-xl p-5 shadow-sm text-amber-950 transition">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <Timer size={32} className="text-amber-600 animate-spin mt-0.5 shrink-0" />
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-500 text-white text-xs font-black uppercase tracking-wider mb-1">
+                  Exam Starting Soon (15 Min Window)
+                </div>
+                <h2 className="text-lg font-black text-amber-950">
+                  {countdownBannerRow.row.subject?.name || 'Exam Subject'}
+                </h2>
+                <p className="text-xs text-amber-800 font-semibold mt-0.5">
+                  Navigation is locked to Home, Fees & Exam until your paper is submitted.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 bg-amber-500 text-white px-5 py-2.5 rounded-xl shadow-md self-start sm:self-center">
+              <Clock3 size={20} />
+              <div className="flex flex-col">
+                <span className="text-[10px] uppercase font-bold tracking-wider opacity-90">Exam Starts In</span>
+                <span className="text-xl font-black font-mono tracking-wider">
+                  {formatCountdownTime(countdownBannerRow.countdownInfo.remainingSeconds)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {allRows.length === 0 ? (
         <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-10 text-center">
           <ShieldAlert size={42} className="mx-auto text-gray-300 mb-3" />
@@ -203,7 +300,7 @@ const ExamConduct = () => {
         </section>
       ) : (
         <>
-          {liveRows.length === 0 && (
+          {liveRows.length === 0 && !countdownBannerRow && (
             <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 flex items-center gap-3">
               <Lock size={20} className="text-gray-400" />
               <div>

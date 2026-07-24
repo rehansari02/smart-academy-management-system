@@ -13,6 +13,19 @@ const examAnswerSchema = new mongoose.Schema({
     savedAt: { type: Date, default: Date.now }
 }, { _id: false });
 
+const assignedMcqSchema = new mongoose.Schema({
+    question: { type: String, required: true },
+    options: [{ type: String, required: true }],
+    correctAnswer: { type: String },
+    marks: { type: Number, default: 1 }
+}, { _id: false });
+
+const assignedQaSchema = new mongoose.Schema({
+    question: { type: String, required: true },
+    answer: { type: String },
+    marks: { type: Number, default: 1 }
+}, { _id: false });
+
 const examAttemptSchema = new mongoose.Schema({
     schedule: {
         type: mongoose.Schema.Types.ObjectId,
@@ -38,6 +51,8 @@ const examAttemptSchema = new mongoose.Schema({
     },
     examName: { type: String, required: true },
     answers: { type: [examAnswerSchema], default: [] },
+    assignedMcqs: { type: [assignedMcqSchema], default: [] },
+    assignedQuestionAnswers: { type: [assignedQaSchema], default: [] },
     totalMcq: { type: Number, default: 0 },
     totalQa: { type: Number, default: 0 },
     totalQuestions: { type: Number, default: 0 },

@@ -315,6 +315,8 @@ const serializeQuestionPaperSubject = (paper, subjectId) => {
     return {
         subject: subjectRow.subject,
         duration: subjectRow.duration || '',
+        rawMcqs: subjectRow.mcqs || [],
+        rawQuestionAnswers: subjectRow.questionAnswers || [],
         mcqs: (subjectRow.mcqs || []).map((mcq, index) => ({
             questionId: `mcq-${index + 1}`,
             question: mcq.question || '',
@@ -1074,7 +1076,9 @@ const openStudentExamConduct = async (req, res) => {
             });
         }
 
-        if (conductPassword.enabled && Boolean(conductPassword.hash || conductPassword.text)) {
+        const isAlreadyVerified = existingAttempt && Boolean(existingAttempt.passwordVerifiedAt || existingAttempt.startedAt);
+
+        if (!isAlreadyVerified && conductPassword.enabled && Boolean(conductPassword.hash || conductPassword.text)) {
             const passwordCheck = await validateSchedulePassword({
                 conductPasswordHash: conductPassword.hash,
                 conductPasswordText: conductPassword.text
@@ -1094,8 +1098,40 @@ const openStudentExamConduct = async (req, res) => {
             return res.status(404).json({ message: 'Question paper subject data not found' });
         }
 
-        const totalMcq = subjectPaper.mcqs.length;
-        const totalQa = subjectPaper.questionAnswers.length;
+        let assignedMcqs = existingAttempt?.assignedMcqs || [];
+        let assignedQuestionAnswers = existingAttempt?.assignedQuestionAnswers || [];
+
+        // If no assigned questions yet for this student attempt, select 50 random MCQs from Question Bank
+        if (assignedMcqs.length === 0) {
+            const rawMcqs = subjectPaper.rawMcqs || [];
+            const MAX_MCQS = 50;
+
+            const shuffleArray = (arr) => {
+                const copy = [...arr];
+                for (let i = copy.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [copy[i], copy[j]] = [copy[j], copy[i]];
+                }
+                return copy;
+            };
+
+            const selectedPool = shuffleArray(rawMcqs).slice(0, MAX_MCQS);
+            assignedMcqs = selectedPool.map((mcq) => ({
+                question: mcq.question || '',
+                options: mcq.options || [],
+                correctAnswer: mcq.correctAnswer || '',
+                marks: Number(mcq.marks) || 1
+            }));
+
+            assignedQuestionAnswers = (subjectPaper.rawQuestionAnswers || []).map((qa) => ({
+                question: qa.question || '',
+                answer: qa.answer || '',
+                marks: Number(qa.marks) || 1
+            }));
+        }
+
+        const totalMcq = assignedMcqs.length;
+        const totalQa = assignedQuestionAnswers.length;
         const totalQuestions = totalMcq + totalQa;
 
         const attempt = await ExamAttempt.findOneAndUpdate(
@@ -1114,6 +1150,8 @@ const openStudentExamConduct = async (req, res) => {
                     startedAt: new Date()
                 },
                 $set: {
+                    assignedMcqs,
+                    assignedQuestionAnswers,
                     totalMcq,
                     totalQa,
                     totalQuestions,
@@ -1123,6 +1161,20 @@ const openStudentExamConduct = async (req, res) => {
             },
             { upsert: true, new: true, setDefaultsOnInsert: true }
         );
+
+        // Map assigned questions for client (without leaking correct answers)
+        const clientMcqs = assignedMcqs.map((mcq, index) => ({
+            questionId: `mcq-${index + 1}`,
+            question: mcq.question || '',
+            options: mcq.options || [],
+            marks: Number(mcq.marks) || 1
+        }));
+
+        const clientQa = assignedQuestionAnswers.map((qa, index) => ({
+            questionId: `qa-${index + 1}`,
+            question: qa.question || '',
+            marks: Number(qa.marks) || 1
+        }));
 
         res.json({
             schedule: {
@@ -1153,8 +1205,8 @@ const openStudentExamConduct = async (req, res) => {
                 course: paper.course,
                 subject: subjectPaper.subject,
                 duration: subjectPaper.duration,
-                mcqs: subjectPaper.mcqs,
-                questionAnswers: subjectPaper.questionAnswers
+                mcqs: clientMcqs,
+                questionAnswers: clientQa
             },
             attempt: buildAttemptPayload(attempt),
             canEdit: window.canOpen && !attempt.isSubmitted,

@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
+import axios from 'axios';
 import { logout } from '../../features/auth/authSlice';
-import { Menu, X, ChevronDown, LogOut, User as UserIcon } from 'lucide-react';
+import { Menu, X, ChevronDown, LogOut, User as UserIcon, ShieldAlert } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import ProfileSettingsModal from '../user/ProfileSettingsModal';
 import logoImage from '../../assets/logo2.png';
 import { toast } from 'react-toastify';
+import { checkIsExamRestrictedActive } from '../../utils/examTimeUtils';
 
 const StudentNavbar = () => {
     const { user } = useSelector((state) => state.auth);
@@ -17,6 +19,36 @@ const StudentNavbar = () => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [hoveredMenu, setHoveredMenu] = useState(null);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+    const [isExamRestricted, setIsExamRestricted] = useState(false);
+
+    const checkExamStatus = async () => {
+        if (!user || user.role !== 'Student') {
+            setIsExamRestricted(false);
+            return;
+        }
+        try {
+            const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/student-portal/exam-conduct`, {
+                withCredentials: true
+            });
+            const isRestricted = checkIsExamRestrictedActive(data.schedules || []);
+            setIsExamRestricted(isRestricted);
+        } catch (error) {
+            // fail silently
+        }
+    };
+
+    useEffect(() => {
+        checkExamStatus();
+
+        // Check periodically every 10 seconds
+        const interval = setInterval(checkExamStatus, 10000);
+        window.addEventListener('exam-status-updated', checkExamStatus);
+
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('exam-status-updated', checkExamStatus);
+        };
+    }, [user]);
 
     const handleLogout = async () => {
         await dispatch(logout());
@@ -24,7 +56,7 @@ const StudentNavbar = () => {
         navigate('/');
     };
 
-    const MENU_ITEMS = [
+    const ALL_MENU_ITEMS = [
         { title: 'Home', path: '/student/home' },
         { title: 'Syllabus', path: '/student/syllabus' },
         { 
@@ -58,14 +90,36 @@ const StudentNavbar = () => {
         { title: 'Connect', path: '#' },
     ];
 
+    // When 15-minute countdown or live exam is active, ONLY keep Home, Fees, and Exam!
+    const MENU_ITEMS = isExamRestricted
+        ? [
+            { title: 'Home', path: '/student/home' },
+            { title: 'Fees', path: '/student/fees' },
+            {
+                title: 'Exam',
+                path: '/student/exam',
+                subItems: [
+                    { title: 'Exam Time Table', path: '/student/exam-schedule' },
+                    { title: 'Exam Conduct', path: '/student/exam' }
+                ]
+            }
+          ]
+        : ALL_MENU_ITEMS;
+
     return (
         <>
             <header className="fixed top-0 w-full z-50 bg-white shadow-md border-b border-gray-200 h-18">
                 <div className="container mx-auto px-4 h-full">
                     <div className="flex justify-between items-center h-full">
-                        {/* Logo */}
+                        {/* Logo & Exam Mode Badge */}
                         <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/student/home')}>
-                             <img src={logoImage} alt="Smart Institute" className="h-14 w-auto object-contain" />
+                            <img src={logoImage} alt="Smart Institute" className="h-14 w-auto object-contain" />
+                            {isExamRestricted && (
+                                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-amber-500 text-white rounded-full text-xs font-black shadow-xs animate-pulse">
+                                    <ShieldAlert size={14} />
+                                    Exam Mode (Restricted)
+                                </div>
+                            )}
                         </div>
 
                         {/* Desktop Nav */}

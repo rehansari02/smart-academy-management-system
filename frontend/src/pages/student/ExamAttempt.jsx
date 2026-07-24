@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import moment from 'moment';
-import { AlertCircle, Clock3, Loader, Lock, Save, Send, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, Clock3, Loader, Lock, Save, Send, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 const emptyState = {
@@ -35,6 +35,11 @@ const ExamAttempt = () => {
   const [locked, setLocked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+
+  // 2-Step Submit Confirmation Modal State
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmStep, setConfirmStep] = useState(1);
+  const [userAcknowledged, setUserAcknowledged] = useState(false);
 
   const clearTimers = () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -85,17 +90,20 @@ const ExamAttempt = () => {
         countdownRef.current = setInterval(tick, 1000);
       }
     } catch (error) {
+      const msg = error.response?.data?.message || 'Exam open nahi hua';
       setGate((prev) => ({
         ...prev,
+        open: false,
         loading: false,
-        error: error.response?.data?.message || 'Exam open nahi hua'
+        error: msg === 'Password is required' ? '' : msg
       }));
     }
   };
 
   useEffect(() => {
+    openExam('');
     return () => clearTimers();
-  }, []);
+  }, [scheduleId, subjectId]);
 
   const totalQuestions = useMemo(() => {
     return (examData?.paper?.mcqs?.length || 0) + (examData?.paper?.questionAnswers?.length || 0);
@@ -166,11 +174,155 @@ const ExamAttempt = () => {
       setLocked(true);
       toast.success('Exam submitted successfully');
       setStatusMessage(`Answered ${data.attempt?.answeredCount || answeredCount} of ${data.attempt?.totalQuestions || totalQuestions}`);
+      window.dispatchEvent(new Event('exam-status-updated'));
     } catch (error) {
       toast.error(error.response?.data?.message || 'Submit failed');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const openSubmitConfirmation = () => {
+    setConfirmStep(1);
+    setUserAcknowledged(false);
+    setShowConfirmModal(true);
+  };
+
+  const handleFinalSubmit = async () => {
+    setShowConfirmModal(false);
+    await handleSubmit();
+  };
+
+  const renderSubmitConfirmModal = () => {
+    if (!showConfirmModal) return null;
+
+    const unattemptedCount = Math.max(0, totalQuestions - answeredCount);
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fadeIn">
+        <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden transition-all">
+          {confirmStep === 1 ? (
+            /* STEP 1 OF 2 */
+            <div>
+              <div className="px-6 py-4 bg-gradient-to-r from-amber-500 to-amber-600 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2 font-black text-base">
+                  <ShieldAlert size={20} />
+                  Step 1 of 2: Confirm Answer Submission
+                </div>
+                <span className="text-xs bg-white/25 font-extrabold px-3 py-1 rounded-full text-white backdrop-blur-xs">
+                  Step 1 / 2
+                </span>
+              </div>
+
+              <div className="p-6 space-y-5">
+                <div className="text-sm font-semibold text-gray-700 leading-relaxed">
+                  Are you sure you want to submit your exam? Please verify all your answered & unattempted questions before proceeding.
+                </div>
+
+                {/* Attempt Summary Grid */}
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                    <div className="text-xl font-black text-slate-800">{totalQuestions}</div>
+                    <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mt-0.5">Total</div>
+                  </div>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                    <div className="text-xl font-black text-emerald-700">{answeredCount}</div>
+                    <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mt-0.5">Attempted</div>
+                  </div>
+                  <div className={unattemptedCount > 0 ? "bg-rose-50 border border-rose-200 rounded-xl p-3" : "bg-slate-50 border border-slate-200 rounded-xl p-3"}>
+                    <div className={unattemptedCount > 0 ? "text-xl font-black text-rose-700" : "text-xl font-black text-slate-700"}>
+                      {unattemptedCount}
+                    </div>
+                    <div className={unattemptedCount > 0 ? "text-[11px] font-bold text-rose-600 uppercase tracking-wider mt-0.5" : "text-[11px] font-bold text-gray-500 uppercase tracking-wider mt-0.5"}>
+                      Unattempted
+                    </div>
+                  </div>
+                </div>
+
+                {unattemptedCount > 0 && (
+                  <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3.5 text-xs font-semibold">
+                    <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Warning:</strong> You still have <strong>{unattemptedCount} unattempted question(s)</strong>. Unanswered questions will receive 0 marks.
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmModal(false)}
+                    className="px-4 py-2.5 rounded-xl border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-50 transition cursor-pointer"
+                  >
+                    Back & Review Answers
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmStep(2)}
+                    className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-extrabold shadow-xs hover:bg-amber-700 transition cursor-pointer"
+                  >
+                    Proceed to Final Submit (Step 2)
+                    <ArrowRight size={15} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* STEP 2 OF 2 (FINAL SUBMISSION CONFIRMATION) */
+            <div>
+              <div className="px-6 py-4 bg-gradient-to-r from-rose-600 to-red-700 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2 font-black text-base">
+                  <CheckCircle2 size={20} />
+                  Step 2 of 2: Final Submit Confirmation
+                </div>
+                <span className="text-xs bg-white/25 font-extrabold px-3 py-1 rounded-full text-white backdrop-blur-xs">
+                  Final Step
+                </span>
+              </div>
+
+              <div className="p-6 space-y-5">
+                <div className="rounded-xl bg-rose-50 border border-rose-200 p-4 text-xs font-semibold text-rose-900 space-y-1">
+                  <p className="font-bold text-sm text-rose-950">🚨 Final Warning - Paper Lock</p>
+                  <p>
+                    Once you click <strong>"Yes, Final Submit Paper"</strong>, your exam will be locked permanently and you CANNOT change any answers after this.
+                  </p>
+                </div>
+
+                <label className="flex items-start gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3.5 cursor-pointer text-xs font-bold text-gray-800 hover:bg-slate-100 transition">
+                  <input
+                    type="checkbox"
+                    checked={userAcknowledged}
+                    onChange={(e) => setUserAcknowledged(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500 cursor-pointer"
+                  />
+                  <span>I have checked all my answers ({answeredCount}/{totalQuestions}) and confirm to submit my paper.</span>
+                </label>
+
+                <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmStep(1)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-50 transition cursor-pointer"
+                  >
+                    <ArrowLeft size={15} />
+                    Back to Step 1
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!userAcknowledged || submitting}
+                    onClick={handleFinalSubmit}
+                    className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-extrabold shadow-md hover:bg-rose-700 disabled:opacity-50 transition cursor-pointer"
+                  >
+                    {submitting ? <Loader className="animate-spin" size={16} /> : <Send size={16} />}
+                    Yes, Final Submit Paper
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   const handlePasswordSubmit = async (event) => {
@@ -385,15 +537,18 @@ const ExamAttempt = () => {
           </button>
           <button
             type="button"
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="px-5 py-2 bg-primary text-white rounded text-sm font-bold hover:bg-blue-800 disabled:opacity-70 inline-flex items-center gap-2"
+            onClick={openSubmitConfirmation}
+            disabled={submitting || locked}
+            className="px-5 py-2 bg-primary text-white rounded text-sm font-bold hover:bg-blue-800 disabled:opacity-70 inline-flex items-center gap-2 cursor-pointer shadow-xs"
           >
             {submitting ? <Loader className="animate-spin" size={16} /> : <Send size={16} />}
             Save & Submit
           </button>
         </div>
       </section>
+
+      {/* Render 2-Step Submit Confirmation Modal */}
+      {renderSubmitConfirmModal()}
     </div>
   );
 };
