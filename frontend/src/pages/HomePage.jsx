@@ -55,17 +55,17 @@ const Carousel = ({ items }) => {
            prevEl: '.swiper-button-prev-custom',
         }}
         breakpoints={{
-          640: {
+          320: {
             slidesPerView: 1,
-            spaceBetween: 20,
-          },
-          768: {
-            slidesPerView: 3,
             spaceBetween: 12,
+          },
+          640: {
+            slidesPerView: 2,
+            spaceBetween: 16,
           },
           1024: {
             slidesPerView: 3,
-            spaceBetween: 12,
+            spaceBetween: 16,
           },
         }}
         className="!pb-12 !pt-4 !px-2"
@@ -343,7 +343,7 @@ const HomePage = () => {
     return (
       <div className="w-full">
         {/* 1. Custom Hero Section matching Screenshot */}
-        <div className="relative bg-white pt-8 pb-16 overflow-hidden min-h-[580px] lg:h-[640px] flex items-center">
+        <div className="relative bg-white pt-6 pb-12 sm:pt-8 sm:pb-16 overflow-hidden min-h-auto lg:min-h-[580px] lg:h-[640px] flex items-center">
 
           {/* Right image elements (absolute relative to viewport edge) */}
           <div className="absolute right-0 top-0 bottom-0 w-[55%] hidden md:block overflow-hidden z-0">
@@ -362,12 +362,12 @@ const HomePage = () => {
             </div>
           </div>
 
-          <div className="container mx-auto px-4 lg:px-8 z-10 relative">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 z-10 relative">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
 
               {/* Left text column */}
-              <div className="lg:col-span-7 space-y-8 text-left z-10">
-                <div className="inline-flex flex-wrap items-center gap-1.5 text-[13px] font-extrabold tracking-widest uppercase">
+              <div className="lg:col-span-7 space-y-5 sm:space-y-8 text-left z-10">
+                <div className="inline-flex flex-wrap items-center gap-1.5 text-xs sm:text-[13px] font-extrabold tracking-widest uppercase">
                   <span className="text-[#0a1931]">
                     {homeSections.hero_text?.subtitle || 'LEARN. PRACTICE.'}
                   </span>
@@ -376,50 +376,50 @@ const HomePage = () => {
                   </span>
                 </div>
 
-                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.1] text-[#0a1931]">
+                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.15] text-[#0a1931]">
                   {homeSections.hero_text?.title || 'Empowering Minds.'} <br />
                   <span className="text-blue-900">
                     {homeSections.hero_text?.quote || 'Building Futures.'}
                   </span>
                 </h1>
 
-                <p className="text-slate-600 text-base sm:text-lg max-w-xl leading-relaxed font-normal">
+                <p className="text-slate-600 text-sm sm:text-lg max-w-xl leading-relaxed font-normal">
                   {homeSections.hero_text?.description || 'Industry-focused training designed to build your skills, boost confidence and create better career opportunities.'}
                 </p>
 
                 {/* Key Features row/grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 pt-4 pb-6 border-b border-gray-100">
-                  <div className="flex flex-col items-start space-y-2">
-                    <div className="p-3 bg-blue-50 text-primary rounded-2xl">
-                      <GraduationCap size={24} className="text-[#1e3a8a]" />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 pt-4 pb-6 border-b border-gray-100">
+                  <div className="flex flex-col items-start space-y-1.5 sm:space-y-2">
+                    <div className="p-2.5 sm:p-3 bg-blue-50 text-primary rounded-xl sm:rounded-2xl">
+                      <GraduationCap size={20} className="sm:w-6 sm:h-6 text-[#1e3a8a]" />
                     </div>
-                    <span className="text-sm font-extrabold text-slate-800 tracking-tight leading-tight">Expert Faculty</span>
+                    <span className="text-xs sm:text-sm font-extrabold text-slate-800 tracking-tight leading-tight">Expert Faculty</span>
                   </div>
 
-                  <div className="flex flex-col items-start space-y-2">
-                    <div className="p-3 bg-orange-50 text-[#f15a24] rounded-2xl">
-                      <Sparkles size={24} className="text-[#f15a24]" />
+                  <div className="flex flex-col items-start space-y-1.5 sm:space-y-2">
+                    <div className="p-2.5 sm:p-3 bg-orange-50 text-[#f15a24] rounded-xl sm:rounded-2xl">
+                      <Sparkles size={20} className="sm:w-6 sm:h-6 text-[#f15a24]" />
                     </div>
-                    <span className="text-sm font-extrabold text-slate-800 tracking-tight leading-tight">Practical Learning</span>
+                    <span className="text-xs sm:text-sm font-extrabold text-slate-800 tracking-tight leading-tight">Practical Learning</span>
                   </div>
 
-                  <div className="flex flex-col items-start space-y-2">
-                    <div className="p-3 bg-blue-50 text-primary rounded-2xl">
-                      <Award size={24} className="text-[#1e3a8a]" />
+                  <div className="flex flex-col items-start space-y-1.5 sm:space-y-2">
+                    <div className="p-2.5 sm:p-3 bg-blue-50 text-primary rounded-xl sm:rounded-2xl">
+                      <Award size={20} className="sm:w-6 sm:h-6 text-[#1e3a8a]" />
                     </div>
-                    <span className="text-sm font-extrabold text-slate-800 tracking-tight leading-tight">Certification</span>
+                    <span className="text-xs sm:text-sm font-extrabold text-slate-800 tracking-tight leading-tight">Certification</span>
                   </div>
 
-                  <div className="flex flex-col items-start space-y-2">
-                    <div className="p-3 bg-orange-50 text-[#f15a24] rounded-2xl">
-                      <Briefcase size={24} className="text-[#f15a24]" />
+                  <div className="flex flex-col items-start space-y-1.5 sm:space-y-2">
+                    <div className="p-2.5 sm:p-3 bg-orange-50 text-[#f15a24] rounded-xl sm:rounded-2xl">
+                      <Briefcase size={20} className="sm:w-6 sm:h-6 text-[#f15a24]" />
                     </div>
-                    <span className="text-sm font-extrabold text-slate-800 tracking-tight leading-tight">Placement Support</span>
+                    <span className="text-xs sm:text-sm font-extrabold text-slate-800 tracking-tight leading-tight">Placement Support</span>
                   </div>
                 </div>
 
                 {/* CTA Buttons */}
-                <div className="flex flex-wrap items-center gap-4 sm:gap-6 pt-2">
+                <div className="flex flex-wrap items-center gap-4 sm:gap-6 pt-1 sm:pt-2">
                   <button
                     onClick={() => {
                       const target = document.getElementById('courses-section');
@@ -429,29 +429,19 @@ const HomePage = () => {
                         navigate('/course');
                       }
                     }}
-                    className="inline-flex items-center gap-3 bg-[#0a1931] hover:bg-[#1e3a8a] text-white px-8 py-4 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 hover:shadow-lg shadow-black/25 transform hover:-translate-y-0.5 text-sm"
+                    className="inline-flex items-center gap-2.5 sm:gap-3 bg-[#0a1931] hover:bg-[#1e3a8a] text-white px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 hover:shadow-lg shadow-black/25 transform hover:-translate-y-0.5 text-xs sm:text-sm"
                   >
                     {homeSections.hero_text?.buttonLabel || 'Explore Courses'} <ArrowRight size={16} />
                   </button>
-
-                  {/* <button
-                    onClick={() => setIsVideoModalOpen(true)}
-                    className="inline-flex items-center gap-3 text-[#0a1931] hover:text-[#f15a24] px-4 py-3 font-bold uppercase tracking-wider transition-colors duration-300 group text-sm"
-                  >
-                    <div className="p-3 bg-[#0a1931]/5 group-hover:bg-[#f15a24]/10 rounded-full border border-gray-200 transition-colors flex items-center justify-center">
-                      <Play size={16} fill="currentColor" className="text-[#0a1931] group-hover:text-[#f15a24] translate-x-0.5" />
-                    </div>
-                    Watch Video
-                  </button> */}
                 </div>
               </div>
 
               {/* Right column: Spacer on desktop/tablet, centered square card on mobile */}
               <div className="lg:col-span-5 md:col-span-5 h-auto md:h-auto relative flex items-center justify-center">
-                {/* On mobile, show square card */}
-                <div className="md:hidden relative w-full flex items-center justify-center py-4 px-2">
+                {/* On mobile, show banner card */}
+                <div className="md:hidden relative w-full flex items-center justify-center py-2 sm:py-4 px-1">
                   {/* Dotted pattern accent */}
-                  <div className="absolute -bottom-2 -right-2 w-24 h-24 opacity-20 bg-[radial-gradient(#f15a24_2px,transparent_2px)] [background-size:12px_12px]"></div>
+                  <div className="absolute -bottom-2 -right-2 w-20 h-20 opacity-20 bg-[radial-gradient(#f15a24_2px,transparent_2px)] [background-size:12px_12px]"></div>
 
                   {/* Banner Card Container (16:10 ratio for full image visibility) */}
                   <div className="w-full max-w-[360px] sm:max-w-[480px] aspect-[16/10] rounded-2xl sm:rounded-3xl overflow-hidden border-4 sm:border-8 border-white shadow-2xl bg-[#0a1931] relative z-10">
@@ -466,63 +456,63 @@ const HomePage = () => {
         </div>
 
         {/* Stats Section overlapping */}
-        <div className="relative z-20 w-full mt-[-2rem] mb-12">
-          <div className="container mx-auto px-4 lg:px-8">
-            <div className="bg-white/95 backdrop-blur-md rounded-3xl shadow-[0_25px_60px_rgba(10,25,49,0.12)] border border-slate-100 p-4 sm:p-6 md:p-8">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 md:gap-5 items-stretch">
+        <div className="relative z-20 w-full mt-[-1.5rem] sm:mt-[-2rem] mb-8 sm:mb-12">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl shadow-[0_15px_45px_rgba(10,25,49,0.12)] border border-slate-100 p-3.5 sm:p-6 md:p-8">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 sm:gap-4 md:gap-5 items-stretch">
 
                 {/* 1. Students Trained */}
-                <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-white shadow-[0_6px_20px_rgba(0,0,0,0.05)] border border-slate-100 hover:shadow-[0_12px_28px_rgba(10,25,49,0.12)] hover:-translate-y-1 transition-all duration-300 justify-start">
-                  <div className="p-3 bg-blue-50/90 rounded-2xl shrink-0 shadow-sm">
-                    <GraduationCap size={28} className="text-[#0a1931]" />
+                <div className="flex items-center gap-2.5 sm:gap-4 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl bg-white shadow-sm border border-slate-100 hover:shadow-md transition-all duration-300 justify-start">
+                  <div className="p-2 sm:p-3 bg-blue-50/90 rounded-xl sm:rounded-2xl shrink-0">
+                    <GraduationCap size={22} className="sm:w-7 sm:h-7 text-[#0a1931]" />
                   </div>
-                  <div>
-                    <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.studentsTrained)}+</div>
-                    <div className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Students Trained</div>
+                  <div className="min-w-0">
+                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.studentsTrained)}+</div>
+                    <div className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">Students Trained</div>
                   </div>
                 </div>
 
                 {/* 2. Expert Faculty */}
-                <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-white shadow-[0_6px_20px_rgba(0,0,0,0.05)] border border-slate-100 hover:shadow-[0_12px_28px_rgba(10,25,49,0.12)] hover:-translate-y-1 transition-all duration-300 justify-start">
-                  <div className="p-3 bg-blue-50/90 rounded-2xl shrink-0 shadow-sm">
-                    <Users size={28} className="text-[#0a1931]" />
+                <div className="flex items-center gap-2.5 sm:gap-4 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl bg-white shadow-sm border border-slate-100 hover:shadow-md transition-all duration-300 justify-start">
+                  <div className="p-2 sm:p-3 bg-blue-50/90 rounded-xl sm:rounded-2xl shrink-0">
+                    <Users size={22} className="sm:w-7 sm:h-7 text-[#0a1931]" />
                   </div>
-                  <div>
-                    <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.expertFaculty)}+</div>
-                    <div className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Expert Faculty</div>
+                  <div className="min-w-0">
+                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.expertFaculty)}+</div>
+                    <div className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">Expert Faculty</div>
                   </div>
                 </div>
 
                 {/* 3. Courses Offered */}
-                <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-white shadow-[0_6px_20px_rgba(0,0,0,0.05)] border border-slate-100 hover:shadow-[0_12px_28px_rgba(10,25,49,0.12)] hover:-translate-y-1 transition-all duration-300 justify-start">
-                  <div className="p-3 bg-blue-50/90 rounded-2xl shrink-0 shadow-sm">
-                    <BookOpen size={28} className="text-[#0a1931]" />
+                <div className="flex items-center gap-2.5 sm:gap-4 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl bg-white shadow-sm border border-slate-100 hover:shadow-md transition-all duration-300 justify-start">
+                  <div className="p-2 sm:p-3 bg-blue-50/90 rounded-xl sm:rounded-2xl shrink-0">
+                    <BookOpen size={22} className="sm:w-7 sm:h-7 text-[#0a1931]" />
                   </div>
-                  <div>
-                    <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.coursesOffered)}+</div>
-                    <div className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Courses Offered</div>
+                  <div className="min-w-0">
+                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.coursesOffered)}+</div>
+                    <div className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">Courses Offered</div>
                   </div>
                 </div>
 
                 {/* 4. Success Rate */}
-                <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-white shadow-[0_6px_20px_rgba(0,0,0,0.05)] border border-slate-100 hover:shadow-[0_12px_28px_rgba(10,25,49,0.12)] hover:-translate-y-1 transition-all duration-300 justify-start">
-                  <div className="p-3 bg-blue-50/90 rounded-2xl shrink-0 shadow-sm">
-                    <ShieldCheck size={28} className="text-[#0a1931]" />
+                <div className="flex items-center gap-2.5 sm:gap-4 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl bg-white shadow-sm border border-slate-100 hover:shadow-md transition-all duration-300 justify-start">
+                  <div className="p-2 sm:p-3 bg-blue-50/90 rounded-xl sm:rounded-2xl shrink-0">
+                    <ShieldCheck size={22} className="sm:w-7 sm:h-7 text-[#0a1931]" />
                   </div>
-                  <div>
-                    <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.successRate)}%</div>
-                    <div className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Success Rate</div>
+                  <div className="min-w-0">
+                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.successRate)}%</div>
+                    <div className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">Success Rate</div>
                   </div>
                 </div>
 
                 {/* 5. Recruitment Partners */}
-                <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-white shadow-[0_6px_20px_rgba(0,0,0,0.05)] border border-slate-100 hover:shadow-[0_12px_28px_rgba(10,25,49,0.12)] hover:-translate-y-1 transition-all duration-300 justify-start col-span-2 md:col-span-1">
-                  <div className="p-3 bg-blue-50/90 rounded-2xl shrink-0 shadow-sm">
-                    <Handshake size={28} className="text-[#0a1931]" />
+                <div className="flex items-center gap-2.5 sm:gap-4 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl bg-white shadow-sm border border-slate-100 hover:shadow-md transition-all duration-300 justify-start col-span-2 sm:col-span-1 md:col-span-1">
+                  <div className="p-2 sm:p-3 bg-blue-50/90 rounded-xl sm:rounded-2xl shrink-0">
+                    <Handshake size={22} className="sm:w-7 sm:h-7 text-[#0a1931]" />
                   </div>
-                  <div>
-                    <div className="text-2xl sm:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.recruitmentPartners)}+</div>
-                    <div className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">Recruitment Partners</div>
+                  <div className="min-w-0">
+                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.recruitmentPartners)}+</div>
+                    <div className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">Recruitment Partners</div>
                   </div>
                 </div>
 
@@ -532,24 +522,24 @@ const HomePage = () => {
         </div>
 
         {/* 2. Popular & Category Courses */}
-        <div className="py-20 bg-white">
-          <div className="container mx-auto px-4">
+        <div id="courses-section" className="py-12 sm:py-20 bg-white">
+          <div className="container mx-auto px-4 sm:px-6">
             <Reveal>
-              <div className="text-center mb-12">
-                <h4 className="text-accent font-bold uppercase tracking-widest text-sm mb-3">Our Offerings</h4>
-                <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-4">Popular <span className="text-primary">Courses</span></h2>
-                <p className="text-gray-500 text-lg max-w-2xl mx-auto">Choose from our wide range of professional courses designed to boost your career.</p>
+              <div className="text-center mb-8 sm:mb-12">
+                <h4 className="text-accent font-bold uppercase tracking-widest text-xs sm:text-sm mb-2 sm:mb-3">Our Offerings</h4>
+                <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-gray-900 mb-3 sm:mb-4">Popular <span className="text-primary">Courses</span></h2>
+                <p className="text-gray-500 text-sm sm:text-lg max-w-2xl mx-auto">Choose from our wide range of professional courses designed to boost your career.</p>
               </div>
             </Reveal>
 
             {/* Category Filter */}
             <Reveal delay={0.2}>
-              <div className="flex flex-wrap justify-center gap-3 mb-12">
+              <div className="flex flex-wrap justify-center gap-2 sm:gap-3 mb-8 sm:mb-12">
                 <button
                   onClick={() => setSelectedCategory('all')}
-                  className={`px-6 py-2 rounded-full font-medium text-sm transition-all ${
+                  className={`px-4 sm:px-6 py-1.5 sm:py-2 rounded-full font-medium text-xs sm:text-sm transition-all ${
                     selectedCategory === 'all' 
-                      ? 'bg-primary text-white shadow-lg shadow-primary/30' 
+                      ? 'bg-primary text-white shadow-md shadow-primary/30' 
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
@@ -559,9 +549,9 @@ const HomePage = () => {
                   <button
                     key={cat._id || i}
                     onClick={() => setSelectedCategory(cat._id)}
-                    className={`px-6 py-2 rounded-full font-medium text-sm transition-all ${
+                    className={`px-4 sm:px-6 py-1.5 sm:py-2 rounded-full font-medium text-xs sm:text-sm transition-all ${
                       selectedCategory === cat._id 
-                        ? 'bg-primary text-white shadow-lg shadow-primary/30' 
+                        ? 'bg-primary text-white shadow-md shadow-primary/30' 
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
@@ -573,7 +563,7 @@ const HomePage = () => {
 
             {/* Courses Grid */}
             <Reveal delay={0.4}>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
                 {(selectedCategory === 'all'
                   ? popularCourses
                   : popularCourses.filter(c => (c.category?._id || c.category) === selectedCategory)
@@ -581,31 +571,32 @@ const HomePage = () => {
                     const course = popularCourse.course;
                     if (!course) return null;
                     return (
-                      <div key={popularCourse._id || index} className="bg-white rounded-2xl shadow-[0_18px_45px_rgba(15,23,42,0.16)] hover:shadow-[0_24px_60px_rgba(37,99,235,0.22)] overflow-hidden border border-gray-200 ring-1 ring-gray-100 transform hover:-translate-y-2 transition-all duration-300 group">
-                        <div className="relative h-48 overflow-hidden">
-                          <img 
-                            src={course.image || 'https://placehold.co/600x400/e5e7eb/374151?text=Course+Image'} 
-                            alt={course.name} 
-                            className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700"
-                          />
-                          {/* <div className="absolute top-4 left-4 bg-accent text-white px-3 py-1 rounded-full text-xs font-bold uppercase shadow-md">
-                            Popular
-                          </div> */}
+                      <div key={popularCourse._id || index} className="bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] hover:shadow-[0_20px_50px_rgba(37,99,235,0.2)] overflow-hidden border border-gray-200 ring-1 ring-gray-100 transform hover:-translate-y-1.5 transition-all duration-300 group flex flex-col justify-between">
+                        <div>
+                          <div className="relative h-44 sm:h-48 overflow-hidden">
+                            <img 
+                              src={course.image || 'https://placehold.co/600x400/e5e7eb/374151?text=Course+Image'} 
+                              alt={course.name} 
+                              className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700"
+                            />
+                          </div>
+                          <div className="p-5 sm:p-6">
+                            <div className="text-xs font-semibold text-primary uppercase tracking-wider mb-1.5">{popularCourse.category?.name || 'Popular'}</div>
+                            <h3 className="text-base sm:text-lg font-black text-gray-900 mb-2 leading-tight">{course.name}</h3>
+                            {course.smallDescription && (
+                              <p className="text-xs sm:text-sm text-gray-500 mb-4 line-clamp-2">{course.smallDescription}</p>
+                            )}
+                          </div>
                         </div>
-                        <div className="p-6">
-                          <div className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">{popularCourse.category?.name || 'Popular'}</div>
-                          <h3 className="text-lg font-black text-gray-900 mb-2 leading-tight">{course.name}</h3>
-                          {course.smallDescription && (
-                            <p className="text-sm text-gray-500 mb-4 line-clamp-2">{course.smallDescription}</p>
-                          )}
-                          <div className="flex items-center justify-between border-t pt-4 mt-2">
+                        <div className="px-5 sm:px-6 pb-5 sm:pb-6">
+                          <div className="flex items-center justify-between border-t border-gray-100 pt-4">
                             <div>
-                              <div className="text-xs text-gray-400 uppercase font-semibold">Duration</div>
-                              <div className="text-lg font-bold text-gray-800">{course.duration} {course.durationType}</div>
+                              <div className="text-[10px] text-gray-400 uppercase font-semibold">Duration</div>
+                              <div className="text-sm sm:text-base font-bold text-gray-800">{course.duration} {course.durationType}</div>
                             </div>
                             <button
                               onClick={() => navigate(`/course/${course._id}`)}
-                              className="bg-gradient-to-r from-primary to-blue-700 text-white px-5 py-2 rounded-xl font-bold text-sm hover:shadow-lg hover:shadow-primary/30 transition-all"
+                              className="bg-gradient-to-r from-primary to-blue-700 text-white px-4 sm:px-5 py-2 rounded-xl font-bold text-xs sm:text-sm hover:shadow-lg hover:shadow-primary/30 transition-all"
                             >
                               Enroll Now
                             </button>
@@ -693,93 +684,93 @@ const HomePage = () => {
         </div>
   
         {/* 3. Quick Contact (Inquiry Form) */}
-        <div className="bg-slate-50 py-20 relative overflow-hidden">
+        <div className="bg-slate-50 py-12 sm:py-20 relative overflow-hidden">
              {/* Decorative Elements */}
             <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-100/40 rounded-full blur-[100px] translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
             <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-orange-100/40 rounded-full blur-[80px] -translate-x-1/2 translate-y-1/3 pointer-events-none"></div>
 
-          <div className="container mx-auto px-4 relative z-10">
+          <div className="container mx-auto px-4 sm:px-6 relative z-10">
             <Reveal>
-            <div className="max-w-6xl mx-auto bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col lg:flex-row border border-gray-100">
+            <div className="max-w-6xl mx-auto bg-white rounded-2xl sm:rounded-[2rem] shadow-2xl overflow-hidden flex flex-col lg:flex-row border border-gray-100">
               {/* Left Info Panel */}
-              <div className="lg:w-2/5 bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-12 text-white flex flex-col justify-between relative overflow-hidden">
+              <div className="lg:w-2/5 bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-6 sm:p-8 lg:p-12 text-white flex flex-col justify-between relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
                 <div className="relative z-10">
-                  <h3 className="text-3xl md:text-4xl font-black mb-6">Get In Touch</h3>
-                  <p className="text-gray-300 text-lg mb-10 leading-relaxed font-light">
+                  <h3 className="text-2xl sm:text-3xl md:text-4xl font-black mb-4 sm:mb-6">Get In Touch</h3>
+                  <p className="text-gray-300 text-sm sm:text-lg mb-6 sm:mb-10 leading-relaxed font-light">
                     Have questions about our courses or admissions? Fill out the form and our career counselors will assist you.
                   </p>
                   
-                  <div className="space-y-8">
-                     <div className="flex items-start gap-4 group">
-                        <div className="p-3 bg-white/10 rounded-xl group-hover:bg-accent group-hover:text-white transition-all backdrop-blur-sm shrink-0">
-                          <Phone size={24} />
+                  <div className="space-y-5 sm:space-y-8">
+                     <div className="flex items-start gap-3.5 sm:gap-4 group">
+                        <div className="p-2.5 sm:p-3 bg-white/10 rounded-xl group-hover:bg-accent group-hover:text-white transition-all backdrop-blur-sm shrink-0">
+                          <Phone size={20} className="sm:w-6 sm:h-6" />
                         </div> 
                         <div>
-                            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1">Call Us</p>
-                            <p className="font-bold text-lg">+91-96017-49300</p>
+                            <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-widest font-semibold mb-0.5 sm:mb-1">Call Us</p>
+                            <p className="font-bold text-sm sm:text-lg">+91-96017-49300</p>
                         </div>
                      </div>
-                     <div className="flex items-start gap-4 group">
-                         <div className="p-3 bg-white/10 rounded-xl group-hover:bg-accent group-hover:text-white transition-all backdrop-blur-sm shrink-0">
-                          <Mail size={24} /> 
+                     <div className="flex items-start gap-3.5 sm:gap-4 group">
+                         <div className="p-2.5 sm:p-3 bg-white/10 rounded-xl group-hover:bg-accent group-hover:text-white transition-all backdrop-blur-sm shrink-0">
+                          <Mail size={20} className="sm:w-6 sm:h-6" /> 
                          </div>
                          <div>
-                            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1">Email Us</p>
-                            <p className="font-bold text-lg break-all">info@smartinstitute.co.in</p>
+                            <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-widest font-semibold mb-0.5 sm:mb-1">Email Us</p>
+                            <p className="font-bold text-sm sm:text-lg break-all">info@smartinstitute.co.in</p>
                         </div>
                      </div>
-                     <div className="flex items-start gap-4 group">
-                        <div className="p-3 bg-white/10 rounded-xl group-hover:bg-accent group-hover:text-white transition-all backdrop-blur-sm shrink-0">
-                          <MapPin size={24} /> 
+                     <div className="flex items-start gap-3.5 sm:gap-4 group">
+                        <div className="p-2.5 sm:p-3 bg-white/10 rounded-xl group-hover:bg-accent group-hover:text-white transition-all backdrop-blur-sm shrink-0">
+                          <MapPin size={20} className="sm:w-6 sm:h-6" /> 
                         </div>
                         <div>
-                            <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1">Visit Us</p>
-                            <p className="font-bold text-lg leading-snug">Surat, Gujarat</p>
+                            <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-widest font-semibold mb-0.5 sm:mb-1">Visit Us</p>
+                            <p className="font-bold text-sm sm:text-lg leading-snug">Surat, Gujarat</p>
                         </div>
                      </div>
                   </div>
                 </div>
 
-                <div className="relative z-10 mt-12 pt-8 border-t border-white/10">
+                <div className="relative z-10 mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-white/10">
                     <p className="text-xs text-gray-400">© Smart Institute. All rights reserved.</p>
                 </div>
               </div>
               
               {/* Right Form Panel */}
-              <div className="lg:w-3/5 p-8 md:p-12 bg-white">
-                <div className="mb-8">
-                    <h3 className="text-2xl font-bold text-gray-800 mb-2">Admission Inquiry</h3>
-                    <p className="text-gray-500">Take the first step towards your career.</p>
+              <div className="lg:w-3/5 p-5 sm:p-8 md:p-12 bg-white">
+                <div className="mb-6 sm:mb-8">
+                    <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-1.5">Admission Inquiry</h3>
+                    <p className="text-xs sm:text-sm text-gray-500">Take the first step towards your career.</p>
                 </div>
 
-                <form className="space-y-5" onSubmit={handleSubmit}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <form className="space-y-4 sm:space-y-5" onSubmit={handleSubmit}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                     <div className="space-y-1.5">
                         <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Full Name <span className="text-red-500">*</span></label>
-                        <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Enter Your Full Name Here..." className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all font-medium" required />
+                        <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Enter Your Full Name Here..." className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-xs sm:text-sm font-medium" required />
                     </div>
                     <div className="space-y-1.5">
                         <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Mobile Number <span className="text-red-500">*</span></label>
-                        <input type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="Enter Your Mobile Number Here..." className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all font-medium" required />
+                        <input type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="Enter Your Mobile Number Here..." className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-xs sm:text-sm font-medium" required />
                     </div>
                   </div>
 
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Email Address</label>
-                            <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="Enter Your Email Here..." className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all font-medium" />
+                            <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="Enter Your Email Here..." className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-xs sm:text-sm font-medium" />
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">City <span className="text-red-500">*</span></label>
-                            <input type="text" name="city" value={formData.city} onChange={handleChange} placeholder="Enter City" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all font-medium" required/>
+                            <input type="text" name="city" value={formData.city} onChange={handleChange} placeholder="Enter City" className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-xs sm:text-sm font-medium" required/>
                         </div>
                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                         <div className="space-y-1.5">
                              <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">State <span className="text-red-500">*</span></label>
-                             <input type="text" name="state" value={formData.state} onChange={handleChange} placeholder="Enter State" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all font-medium" required />
+                             <input type="text" name="state" value={formData.state} onChange={handleChange} placeholder="Enter State" className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-xs sm:text-sm font-medium" required />
                         </div>
                          {/* Branch Selection - Dynamic */}
             <div>
@@ -789,7 +780,7 @@ const HomePage = () => {
                   name="branchId"
                   value={formData.branchId}
                   onChange={handleChange}
-                  className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all appearance-none text-gray-700 font-medium cursor-pointer hover:bg-white"
+                  className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all appearance-none text-gray-700 text-xs sm:text-sm font-medium cursor-pointer hover:bg-white"
                   required
                 >
                   <option value="">Choose a Branch...</option>
@@ -798,7 +789,7 @@ const HomePage = () => {
 ))}
                 </select>
                 <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                  <ChevronDown size={20} />
+                  <ChevronDown size={18} />
                 </div>
               </div>
             </div>
@@ -806,7 +797,7 @@ const HomePage = () => {
                   
                   <div className="space-y-1.5">
                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Interested Course <span className="text-red-500">*</span></label>
-                     <select name="course" value={formData.course} onChange={handleChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-gray-700 font-medium cursor-pointer hover:bg-white transition-colors" required>
+                     <select name="course" value={formData.course} onChange={handleChange} className="w-full px-3.5 sm:px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-gray-700 text-xs sm:text-sm font-medium cursor-pointer hover:bg-white transition-colors" required>
                         <option value="">Select a Course...</option>
                         {courses.map(course => (
                             <option key={course._id} value={course._id}>{course.name}</option>
@@ -821,15 +812,15 @@ const HomePage = () => {
                              Refresh Code
                          </button>
                       </div>
-                      <div className="flex gap-3 items-stretch">
-                        <div className="bg-gray-100 border border-gray-300 rounded-xl px-4 flex items-center justify-center min-w-[100px] select-none">
-                            <span className="text-2xl font-mono font-bold text-gray-600 tracking-widest">{captcha}</span>
+                      <div className="flex gap-2.5 sm:gap-3 items-stretch">
+                        <div className="bg-gray-100 border border-gray-300 rounded-xl px-3 sm:px-4 flex items-center justify-center min-w-[90px] sm:min-w-[100px] select-none">
+                            <span className="text-xl sm:text-2xl font-mono font-bold text-gray-600 tracking-widest">{captcha}</span>
                         </div>
-                        <input type="text" value={userCaptcha} onChange={(e) => setUserCaptcha(e.target.value)} placeholder="Type code here" className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all font-medium uppercase placeholder:normal-case" required />
+                        <input type="text" value={userCaptcha} onChange={(e) => setUserCaptcha(e.target.value)} placeholder="Type code here" className="flex-1 px-3.5 sm:px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-xs sm:text-sm font-medium uppercase placeholder:normal-case" required />
                       </div>
                   </div>
 
-                  <button disabled={formLoading} className="w-full bg-accent text-white font-bold py-4 rounded-xl hover:bg-orange-600 transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-600/40 transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed mt-6 text-lg tracking-wide flex items-center justify-center gap-2">
+                  <button disabled={formLoading} className="w-full bg-accent text-white font-bold py-3.5 sm:py-4 rounded-xl hover:bg-orange-600 transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-600/40 transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed mt-4 sm:mt-6 text-sm sm:text-lg tracking-wide flex items-center justify-center gap-2">
                     {formLoading && <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
                     {formLoading ? 'Submitting Application...' : 'Submit Inquiry Now'}
                   </button>
@@ -842,32 +833,32 @@ const HomePage = () => {
   
         <div className="grid grid-cols-1 lg:grid-cols-2">
         {/* 4. Student Success Stories (Toppers) */}
-        <div className="bg-white py-16 lg:h-[700px] lg:overflow-hidden lg:border-r lg:border-gray-200">
+        <div className="bg-white py-10 sm:py-16 lg:h-[700px] lg:overflow-hidden lg:border-r lg:border-gray-200">
           <div className="container mx-auto px-4 text-center">
             <Reveal>
-              <h4 className="text-accent font-bold uppercase tracking-widest text-sm mb-3">Hall of Fame</h4>
-              <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-4">Student <span className="text-primary">Success Stories</span></h2>
-              <p className="text-gray-500 mb-12 max-w-2xl mx-auto text-lg">Celebrating the academic excellence and outstanding achievements of our brilliant students who have made us proud.</p>
+              <h4 className="text-accent font-bold uppercase tracking-widest text-xs sm:text-sm mb-2 sm:mb-3">Hall of Fame</h4>
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-gray-900 mb-3 sm:mb-4">Student <span className="text-primary">Success Stories</span></h2>
+              <p className="text-gray-500 mb-8 sm:mb-12 max-w-2xl mx-auto text-sm sm:text-lg">Celebrating the academic excellence and outstanding achievements of our brilliant students who have made us proud.</p>
               {toppersLoading ? (
-                  <div className="py-20 text-gray-400 italic">Loading success stories...</div>
+                  <div className="py-12 sm:py-20 text-gray-400 italic text-sm">Loading success stories...</div>
               ) : toppers.length > 0 ? (
                   <Carousel items={toppers} />
               ) : (
-                  <div className="py-20 text-gray-400 italic">No success stories to display yet.</div>
+                  <div className="py-12 sm:py-20 text-gray-400 italic text-sm">No success stories to display yet.</div>
               )}
             </Reveal>
           </div>
         </div>
         {/* 5. Latest News - Carousel */}
-        <div className="border-t border-gray-200 bg-slate-50 py-16 lg:h-[700px] lg:overflow-hidden lg:border-t-0">
+        <div className="border-t border-gray-200 bg-slate-50 py-10 sm:py-16 lg:h-[700px] lg:overflow-hidden lg:border-t-0">
           <div className="container mx-auto px-4">
-            <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 sm:mb-10 gap-3 sm:gap-4">
                <div>
-                 <h4 className="text-accent font-bold uppercase tracking-widest text-sm mb-3">Campus Updates</h4>
-                 <h2 className="text-3xl md:text-4xl font-black text-gray-900">Latest <span className="text-primary">News & Events</span></h2>
+                 <h4 className="text-accent font-bold uppercase tracking-widest text-xs sm:text-sm mb-2 sm:mb-3">Campus Updates</h4>
+                 <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-gray-900">Latest <span className="text-primary">News & Events</span></h2>
                </div>
-               <a href="/news" className="text-primary font-bold hover:text-blue-700 flex items-center gap-2 group transition-colors">
-                 View All News <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform"/>
+               <a href="/news" className="text-primary text-xs sm:text-sm font-bold hover:text-blue-700 flex items-center gap-1.5 sm:gap-2 group transition-colors shrink-0">
+                 View All News <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform"/>
                </a>
             </div>
             
@@ -877,16 +868,16 @@ const HomePage = () => {
               ) : latestNews.length === 0 ? (
                 <div className="rounded-2xl border border-gray-100 bg-white py-12 text-center text-gray-500 shadow-sm"><Calendar size={24} className="mx-auto mb-4 text-gray-400" /><p className="text-lg font-medium">No recent news available.</p></div>
               ) : (
-                <div className="news-vertical-viewport h-[480px] overflow-hidden pr-2">
-                  <div className="news-vertical-track space-y-4">
+                <div className="news-vertical-viewport h-[400px] sm:h-[480px] overflow-hidden pr-1 sm:pr-2">
+                  <div className="news-vertical-track space-y-3 sm:space-y-4">
                     {[...latestNews, ...latestNews].map((item, index) => (
-                      <article key={`${item._id}-${index}`} onClick={() => setSelectedNews(item)} className="group flex cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:shadow-lg">
-                        {item.image && <div className="w-28 shrink-0 overflow-hidden bg-gray-100"><img src={item.image} alt={item.title} className="h-full w-full object-cover" /></div>}
-                        <div className="min-w-0 flex-1 p-4">
-                          <span className="flex items-center gap-1 text-[11px] font-bold uppercase text-gray-400"><Calendar size={12} />{formatDate(item.releaseDate) || 'Recent'}</span>
-                          <h3 className="mt-2 line-clamp-2 text-base font-bold text-gray-800 group-hover:text-primary">{item.title}</h3>
-                          <p className="mt-2 line-clamp-2 text-sm text-gray-500">{item.smallDetail || item.description}</p>
-                          <span className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-primary">Read More <ChevronRight size={15} /></span>
+                      <article key={`${item._id}-${index}`} onClick={() => setSelectedNews(item)} className="group flex cursor-pointer overflow-hidden rounded-xl sm:rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:shadow-lg">
+                        {item.image && <div className="w-24 sm:w-28 shrink-0 overflow-hidden bg-gray-100"><img src={item.image} alt={item.title} className="h-full w-full object-cover" /></div>}
+                        <div className="min-w-0 flex-1 p-3.5 sm:p-4">
+                          <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-bold uppercase text-gray-400"><Calendar size={12} />{formatDate(item.releaseDate) || 'Recent'}</span>
+                          <h3 className="mt-1.5 sm:mt-2 line-clamp-2 text-sm sm:text-base font-bold text-gray-800 group-hover:text-primary">{item.title}</h3>
+                          <p className="mt-1.5 sm:mt-2 line-clamp-2 text-xs sm:text-sm text-gray-500">{item.smallDetail || item.description}</p>
+                          <span className="mt-2 sm:mt-3 inline-flex items-center gap-1 text-xs sm:text-sm font-bold text-primary">Read More <ChevronRight size={14} /></span>
                         </div>
                       </article>
                     ))}
