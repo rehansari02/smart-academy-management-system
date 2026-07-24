@@ -25,6 +25,8 @@ const feeReceiptSchema = new mongoose.Schema(
       required: true,
     },
     installmentNumber: { type: Number, default: 1 }, // For tracking EMI payments
+    receiptPurpose: { type: String, enum: ["admission", "registration", "installment"], default: "installment" },
+    displayInstallmentNumber: { type: Number, default: 0 },
     // Dynamic Payment Fields
     bankName: { type: String },
     chequeNumber: { type: String },

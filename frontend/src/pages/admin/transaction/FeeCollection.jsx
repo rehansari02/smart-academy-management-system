@@ -36,45 +36,28 @@ const ONLINE_PAYMENT_TYPES = ["UPI", "Net Banking", "Bank Transfer", "Other"];
 const UPI_PROVIDERS = ["Google Pay", "PhonePe", "Paytm", "BHIM", "Amazon Pay", "Other"];
 
 const getReceiptDisplayType = (receipt) => {
-    const remark = (receipt.remarks || '').toLowerCase();
+    const purpose = receipt.receiptPurpose || (
+        (receipt.remarks || '').toLowerCase().includes('admission') ? 'admission' :
+        (receipt.remarks || '').toLowerCase().includes('registration') ? 'registration' : 'installment'
+    );
 
-    if (receipt.receiptPurpose === 'admission') {
+    if (purpose === 'admission') {
         return {
             label: 'Admission',
             className: 'bg-purple-100 text-purple-700 border-purple-200'
         };
     }
 
-    if (receipt.receiptPurpose === 'registration') {
+    if (purpose === 'registration') {
         return {
             label: 'Registration',
             className: 'bg-indigo-100 text-indigo-700 border-indigo-200'
         };
     }
 
-    if (receipt.receiptPurpose === 'installment') {
-        return {
-            label: receipt.displayInstallmentNumber || receipt.installmentNumber || 1,
-            className: 'bg-blue-100 text-blue-700 border-blue-200'
-        };
-    }
-
-    if (remark.includes('admission')) {
-        return {
-            label: 'Admission',
-            className: 'bg-purple-100 text-purple-700 border-purple-200'
-        };
-    }
-
-    if (remark.includes('registration')) {
-        return {
-            label: 'Registration',
-            className: 'bg-indigo-100 text-indigo-700 border-indigo-200'
-        };
-    }
-
+    const instNum = receipt.displayInstallmentNumber ?? receipt.installmentNumber ?? 1;
     return {
-        label: receipt.displayInstallmentNumber || receipt.installmentNumber || 1,
+        label: instNum,
         className: 'bg-blue-100 text-blue-700 border-blue-200'
     };
 };
@@ -217,7 +200,7 @@ const FeeCollection = () => {
         if (student) {
             setValue('studentId', id, { shouldValidate: true, shouldDirty: true });
             clearErrors('studentId');
-            setValue('courseName', student.course?.name || 'N/A');
+            setValue('courseName', student.course?.name || student.courseName || student.course?.shortName || 'N/A');
             fetchStudentPaymentData(id);
             // Fetch next receipt number for this student's branch
             fetchNextReceiptNo(student.branchId);
@@ -749,7 +732,7 @@ const FeeCollection = () => {
                                         {selectedStudent.firstName} {selectedStudent.middleName ? `${selectedStudent.middleName} ` : ''}{selectedStudent.lastName}
                                     </h3>
                                     <p className="text-sm text-purple-600 font-medium mt-1">
-                                        {selectedStudent.course?.name || 'N/A'}
+                                        {selectedStudent.course?.name || selectedStudent.courseName || selectedStudent.course?.shortName || 'N/A'}
                                     </p>
                                      <div className="mt-2 text-[10px] text-gray-500 font-bold uppercase tracking-widest bg-gray-100 py-1 rounded">
                                         Total Fees: ₹{paymentSummary.totalFees?.toLocaleString('en-IN')}

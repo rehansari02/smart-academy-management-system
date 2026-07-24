@@ -201,6 +201,7 @@ const backfillOnlineAdmissionOwners = async (branchId) => {
 };
 
 const getReceiptPurpose = (receipt) => {
+  if (receipt?.receiptPurpose) return receipt.receiptPurpose;
   const remarks = (receipt?.remarks || "").toLowerCase();
   if (remarks.includes("admission")) return "admission";
   if (remarks.includes("registration")) return "registration";
@@ -210,9 +211,9 @@ const getReceiptPurpose = (receipt) => {
 const getReceiptAmount = (receipt) => Number(receipt?.amountPaid || 0);
 
 const sortReceiptsChronologically = (receipts = []) => [...receipts].sort((a, b) => {
-  const aTime = new Date(a.date || a.createdAt || 0).getTime();
-  const bTime = new Date(b.date || b.createdAt || 0).getTime();
-  if (aTime !== bTime) return aTime - bTime;
+  const aCreated = new Date(a.createdAt || a.date || 0).getTime();
+  const bCreated = new Date(b.createdAt || b.date || 0).getTime();
+  if (aCreated !== bCreated) return aCreated - bCreated;
   return Number(a.receiptNo || 0) - Number(b.receiptNo || 0);
 });
 
@@ -223,24 +224,30 @@ const getReceiptLifecycleInfo = (receipts = []) => {
   let installmentNumber = 0;
 
   sortReceiptsChronologically(receipts).forEach((receipt) => {
-    const rawPurpose = getReceiptPurpose(receipt);
-    let purpose = rawPurpose;
+    let purpose = receipt.receiptPurpose || getReceiptPurpose(receipt);
+    let displayInstallmentNumber = Number(receipt.displayInstallmentNumber || 0);
 
-    if (rawPurpose === "admission") {
-      if (hasAdmission) {
-        purpose = "installment";
-      } else {
-        hasAdmission = true;
+    if (receipt.receiptPurpose) {
+      if (purpose === "admission") hasAdmission = true;
+      if (purpose === "registration") hasRegistration = true;
+      if (purpose === "installment" && displayInstallmentNumber > 0) {
+        installmentNumber = Math.max(installmentNumber, displayInstallmentNumber);
       }
-    } else if (rawPurpose === "registration") {
-      if (hasRegistration) {
-        purpose = "installment";
+    } else {
+      if (purpose === "admission") {
+        if (hasAdmission) purpose = "installment";
+        else hasAdmission = true;
+      } else if (purpose === "registration") {
+        if (hasRegistration) purpose = "installment";
+        else hasRegistration = true;
+      }
+      if (purpose === "installment") {
+        displayInstallmentNumber = Number(receipt.installmentNumber || ++installmentNumber);
       } else {
-        hasRegistration = true;
+        displayInstallmentNumber = 0;
       }
     }
 
-    const displayInstallmentNumber = purpose === "installment" ? ++installmentNumber : 0;
     if (receipt?._id) {
       receiptInfo.set(receipt._id.toString(), {
         purpose,
@@ -283,7 +290,7 @@ const allocateReceiptPayments = (student, receipts = []) => {
     let amount = getReceiptAmount(receipt);
     const allocation = { admission: 0, registration: 0, installment: 0 };
     const purpose = receipt?._id
-      ? receiptLifecycleInfo.get(receipt._id.toString())?.purpose || getReceiptPurpose(receipt)
+      ? receiptLifecycleInfo.get(receipt._id.toString())?.purpose || receipt.receiptPurpose || getReceiptPurpose(receipt)
       : getReceiptPurpose(receipt);
 
     if (purpose === "admission" && admissionRemaining > 0) {
@@ -322,9 +329,7 @@ const getNextInstallmentNumber = (receipts) => {
     return value > max ? value : max;
   }, 0);
   const maxStoredInstallment = receipts.reduce((max, receipt) => {
-    const info = receipt?._id ? receiptLifecycleInfo.get(receipt._id.toString()) : null;
-    if (info?.purpose !== "installment") return max;
-    const value = Number(receipt.installmentNumber || 0);
+    const value = Number(receipt.displayInstallmentNumber || receipt.installmentNumber || 0);
     return value > max ? value : max;
   }, 0);
 
@@ -371,14 +376,12 @@ const attachReceiptDisplayInfo = (receipts) => {
   const sortedReceipts = sortReceiptsChronologically(receipts);
   const receiptId = (receipt) => receipt._id.toString();
   const receiptLifecycleInfo = getReceiptLifecycleInfo(sortedReceipts);
-  const purposeOrder = { admission: 0, registration: 1, installment: 2 };
+
   return receipts
     .map((receipt) => {
       const info = receiptLifecycleInfo.get(receiptId(receipt)) || {
-        purpose: getReceiptPurpose(receipt),
-        displayInstallmentNumber: getReceiptPurpose(receipt) === "installment"
-          ? Number(receipt.installmentNumber || 1)
-          : 0
+        purpose: receipt.receiptPurpose || getReceiptPurpose(receipt),
+        displayInstallmentNumber: Number(receipt.displayInstallmentNumber || receipt.installmentNumber || 0)
       };
 
       return {
@@ -388,15 +391,11 @@ const attachReceiptDisplayInfo = (receipts) => {
       };
     })
     .sort((a, b) => {
-      // Sort by purpose: Admission first, Registration second, then Installments
-      const aOrder = purposeOrder[a.receiptPurpose] ?? 3;
-      const bOrder = purposeOrder[b.receiptPurpose] ?? 3;
-      if (aOrder !== bOrder) return aOrder - bOrder;
-      // Within same purpose: installments by number; admission/registration by date
-      if (a.receiptPurpose === 'installment') {
-        return (a.displayInstallmentNumber || 0) - (b.displayInstallmentNumber || 0);
-      }
-      return new Date(a.date || a.createdAt || 0) - new Date(b.date || b.createdAt || 0);
+      // Sort chronologically by createdAt / receiptNo / date so history order is stable
+      const aTime = new Date(a.date || a.createdAt || 0).getTime();
+      const bTime = new Date(b.date || b.createdAt || 0).getTime();
+      if (aTime !== bTime) return aTime - bTime;
+      return Number(a.receiptNo || 0) - Number(b.receiptNo || 0);
     });
 };
 
@@ -2014,6 +2013,8 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
         date: date || Date.now(),
         createdBy: req.user._id,
         installmentNumber: receiptPurpose.installmentNumber,
+        receiptPurpose: receiptPurpose.purpose,
+        displayInstallmentNumber: receiptPurpose.purpose === 'installment' ? receiptPurpose.installmentNumber : 0,
         bankName,
         chequeNumber,
         chequeDate,
