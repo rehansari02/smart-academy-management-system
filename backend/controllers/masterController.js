@@ -85,8 +85,8 @@ const getPublicHomeStats = asyncHandler(async (req, res) => {
     ]);
 
     res.json({
-        studentsTrained,
-        expertFaculty,
+        studentsTrained: 3500,
+        expertFaculty: 25,
         coursesOffered,
         successRate: 95,
         recruitmentPartners: 100

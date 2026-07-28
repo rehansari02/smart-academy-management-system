@@ -157,6 +157,7 @@ app.use("/api/employees", require("./routes/employeeRoutes"));
 app.use("/api/user-rights", require("./routes/userRightRoutes"));
 app.use("/api/visitors", require("./routes/visitorRoutes"));
 app.use("/api/news", require("./routes/newsRoutes"));
+app.use("/api/awards", require("./routes/awardRoutes"));
 app.use("/api/transaction/attendance", require("./routes/attendanceRoutes"));
 app.use("/api/transaction/expenses", require("./routes/expenseRoutes"));
 app.use("/api/transaction/expense-categories", require("./routes/expenseCategoryRoutes"));

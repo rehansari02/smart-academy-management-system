@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import { Star, Send, Quote } from 'lucide-react';
+import { Star, Send, Quote, RefreshCw } from 'lucide-react';
 
 const API = `${import.meta.env.VITE_API_URL}/feedback`;
 
@@ -41,6 +41,17 @@ const FeedbackSection = () => {
     const [form, setForm] = useState({ name: '', email: '', phone: '', category: 'general', rating: 5, message: '', suggestions: '' });
     const [submitting, setSubmitting] = useState(false);
     const [stats, setStats] = useState({ total: 0, avgRating: '0', recent: [] });
+    const [captcha, setCaptcha] = useState('');
+    const [userCaptcha, setUserCaptcha] = useState('');
+
+    const generateCaptcha = () => {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let result = '';
+        for (let i = 0; i < 6; i++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        setCaptcha(result);
+    };
 
     const fetchStats = async () => {
         try {
@@ -49,17 +60,26 @@ const FeedbackSection = () => {
         } catch {}
     };
 
-    useEffect(() => { fetchStats(); }, []);
+    useEffect(() => { 
+        fetchStats(); 
+        generateCaptcha();
+    }, []);
 
     const handleChange = e => setForm(p => ({ ...p, [e.target.name]: e.target.value }));
 
     const handleSubmit = async e => {
         e.preventDefault();
+        if (userCaptcha.trim().toUpperCase() !== captcha) {
+            toast.error('Invalid security code. Please try again.');
+            return;
+        }
         setSubmitting(true);
         try {
             await axios.post(API, form);
             toast.success('Thank you for your feedback!');
             setForm({ name: '', email: '', phone: '', category: 'general', rating: 5, message: '', suggestions: '' });
+            setUserCaptcha('');
+            generateCaptcha();
             fetchStats();
         } catch { toast.error('Failed to submit. Please try again.'); }
         finally { setSubmitting(false); }
@@ -69,12 +89,12 @@ const FeedbackSection = () => {
         <div className="bg-slate-50 py-20">
             <div className="container mx-auto px-4">
                 <div className="text-center mb-12">
-                    <h4 className="text-accent font-bold uppercase tracking-widest text-sm mb-3">Your Voice Matters</h4>
-                    <h2 className="text-3xl md:text-4xl font-black text-gray-900">
-                        Share Your <span className="text-primary">Feedback</span>
+                    <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-[#0a1931] tracking-tight mb-2">
+                        Your Voice <span className="bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Matters</span>
                     </h2>
+                    <h3 className="text-base sm:text-lg font-bold text-accent uppercase tracking-wider mb-3">Share Your Feedback</h3>
                     {stats.total > 0 && (
-                        <p className="text-gray-500 mt-3">
+                        <p className="text-gray-500 mt-3 text-sm sm:text-base">
                             <span className="font-bold text-gray-700">{stats.total}</span> reviews &nbsp;·&nbsp;
                             <span className="font-bold text-yellow-500">{stats.avgRating} ★</span> average rating
                         </p>
@@ -124,10 +144,21 @@ const FeedbackSection = () => {
                                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none" required />
                         </div>
 
-                        <div>
-                            <label className="text-xs font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Suggestions (optional)</label>
-                            <textarea name="suggestions" value={form.suggestions} onChange={handleChange} rows={2} placeholder="Any suggestions for improvement..."
-                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none" />
+                        {/* Captcha validation */}
+                        <div className="space-y-1.5 pt-1">
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-bold text-gray-600 uppercase tracking-wide block">Security Code <span className="text-red-500">*</span></label>
+                                <button type="button" onClick={generateCaptcha} className="text-xs text-primary font-bold hover:underline flex items-center gap-1">
+                                    <RefreshCw size={12} /> Refresh Code
+                                </button>
+                            </div>
+                            <div className="flex gap-3 items-stretch">
+                                <div className="bg-gray-100 border border-gray-200 rounded-xl px-4 flex items-center justify-center min-w-[100px] select-none">
+                                    <span className="text-lg font-mono font-bold text-gray-600 tracking-widest">{captcha}</span>
+                                </div>
+                                <input type="text" value={userCaptcha} onChange={(e) => setUserCaptcha(e.target.value)} placeholder="Type security code here"
+                                    className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm font-semibold uppercase placeholder:normal-case" required />
+                            </div>
                         </div>
 
                         <button type="submit" disabled={submitting}

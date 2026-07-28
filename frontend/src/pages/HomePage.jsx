@@ -14,6 +14,7 @@ import topperService from '../services/topperService';
 import bannerService from '../services/bannerService';
 import homeSectionService from '../services/homeSectionService';
 import homeStatsService from '../services/homeStatsService';
+import awardService from '../services/awardService';
 import { ArrowRight, X, Trophy, Calendar, ChevronLeft, ChevronRight, Phone, Mail, MapPin, AlertCircle, Quote, Users, ChevronDown, ExternalLink, GraduationCap, Sparkles, Award, Briefcase, Play, BookOpen, ShieldCheck, Handshake } from 'lucide-react';
 import { formatDate } from '../utils/dateUtils';
 import HeroImage1 from '../assets/6.jpg'
@@ -38,15 +39,38 @@ const Carousel = ({ items }) => {
             opacity: 0.5;
             cursor: not-allowed;
           }
+          .topper-swiper {
+            padding-bottom: 2.5rem !important;
+            padding-top: 1.5rem !important;
+          }
+          .topper-swiper .swiper-slide {
+            transform: scale(0.9);
+            opacity: 0.9;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+          .topper-swiper .swiper-slide-active {
+            transform: scale(1.05);
+            opacity: 1;
+            z-index: 10;
+          }
+          .topper-swiper .swiper-slide-active .topper-card {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.06);
+            border-top-color: #1e3a8a !important; /* Primary color */
+          }
+          .topper-swiper .swiper-slide-active .topper-img-container {
+            border-color: #1e3a8a !important;
+            transform: scale(1.05);
+          }
         `}
       </style>
       <Swiper
         modules={[Navigation, Autoplay]}
-        spaceBetween={12}
+        spaceBetween={20}
         slidesPerView={1}
-        loop={items.length > 3}
+        centeredSlides={true}
+        loop={items.length > 2}
         autoplay={{
-          delay: 3000,
+          delay: 3500,
           disableOnInteraction: false,
           pauseOnMouseEnter: true
         }}
@@ -56,7 +80,7 @@ const Carousel = ({ items }) => {
         }}
         breakpoints={{
           320: {
-            slidesPerView: 1,
+            slidesPerView: 1.3,
             spaceBetween: 12,
           },
           640: {
@@ -65,24 +89,24 @@ const Carousel = ({ items }) => {
           },
           1024: {
             slidesPerView: 3,
-            spaceBetween: 16,
+            spaceBetween: 24,
           },
         }}
-        className="!pb-12 !pt-4 !px-2"
+        className="topper-swiper !px-2"
       >
         {items.map((item, index) => (
           <SwiperSlide key={index} className="h-auto flex items-stretch justify-center">
-               <div className="flex justify-center items-center w-full">
-                 <div className="bg-white p-3 rounded-xl shadow-lg w-full text-center border-t-4 border-accent relative transform hover:scale-105 transition-transform duration-300">
+               <div className="flex justify-center items-center w-full py-4">
+                 <div className="topper-card bg-white p-5 sm:p-7 rounded-2xl shadow-md w-full max-w-sm text-center border-t-4 border-accent relative transition-all duration-300">
                     <div className="absolute top-4 right-6 text-yellow-400 opacity-20"><Quote size={40} /></div>
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3 rounded-full overflow-hidden border-4 border-gray-50 shadow-inner">
+                    <div className="topper-img-container w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3 rounded-full overflow-hidden border-4 border-gray-50 shadow-inner transition-all duration-300">
                       <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
                     </div>
                     <h3 className="text-sm sm:text-base font-bold text-gray-800 mb-1">{item.name}</h3>
-                    <p className="text-primary font-medium text-sm mb-3 uppercase tracking-wide">{item.course}</p>
-                    <div className="bg-blue-50 py-2 rounded-lg">
-                         <div className="text-3xl font-black text-accent">{item.percentage}%</div>
-                         <div className="text-[10px] text-gray-500 font-semibold uppercase">Score Achieved</div>
+                    <p className="text-primary font-medium text-xs sm:text-sm mb-3 uppercase tracking-wide">{item.course}</p>
+                    <div className="bg-blue-50 py-2.5 rounded-xl">
+                         <div className="text-2xl sm:text-3xl font-black text-accent">{item.percentage}%</div>
+                         <div className="text-[9px] sm:text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Score Achieved</div>
                     </div>
                  </div>
                </div>
@@ -113,6 +137,7 @@ const HeroBannerVisual = ({ items, mobile = false }) => {
   return (
     <div className="hero-banner-shine relative h-full w-full overflow-hidden">
       <Swiper
+        key={slides.length}
         onSwiper={(swiper) => { swiperRef.current = swiper; }}
         onSlideChange={(swiper) => setActiveIndex(swiper.realIndex)}
         modules={[Autoplay, EffectFade]}
@@ -160,6 +185,69 @@ const HeroBannerVisual = ({ items, mobile = false }) => {
   );
 };
 
+const AnimatedCounter = ({ targetValue, formatFn }) => {
+  const [count, setCount] = useState(0);
+  const [isIntersecting, setIsIntersecting] = useState(false);
+  const elementRef = useRef(null);
+  const hasAnimated = useRef(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        setIsIntersecting(entry.isIntersecting);
+      },
+      { threshold: 0.1 }
+    );
+
+    if (elementRef.current) {
+      observer.observe(elementRef.current);
+    }
+
+    return () => {
+      if (elementRef.current) {
+        observer.unobserve(elementRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const end = Number(targetValue);
+    if (isNaN(end) || end <= 0) {
+      setCount(0);
+      return;
+    }
+
+    if (isIntersecting && !hasAnimated.current) {
+      hasAnimated.current = true;
+      let startTime = null;
+      const duration = 1800; // 1.8 seconds duration
+
+      const animate = (timestamp) => {
+        if (!startTime) startTime = timestamp;
+        const progress = timestamp - startTime;
+        const rate = Math.min(progress / duration, 1);
+        
+        // Easing function (easeOutExpo)
+        const easeRate = rate === 1 ? 1 : 1 - Math.pow(2, -10 * rate);
+        const current = Math.floor(easeRate * end);
+        
+        setCount(current);
+
+        if (rate < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          setCount(end);
+        }
+      };
+
+      requestAnimationFrame(animate);
+    }
+  }, [targetValue, isIntersecting]);
+
+  return <span ref={elementRef}>{formatFn ? formatFn(count) : count}</span>;
+};
+
 const formatStatNumber = (value) => {
   const number = Number(value);
   if (!Number.isFinite(number)) return '0';
@@ -185,6 +273,8 @@ const HomePage = () => {
     const [selectedNews, setSelectedNews] = useState(null);
     const [toppers, setToppers] = useState([]);
     const [toppersLoading, setToppersLoading] = useState(true);
+    const [awards, setAwards] = useState([]);
+    const [awardsLoading, setAwardsLoading] = useState(true);
     const defaultHeroImages = [];
     const [heroImages, setHeroImages] = useState(defaultHeroImages);
     const [homeStats, setHomeStats] = useState({
@@ -225,6 +315,7 @@ const HomePage = () => {
       generateCaptcha();
       fetchLatestNews();
       fetchToppers();
+      fetchAwards();
       fetchBanners();
       fetchHomeSections();
       fetchHomeStats();
@@ -282,6 +373,18 @@ const HomePage = () => {
             console.error("Failed to load news", error);
         } finally {
             setNewsLoading(false);
+        }
+    };
+
+    const fetchAwards = async () => {
+        try {
+            const data = await awardService.getPublicAwards();
+            const sortedData = [...data].sort((a,b) => new Date(b.date) - new Date(a.date));
+            setAwards(sortedData);
+        } catch (error) {
+            console.error("Failed to load awards", error);
+        } finally {
+            setAwardsLoading(false);
         }
     };
   
@@ -346,18 +449,18 @@ const HomePage = () => {
         <div className="relative bg-white pt-6 pb-12 sm:pt-8 sm:pb-16 overflow-hidden min-h-auto lg:min-h-[580px] lg:h-[640px] flex items-center">
 
           {/* Right image elements (absolute relative to viewport edge) */}
-          <div className="absolute right-0 top-0 bottom-0 w-[55%] hidden md:block overflow-hidden z-0">
+          <div className="absolute right-0 top-0 bottom-0 w-[62%] hidden md:block overflow-hidden z-0">
             {/* Blue background decoration (rounded left, full height) */}
-            <div className="absolute right-0 top-0 bottom-0 w-[360px] lg:w-[500px] bg-[#0a1931] rounded-l-full shadow-2xl z-0"></div>
+            <div className="absolute right-0 top-0 bottom-0 w-[480px] lg:w-[640px] bg-[#0a1931] rounded-l-full shadow-2xl z-0"></div>
 
             {/* Dotted pattern */}
-            <div className="absolute bottom-[15%] right-[460px] lg:right-[620px] w-20 h-20 opacity-15 bg-[radial-gradient(#f15a24_2px,transparent_2px)] [background-size:12px_12px] z-10"></div>
+            <div className="absolute bottom-[15%] right-[580px] lg:right-[760px] w-20 h-20 opacity-15 bg-[radial-gradient(#f15a24_2px,transparent_2px)] [background-size:12px_12px] z-10"></div>
 
             {/* Orange stroke curved line (parallel to white border) */}
-            <div className="absolute right-0 top-0 bottom-0 w-[410px] lg:w-[570px] rounded-l-full border-l-2 border-[#f15a24] z-10 pointer-events-none"></div>
+            <div className="absolute right-0 top-0 bottom-0 w-[530px] lg:w-[710px] rounded-l-full border-l-2 border-[#f15a24] z-10 pointer-events-none"></div>
 
             {/* Banner image container (curved left, white border on left, full height of hero section) */}
-            <div className="absolute right-0 top-0 bottom-0 w-[400px] lg:w-[560px] rounded-l-full overflow-hidden border-l-[8px] border-white shadow-xl bg-slate-50 z-10 flex items-center justify-center">
+            <div className="absolute right-0 top-0 bottom-0 w-[520px] lg:w-[700px] rounded-l-full overflow-hidden border-l-[8px] border-white shadow-xl bg-slate-50 z-10 flex items-center justify-center">
               <HeroBannerVisual items={heroImages} />
             </div>
           </div>
@@ -366,7 +469,7 @@ const HomePage = () => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
 
               {/* Left text column */}
-              <div className="lg:col-span-7 space-y-5 sm:space-y-8 text-left z-10">
+              <div className="lg:col-span-6 space-y-5 sm:space-y-8 text-left z-10">
                 <div className="inline-flex flex-wrap items-center gap-1.5 text-xs sm:text-[13px] font-extrabold tracking-widest uppercase">
                   <span className="text-[#0a1931]">
                     {homeSections.hero_text?.subtitle || 'LEARN. PRACTICE.'}
@@ -467,7 +570,9 @@ const HomePage = () => {
                     <GraduationCap size={22} className="sm:w-7 sm:h-7 text-[#0a1931]" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.studentsTrained)}+</div>
+                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">
+                      <AnimatedCounter targetValue={homeStats.studentsTrained} formatFn={formatStatNumber} />+
+                    </div>
                     <div className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">Students Trained</div>
                   </div>
                 </div>
@@ -478,7 +583,9 @@ const HomePage = () => {
                     <Users size={22} className="sm:w-7 sm:h-7 text-[#0a1931]" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.expertFaculty)}+</div>
+                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">
+                      <AnimatedCounter targetValue={homeStats.expertFaculty} formatFn={formatStatNumber} />+
+                    </div>
                     <div className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">Expert Faculty</div>
                   </div>
                 </div>
@@ -489,7 +596,9 @@ const HomePage = () => {
                     <BookOpen size={22} className="sm:w-7 sm:h-7 text-[#0a1931]" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.coursesOffered)}+</div>
+                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">
+                      <AnimatedCounter targetValue={homeStats.coursesOffered} formatFn={formatStatNumber} />+
+                    </div>
                     <div className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">Courses Offered</div>
                   </div>
                 </div>
@@ -500,7 +609,9 @@ const HomePage = () => {
                     <ShieldCheck size={22} className="sm:w-7 sm:h-7 text-[#0a1931]" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.successRate)}%</div>
+                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">
+                      <AnimatedCounter targetValue={homeStats.successRate} formatFn={formatStatNumber} />%
+                    </div>
                     <div className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">Success Rate</div>
                   </div>
                 </div>
@@ -511,7 +622,9 @@ const HomePage = () => {
                     <Handshake size={22} className="sm:w-7 sm:h-7 text-[#0a1931]" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">{formatStatNumber(homeStats.recruitmentPartners)}+</div>
+                    <div className="text-lg sm:text-2xl md:text-3xl font-black text-[#0a1931]">
+                      <AnimatedCounter targetValue={homeStats.recruitmentPartners} formatFn={formatStatNumber} />+
+                    </div>
                     <div className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">Recruitment Partners</div>
                   </div>
                 </div>
@@ -522,13 +635,13 @@ const HomePage = () => {
         </div>
 
         {/* 2. Popular & Category Courses */}
-        <div id="courses-section" className="py-12 sm:py-20 bg-white">
+        <div id="courses-section" className="pt-4 pb-12 sm:pt-6 sm:pb-20 bg-white">
           <div className="container mx-auto px-4 sm:px-6">
             <Reveal>
               <div className="text-center mb-8 sm:mb-12">
-                <h4 className="text-accent font-bold uppercase tracking-widest text-xs sm:text-sm mb-2 sm:mb-3">Our Offerings</h4>
-                <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-gray-900 mb-3 sm:mb-4">Popular <span className="text-primary">Courses</span></h2>
-                <p className="text-gray-500 text-sm sm:text-lg max-w-2xl mx-auto">Choose from our wide range of professional courses designed to boost your career.</p>
+                <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-[#0a1931] tracking-tight mb-2">Our <span className="bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Offerings</span></h2>
+                <h3 className="text-base sm:text-lg font-bold text-accent uppercase tracking-wider mb-3">Most Demanded Courses</h3>
+                <p className="text-gray-500 text-sm sm:text-base max-w-4xl mx-auto">Choose from our wide range of professional courses designed to boost your career.</p>
               </div>
             </Reveal>
 
@@ -543,7 +656,7 @@ const HomePage = () => {
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
-                  Popular Courses
+                  Most Demanded Courses
                 </button>
                 {popularCategories.filter(cat => cat.isActive).map((cat, i) => (
                   <button
@@ -831,63 +944,152 @@ const HomePage = () => {
           </div>
         </div>
   
-        <div className="grid grid-cols-1 lg:grid-cols-2">
-        {/* 4. Student Success Stories (Toppers) */}
-        <div className="bg-white py-10 sm:py-16 lg:h-[700px] lg:overflow-hidden lg:border-r lg:border-gray-200">
-          <div className="container mx-auto px-4 text-center">
+        {/* 4. Latest Updates & Achievements (News + Recognition) */}
+        <div className="border-t border-b border-gray-200 bg-slate-50 py-12 sm:py-16">
+          <div className="container mx-auto px-4 max-w-6xl">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+              
+              {/* Left Column: Awards & Recognitions (Col span 7 on desktop) */}
+              <div className="lg:col-span-7 flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-end mb-6 gap-3">
+                    <div>
+                      <h2 className="text-2xl sm:text-3xl font-black text-[#0a1931] tracking-tight mb-1"><span className="bg-gradient-to-r from-[#0a1931] to-primary bg-clip-text text-transparent">Achievements</span></h2>
+                      <h3 className="text-xs sm:text-sm font-bold text-accent uppercase tracking-widest mb-4">Awards & Recognition</h3>
+                    </div>
+                  </div>
+                  
+                  <Reveal>
+                    {awardsLoading ? (
+                      <div className="space-y-4">
+                        {Array(2).fill(0).map((_, i) => (
+                          <div key={i} className="h-28 animate-pulse rounded-2xl border border-gray-100 bg-white p-4 shadow-sm" />
+                        ))}
+                      </div>
+                    ) : awards.length === 0 ? (
+                      <div className="rounded-2xl border border-gray-100 bg-white py-12 text-center text-gray-500 shadow-sm">
+                        <Award size={32} className="mx-auto mb-3 text-gray-400" />
+                        <p className="text-base font-semibold">No recent awards available.</p>
+                      </div>
+                    ) : (
+                      /* Display Awards & Recognitions in a nice grid */
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[480px] overflow-y-auto pr-1">
+                        {awards.map((award) => (
+                          <div key={award._id} className="group flex flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all duration-300">
+                            {/* 1. Image with border */}
+                            {award.image ? (
+                              <div className="w-full h-36 overflow-hidden rounded-xl bg-gray-50 border border-gray-200">
+                                <img src={award.image} alt={award.title} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                              </div>
+                            ) : (
+                              <div className="w-full h-36 rounded-xl bg-indigo-50 border border-gray-200 flex items-center justify-center text-indigo-400">
+                                <Award size={36} />
+                              </div>
+                            )}
+
+                            {/* 2. Details below image */}
+                            <div className="flex flex-col gap-1.5">
+                              {/* Subtitle / Date */}
+                              <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-bold uppercase text-gray-400">
+                                <Calendar size={12} className="text-gray-400" /> {formatDate(award.date)}
+                              </span>
+
+                              {/* Title */}
+                              <h3 className="text-base font-bold text-gray-800 group-hover:text-primary transition-colors line-clamp-1 leading-snug">{award.title}</h3>
+
+                              {/* Paragraph (Description) */}
+                              <p className="text-xs sm:text-sm text-gray-500 line-clamp-2 leading-relaxed">{award.description}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Reveal>
+                </div>
+              </div>
+
+              {/* Right Column: Latest News (Col span 5 on desktop) */}
+              <div className="lg:col-span-5 flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-end mb-6 gap-3">
+                    <div>
+                      <h2 className="text-2xl sm:text-3xl font-black text-[#0a1931] tracking-tight mb-1">Campus <span className="bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Updates</span></h2>
+                      <h3 className="text-xs sm:text-sm font-bold text-accent uppercase tracking-widest mb-4">Latest News</h3>
+                    </div>
+                    <a href="/news" className="text-primary text-xs sm:text-sm font-bold hover:text-blue-700 flex items-center gap-1 group transition-colors shrink-0 mb-1">
+                      View All <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform"/>
+                    </a>
+                  </div>
+
+                  <Reveal>
+                    {newsLoading ? (
+                      <div className="space-y-4">
+                        {Array(3).fill(0).map((_, i) => (
+                          <div key={i} className="h-28 animate-pulse rounded-2xl border border-gray-100 bg-white p-4 shadow-sm" />
+                        ))}
+                      </div>
+                    ) : latestNews.length === 0 ? (
+                      <div className="rounded-2xl border border-gray-100 bg-white py-12 text-center text-gray-500 shadow-sm">
+                        <Calendar size={24} className="mx-auto mb-3 text-gray-400" />
+                        <p className="text-base font-semibold">No recent news available.</p>
+                      </div>
+                    ) : (
+                      /* Vertical scroll container for latest news */
+                      <div className="rounded-2xl bg-white border-2 border-gray-200 shadow-xl p-4 h-[350px] flex flex-col overflow-hidden">
+                        <div className="news-vertical-viewport flex-1 overflow-hidden">
+                          <div className="news-vertical-track space-y-3">
+                            {[...latestNews, ...latestNews].map((item, index) => (
+                              <article key={`${item._id}-${index}`} onClick={() => setSelectedNews(item)} className="group flex cursor-pointer overflow-hidden rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-300">
+                                {item.image && (
+                                  <div className="w-16 sm:w-20 h-16 sm:h-20 shrink-0 overflow-hidden rounded-lg bg-gray-50 border">
+                                    <img src={item.image} alt={item.title} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                  </div>
+                                )}
+                                <div className="min-w-0 flex-1 pl-3 flex flex-col justify-between">
+                                  <div>
+                                    <span className="flex items-center gap-1 text-[9px] font-bold uppercase text-gray-400">
+                                      <Calendar size={10} /> {formatDate(item.releaseDate) || 'Recent'}
+                                    </span>
+                                    <h4 className="mt-1 line-clamp-2 text-xs sm:text-sm font-bold text-gray-800 group-hover:text-primary transition-colors leading-snug">{item.title}</h4>
+                                  </div>
+                                  <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-primary self-start hover:underline">
+                                    Read More <ChevronRight size={12} />
+                                  </span>
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </Reveal>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        {/* 5. Student Success Stories (Toppers) Section (Full Width, below News) */}
+        <div className="bg-white py-14 sm:py-20 border-b border-gray-200">
+          <div className="container mx-auto px-4 text-center max-w-6xl">
             <Reveal>
-              <h4 className="text-accent font-bold uppercase tracking-widest text-xs sm:text-sm mb-2 sm:mb-3">Hall of Fame</h4>
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-gray-900 mb-3 sm:mb-4">Student <span className="text-primary">Success Stories</span></h2>
-              <p className="text-gray-500 mb-8 sm:mb-12 max-w-2xl mx-auto text-sm sm:text-lg">Celebrating the academic excellence and outstanding achievements of our brilliant students who have made us proud.</p>
+              <div className="text-center mb-8 sm:mb-12">
+                <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-[#0a1931] tracking-tight mb-2">Hall of <span className="bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Fame</span></h2>
+                <h3 className="text-base sm:text-lg font-bold text-accent uppercase tracking-wider mb-3">Student Success Stories</h3>
+                <p className="text-gray-500 text-sm sm:text-base max-w-4xl mx-auto">Celebrating the academic excellence and outstanding achievements of our brilliant students who have made us proud.</p>
+              </div>
               {toppersLoading ? (
                   <div className="py-12 sm:py-20 text-gray-400 italic text-sm">Loading success stories...</div>
               ) : toppers.length > 0 ? (
-                  <Carousel items={toppers} />
+                  <div className="max-w-5xl mx-auto">
+                    <Carousel items={toppers} />
+                  </div>
               ) : (
                   <div className="py-12 sm:py-20 text-gray-400 italic text-sm">No success stories to display yet.</div>
               )}
             </Reveal>
           </div>
-        </div>
-        {/* 5. Latest News - Carousel */}
-        <div className="border-t border-gray-200 bg-slate-50 py-10 sm:py-16 lg:h-[700px] lg:overflow-hidden lg:border-t-0">
-          <div className="container mx-auto px-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 sm:mb-10 gap-3 sm:gap-4">
-               <div>
-                 <h4 className="text-accent font-bold uppercase tracking-widest text-xs sm:text-sm mb-2 sm:mb-3">Campus Updates</h4>
-                 <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-gray-900">Latest <span className="text-primary">News & Events</span></h2>
-               </div>
-               <a href="/news" className="text-primary text-xs sm:text-sm font-bold hover:text-blue-700 flex items-center gap-1.5 sm:gap-2 group transition-colors shrink-0">
-                 View All News <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform"/>
-               </a>
-            </div>
-            
-            <Reveal>
-              {newsLoading ? (
-                <div className="space-y-4">{Array(3).fill(0).map((_, i) => <div key={i} className="h-32 animate-pulse rounded-2xl border border-gray-100 bg-white p-4 shadow-sm" />)}</div>
-              ) : latestNews.length === 0 ? (
-                <div className="rounded-2xl border border-gray-100 bg-white py-12 text-center text-gray-500 shadow-sm"><Calendar size={24} className="mx-auto mb-4 text-gray-400" /><p className="text-lg font-medium">No recent news available.</p></div>
-              ) : (
-                <div className="news-vertical-viewport h-[400px] sm:h-[480px] overflow-hidden pr-1 sm:pr-2">
-                  <div className="news-vertical-track space-y-3 sm:space-y-4">
-                    {[...latestNews, ...latestNews].map((item, index) => (
-                      <article key={`${item._id}-${index}`} onClick={() => setSelectedNews(item)} className="group flex cursor-pointer overflow-hidden rounded-xl sm:rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:shadow-lg">
-                        {item.image && <div className="w-24 sm:w-28 shrink-0 overflow-hidden bg-gray-100"><img src={item.image} alt={item.title} className="h-full w-full object-cover" /></div>}
-                        <div className="min-w-0 flex-1 p-3.5 sm:p-4">
-                          <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-bold uppercase text-gray-400"><Calendar size={12} />{formatDate(item.releaseDate) || 'Recent'}</span>
-                          <h3 className="mt-1.5 sm:mt-2 line-clamp-2 text-sm sm:text-base font-bold text-gray-800 group-hover:text-primary">{item.title}</h3>
-                          <p className="mt-1.5 sm:mt-2 line-clamp-2 text-xs sm:text-sm text-gray-500">{item.smallDetail || item.description}</p>
-                          <span className="mt-2 sm:mt-3 inline-flex items-center gap-1 text-xs sm:text-sm font-bold text-primary">Read More <ChevronRight size={14} /></span>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </Reveal>
-          </div>
-        </div>
-
         </div>
 
         {/* 6. Feedback Section */}

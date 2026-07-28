@@ -190,6 +190,7 @@ export const MENU_CONFIG = [
   { title: 'Manage Terms', path: '/master/manage-terms' },
   { title: 'Cloudinary Management', path: '/utility/cloudinary-manager' },
   { title: 'SMS Station', path: '/utility/sms-station' },
+  { title: 'Awards & Recognition', path: '/utility/manage-awards', permissionPage: 'Manage Awards' },
   // { title: 'Downloads', path: '/utility/downloads' },
 ]
   }

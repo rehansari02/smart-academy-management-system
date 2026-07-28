@@ -112,6 +112,7 @@ const ComplainManagement = lazy(() => import("./pages/admin/utility/ComplainMana
 const SyllabusManagement = lazy(() => import("./pages/admin/utility/SyllabusManagement"));
 const TeacherSubjectManagement = lazy(() => import("./pages/admin/utility/TeacherSubjectManagement"));
 const ExternalReference = lazy(() => import("./pages/admin/utility/ExternalReference"));
+const ManageAwards = lazy(() => import("./pages/admin/utility/ManageAwards"));
 
 // Transaction Pages
 const InquiryPage = lazy(() => import("./pages/admin/transaction/InquiryPage"));
@@ -1069,6 +1070,17 @@ function App() {
                   <PrivateRoute>
                     <Suspense fallback={<Loading />}>
                         <ComplainManagement />
+                    </Suspense>
+                  </PrivateRoute>
+                }
+              />
+
+              <Route
+                path="/utility/manage-awards"
+                element={
+                  <PrivateRoute>
+                    <Suspense fallback={<Loading />}>
+                        <ManageAwards />
                     </Suspense>
                   </PrivateRoute>
                 }
