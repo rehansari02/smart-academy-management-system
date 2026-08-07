@@ -32,43 +32,31 @@ import { getMediaUrl } from '../utils/mediaUrl';
 
 const Carousel = ({ items }) => {
   return (
-    <div className="relative group px-2 md:px-8">
+    <div className="relative group px-4 sm:px-8 md:px-10">
       <style>
         {`
           .swiper-button-disabled {
-            opacity: 0.5;
+            opacity: 0.3;
             cursor: not-allowed;
           }
           .topper-swiper {
-            padding-bottom: 2.5rem !important;
-            padding-top: 1.5rem !important;
+            padding-bottom: 2rem !important;
+            padding-top: 0.5rem !important;
           }
           .topper-swiper .swiper-slide {
-            transform: scale(0.9);
-            opacity: 0.9;
-            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-          }
-          .topper-swiper .swiper-slide-active {
-            transform: scale(1.05);
-            opacity: 1;
-            z-index: 10;
-          }
-          .topper-swiper .swiper-slide-active .topper-card {
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.06);
-            border-top-color: #1e3a8a !important; /* Primary color */
-          }
-          .topper-swiper .swiper-slide-active .topper-img-container {
-            border-color: #1e3a8a !important;
-            transform: scale(1.05);
+            height: auto;
+            opacity: 1 !important;
+            transform: none !important;
+            transition: all 0.3s ease;
           }
         `}
       </style>
       <Swiper
         modules={[Navigation, Autoplay]}
-        spaceBetween={20}
+        spaceBetween={24}
         slidesPerView={1}
-        centeredSlides={true}
-        loop={items.length > 2}
+        centeredSlides={false}
+        loop={items.length > 3}
         autoplay={{
           delay: 3500,
           disableOnInteraction: false,
@@ -80,7 +68,93 @@ const Carousel = ({ items }) => {
         }}
         breakpoints={{
           320: {
-            slidesPerView: 1.3,
+            slidesPerView: 1,
+            spaceBetween: 16,
+          },
+          640: {
+            slidesPerView: 2,
+            spaceBetween: 20,
+          },
+          1024: {
+            slidesPerView: 3,
+            spaceBetween: 24,
+          },
+        }}
+        className="topper-swiper"
+      >
+        {items.map((item, index) => (
+          <SwiperSlide key={index} className="h-auto flex items-stretch">
+            <div className="topper-card bg-white p-5 rounded-2xl shadow-xl shadow-slate-200/80 border border-gray-200/90 flex flex-col justify-between w-full transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/15 hover:border-primary/40 hover:-translate-y-1.5 group/card">
+              <div>
+                {/* Square Student Image Frame - Compact size with smooth border radius */}
+                <div className="relative w-36 h-36 sm:w-40 sm:h-40 mx-auto rounded-3xl overflow-hidden bg-slate-50 mb-4 border border-gray-200 shadow-sm flex items-center justify-center p-1.5 group/img">
+                  <img 
+                    src={item.image} 
+                    alt={item.name} 
+                    className="w-full h-full object-contain rounded-2xl group-hover/card:scale-105 transition-transform duration-500" 
+                  />
+                  <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-md px-2 py-0.5 rounded-full shadow text-[10px] font-bold text-accent border border-gray-100 flex items-center gap-1">
+                    <Trophy size={12} className="text-yellow-500" /> Topper
+                  </div>
+                </div>
+
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-1 text-center line-clamp-1">{item.name}</h3>
+                <p className="text-primary font-semibold text-xs sm:text-sm mb-3 uppercase tracking-wide text-center line-clamp-2 min-h-[2.2rem] flex items-center justify-center">{item.course}</p>
+              </div>
+
+              {/* Score Box */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 p-3 rounded-xl text-center border border-blue-100/80 mt-auto">
+                <div className="text-2xl sm:text-3xl font-black text-accent">{item.percentage}%</div>
+                <div className="text-[9px] sm:text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">Score Achieved</div>
+              </div>
+            </div>
+          </SwiperSlide>
+        ))}
+      </Swiper>
+      
+      {/* Custom Navigation Buttons */}
+      <button className="swiper-button-prev-custom absolute left-0 top-1/2 -translate-y-1/2 bg-white text-gray-800 p-2.5 rounded-full shadow-xl hover:bg-primary hover:text-white transition-all z-20 cursor-pointer border border-gray-100 hidden md:flex items-center justify-center">
+        <ChevronLeft size={20} />
+      </button>
+      <button className="swiper-button-next-custom absolute right-0 top-1/2 -translate-y-1/2 bg-white text-gray-800 p-2.5 rounded-full shadow-xl hover:bg-primary hover:text-white transition-all z-20 cursor-pointer border border-gray-100 hidden md:flex items-center justify-center">
+        <ChevronRight size={20} />
+      </button>
+    </div>
+  );
+};
+
+const AchievementsCarousel = ({ items }) => {
+  return (
+    <div className="relative group px-1">
+      <style>
+        {`
+          .awards-swiper {
+            padding-bottom: 1.5rem !important;
+            padding-top: 0.5rem !important;
+          }
+          .awards-swiper .swiper-slide {
+            height: auto;
+            display: flex;
+          }
+        `}
+      </style>
+      <Swiper
+        modules={[Navigation, Autoplay]}
+        spaceBetween={16}
+        slidesPerView={1}
+        loop={items.length > 2}
+        autoplay={{
+          delay: 3000,
+          disableOnInteraction: false,
+          pauseOnMouseEnter: true
+        }}
+        navigation={{
+           nextEl: '.awards-next-custom',
+           prevEl: '.awards-prev-custom',
+        }}
+        breakpoints={{
+          320: {
+            slidesPerView: 1,
             spaceBetween: 12,
           },
           640: {
@@ -88,54 +162,79 @@ const Carousel = ({ items }) => {
             spaceBetween: 16,
           },
           1024: {
-            slidesPerView: 3,
-            spaceBetween: 24,
+            slidesPerView: 2,
+            spaceBetween: 16,
           },
         }}
-        className="topper-swiper !px-2"
+        className="awards-swiper"
       >
-        {items.map((item, index) => (
-          <SwiperSlide key={index} className="h-auto flex items-stretch justify-center">
-               <div className="flex justify-center items-center w-full py-4">
-                 <div className="topper-card bg-white p-5 sm:p-7 rounded-2xl shadow-md w-full max-w-sm text-center border-t-4 border-accent relative transition-all duration-300">
-                    <div className="absolute top-4 right-6 text-yellow-400 opacity-20"><Quote size={40} /></div>
-                    <div className="topper-img-container w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3 rounded-full overflow-hidden border-4 border-gray-50 shadow-inner transition-all duration-300">
-                      <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                    </div>
-                    <h3 className="text-sm sm:text-base font-bold text-gray-800 mb-1">{item.name}</h3>
-                    <p className="text-primary font-medium text-xs sm:text-sm mb-3 uppercase tracking-wide">{item.course}</p>
-                    <div className="bg-blue-50 py-2.5 rounded-xl">
-                         <div className="text-2xl sm:text-3xl font-black text-accent">{item.percentage}%</div>
-                         <div className="text-[9px] sm:text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Score Achieved</div>
-                    </div>
-                 </div>
-               </div>
+        {items.map((award, index) => (
+          <SwiperSlide key={award._id || index} className="h-auto flex items-stretch">
+            <div className="group/award flex flex-col justify-between overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-md hover:shadow-xl hover:border-primary/40 transition-all duration-300 w-full hover:-translate-y-1">
+              <div>
+                {/* Image */}
+                {award.image ? (
+                  <div className="w-full h-36 overflow-hidden rounded-xl bg-gray-50 border border-gray-100 mb-3">
+                    <img 
+                      src={award.image} 
+                      alt={award.title} 
+                      className="h-full w-full object-cover group-hover/award:scale-105 transition-transform duration-500" 
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full h-36 rounded-xl bg-indigo-50 border border-gray-100 flex items-center justify-center text-indigo-400 mb-3">
+                    <Award size={36} />
+                  </div>
+                )}
+
+                {/* Details */}
+                <div className="flex flex-col gap-1">
+                  <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-bold uppercase text-gray-400">
+                    <Calendar size={12} className="text-primary" /> {formatDate(award.date)}
+                  </span>
+                  <h3 className="text-base font-bold text-gray-900 group-hover/award:text-primary transition-colors line-clamp-1 leading-snug">
+                    {award.title}
+                  </h3>
+                  <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mt-1">
+                    {award.description}
+                  </p>
+                </div>
+              </div>
+            </div>
           </SwiperSlide>
         ))}
       </Swiper>
       
-      {/* Custom Navigation Buttons */}
-      <button className="swiper-button-prev-custom absolute left-0 top-1/2 -translate-y-1/2 bg-white/90 text-gray-800 p-3 rounded-full shadow-lg hover:bg-accent hover:text-white transition-all z-20 cursor-pointer border border-gray-100 hidden md:block group-hover:block">
-        <ChevronLeft size={24} />
+      {/* Navigation Buttons */}
+      <button className="awards-prev-custom absolute -left-3 top-1/2 -translate-y-1/2 bg-white/95 text-gray-800 p-2.5 rounded-full shadow-lg hover:bg-primary hover:text-white transition-all z-20 cursor-pointer border border-gray-100 hidden sm:flex items-center justify-center">
+        <ChevronLeft size={18} />
       </button>
-      <button className="swiper-button-next-custom absolute right-0 top-1/2 -translate-y-1/2 bg-white/90 text-gray-800 p-3 rounded-full shadow-lg hover:bg-accent hover:text-white transition-all z-20 cursor-pointer border border-gray-100 hidden md:block group-hover:block">
-        <ChevronRight size={24} />
+      <button className="awards-next-custom absolute -right-3 top-1/2 -translate-y-1/2 bg-white/95 text-gray-800 p-2.5 rounded-full shadow-lg hover:bg-primary hover:text-white transition-all z-20 cursor-pointer border border-gray-100 hidden sm:flex items-center justify-center">
+        <ChevronRight size={18} />
       </button>
     </div>
   );
 };
 
-const HeroBannerVisual = ({ items, mobile = false }) => {
+const HeroBannerVisual = ({ items }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const swiperRef = useRef(null);
 
-  const slides = items && items.length > 0
-    ? items
-    : [{ image: HeroImage2, title: 'Smart Institute students' }];
+  const defaultBanners = [
+    {
+      image: HeroImage2,
+      title: 'Manish Kushwaha',
+      linkLabel: 'Designer',
+      linkUrl: 'French Crown',
+      description: 'As a student of the UI/UX & Graphic Design course, I gained both technical and creative skills. The support I received from the mentors helped me become confident in my abilities.'
+    }
+  ];
+
+  const slides = items && items.length > 0 ? items : defaultBanners;
   const shouldLoop = slides.length > 1;
 
   return (
-    <div className="hero-banner-shine relative h-full w-full overflow-hidden">
+    <div className="relative w-full h-full min-h-[420px] sm:min-h-[520px] flex items-center justify-center py-4">
       <Swiper
         key={slides.length}
         onSwiper={(swiper) => { swiperRef.current = swiper; }}
@@ -145,35 +244,88 @@ const HeroBannerVisual = ({ items, mobile = false }) => {
         fadeEffect={{ crossFade: true }}
         slidesPerView={1}
         loop={shouldLoop}
-        speed={1000}
+        speed={800}
         autoplay={shouldLoop ? {
-          delay: 3500,
+          delay: 4000,
           disableOnInteraction: false,
-          pauseOnMouseEnter: false
+          pauseOnMouseEnter: true
         } : false}
-        className="hero-banner-swiper h-full w-full"
+        className="w-full h-full"
       >
-        {slides.map((item, index) => (
-          <SwiperSlide key={item._id || `${item.image}-${index}`} className="h-full w-full">
-            <img
-              src={getMediaUrl(item.image) || HeroImage2}
-              alt={item.title || 'Smart Institute banner'}
-              className={`hero-banner-image h-full w-full ${mobile ? 'object-contain bg-[#0a1931]' : 'object-cover'} object-center`}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0a1931]/30 via-transparent to-white/10" />
-          </SwiperSlide>
-        ))}
+        {slides.map((item, index) => {
+          const bannerImage = getMediaUrl(item.image) || HeroImage2;
+          const studentName = item.title ? item.title.trim() : '';
+          const studentRole = item.linkLabel ? item.linkLabel.trim() : '';
+          const companyName = item.linkUrl ? item.linkUrl.trim() : '';
+          const studentDesc = item.description ? item.description.trim() : '';
+
+          const hasCardContent = Boolean(studentName || studentRole || companyName || studentDesc);
+
+          return (
+            <SwiperSlide key={item._id || `${item.image}-${index}`} className="w-full h-full flex items-center justify-center relative">
+              <div className="relative w-full max-w-[440px] sm:max-w-[500px] lg:max-w-[540px] mx-auto h-[420px] sm:h-[480px] lg:h-[520px] flex items-end justify-center">
+                
+                {/* 1. Large Pastel Cream Circle Backdrop (Half Circle Effect) */}
+                <div className="absolute bottom-4 w-[310px] h-[310px] sm:w-[390px] sm:h-[390px] lg:w-[430px] lg:h-[430px] rounded-full bg-[#fdf6ea] border border-amber-100/70 shadow-inner z-0 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-gradient-to-b from-amber-100/40 via-transparent to-white/80 rounded-full" />
+                </div>
+
+                {/* 2. Student Photo Standing over the Circle with Soft Bottom Fade */}
+                <div className="relative z-10 w-full h-full flex items-end justify-center">
+                  <img
+                    src={bannerImage}
+                    alt={studentName || 'Student banner'}
+                    className="h-[390px] sm:h-[460px] lg:h-[500px] w-auto max-w-[95%] object-contain object-bottom drop-shadow-xl transition-all duration-700 [mask-image:linear-gradient(to_bottom,black_85%,transparent_100%)]"
+                  />
+                  {/* Subtle white bottom gradient blur to seamlessly blend transparent or white-bg photo */}
+                  <div className="absolute bottom-0 inset-x-0 h-10 bg-gradient-to-t from-white via-white/80 to-transparent z-15 pointer-events-none" />
+                </div>
+
+                {/* 3. Floating Student Achievement Card (Compact & Positioned Lower Down) */}
+                {hasCardContent && (
+                  <div className="absolute bottom-2 sm:bottom-5 right-1 sm:right-2 lg:-right-2 z-20 bg-white/95 backdrop-blur-md p-3 sm:p-3.5 rounded-xl shadow-[0_12px_30px_rgba(0,0,0,0.12)] border border-slate-200/90 w-[230px] sm:w-[260px] text-left transform transition-all duration-300 hover:scale-[1.02]">
+                    {/* Top Quote Paragraph (Rendered ONLY if admin entered description) */}
+                    {studentDesc && (
+                      <p className="text-[11px] sm:text-xs text-slate-600 leading-relaxed font-normal mb-2.5 line-clamp-3">
+                        "{studentDesc}"
+                      </p>
+                    )}
+
+                    {/* Meta Info Row */}
+                    {(studentName || studentRole || companyName) && (
+                      <div className={`flex items-center justify-between gap-2 ${studentDesc ? 'border-t border-slate-100 pt-2' : ''}`}>
+                        <div className="min-w-0 flex-1">
+                          {studentName && <h4 className="text-xs font-extrabold text-slate-900 leading-snug truncate">{studentName}</h4>}
+                          {studentRole && <p className="text-[10px] font-semibold text-slate-500 truncate">{studentRole}</p>}
+                        </div>
+
+                        {companyName && (
+                          <div className="text-right pl-2 border-l border-slate-100 shrink-0">
+                            <span className="block text-[8px] font-extrabold tracking-wider uppercase text-slate-400">WORKING AT</span>
+                            <span className="block text-[11px] font-black text-slate-900 truncate max-w-[90px]">{companyName}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              </div>
+            </SwiperSlide>
+          );
+        })}
       </Swiper>
 
+      {/* Pagination indicators */}
       {shouldLoop && (
-        <div className={`${mobile ? 'bottom-5 left-1/2 -translate-x-1/2' : 'bottom-6 right-8'} absolute z-20 flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 shadow-lg`}>
+        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 bg-black/30 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 shadow-md">
           {slides.map((item, index) => (
             <button
               key={item._id || index}
               onClick={() => swiperRef.current?.slideToLoop(index)}
               className={`h-2 rounded-full transition-all duration-500 cursor-pointer ${
                 activeIndex === index
-                  ? 'w-7 bg-[#f15a24] shadow-md shadow-[#f15a24]/60'
+                  ? 'w-6 bg-[#f15a24] shadow-md shadow-[#f15a24]/60'
                   : 'w-2 bg-white/50 hover:bg-white'
               }`}
               aria-label={`Go to slide ${index + 1}`}
@@ -472,22 +624,19 @@ const HomePage = () => {
               <div className="lg:col-span-6 space-y-5 sm:space-y-8 text-left z-10">
                 <div className="inline-flex flex-wrap items-center gap-1.5 text-xs sm:text-[13px] font-extrabold tracking-widest uppercase">
                   <span className="text-[#0a1931]">
-                    {homeSections.hero_text?.subtitle || 'LEARN. PRACTICE.'}
-                  </span>
-                  <span className="text-[#f15a24]">
-                    {homeSections.hero_text?.subtitle ? '' : 'MASTER.'}
+                    DREAM BIG. LEARN SMART. ACHIEVE MORE.
                   </span>
                 </div>
 
                 <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.15] text-[#0a1931]">
-                  {homeSections.hero_text?.title || 'Empowering Minds.'} <br />
-                  <span className="text-blue-900">
-                    {homeSections.hero_text?.quote || 'Building Futures.'}
+                  Learn Skills... <br />
+                  <span className="text-[#1d4ed8]">
+                    Build Professional Jobs
                   </span>
                 </h1>
 
                 <p className="text-slate-600 text-sm sm:text-lg max-w-xl leading-relaxed font-normal">
-                  {homeSections.hero_text?.description || 'Industry-focused training designed to build your skills, boost confidence and create better career opportunities.'}
+                  Industry-focused courses designed for real careers. Build confidence with practical training and live projects. Take the first step toward your dream job.
                 </p>
 
                 {/* Key Features row/grid */}
@@ -534,19 +683,14 @@ const HomePage = () => {
                     }}
                     className="inline-flex items-center gap-2.5 sm:gap-3 bg-[#0a1931] hover:bg-[#1e3a8a] text-white px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl font-bold uppercase tracking-wider transition-all duration-300 hover:shadow-lg shadow-black/25 transform hover:-translate-y-0.5 text-xs sm:text-sm"
                   >
-                    {homeSections.hero_text?.buttonLabel || 'Explore Courses'} <ArrowRight size={16} />
+                    EXPLORE COURSES <ArrowRight size={16} />
                   </button>
                 </div>
               </div>
 
-              {/* Right column: Spacer on desktop/tablet, centered square card on mobile */}
-              <div className="lg:col-span-5 md:col-span-5 h-auto md:h-auto relative flex items-center justify-center">
-                {/* On mobile, show banner card */}
+              {/* Right column spacer for mobile/desktop */}
+              <div className="lg:col-span-6 md:col-span-6 h-auto md:h-auto relative flex items-center justify-center">
                 <div className="md:hidden relative w-full flex items-center justify-center py-2 sm:py-4 px-1">
-                  {/* Dotted pattern accent */}
-                  <div className="absolute -bottom-2 -right-2 w-20 h-20 opacity-20 bg-[radial-gradient(#f15a24_2px,transparent_2px)] [background-size:12px_12px]"></div>
-
-                  {/* Banner Card Container (16:10 ratio for full image visibility) */}
                   <div className="w-full max-w-[360px] sm:max-w-[480px] aspect-[16/10] rounded-2xl sm:rounded-3xl overflow-hidden border-4 sm:border-8 border-white shadow-2xl bg-[#0a1931] relative z-10">
                     <HeroBannerVisual items={heroImages} mobile />
                   </div>
@@ -555,7 +699,6 @@ const HomePage = () => {
 
             </div>
           </div>
-
         </div>
 
         {/* Stats Section overlapping */}
@@ -972,37 +1115,8 @@ const HomePage = () => {
                         <p className="text-base font-semibold">No recent awards available.</p>
                       </div>
                     ) : (
-                      /* Display Awards & Recognitions in a nice grid */
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[480px] overflow-y-auto pr-1">
-                        {awards.map((award) => (
-                          <div key={award._id} className="group flex flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all duration-300">
-                            {/* 1. Image with border */}
-                            {award.image ? (
-                              <div className="w-full h-36 overflow-hidden rounded-xl bg-gray-50 border border-gray-200">
-                                <img src={award.image} alt={award.title} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                              </div>
-                            ) : (
-                              <div className="w-full h-36 rounded-xl bg-indigo-50 border border-gray-200 flex items-center justify-center text-indigo-400">
-                                <Award size={36} />
-                              </div>
-                            )}
-
-                            {/* 2. Details below image */}
-                            <div className="flex flex-col gap-1.5">
-                              {/* Subtitle / Date */}
-                              <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-bold uppercase text-gray-400">
-                                <Calendar size={12} className="text-gray-400" /> {formatDate(award.date)}
-                              </span>
-
-                              {/* Title */}
-                              <h3 className="text-base font-bold text-gray-800 group-hover:text-primary transition-colors line-clamp-1 leading-snug">{award.title}</h3>
-
-                              {/* Paragraph (Description) */}
-                              <p className="text-xs sm:text-sm text-gray-500 line-clamp-2 leading-relaxed">{award.description}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                      /* Display Achievements in smooth horizontal Swiper carousel slider */
+                      <AchievementsCarousel items={awards} />
                     )}
                   </Reveal>
                 </div>
@@ -1071,8 +1185,8 @@ const HomePage = () => {
         </div>
 
         {/* 5. Student Success Stories (Toppers) Section (Full Width, below News) */}
-        <div className="bg-white py-14 sm:py-20 border-b border-gray-200">
-          <div className="container mx-auto px-4 text-center max-w-6xl">
+        <div className="bg-slate-50/70 py-14 sm:py-20 border-b border-gray-200">
+          <div className="container mx-auto px-2 sm:px-6 text-center max-w-7xl">
             <Reveal>
               <div className="text-center mb-8 sm:mb-12">
                 <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-[#0a1931] tracking-tight mb-2">Hall of <span className="bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Fame</span></h2>
@@ -1082,7 +1196,7 @@ const HomePage = () => {
               {toppersLoading ? (
                   <div className="py-12 sm:py-20 text-gray-400 italic text-sm">Loading success stories...</div>
               ) : toppers.length > 0 ? (
-                  <div className="max-w-5xl mx-auto">
+                  <div className="w-full mx-auto">
                     <Carousel items={toppers} />
                   </div>
               ) : (

@@ -23,6 +23,7 @@ const ManageBanners = () => {
     const [currentId, setCurrentId] = useState(null);
     const [formData, setFormData] = useState({
         title: '',
+        description: '',
         linkUrl: '',
         linkLabel: '',
         isActive: true
@@ -189,6 +190,7 @@ const ManageBanners = () => {
         setEditMode(false);
         setFormData({
             title: '',
+            description: '',
             linkUrl: '',
             linkLabel: '',
             isActive: true
@@ -209,6 +211,7 @@ const ManageBanners = () => {
         setCurrentId(banner._id);
         setFormData({
             title: banner.title || '',
+            description: banner.testimonialQuote ?? banner.description ?? '',
             linkUrl: banner.linkUrl || '',
             linkLabel: banner.linkLabel || '',
             isActive: banner.isActive
@@ -226,6 +229,8 @@ const ManageBanners = () => {
         try {
             const data = new FormData();
             data.append('title', banner.title || '');
+            data.append('description', banner.description || '');
+            data.append('testimonialQuote', banner.testimonialQuote ?? banner.description ?? '');
             data.append('linkUrl', banner.linkUrl || '');
             data.append('linkLabel', banner.linkLabel || '');
             data.append('isActive', !banner.isActive);
@@ -280,6 +285,8 @@ const ManageBanners = () => {
 
         const data = new FormData();
         data.append('title', formData.title);
+        data.append('description', formData.description);
+        data.append('testimonialQuote', formData.description);
         data.append('linkUrl', formData.linkUrl);
         data.append('linkLabel', formData.linkLabel);
         data.append('isActive', formData.isActive);
@@ -360,17 +367,18 @@ const ManageBanners = () => {
                         <thead>
                             <tr className="bg-gray-100 text-left text-sm text-gray-600 uppercase tracking-wider">
                                 <th className="p-3 border-b">Banner Image</th>
-                                <th className="p-3 border-b">Title (Optional)</th>
-                                <th className="p-3 border-b">Link</th>
+                                <th className="p-3 border-b">Student Name</th>
+                                <th className="p-3 border-b">Testimonial Quote</th>
+                                <th className="p-3 border-b">Role & Company</th>
                                 <th className="p-3 border-b">Status</th>
                                 <th className="p-3 border-b text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan="5" className="text-center p-8 text-gray-500">Loading banners...</td></tr>
+                                <tr><td colSpan="6" className="text-center p-8 text-gray-500">Loading banners...</td></tr>
                             ) : filteredBanners.length === 0 ? (
-                                <tr><td colSpan="5" className="text-center p-8 text-gray-500">No banners found.</td></tr>
+                                <tr><td colSpan="6" className="text-center p-8 text-gray-500">No banners found.</td></tr>
                             ) : (
                                 filteredBanners.map((banner) => (
                                     <tr key={banner._id} className="hover:bg-gray-50 text-sm border-b transition-colors">
@@ -380,14 +388,16 @@ const ManageBanners = () => {
                                             </div>
                                         </td>
                                         <td className="p-3 font-semibold text-gray-800">{banner.title || '-'}</td>
-                                        <td className="p-3">
-                                            {banner.linkUrl ? (
-                                                <a href={banner.linkUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800">
-                                                    {banner.linkLabel || banner.linkUrl}
-                                                </a>
+                                        <td className="p-3 text-xs text-gray-600 max-w-[240px]">
+                                            {banner.description ? (
+                                                <span className="line-clamp-2 italic">"{banner.description}"</span>
                                             ) : (
                                                 <span className="text-gray-400">-</span>
                                             )}
+                                        </td>
+                                        <td className="p-3 text-xs">
+                                            <div className="font-bold text-gray-800">{banner.linkLabel || '-'}</div>
+                                            <div className="text-gray-500">{banner.linkUrl || '-'}</div>
                                         </td>
                                         <td className="p-3">
                                             <span className={`px-2 py-1 rounded text-xs font-bold ${banner.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
@@ -619,38 +629,50 @@ const ManageBanners = () => {
                                         </div>
 
                                         <div>
-                                            <label className="block text-sm font-semibold text-gray-700 mb-1">Title (Optional)</label>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">Student Name / Title (Optional)</label>
                                             <input 
                                                 type="text"
                                                 name="title"
                                                 value={formData.title}
                                                 onChange={handleInputChange}
                                                 className="w-full border rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                                                placeholder="e.g. Practical Hands-On Learning"
+                                                placeholder="e.g. Ishwar Nirvikar"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">Testimonial Quote / Description (Optional)</label>
+                                            <textarea
+                                                name="description"
+                                                value={formData.description}
+                                                onChange={handleInputChange}
+                                                rows={3}
+                                                className="w-full border rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                                placeholder="e.g. As a student of UI/UX & Graphic Design course, I gained both technical and creative skills..."
                                             />
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
-                                                <label className="block text-sm font-semibold text-gray-700 mb-1">Link Label (Optional)</label>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">Role / Subtitle (Optional)</label>
                                                 <input
                                                     type="text"
                                                     name="linkLabel"
                                                     value={formData.linkLabel}
                                                     onChange={handleInputChange}
                                                     className="w-full border rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                                                    placeholder="e.g. Explore Courses"
+                                                    placeholder="e.g. Designer"
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-semibold text-gray-700 mb-1">Link URL (Optional)</label>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-1">Working At / Company Name (Optional)</label>
                                                 <input
-                                                    type="url"
+                                                    type="text"
                                                     name="linkUrl"
                                                     value={formData.linkUrl}
                                                     onChange={handleInputChange}
                                                     className="w-full border rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                                                    placeholder="https://example.com"
+                                                    placeholder="e.g. French Crown"
                                                 />
                                             </div>
                                         </div>

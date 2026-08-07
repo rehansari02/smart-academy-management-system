@@ -3,17 +3,26 @@ const Banner = require('../models/Banner');
 // Create Banner
 exports.createBanner = async (req, res) => {
     try {
-        console.log('Creating banner:', req.body);
-        const { title, isActive, linkUrl, linkLabel } = req.body;
+        console.log('Creating banner req.body:', req.body);
+        const { title, description, testimonialQuote, isActive, linkUrl, linkLabel } = req.body;
         const image = req.file ? req.file.path : ''; // Cloudinary URL from multer
+        const quote = testimonialQuote !== undefined ? testimonialQuote : description;
 
         if (!image) {
             return res.status(400).json({ message: 'Banner image is required.' });
         }
 
-        const banner = new Banner({ title, image, linkUrl, linkLabel, isActive });
+        const banner = new Banner({
+            title: title ? title.trim() : '',
+            description: quote ? quote.trim() : '',
+            testimonialQuote: quote ? quote.trim() : '',
+            image,
+            linkUrl: linkUrl ? linkUrl.trim() : '',
+            linkLabel: linkLabel ? linkLabel.trim() : '',
+            isActive: isActive !== undefined ? (isActive === 'true' || isActive === true) : true
+        });
         await banner.save();
-        console.log('Banner saved successfully:', banner._id);
+        console.log('Banner created in DB:', banner._id, banner);
         res.status(201).json({ message: 'Banner created successfully', banner });
     } catch (error) {
         console.error('Error creating banner:', error);
@@ -48,18 +57,31 @@ exports.getPublicBanners = async (req, res) => {
 // Update Banner
 exports.updateBanner = async (req, res) => {
     try {
-        const { title, isActive, linkUrl, linkLabel } = req.body;
-        const updateData = { title, linkUrl, linkLabel, isActive };
+        console.log('Updating banner req.body:', req.params.id, req.body);
+        const { title, description, testimonialQuote, isActive, linkUrl, linkLabel } = req.body;
+        
+        const updateData = {};
+        if (title !== undefined) updateData.title = title.trim();
+        if (description !== undefined) updateData.description = description.trim();
+        if (testimonialQuote !== undefined) {
+            updateData.testimonialQuote = testimonialQuote.trim();
+            updateData.description = testimonialQuote.trim();
+        }
+        if (linkUrl !== undefined) updateData.linkUrl = linkUrl.trim();
+        if (linkLabel !== undefined) updateData.linkLabel = linkLabel.trim();
+        if (isActive !== undefined) updateData.isActive = (isActive === 'true' || isActive === true);
+
         if (req.file) {
             updateData.image = req.file.path; // New Cloudinary URL
         }
 
         const updated = await Banner.findByIdAndUpdate(
             req.params.id,
-            updateData,
-            { new: true }
+            { $set: updateData },
+            { new: true, runValidators: true }
         );
         if (!updated) return res.status(404).json({ message: 'Banner not found' });
+        console.log('Banner updated in DB:', updated._id, updated);
         res.status(200).json({ message: 'Banner updated successfully', banner: updated });
     } catch (error) {
         console.error('Error updating banner:', error);
