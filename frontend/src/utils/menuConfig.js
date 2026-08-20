@@ -96,7 +96,7 @@ export const MENU_CONFIG = [
       // { title: 'Cancelled Students', path: '/transaction/cancelled-students' },
       { title: 'Fees Receipt', path: '/transaction/fees-receipt' },
       { title: 'Expenses', path: '/transaction/expenses' },
-      { title: 'Expense Categories', path: '/transaction/expense-categories', permissionPage: 'Expenses' },
+      // { title: 'Expense Categories', path: '/transaction/expense-categories', permissionPage: 'Expenses' },
       {
         title: 'Attendance',
         type: 'nested',

@@ -545,6 +545,9 @@ const ManageBanners = () => {
                                                             className="w-full h-full object-cover object-center transition-transform duration-100"
                                                             style={{ transform: `scale(${zoom})` }}
                                                         />
+                                                        <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md px-2 py-0.5 rounded shadow border border-slate-200 text-[8px] font-extrabold text-slate-900 whitespace-nowrap z-20">
+                                                            Student Card (Bottom Center)
+                                                        </div>
                                                     </div>
                                                 </div>
 
@@ -622,6 +625,9 @@ const ManageBanners = () => {
                                                         ) : (
                                                             <div className="text-[10px] text-slate-500 text-center px-2">No image uploaded</div>
                                                         )}
+                                                        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md px-1.5 py-0.5 rounded shadow border border-slate-200 text-[7px] font-extrabold text-slate-900 whitespace-nowrap z-20">
+                                                            Student Card
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <p className="text-[11px] text-gray-500 mt-1">This shows exactly how your image will fit in the half-circle container on the website.</p>

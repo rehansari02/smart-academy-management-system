@@ -124,94 +124,58 @@ const Carousel = ({ items }) => {
 };
 
 const AchievementsCarousel = ({ items }) => {
+  const displayItems = items && items.length > 0 
+    ? (items.length < 3 ? [...items, ...items, ...items, ...items] : [...items, ...items])
+    : [];
+
   return (
-    <div className="relative group px-1">
-      <style>
-        {`
-          .awards-swiper {
-            padding-bottom: 1.5rem !important;
-            padding-top: 0.5rem !important;
-          }
-          .awards-swiper .swiper-slide {
-            height: auto;
-            display: flex;
-          }
-        `}
-      </style>
-      <Swiper
-        modules={[Navigation, Autoplay]}
-        spaceBetween={16}
-        slidesPerView={1}
-        loop={items.length > 2}
-        autoplay={{
-          delay: 3000,
-          disableOnInteraction: false,
-          pauseOnMouseEnter: true
-        }}
-        navigation={{
-           nextEl: '.awards-next-custom',
-           prevEl: '.awards-prev-custom',
-        }}
-        breakpoints={{
-          320: {
-            slidesPerView: 1,
-            spaceBetween: 12,
-          },
-          640: {
-            slidesPerView: 2,
-            spaceBetween: 16,
-          },
-          1024: {
-            slidesPerView: 2,
-            spaceBetween: 16,
-          },
-        }}
-        className="awards-swiper"
-      >
-        {items.map((award, index) => (
-          <SwiperSlide key={award._id || index} className="h-auto flex items-stretch">
-            <div className="group/award flex flex-col justify-between overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-md hover:shadow-xl hover:border-primary/40 transition-all duration-300 w-full hover:-translate-y-1">
-              <div>
-                {/* Image */}
+    <div className="rounded-2xl bg-white border-2 border-gray-200 shadow-xl p-4 h-[390px] flex flex-col overflow-hidden">
+      <div className="awards-vertical-viewport flex-1 overflow-hidden">
+        <div className="awards-vertical-track space-y-3">
+          {displayItems.map((award, index) => (
+            <div 
+              key={award._id ? `${award._id}-${index}` : index} 
+              className="group flex flex-col sm:flex-row cursor-pointer overflow-hidden rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-300 gap-3"
+            >
+              {/* Image Box */}
+              <div className="w-full sm:w-28 h-28 sm:h-24 shrink-0 overflow-hidden rounded-lg bg-gray-50 border relative">
                 {award.image ? (
-                  <div className="w-full h-36 overflow-hidden rounded-xl bg-gray-50 border border-gray-100 mb-3">
-                    <img 
-                      src={award.image} 
-                      alt={award.title} 
-                      className="h-full w-full object-cover group-hover/award:scale-105 transition-transform duration-500" 
-                    />
-                  </div>
+                  <img src={award.image} alt={award.title} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500" />
                 ) : (
-                  <div className="w-full h-36 rounded-xl bg-indigo-50 border border-gray-100 flex items-center justify-center text-indigo-400 mb-3">
-                    <Award size={36} />
+                  <div className="w-full h-full bg-gradient-to-br from-blue-50 via-indigo-50 to-slate-100 flex flex-col items-center justify-center text-primary/70">
+                    <Award size={28} className="text-primary mb-1" />
+                    <span className="text-[8px] font-bold text-gray-500 uppercase">Award</span>
                   </div>
                 )}
+                {/* Date overlay */}
+                <div className="absolute bottom-1 left-1 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-[9px] font-semibold text-white flex items-center gap-1">
+                  <Calendar size={9} className="text-amber-400" /> {formatDate(award.date)}
+                </div>
+              </div>
 
-                {/* Details */}
-                <div className="flex flex-col gap-1">
-                  <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-bold uppercase text-gray-400">
-                    <Calendar size={12} className="text-primary" /> {formatDate(award.date)}
-                  </span>
-                  <h3 className="text-base font-bold text-gray-900 group-hover/award:text-primary transition-colors line-clamp-1 leading-snug">
+              {/* Text Content */}
+              <div className="min-w-0 flex-1 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-1 text-[9px] font-extrabold uppercase text-primary tracking-wider mb-1">
+                    <Trophy size={11} className="text-yellow-500" /> Award & Recognition
+                  </div>
+                  <h4 className="line-clamp-1 text-sm sm:text-base font-extrabold text-gray-800 group-hover:text-primary transition-colors leading-snug">
                     {award.title}
-                  </h3>
-                  <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mt-1">
-                    {award.description}
+                  </h4>
+                  <p className="mt-1 line-clamp-2 text-xs text-gray-600 font-normal leading-relaxed">
+                    {award.description || 'Honoring excellence and commitment to educational achievement at Smart Institute.'}
                   </p>
+                </div>
+                <div className="mt-2 flex items-center justify-between pt-1 border-t border-gray-100">
+                  <span className="text-[10px] font-bold text-primary flex items-center gap-1">
+                    Smart Academy <Sparkles size={11} className="text-amber-500" />
+                  </span>
                 </div>
               </div>
             </div>
-          </SwiperSlide>
-        ))}
-      </Swiper>
-      
-      {/* Navigation Buttons */}
-      <button className="awards-prev-custom absolute -left-3 top-1/2 -translate-y-1/2 bg-white/95 text-gray-800 p-2.5 rounded-full shadow-lg hover:bg-primary hover:text-white transition-all z-20 cursor-pointer border border-gray-100 hidden sm:flex items-center justify-center">
-        <ChevronLeft size={18} />
-      </button>
-      <button className="awards-next-custom absolute -right-3 top-1/2 -translate-y-1/2 bg-white/95 text-gray-800 p-2.5 rounded-full shadow-lg hover:bg-primary hover:text-white transition-all z-20 cursor-pointer border border-gray-100 hidden sm:flex items-center justify-center">
-        <ChevronRight size={18} />
-      </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };
@@ -266,8 +230,15 @@ const HeroBannerVisual = ({ items }) => {
               <div className="relative w-full max-w-[440px] sm:max-w-[500px] lg:max-w-[540px] mx-auto h-[420px] sm:h-[480px] lg:h-[520px] flex items-end justify-center">
                 
                 {/* 1. Large Pastel Cream Circle Backdrop (Half Circle Effect) */}
-                <div className="absolute bottom-4 w-[310px] h-[310px] sm:w-[390px] sm:h-[390px] lg:w-[430px] lg:h-[430px] rounded-full bg-[#fdf6ea] border border-amber-100/70 shadow-inner z-0 flex items-center justify-center">
+                <div className="absolute bottom-4 w-[310px] h-[310px] sm:w-[390px] sm:h-[390px] lg:w-[430px] lg:h-[430px] rounded-full bg-[#fdf6ea] border border-amber-100/70 shadow-inner z-0 flex items-center justify-center overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-b from-amber-100/40 via-transparent to-white/80 rounded-full" />
+                  
+                  {/* Company Logo (Si2.png) Watermark Background (Enlarged & High Visibility) */}
+                  <img
+                    src="/Si2.png"
+                    alt="Company Logo Watermark"
+                    className="w-[320px] sm:w-[420px] lg:w-[460px] max-h-[90%] object-contain opacity-65 select-none pointer-events-none transform -translate-y-2 filter drop-shadow-md transition-all duration-300"
+                  />
                 </div>
 
                 {/* 2. Student Photo Standing over the Circle with Soft Bottom Fade */}
@@ -275,34 +246,52 @@ const HeroBannerVisual = ({ items }) => {
                   <img
                     src={bannerImage}
                     alt={studentName || 'Student banner'}
-                    className="h-[390px] sm:h-[460px] lg:h-[500px] w-auto max-w-[95%] object-contain object-bottom drop-shadow-xl transition-all duration-700 [mask-image:linear-gradient(to_bottom,black_85%,transparent_100%)]"
+                    className="h-[390px] sm:h-[460px] lg:h-[500px] w-auto max-w-[95%] object-contain object-bottom drop-shadow-xl transition-all duration-700 mix-blend-multiply [mask-image:linear-gradient(to_bottom,black_85%,transparent_100%)]"
                   />
                   {/* Subtle white bottom gradient blur to seamlessly blend transparent or white-bg photo */}
                   <div className="absolute bottom-0 inset-x-0 h-10 bg-gradient-to-t from-white via-white/80 to-transparent z-15 pointer-events-none" />
                 </div>
 
-                {/* 3. Floating Student Achievement Card (Compact & Positioned Lower Down) */}
+                {/* 3. Floating Student Achievement Card (Positioned in Middle Bottom with high Z-Index in front) */}
                 {hasCardContent && (
-                  <div className="absolute bottom-2 sm:bottom-5 right-1 sm:right-2 lg:-right-2 z-20 bg-white/95 backdrop-blur-md p-3 sm:p-3.5 rounded-xl shadow-[0_12px_30px_rgba(0,0,0,0.12)] border border-slate-200/90 w-[230px] sm:w-[260px] text-left transform transition-all duration-300 hover:scale-[1.02]">
+                  <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 z-30 bg-white/95 backdrop-blur-xl p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl shadow-[0_16px_40px_rgba(15,23,42,0.18)] border border-slate-100/90 w-[88%] sm:w-[320px] lg:w-[350px] text-center transform transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_20px_45px_rgba(15,23,42,0.22)]">
+                    {/* Subtle top accent gradient bar */}
+                    <div className="w-10 h-1 bg-gradient-to-r from-amber-400 via-orange-500 to-indigo-600 rounded-full mx-auto mb-2.5 opacity-90" />
+
                     {/* Top Quote Paragraph (Rendered ONLY if admin entered description) */}
                     {studentDesc && (
-                      <p className="text-[11px] sm:text-xs text-slate-600 leading-relaxed font-normal mb-2.5 line-clamp-3">
-                        "{studentDesc}"
-                      </p>
+                      <div className="relative px-1 mb-2.5">
+                        <Quote size={14} className="text-amber-500 fill-amber-500/20 absolute -top-1 left-0 -rotate-12" />
+                        <p className="text-[11px] sm:text-xs text-slate-700 leading-relaxed font-medium italic line-clamp-3 text-center pl-4 pr-1">
+                          {studentDesc}
+                        </p>
+                      </div>
                     )}
 
                     {/* Meta Info Row */}
                     {(studentName || studentRole || companyName) && (
-                      <div className={`flex items-center justify-between gap-2 ${studentDesc ? 'border-t border-slate-100 pt-2' : ''}`}>
-                        <div className="min-w-0 flex-1">
-                          {studentName && <h4 className="text-xs font-extrabold text-slate-900 leading-snug truncate">{studentName}</h4>}
-                          {studentRole && <p className="text-[10px] font-semibold text-slate-500 truncate">{studentRole}</p>}
+                      <div className={`flex items-center justify-between gap-2.5 ${studentDesc ? 'border-t border-slate-100 pt-2.5 mt-1' : ''}`}>
+                        {/* Student Name & Role */}
+                        <div className="min-w-0 text-left flex-1">
+                          {studentName && (
+                            <h4 className="text-xs sm:text-sm font-black text-slate-900 leading-tight truncate tracking-tight">
+                              {studentName}
+                            </h4>
+                          )}
+                          {studentRole && (
+                            <p className="text-[10px] sm:text-xs font-bold text-indigo-600 truncate mt-0.5 uppercase tracking-wider">
+                              {studentRole}
+                            </p>
+                          )}
                         </div>
 
+                        {/* Working At / Company Badge */}
                         {companyName && (
-                          <div className="text-right pl-2 border-l border-slate-100 shrink-0">
-                            <span className="block text-[8px] font-extrabold tracking-wider uppercase text-slate-400">WORKING AT</span>
-                            <span className="block text-[11px] font-black text-slate-900 truncate max-w-[90px]">{companyName}</span>
+                          <div className="shrink-0 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-xl text-right">
+                            <span className="block text-[8px] font-extrabold tracking-widest uppercase text-slate-400">WORKING AT</span>
+                            <span className="block text-[10px] sm:text-xs font-black text-slate-800 truncate max-w-[100px]">
+                              {companyName}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -318,7 +307,7 @@ const HeroBannerVisual = ({ items }) => {
 
       {/* Pagination indicators */}
       {shouldLoop && (
-        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 bg-black/30 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 shadow-md">
+        <div className="absolute top-3 right-4 sm:right-6 z-30 flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 shadow-md">
           {slides.map((item, index) => (
             <button
               key={item._id || index}
@@ -1095,23 +1084,28 @@ const HomePage = () => {
               {/* Left Column: Awards & Recognitions (Col span 7 on desktop) */}
               <div className="lg:col-span-7 flex flex-col justify-between">
                 <div>
-                  <div className="flex justify-between items-end mb-6 gap-3">
+                  <div className="flex justify-between items-center mb-6 gap-3">
                     <div>
                       <h2 className="text-2xl sm:text-3xl font-black text-[#0a1931] tracking-tight mb-1"><span className="bg-gradient-to-r from-[#0a1931] to-primary bg-clip-text text-transparent">Achievements</span></h2>
-                      <h3 className="text-xs sm:text-sm font-bold text-accent uppercase tracking-widest mb-4">Awards & Recognition</h3>
+                      <h3 className="text-xs sm:text-sm font-bold text-accent uppercase tracking-widest">Awards & Recognition</h3>
+                    </div>
+                    {/* Navigation Buttons for Awards Slider */}
+                    <div className="flex items-center gap-2">
+                      <button className="awards-prev-custom bg-white hover:bg-primary text-gray-700 hover:text-white p-2 sm:p-2.5 rounded-xl shadow-md border border-gray-200 transition-all cursor-pointer flex items-center justify-center">
+                        <ChevronLeft size={18} />
+                      </button>
+                      <button className="awards-next-custom bg-white hover:bg-primary text-gray-700 hover:text-white p-2 sm:p-2.5 rounded-xl shadow-md border border-gray-200 transition-all cursor-pointer flex items-center justify-center">
+                        <ChevronRight size={18} />
+                      </button>
                     </div>
                   </div>
                   
                   <Reveal>
                     {awardsLoading ? (
-                      <div className="space-y-4">
-                        {Array(2).fill(0).map((_, i) => (
-                          <div key={i} className="h-28 animate-pulse rounded-2xl border border-gray-100 bg-white p-4 shadow-sm" />
-                        ))}
-                      </div>
+                      <div className="h-[390px] animate-pulse rounded-2xl border-2 border-gray-200 bg-white p-4 shadow-xl" />
                     ) : awards.length === 0 ? (
-                      <div className="rounded-2xl border border-gray-100 bg-white py-12 text-center text-gray-500 shadow-sm">
-                        <Award size={32} className="mx-auto mb-3 text-gray-400" />
+                      <div className="h-[390px] rounded-2xl border-2 border-gray-200 bg-white py-12 text-center text-gray-500 shadow-xl flex flex-col items-center justify-center">
+                        <Award size={40} className="mb-3 text-gray-400" />
                         <p className="text-base font-semibold">No recent awards available.</p>
                       </div>
                     ) : (
@@ -1125,31 +1119,27 @@ const HomePage = () => {
               {/* Right Column: Latest News (Col span 5 on desktop) */}
               <div className="lg:col-span-5 flex flex-col justify-between">
                 <div>
-                  <div className="flex justify-between items-end mb-6 gap-3">
+                  <div className="flex justify-between items-center mb-6 gap-3">
                     <div>
                       <h2 className="text-2xl sm:text-3xl font-black text-[#0a1931] tracking-tight mb-1">Campus <span className="bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Updates</span></h2>
-                      <h3 className="text-xs sm:text-sm font-bold text-accent uppercase tracking-widest mb-4">Latest News</h3>
+                      <h3 className="text-xs sm:text-sm font-bold text-accent uppercase tracking-widest">Latest News</h3>
                     </div>
-                    <a href="/news" className="text-primary text-xs sm:text-sm font-bold hover:text-blue-700 flex items-center gap-1 group transition-colors shrink-0 mb-1">
+                    <a href="/news" className="text-primary text-xs sm:text-sm font-bold hover:text-blue-700 flex items-center gap-1 group transition-colors shrink-0">
                       View All <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform"/>
                     </a>
                   </div>
 
                   <Reveal>
                     {newsLoading ? (
-                      <div className="space-y-4">
-                        {Array(3).fill(0).map((_, i) => (
-                          <div key={i} className="h-28 animate-pulse rounded-2xl border border-gray-100 bg-white p-4 shadow-sm" />
-                        ))}
-                      </div>
+                      <div className="h-[390px] animate-pulse rounded-2xl border-2 border-gray-200 bg-white p-4 shadow-xl" />
                     ) : latestNews.length === 0 ? (
-                      <div className="rounded-2xl border border-gray-100 bg-white py-12 text-center text-gray-500 shadow-sm">
-                        <Calendar size={24} className="mx-auto mb-3 text-gray-400" />
+                      <div className="h-[390px] rounded-2xl border-2 border-gray-200 bg-white py-12 text-center text-gray-500 shadow-xl flex flex-col items-center justify-center">
+                        <Calendar size={32} className="mb-3 text-gray-400" />
                         <p className="text-base font-semibold">No recent news available.</p>
                       </div>
                     ) : (
                       /* Vertical scroll container for latest news */
-                      <div className="rounded-2xl bg-white border-2 border-gray-200 shadow-xl p-4 h-[350px] flex flex-col overflow-hidden">
+                      <div className="rounded-2xl bg-white border-2 border-gray-200 shadow-xl p-4 h-[390px] flex flex-col overflow-hidden">
                         <div className="news-vertical-viewport flex-1 overflow-hidden">
                           <div className="news-vertical-track space-y-3">
                             {[...latestNews, ...latestNews].map((item, index) => (

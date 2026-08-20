@@ -77,6 +77,20 @@
   animation-play-state: paused;
 }
 
+@keyframes awardsVerticalScroll {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+
+.awards-vertical-track {
+  animation: awardsVerticalScroll 28s linear infinite;
+  will-change: transform;
+}
+
+.awards-vertical-viewport:hover .awards-vertical-track {
+  animation-play-state: paused;
+}
+
 .hero-banner-swiper,
 .hero-banner-swiper .swiper-wrapper,
 .hero-banner-swiper .swiper-slide {
