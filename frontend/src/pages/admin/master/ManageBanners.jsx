@@ -576,9 +576,9 @@ const ManageBanners = () => {
                                                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
                                                     Uploaded Image File
                                                 </label>
-                                                <div className="w-full h-44 rounded-xl overflow-hidden border-2 border-dashed border-indigo-200 relative group flex flex-col justify-center items-center bg-slate-50 shadow-inner">
+                                                <div className="w-full h-44 rounded-xl overflow-hidden border-2 border-dashed border-indigo-200 relative group flex flex-col justify-center items-center bg-[linear-gradient(45deg,#e2e8f0_25%,transparent_25%),linear-gradient(-45deg,#e2e8f0_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#e2e8f0_75%),linear-gradient(-45deg,transparent_75%,#e2e8f0_75%)] bg-[length:20px_20px] bg-[position:0_0,0_10px,10px_-10px,-10px_0px] bg-white shadow-inner">
                                                     {imagePreview ? (
-                                                        <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                                                        <img src={imagePreview} alt="Preview" className="w-full h-full object-contain" />
                                                     ) : (
                                                         <div className="flex flex-col items-center text-gray-400 p-4 text-center">
                                                             <ImageIcon size={36} className="mb-2 text-indigo-400" />

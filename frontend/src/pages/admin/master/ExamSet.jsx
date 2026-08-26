@@ -27,26 +27,27 @@ const getSubjectName = (row) => row?.subject?.name || row?.subject?.printedName 
 const getSubjectId = (row) => row?.subject?._id || row?.subject;
 const getEmployeeName = (employee) => employee?.name || [employee?.firstName, employee?.lastName].filter(Boolean).join(' ') || 'Employee';
 
-const getEmployeesForBranch = (employeesList, branchName) => {
+const getEmployeesForBranch = (employeesList, branchId, branchName) => {
   if (!Array.isArray(employeesList)) return [];
-  if (!branchName) return employeesList;
+  const targetId = String(branchId?._id || branchId || '');
+  if (!targetId && !branchName) return [];
 
-  const targetName = branchName.toLowerCase().replace(/branch/i, '').trim();
+  const normalizeBranchName = (value) => String(value || '')
+    .toLowerCase()
+    .replace(/\bbranch\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const targetName = normalizeBranchName(branchName);
 
-  const filtered = employeesList.filter((emp) => {
-    const empBranchName = (
-      emp.branchId?.name ||
-      emp.branchName ||
-      emp.branch ||
-      ''
-    ).toLowerCase().trim();
+  return employeesList.filter((emp) => {
+    const employeeBranchId = String(emp.branchId?._id || emp.branchId || '');
+    if (targetId && employeeBranchId) return employeeBranchId === targetId;
 
-    if (!empBranchName) return true;
-
-    return empBranchName.includes(targetName) || targetName.includes(empBranchName);
+    const employeeBranchName = normalizeBranchName(
+      emp.branchId?.name || emp.branchName || emp.branch
+    );
+    return Boolean(targetName && employeeBranchName && employeeBranchName === targetName);
   });
-
-  return filtered.length > 0 ? filtered : employeesList;
 };
 
 const getDateKey = (date) => {
@@ -159,7 +160,7 @@ const ExamSet = () => {
   const currentEmployee = useMemo(() => {
     if (!user) return null;
     return (employees || []).find(
-      (e) => String(e.userAccount) === String(user._id) || String(e._id) === String(user.employeeId)
+      (e) => String(e.userAccount?._id || e.userAccount) === String(user._id) || String(e._id) === String(user.employeeId)
     );
   }, [employees, user]);
 
@@ -458,8 +459,6 @@ const ExamSet = () => {
       const result = await dispatch(updateExamSchedule({
         id: schedule._id,
         data: {
-          examiner: current.examiner || schedule.examiner || '',
-          alternateExaminer: current.alternateExaminer || schedule.alternateExaminer || '',
           branchExaminers: updatedBranchExaminers,
           timeTable: buildTimeTablePayload(schedule, dateGroup.dateKey, current)
         }
@@ -677,7 +676,7 @@ const ExamSet = () => {
                                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 disabled:bg-gray-100"
                               >
                                 <option value="">-- Select Main Examiner --</option>
-                                {getEmployeesForBranch(employees, bGroup.branchName).map((emp) => (
+                                {getEmployeesForBranch(employees, bGroup.branchId, bGroup.branchName).map((emp) => (
                                   <option key={emp._id} value={emp._id}>
                                     {getEmployeeName(emp)} ({emp.branchId?.name || emp.branchName || 'Main'})
                                   </option>
@@ -696,7 +695,7 @@ const ExamSet = () => {
                                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 disabled:bg-gray-100"
                               >
                                 <option value="">-- Select Alternate (Optional) --</option>
-                                {getEmployeesForBranch(employees, bGroup.branchName)
+                                {getEmployeesForBranch(employees, bGroup.branchId, bGroup.branchName)
                                   .filter((emp) => String(emp._id) !== String(current.examiner))
                                   .map((emp) => (
                                     <option key={emp._id} value={emp._id}>

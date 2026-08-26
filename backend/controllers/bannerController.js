@@ -5,7 +5,11 @@ exports.createBanner = async (req, res) => {
     try {
         console.log('Creating banner req.body:', req.body);
         const { title, description, testimonialQuote, isActive, linkUrl, linkLabel } = req.body;
-        const image = req.file ? req.file.path : ''; // Cloudinary URL from multer
+        const image = req.file
+            ? (req.file.path.startsWith('http')
+                ? req.file.path
+                : `/uploads/banner_uploads/${req.file.filename}`)
+            : ''
         const quote = testimonialQuote !== undefined ? testimonialQuote : description;
 
         if (!image) {
@@ -72,7 +76,9 @@ exports.updateBanner = async (req, res) => {
         if (isActive !== undefined) updateData.isActive = (isActive === 'true' || isActive === true);
 
         if (req.file) {
-            updateData.image = req.file.path; // New Cloudinary URL
+            updateData.image = req.file.path.startsWith('http')
+                ? req.file.path
+                : `/uploads/banner_uploads/${req.file.filename}`
         }
 
         const updated = await Banner.findByIdAndUpdate(

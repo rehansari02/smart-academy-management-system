@@ -42,11 +42,13 @@ const getExamRequests = asyncHandler(async (req, res) => {
         .populate({
             path: 'student',
             populate: { path: 'course', select: 'name duration' },
-            select: 'firstName lastName regNo admissionDate mobileParent mobileStudent branchId'
+            select: 'firstName lastName regNo enrollmentNo admissionDate mobileParent mobileStudent branchId course'
         })
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .lean();
 
-    res.json(requests);
+    // Do not render legacy requests whose referenced student no longer exists.
+    res.json(requests.filter(request => request.student));
 });
 
 // @desc    Get branches that have exam request data
@@ -94,14 +96,14 @@ const getPendingExams = asyncHandler(async (req, res) => {
         .populate({
             path: 'student',
             populate: { path: 'course', select: 'name duration' },
-            select: 'firstName lastName regNo admissionDate mobileStudent mobileParent'
+            select: 'firstName lastName regNo enrollmentNo admissionDate mobileStudent mobileParent course'
         })
         .sort({ createdAt: 1 }); // Oldest first
 
     // Calculate Pending Days and Filter
     const today = new Date();
     
-    let pendingList = requests.map(req => {
+    let pendingList = requests.filter(req => req.student).map(req => {
         const reqDate = new Date(req.createdAt);
         const diffTime = Math.abs(today - reqDate);
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 

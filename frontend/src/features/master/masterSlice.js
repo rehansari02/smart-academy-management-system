@@ -750,6 +750,13 @@ const masterSlice = createSlice({
             })
             .addCase(createExamSchedule.fulfilled, (state, action) => {
                 state.examSchedules.unshift(action.payload);
+                const scheduledStudentIds = new Set(
+                    (action.meta.arg?.attendees || []).map(id => String(id))
+                );
+                state.examRequests = state.examRequests.filter(request => {
+                    const studentId = request.student?._id || request.student;
+                    return !scheduledStudentIds.has(String(studentId));
+                });
                 state.isSuccess = true;
                 state.message = 'Exam Schedule Created';
             })

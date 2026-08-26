@@ -187,7 +187,7 @@ const ExamRequestList = () => {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {isLoading ? (
-                <tr><td colSpan="8" className="text-center py-4">Loading...</td></tr>
+                <tr><td colSpan="9" className="text-center py-4">Loading...</td></tr>
             ) : examRequests.filter(r => r.status === 'Pending').length > 0 ? (
                 examRequests.filter(r => r.status === 'Pending').map((req, index) => (
                     <tr key={req._id || index} className={`hover:bg-gray-50 ${selectedRequests.includes(req._id) ? 'bg-blue-50/50' : ''}`}>
@@ -199,11 +199,11 @@ const ExamRequestList = () => {
                                 onChange={() => handleSelectRequest(req._id)}
                             />
                         </td>
-                        <td className="px-6 py-4 text-sm font-bold text-gray-700">{index + 1}</td>
+                        <td className="px-6 py-4 text-sm font-bold text-gray-700">{req.examSerialNo || index + 1}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">
                             {req.student?.admissionDate ? new Date(req.student.admissionDate).toLocaleDateString() : '-'}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">{req.student?.regNo}</td>
+                        <td className="px-6 py-4 text-sm text-gray-900">{req.student?.regNo || req.student?.enrollmentNo || '-'}</td>
                         <td className="px-6 py-4 text-sm font-medium text-primary">
                             {req.student?.firstName} {req.student?.lastName}
                         </td>
@@ -224,7 +224,7 @@ const ExamRequestList = () => {
                     </tr>
                 ))
             ) : (
-                <tr><td colSpan="8" className="text-center py-8 text-gray-500 italic">No pending exam requests found.</td></tr>
+                <tr><td colSpan="9" className="text-center py-8 text-gray-500 italic">No valid pending exam requests found.</td></tr>
             )}
           </tbody>
         </table>

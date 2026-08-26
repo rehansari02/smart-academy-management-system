@@ -80,6 +80,7 @@ const ExamSetAbsent = () => {
   const [passwordEnabled, setPasswordEnabled] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('all');
+  const [selectedExamDate, setSelectedExamDate] = useState('all');
 
   const componentRef = useRef(null);
 
@@ -171,8 +172,24 @@ const ExamSetAbsent = () => {
     return [...set].sort();
   }, [rows]);
 
+  const availableExamDates = useMemo(() => {
+    const dateMap = new Map();
+    rows.forEach((row) => {
+      const dateKey = getDateKey(row.originalDate);
+      if (dateKey !== 'no-date' && !dateMap.has(dateKey)) {
+        dateMap.set(dateKey, formatDateLabel(row.originalDate));
+      }
+    });
+    return [...dateMap.entries()]
+      .sort(([first], [second]) => first.localeCompare(second))
+      .map(([value, label]) => ({ value, label }));
+  }, [rows]);
+
   const filteredRows = useMemo(() => {
     let result = rows;
+    if (selectedExamDate !== 'all') {
+      result = result.filter((row) => getDateKey(row.originalDate) === selectedExamDate);
+    }
     if (selectedBranch !== 'all') {
       result = result.filter((row) => (row.student?.branchName || 'Main Branch') === selectedBranch);
     }
@@ -186,7 +203,7 @@ const ExamSetAbsent = () => {
       const branch = String(row.student?.branchName || '').toLowerCase();
       return name.includes(term) || reg.includes(term) || course.includes(term) || subject.includes(term) || branch.includes(term);
     });
-  }, [rows, selectedBranch, searchTerm]);
+  }, [rows, selectedExamDate, selectedBranch, searchTerm]);
 
   // Course-wise Absent Summary
   const courseSummary = useMemo(() => {
@@ -246,20 +263,22 @@ const ExamSetAbsent = () => {
     });
   }, [filteredRows]);
 
-  const selectedList = useMemo(() => rows.filter((row) => selectedRows[row.key]), [rows, selectedRows]);
+  const selectedList = useMemo(() => filteredRows.filter((row) => selectedRows[row.key]), [filteredRows, selectedRows]);
 
   const uniqueCoursesCount = useMemo(() => {
-    const set = new Set(rows.map((r) => r.course?._id || r.course?.name).filter(Boolean));
+    const set = new Set(filteredRows.map((r) => r.course?._id || r.course?.name).filter(Boolean));
     return set.size;
-  }, [rows]);
+  }, [filteredRows]);
 
   const uniqueBranchesCount = useMemo(() => {
-    const set = new Set(rows.map((r) => r.student?.branchName || 'Main Branch'));
+    const set = new Set(filteredRows.map((r) => r.student?.branchName || 'Main Branch'));
     return set.size;
-  }, [rows]);
+  }, [filteredRows]);
 
   const updateExamName = (examName) => {
     setSelectedExamName(examName);
+    setSelectedExamDate('all');
+    setSelectedBranch('all');
     setSearchParams(examName ? { examName } : {});
     loadAbsentRows(examName);
   };
@@ -451,7 +470,7 @@ const ExamSetAbsent = () => {
       {/* Filter & Metrics Card (Mirrors ExamSet.jsx) */}
       <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm space-y-4 print:hidden">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div>
               <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Select Exam Schedule</label>
               <select
@@ -462,6 +481,21 @@ const ExamSetAbsent = () => {
                 <option value="">-- Select Exam Schedule --</option>
                 {examOptions.map((name) => (
                   <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">Filter By Exam Date</label>
+              <select
+                value={selectedExamDate}
+                onChange={(e) => setSelectedExamDate(e.target.value)}
+                disabled={!selectedExamName || availableExamDates.length === 0}
+                className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 py-2.5 text-sm font-semibold text-gray-800 outline-none focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-500/10 disabled:opacity-50 transition"
+              >
+                <option value="all">All Exam Dates</option>
+                {availableExamDates.map((date) => (
+                  <option key={date.value} value={date.value}>{date.label}</option>
                 ))}
               </select>
             </div>
@@ -499,7 +533,7 @@ const ExamSetAbsent = () => {
 
           <div className="grid grid-cols-4 gap-2 text-center pt-2 lg:pt-0">
             <div className="rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2">
-              <div className="text-base font-black text-amber-900">{rows.length}</div>
+              <div className="text-base font-black text-amber-900">{filteredRows.length}</div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Absent Rows</div>
             </div>
             <div className="rounded-xl border border-gray-100 bg-slate-50/80 px-3 py-2">

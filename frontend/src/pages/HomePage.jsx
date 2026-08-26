@@ -32,7 +32,7 @@ import { getMediaUrl } from '../utils/mediaUrl';
 
 const Carousel = ({ items }) => {
   return (
-    <div className="relative group px-4 sm:px-8 md:px-10">
+    <div className="relative group px-3 sm:px-10 md:px-12">
       <style>
         {`
           .swiper-button-disabled {
@@ -40,8 +40,8 @@ const Carousel = ({ items }) => {
             cursor: not-allowed;
           }
           .topper-swiper {
-            padding-bottom: 2rem !important;
-            padding-top: 0.5rem !important;
+            padding-bottom: 2.5rem !important;
+            padding-top: 0.75rem !important;
           }
           .topper-swiper .swiper-slide {
             height: auto;
@@ -84,31 +84,32 @@ const Carousel = ({ items }) => {
       >
         {items.map((item, index) => (
           <SwiperSlide key={index} className="h-auto flex items-stretch">
-            <div className="topper-card bg-white p-5 rounded-2xl shadow-xl shadow-slate-200/80 border border-gray-200/90 flex flex-col justify-between w-full transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/15 hover:border-primary/40 hover:-translate-y-1.5 group/card">
-              <div>
-                {/* Square Student Image Frame - Compact size with smooth border radius */}
-                <div className="relative w-36 h-36 sm:w-40 sm:h-40 mx-auto rounded-3xl overflow-hidden bg-slate-50 mb-4 border border-gray-200 shadow-sm flex items-center justify-center p-1.5 group/img">
-                  <img 
-                    src={item.image} 
-                    alt={item.name} 
-                    className="w-full h-full object-contain rounded-2xl group-hover/card:scale-105 transition-transform duration-500" 
+            <div className="topper-card flex w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_35px_-18px_rgba(15,23,42,0.28)] transition-all duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-[0_18px_45px_-20px_rgba(30,64,175,0.28)] group/card">
+              <div className="relative flex min-h-[220px] items-center justify-center bg-gradient-to-b from-slate-50 to-blue-50/50 px-6 py-7">
+                <div className="h-40 w-40 overflow-hidden rounded-2xl border-4 border-white bg-white shadow-[0_10px_30px_-12px_rgba(15,23,42,0.3)] ring-1 ring-slate-200 sm:h-44 sm:w-44">
+                  <img
+                    src={getMediaUrl(item.image) || item.image}
+                    alt=""
+                    className="h-full w-full object-contain transition-transform duration-500 group-hover/card:scale-[1.03]"
                   />
-                  <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-md px-2 py-0.5 rounded-full shadow text-[10px] font-bold text-accent border border-gray-100 flex items-center gap-1">
-                    <Trophy size={12} className="text-yellow-500" /> Topper
-                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-1 flex-col px-5 pb-5 pt-5 sm:px-6">
+                <div className="mb-5 text-left">
+                  <h3 className="mb-2 line-clamp-1 text-xl font-bold tracking-tight text-slate-900">{item.name}</h3>
+                  <p className="line-clamp-2 min-h-[2.5rem] text-sm font-medium leading-relaxed text-slate-500">{item.course}</p>
                 </div>
 
-                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-1 text-center line-clamp-1">{item.name}</h3>
-                <p className="text-primary font-semibold text-xs sm:text-sm mb-3 uppercase tracking-wide text-center line-clamp-2 min-h-[2.2rem] flex items-center justify-center">{item.course}</p>
+                <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-primary"><Award size={18} /></span>
+                    Score Achieved
+                  </div>
+                  <div className="text-2xl font-bold tracking-tight text-primary sm:text-3xl">{item.percentage}<span className="text-base">%</span></div>
+                </div>
               </div>
-
-              {/* Score Box */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 p-3 rounded-xl text-center border border-blue-100/80 mt-auto">
-                <div className="text-2xl sm:text-3xl font-black text-accent">{item.percentage}%</div>
-                <div className="text-[9px] sm:text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">Score Achieved</div>
-              </div>
-            </div>
-          </SwiperSlide>
+            </div>          </SwiperSlide>
         ))}
       </Swiper>
       
@@ -123,59 +124,94 @@ const Carousel = ({ items }) => {
   );
 };
 
-const AchievementsCarousel = ({ items }) => {
+const AchievementsCarousel = ({ items, onSelectAward }) => {
   const displayItems = items && items.length > 0 
-    ? (items.length < 3 ? [...items, ...items, ...items, ...items] : [...items, ...items])
+    ? (items.length === 1 ? [items[0], items[0]] : items)
     : [];
 
   return (
-    <div className="rounded-2xl bg-white border-2 border-gray-200 shadow-xl p-4 h-[390px] flex flex-col overflow-hidden">
-      <div className="awards-vertical-viewport flex-1 overflow-hidden">
-        <div className="awards-vertical-track space-y-3">
-          {displayItems.map((award, index) => (
-            <div 
-              key={award._id ? `${award._id}-${index}` : index} 
-              className="group flex flex-col sm:flex-row cursor-pointer overflow-hidden rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-300 gap-3"
-            >
-              {/* Image Box */}
-              <div className="w-full sm:w-28 h-28 sm:h-24 shrink-0 overflow-hidden rounded-lg bg-gray-50 border relative">
-                {award.image ? (
-                  <img src={award.image} alt={award.title} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-blue-50 via-indigo-50 to-slate-100 flex flex-col items-center justify-center text-primary/70">
-                    <Award size={28} className="text-primary mb-1" />
-                    <span className="text-[8px] font-bold text-gray-500 uppercase">Award</span>
-                  </div>
-                )}
-                {/* Date overlay */}
-                <div className="absolute bottom-1 left-1 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-[9px] font-semibold text-white flex items-center gap-1">
-                  <Calendar size={9} className="text-amber-400" /> {formatDate(award.date)}
-                </div>
-              </div>
+    <div className="relative w-full h-[470px]">
+      <Swiper
+        modules={[Autoplay]}
+        spaceBetween={24}
+        slidesPerView={1}
+        slidesPerGroup={1}
+        loop={displayItems.length > 1}
+        speed={600}
+        autoplay={{
+          delay: 3500,
+          disableOnInteraction: false,
+          pauseOnMouseEnter: true,
+        }}
+        className="w-full h-full rounded-3xl"
+      >
+        {displayItems.map((award, index) => {
+          const awardImg = getMediaUrl(award.image);
+          return (
+            <SwiperSlide key={award._id ? `${award._id}-${index}` : index} className="h-full w-full">
+              <div 
+                onClick={() => onSelectAward && onSelectAward(award)}
+                className="group relative flex flex-col justify-between w-full h-[470px] bg-white rounded-3xl border-2 border-gray-200 shadow-xl hover:shadow-2xl hover:border-amber-400/60 transition-all duration-300 cursor-pointer overflow-hidden p-5"
+              >
+                {/* Ambient Glow */}
+                <div className="absolute -top-16 -right-16 w-40 h-40 bg-amber-400/10 rounded-full blur-2xl group-hover:bg-amber-400/20 transition-all duration-500 pointer-events-none" />
 
-              {/* Text Content */}
-              <div className="min-w-0 flex-1 flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center gap-1 text-[9px] font-extrabold uppercase text-primary tracking-wider mb-1">
-                    <Trophy size={11} className="text-yellow-500" /> Award & Recognition
+                  {/* Top Badge & Date Row */}
+                  <div className="flex items-center justify-between gap-2 mb-3.5">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wide bg-amber-50 text-amber-600 border border-amber-200 shadow-xs">
+                      <Trophy size={13} className="text-amber-500" /> Award & Recognition
+                    </span>
+                    {award.date && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1 rounded-lg border border-gray-200/80">
+                        <Calendar size={13} className="text-gray-400" />
+                        {formatDate(award.date)}
+                      </span>
+                    )}
                   </div>
-                  <h4 className="line-clamp-1 text-sm sm:text-base font-extrabold text-gray-800 group-hover:text-primary transition-colors leading-snug">
+
+                  {/* Big Image Display */}
+                  <div className="relative w-full h-64 sm:h-72 rounded-2xl overflow-hidden bg-slate-100 border border-gray-200 mb-4 group-hover:border-amber-300 transition-colors flex items-center justify-center">
+                    {awardImg ? (
+                      <img 
+                        src={awardImg} 
+                        alt={award.title} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-amber-50 via-orange-50 to-blue-50 flex flex-col items-center justify-center text-primary">
+                        <Award size={52} className="text-amber-500 mb-2 group-hover:scale-110 transition-transform duration-300" />
+                        <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Smart Recognition</span>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                  </div>
+
+                  {/* Title */}
+                  <h4 className="font-black text-gray-900 text-lg sm:text-xl line-clamp-1 leading-snug group-hover:text-primary transition-colors">
                     {award.title}
                   </h4>
-                  <p className="mt-1 line-clamp-2 text-xs text-gray-600 font-normal leading-relaxed">
-                    {award.description || 'Honoring excellence and commitment to educational achievement at Smart Institute.'}
+
+                  {/* Description */}
+                  <p className="mt-1 text-xs sm:text-sm text-gray-600 font-normal line-clamp-2 leading-relaxed">
+                    {award.description || 'Honoring excellence, commitment, and outstanding dedication to academic success at Smart Academy.'}
                   </p>
                 </div>
-                <div className="mt-2 flex items-center justify-between pt-1 border-t border-gray-100">
-                  <span className="text-[10px] font-bold text-primary flex items-center gap-1">
-                    Smart Academy <Sparkles size={11} className="text-amber-500" />
+
+                {/* Footer */}
+                <div className="pt-3 mt-2 border-t border-gray-100 flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-600 flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-amber-500" /> Smart Academy
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs sm:text-sm font-bold text-primary group-hover:translate-x-1 transition-transform">
+                    View Details <ChevronRight size={15} />
                   </span>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
+            </SwiperSlide>
+          );
+        })}
+      </Swiper>
     </div>
   );
 };
@@ -246,10 +282,8 @@ const HeroBannerVisual = ({ items }) => {
                   <img
                     src={bannerImage}
                     alt={studentName || 'Student banner'}
-                    className="h-[390px] sm:h-[460px] lg:h-[500px] w-auto max-w-[95%] object-contain object-bottom drop-shadow-xl transition-all duration-700 mix-blend-multiply [mask-image:linear-gradient(to_bottom,black_85%,transparent_100%)]"
+                    className="h-[390px] sm:h-[460px] lg:h-[500px] w-auto max-w-[95%] object-contain object-bottom drop-shadow-xl transition-all duration-700"
                   />
-                  {/* Subtle white bottom gradient blur to seamlessly blend transparent or white-bg photo */}
-                  <div className="absolute bottom-0 inset-x-0 h-10 bg-gradient-to-t from-white via-white/80 to-transparent z-15 pointer-events-none" />
                 </div>
 
                 {/* 3. Floating Student Achievement Card (Positioned in Middle Bottom with high Z-Index in front) */}
@@ -416,6 +450,7 @@ const HomePage = () => {
     const [toppersLoading, setToppersLoading] = useState(true);
     const [awards, setAwards] = useState([]);
     const [awardsLoading, setAwardsLoading] = useState(true);
+    const [selectedAward, setSelectedAward] = useState(null);
     const defaultHeroImages = [];
     const [heroImages, setHeroImages] = useState(defaultHeroImages);
     const [homeStats, setHomeStats] = useState({
@@ -770,10 +805,10 @@ const HomePage = () => {
         <div id="courses-section" className="pt-4 pb-12 sm:pt-6 sm:pb-20 bg-white">
           <div className="container mx-auto px-4 sm:px-6">
             <Reveal>
-              <div className="text-center mb-8 sm:mb-12">
-                <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-[#0a1931] tracking-tight mb-2">Our <span className="bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Offerings</span></h2>
-                <h3 className="text-base sm:text-lg font-bold text-accent uppercase tracking-wider mb-3">Most Demanded Courses</h3>
-                <p className="text-gray-500 text-sm sm:text-base max-w-4xl mx-auto">Choose from our wide range of professional courses designed to boost your career.</p>
+              <div className="text-center mb-10 sm:mb-14 max-w-3xl mx-auto">
+                <h2 className="text-4xl sm:text-5xl md:text-6xl font-black text-[#0a1931] tracking-tight mb-4">Our <span className="bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Offerings</span></h2>
+                <h3 className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-[11px] font-extrabold text-amber-700 uppercase tracking-[0.2em] mb-4">Most Demanded Courses</h3>
+                <p className="text-slate-500 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto">Choose from our wide range of professional courses designed to boost your career.</p>
               </div>
             </Reveal>
 
@@ -1078,39 +1113,28 @@ const HomePage = () => {
   
         {/* 4. Latest Updates & Achievements (News + Recognition) */}
         <div className="border-t border-b border-gray-200 bg-slate-50 py-12 sm:py-16">
-          <div className="container mx-auto px-4 max-w-6xl">
+          <div className="container mx-auto px-4 sm:px-6 max-w-7xl">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
               
               {/* Left Column: Awards & Recognitions (Col span 7 on desktop) */}
               <div className="lg:col-span-7 flex flex-col justify-between">
                 <div>
-                  <div className="flex justify-between items-center mb-6 gap-3">
-                    <div>
-                      <h2 className="text-2xl sm:text-3xl font-black text-[#0a1931] tracking-tight mb-1"><span className="bg-gradient-to-r from-[#0a1931] to-primary bg-clip-text text-transparent">Achievements</span></h2>
-                      <h3 className="text-xs sm:text-sm font-bold text-accent uppercase tracking-widest">Awards & Recognition</h3>
-                    </div>
-                    {/* Navigation Buttons for Awards Slider */}
-                    <div className="flex items-center gap-2">
-                      <button className="awards-prev-custom bg-white hover:bg-primary text-gray-700 hover:text-white p-2 sm:p-2.5 rounded-xl shadow-md border border-gray-200 transition-all cursor-pointer flex items-center justify-center">
-                        <ChevronLeft size={18} />
-                      </button>
-                      <button className="awards-next-custom bg-white hover:bg-primary text-gray-700 hover:text-white p-2 sm:p-2.5 rounded-xl shadow-md border border-gray-200 transition-all cursor-pointer flex items-center justify-center">
-                        <ChevronRight size={18} />
-                      </button>
-                    </div>
+                  <div className="mb-6">
+                    <h2 className="text-2xl sm:text-3xl font-black text-[#0a1931] tracking-tight mb-1"><span className="bg-gradient-to-r from-[#0a1931] to-primary bg-clip-text text-transparent">Achievements</span></h2>
+                    <h3 className="text-xs sm:text-sm font-bold text-accent uppercase tracking-widest">Awards & Recognition</h3>
                   </div>
                   
                   <Reveal>
                     {awardsLoading ? (
-                      <div className="h-[390px] animate-pulse rounded-2xl border-2 border-gray-200 bg-white p-4 shadow-xl" />
+                      <div className="h-[470px] animate-pulse rounded-3xl border-2 border-gray-200 bg-white p-4 shadow-xl" />
                     ) : awards.length === 0 ? (
-                      <div className="h-[390px] rounded-2xl border-2 border-gray-200 bg-white py-12 text-center text-gray-500 shadow-xl flex flex-col items-center justify-center">
+                      <div className="h-[470px] rounded-3xl border-2 border-gray-200 bg-white py-12 text-center text-gray-500 shadow-xl flex flex-col items-center justify-center">
                         <Award size={40} className="mb-3 text-gray-400" />
                         <p className="text-base font-semibold">No recent awards available.</p>
                       </div>
                     ) : (
                       /* Display Achievements in smooth horizontal Swiper carousel slider */
-                      <AchievementsCarousel items={awards} />
+                      <AchievementsCarousel items={awards} onSelectAward={setSelectedAward} />
                     )}
                   </Reveal>
                 </div>
@@ -1131,15 +1155,15 @@ const HomePage = () => {
 
                   <Reveal>
                     {newsLoading ? (
-                      <div className="h-[390px] animate-pulse rounded-2xl border-2 border-gray-200 bg-white p-4 shadow-xl" />
+                      <div className="h-[470px] animate-pulse rounded-3xl border-2 border-gray-200 bg-white p-4 shadow-xl" />
                     ) : latestNews.length === 0 ? (
-                      <div className="h-[390px] rounded-2xl border-2 border-gray-200 bg-white py-12 text-center text-gray-500 shadow-xl flex flex-col items-center justify-center">
+                      <div className="h-[470px] rounded-3xl border-2 border-gray-200 bg-white py-12 text-center text-gray-500 shadow-xl flex flex-col items-center justify-center">
                         <Calendar size={32} className="mb-3 text-gray-400" />
                         <p className="text-base font-semibold">No recent news available.</p>
                       </div>
                     ) : (
                       /* Vertical scroll container for latest news */
-                      <div className="rounded-2xl bg-white border-2 border-gray-200 shadow-xl p-4 h-[390px] flex flex-col overflow-hidden">
+                      <div className="rounded-3xl bg-white border-2 border-gray-200 shadow-xl p-4 h-[470px] flex flex-col overflow-hidden">
                         <div className="news-vertical-viewport flex-1 overflow-hidden">
                           <div className="news-vertical-track space-y-3">
                             {[...latestNews, ...latestNews].map((item, index) => (
@@ -1175,13 +1199,13 @@ const HomePage = () => {
         </div>
 
         {/* 5. Student Success Stories (Toppers) Section (Full Width, below News) */}
-        <div className="bg-slate-50/70 py-14 sm:py-20 border-b border-gray-200">
-          <div className="container mx-auto px-2 sm:px-6 text-center max-w-7xl">
+        <div className="relative overflow-hidden bg-gradient-to-b from-white via-slate-50 to-blue-50/40 py-16 sm:py-24 border-b border-slate-200">
+          <div className="container relative mx-auto px-2 sm:px-6 text-center max-w-7xl">
             <Reveal>
-              <div className="text-center mb-8 sm:mb-12">
-                <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-[#0a1931] tracking-tight mb-2">Hall of <span className="bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Fame</span></h2>
-                <h3 className="text-base sm:text-lg font-bold text-accent uppercase tracking-wider mb-3">Student Success Stories</h3>
-                <p className="text-gray-500 text-sm sm:text-base max-w-4xl mx-auto">Celebrating the academic excellence and outstanding achievements of our brilliant students who have made us proud.</p>
+              <div className="text-center mb-10 sm:mb-14 max-w-3xl mx-auto">
+                <h2 className="text-4xl sm:text-5xl md:text-6xl font-black text-[#0a1931] tracking-tight mb-4">Hall of <span className="bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Fame</span></h2>
+                <h3 className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-[11px] font-extrabold text-amber-700 uppercase tracking-[0.2em] mb-4">Student Success Stories</h3>
+                <p className="text-slate-500 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto">Celebrating the academic excellence and outstanding achievements of our brilliant students who have made us proud.</p>
               </div>
               {toppersLoading ? (
                   <div className="py-12 sm:py-20 text-gray-400 italic text-sm">Loading success stories...</div>
@@ -1263,6 +1287,70 @@ const HomePage = () => {
                 <button 
                   onClick={() => setSelectedNews(null)}
                   className="px-6 py-2.5 bg-gray-900 text-white font-bold rounded-xl hover:bg-primary transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Award Detail Modal */}
+        {selectedAward && (
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn"
+            onClick={() => setSelectedAward(null)}
+          >
+            <div 
+              className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-2xl transform transition-all border border-amber-200/60"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-[#0a1931] via-primary to-blue-700 text-white p-6 relative">
+                <button 
+                  onClick={() => setSelectedAward(null)}
+                  className="absolute top-4 right-4 p-2 hover:bg-white/20 rounded-full transition-colors"
+                >
+                  <X size={24} />
+                </button>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold bg-amber-400 text-slate-900 px-3 py-1 rounded-full shadow">
+                    <Trophy size={13} className="text-amber-900" />
+                    <span>Award & Recognition</span>
+                  </div>
+                  {selectedAward.date && (
+                    <div className="flex items-center gap-1.5 text-xs font-medium bg-white/20 px-3 py-1 rounded-full">
+                      <Calendar size={13} />
+                      <span>{formatDate(selectedAward.date)}</span>
+                    </div>
+                  )}
+                </div>
+                <h2 className="text-2xl md:text-3xl font-black leading-tight text-white mt-2">
+                  {selectedAward.title}
+                </h2>
+              </div>
+              
+              {/* Modal Body */}
+              <div className="p-6 md:p-8 overflow-y-auto max-h-[calc(90vh-200px)]">
+                {selectedAward.image && (
+                  <div className="w-full max-h-80 rounded-2xl overflow-hidden mb-6 border border-gray-100 shadow-sm bg-gray-50 flex items-center justify-center">
+                    <img 
+                      src={getMediaUrl(selectedAward.image)} 
+                      alt={selectedAward.title} 
+                      className="w-full max-h-80 object-contain" 
+                    />
+                  </div>
+                )}
+                <div className="prose prose-lg max-w-none text-gray-700 leading-relaxed whitespace-pre-wrap">
+                  {selectedAward.description || 'Honoring excellence and commitment to educational achievement at Smart Academy.'}
+                </div>
+              </div>
+              
+              {/* Modal Footer */}
+              <div className="bg-gray-50 px-6 md:px-8 py-4 flex justify-end gap-3 border-t border-gray-200">
+                <button 
+                  onClick={() => setSelectedAward(null)}
+                  className="px-6 py-2.5 bg-gray-900 hover:bg-primary text-white font-bold rounded-xl transition-colors shadow"
                 >
                   Close
                 </button>

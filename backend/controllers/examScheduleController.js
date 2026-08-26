@@ -368,6 +368,8 @@ const getExamSchedules = asyncHandler(async (req, res) => {
                 { 'branchExaminers.examiner': employee._id },
                 { 'branchExaminers.alternateExaminer': employee._id }
             ];
+        } else {
+            query._id = null;
         }
     }
 
@@ -377,7 +379,7 @@ const getExamSchedules = asyncHandler(async (req, res) => {
         .populate('alternateExaminer', 'name designation role')
         .populate('branchExaminers.examiner', 'name designation role')
         .populate('branchExaminers.alternateExaminer', 'name designation role')
-        .populate('attendees', 'firstName lastName regNo branchId branchName')
+        .populate('attendees', 'firstName middleName lastName regNo enrollmentNo mobileStudent mobileParent contactHome branchId branchName')
         .populate('timeTable.subject', 'name')
         .sort({ createdAt: -1 });
 
@@ -442,7 +444,7 @@ const createExamSchedule = asyncHandler(async (req, res) => {
     // Update corresponding ExamRequests to 'Approved'
     if (attendees && attendees.length > 0) {
         const updateResult = await ExamRequest.updateMany(
-            { student: { $in: attendees }, status: 'Pending' },
+            { student: { $in: attendees }, status: 'Pending', isDeleted: { $ne: true } },
             { status: 'Approved' }
         );
         console.log(`Updated ${updateResult.modifiedCount} ExamRequests to Approved`);
@@ -544,7 +546,7 @@ const updateExamSchedule = asyncHandler(async (req, res) => {
         // Ensure current attendees are marked as Approved
         if (attendees && attendees.length > 0) {
             const updateResult = await ExamRequest.updateMany(
-                { student: { $in: attendees }, status: 'Pending' },
+                { student: { $in: attendees }, status: 'Pending', isDeleted: { $ne: true } },
                 { status: 'Approved' }
             );
             console.log(`Updated ${updateResult.modifiedCount} ExamRequests to Approved during update`);

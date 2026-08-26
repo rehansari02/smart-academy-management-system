@@ -10,6 +10,7 @@ import { normalizePermissionFlags } from '../../utils/permissionUtils';
 import ProfileSettingsModal from '../user/ProfileSettingsModal';
 import logoImage from '../../assets/logo2.png';
 import { toast } from 'react-toastify';
+import axios from 'axios';
 
 const formatUserBranchName = (user) => {
     const branchName = String(user?.branchName || '').trim();
@@ -39,6 +40,7 @@ const Navbar = () => {
   const [expandedSubItems, setExpandedSubItems] = useState({});
   const [mobileExpanded, setMobileExpanded] = useState({}); // New state for top-level mobile menu expansion
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [hasAssignedExamAccess, setHasAssignedExamAccess] = useState(false);
   const navRef = React.useRef(null);
 
   const handleLogout = async () => {
@@ -79,6 +81,24 @@ const Navbar = () => {
   }, [user, dispatch]);
 
   useEffect(() => {
+    let active = true;
+    if (!user || user.role === 'Super Admin') {
+      setHasAssignedExamAccess(false);
+      return () => { active = false; };
+    }
+
+    axios.get(`${import.meta.env.VITE_API_URL}/master/exam-schedule`, { withCredentials: true })
+      .then((response) => {
+        if (active) setHasAssignedExamAccess(Array.isArray(response.data) && response.data.length > 0);
+      })
+      .catch(() => {
+        if (active) setHasAssignedExamAccess(false);
+      });
+
+    return () => { active = false; };
+  }, [user]);
+
+  useEffect(() => {
     if (!user) return;
 
     if (user.role === 'Super Admin') {
@@ -93,12 +113,14 @@ const Navbar = () => {
       const visibleSubItems = item.subItems ? item.subItems.filter(sub => {
         // Explicitly hide restricted items for non-Super Admins
         if (sub.restricted) return false;
+        if (sub.path === '/master/exam-set' && hasAssignedExamAccess) return true;
 
         // Handle nested items (e.g. Transaction -> Inquiry -> Online)
         if (sub.type === 'nested') {
              // Check if ANY of the nested items are permitted. 
              // Ideally we filter the nested items themselves too.
              const visibleNested = sub.subItems.filter(nested => {
+                 if (nested.path === '/master/exam-set' && hasAssignedExamAccess) return true;
                  const pageName = nested.permissionPage || `${sub.title} - ${nested.title}`;
                  const perm = myPermissions.find(p => p.page === pageName);
                  return perm && normalizePermissionFlags(perm).view === true;
@@ -124,7 +146,7 @@ const Navbar = () => {
     }).filter(Boolean);
 
     setFilteredMenu(newMenu);
-  }, [user, myPermissions]);
+  }, [user, myPermissions, hasAssignedExamAccess]);
 
   const TransactionDropdown = ({ isHovered, isMobile = false, item }) => {
     // Mobile View
