@@ -28,12 +28,12 @@ async function main() {
       if (!course) throw new Error(`Course missing for ${student.email}.`);
       const subjects = (course.subjects || []).filter(item => item.subject?._id).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
       if (!subjects.length) throw new Error(`No subjects configured for ${course.name}.`);
-      const firstDate = new Date('2026-08-26T00:00:00.000Z');
+      const firstDate = new Date('2026-08-27T00:00:00.000Z');
       const timeTable = subjects.map((item, index) => ({
         subject: item.subject._id,
         date: addDays(firstDate, index),
-        startTime: index === 0 ? '08:00 PM' : '10:00 AM',
-        endTime: index === 0 ? '10:00 PM' : '12:00 PM',
+        startTime: index === 0 ? '12:00 PM' : '10:00 AM',
+        endTime: index === 0 ? '02:00 PM' : '12:00 PM',
         theory: Number(item.subject.theoryMarks || 0),
         practical: Number(item.subject.practicalMarks || 0),
         total: Number(item.subject.totalMarks || 0),

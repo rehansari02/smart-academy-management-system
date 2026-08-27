@@ -50,11 +50,11 @@ const getDateKeyVariants = (date) => {
     return [...set].filter((k) => k && k !== 'no-date');
 };
 
-const isStudentAbsentForScheduleRow = (schedule, studentId, rowDateKey) => {
+const getStudentAttendanceStatusForScheduleRow = (schedule, studentId, rowDateKey) => {
     const records = (schedule.attendance || []).filter(
         (a) => String(a.student?._id || a.student) === String(studentId)
     );
-    if (records.length === 0) return false;
+    if (records.length === 0) return null;
 
     // The rowDateKey might be in a different timezone than examDate stored by frontend.
     // Collect all plausible date keys for the row date.
@@ -73,9 +73,20 @@ const isStudentAbsentForScheduleRow = (schedule, studentId, rowDateKey) => {
     });
 
     // If no attendance record matches this specific date → student is NOT absent for this row
-    if (dateRecords.length === 0) return false;
-    return dateRecords.some((a) => a.status === 'Absent');
+    if (dateRecords.length === 0) return null;
+    const latestRecord = [...dateRecords].sort(
+        (a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0)
+    )[0];
+    return latestRecord?.status || null;
 };
+
+const isStudentAbsentForScheduleRow = (schedule, studentId, rowDateKey) => (
+    getStudentAttendanceStatusForScheduleRow(schedule, studentId, rowDateKey) === 'Absent'
+);
+
+const isStudentPresentForScheduleRow = (schedule, studentId, rowDateKey) => (
+    getStudentAttendanceStatusForScheduleRow(schedule, studentId, rowDateKey) === 'Present'
+);
 
 const getActiveStudentForUser = async (userId, populateCourse = false) => {
     const query = Student.findOne({ userId, isDeleted: false });
@@ -239,6 +250,34 @@ const getScheduleSubjectWindow = (row) => {
         return { startAt, endAt: end.toDate(), status: 'ended', canOpen: false };
     }
     return { startAt, endAt: end.toDate(), status: 'live', canOpen: true };
+};
+
+const getScheduleSubjectDurationMs = (row) => {
+    const startAt = parseExamTime(row?.date, row?.startTime);
+    const endAt = parseExamTime(row?.date, row?.endTime);
+    if (!startAt || !endAt) return 0;
+    let durationMs = endAt.getTime() - startAt.getTime();
+    if (durationMs <= 0) durationMs += 24 * 60 * 60 * 1000;
+    return durationMs;
+};
+
+const getAttemptAccessWindow = (attempt, scheduleWindow) => {
+    const expiresAt = attempt?.expiresAt ? new Date(attempt.expiresAt) : null;
+    const hasValidExpiry = expiresAt && !Number.isNaN(expiresAt.getTime());
+    const canEdit = Boolean(
+        attempt
+        && !attempt.isSubmitted
+        && hasValidExpiry
+        && Date.now() <= expiresAt.getTime()
+    );
+
+    return {
+        ...scheduleWindow,
+        scheduledEndAt: scheduleWindow.endAt,
+        endAt: hasValidExpiry ? expiresAt : scheduleWindow.endAt,
+        status: attempt?.isSubmitted ? 'submitted' : canEdit ? 'live' : scheduleWindow.status,
+        canOpen: canEdit
+    };
 };
 
 const getStudentCourseSubjects = (student) => {
@@ -850,6 +889,7 @@ const getStudentExamSchedules = async (req, res) => {
                 const attempt = attemptMap.get(`${String(schedule._id)}:${String(subjectId)}`);
                 const window = getScheduleSubjectWindow(row);
                 const rowDateKey = getDateKey(row.date);
+                const isExplicitlyPresent = isStudentPresentForScheduleRow(schedule, student._id, rowDateKey);
                 const isExplicitlyAbsent = isStudentAbsentForScheduleRow(schedule, student._id, rowDateKey);
 
                 return {
@@ -862,7 +902,9 @@ const getStudentExamSchedules = async (req, res) => {
                     total: row.total,
                     status: window.status,
                     isSubmitted: Boolean(attempt?.isSubmitted),
-                    isAbsent: isExplicitlyAbsent || (window.status === 'ended' && !attempt)
+                    isAbsent: isExplicitlyAbsent || (window.status === 'ended' && !attempt),
+                    isPresent: isExplicitlyPresent,
+                    attendanceStatus: isExplicitlyPresent ? 'Present' : isExplicitlyAbsent ? 'Absent' : 'Not Marked'
                 };
             })
         }));
@@ -958,8 +1000,10 @@ const getStudentExamConduct = async (req, res) => {
                 const isCourseSubject = courseSubjects.some((subject) => String(subject?._id || subject) === String(subjectId));
                 
                 const rowDateKey = getDateKey(row.date);
+                const isExplicitlyPresent = isStudentPresentForScheduleRow(schedule, student._id, rowDateKey);
                 const isExplicitlyAbsent = isStudentAbsentForScheduleRow(schedule, student._id, rowDateKey);
                 const isAbsent = isExplicitlyAbsent || (window.status === 'ended' && !attempt);
+                const accessWindow = getAttemptAccessWindow(attempt, window);
 
                 return {
                     subject: row.subject,
@@ -969,9 +1013,11 @@ const getStudentExamConduct = async (req, res) => {
                     theory: row.theory,
                     practical: row.practical,
                     total: row.total,
-                    status: window.status,
-                    canOpen: window.canOpen && isCourseSubject && !isExplicitlyAbsent,
+                    status: accessWindow.status,
+                    canOpen: isExplicitlyPresent && isCourseSubject && (window.canOpen || accessWindow.canOpen),
                     isAbsent,
+                    isPresent: isExplicitlyPresent,
+                    attendanceStatus: isExplicitlyPresent ? 'Present' : isExplicitlyAbsent ? 'Absent' : 'Not Marked',
                     isCourseSubject,
                     conductPasswordEnabled: Boolean(row.conductPasswordEnabled || schedule.conductPasswordEnabled),
                     hasConductPassword: Boolean(
@@ -983,6 +1029,8 @@ const getStudentExamConduct = async (req, res) => {
                     answeredCount: attempt?.answeredCount || 0,
                     totalQuestions: attempt?.totalQuestions || 0,
                     isSubmitted: Boolean(attempt?.isSubmitted),
+                    startedAt: attempt?.startedAt || null,
+                    expiresAt: attempt?.expiresAt || null,
                     submittedAt: attempt?.submittedAt || null,
                     lastSavedAt: attempt?.lastSavedAt || null
                 };
@@ -1055,9 +1103,13 @@ const openStudentExamConduct = async (req, res) => {
         }
 
         const rowDateKey = getDateKey(row.date);
+        const isExplicitlyPresent = isStudentPresentForScheduleRow(schedule, student._id, rowDateKey);
         const isExplicitlyAbsent = isStudentAbsentForScheduleRow(schedule, student._id, rowDateKey);
         if (isExplicitlyAbsent) {
             return res.status(403).json({ message: 'You have been marked ABSENT for this exam date and cannot attempt the paper.' });
+        }
+        if (!isExplicitlyPresent) {
+            return res.status(403).json({ message: 'Your exam attendance is not marked PRESENT yet. Please contact the examiner.' });
         }
 
         const window = getScheduleSubjectWindow(row);
@@ -1068,7 +1120,8 @@ const openStudentExamConduct = async (req, res) => {
             student: student._id
         });
 
-        if (!window.canOpen && !existingAttempt) {
+        const existingAccessWindow = getAttemptAccessWindow(existingAttempt, window);
+        if (!window.canOpen && !existingAccessWindow.canOpen && !existingAttempt?.isSubmitted) {
             return res.status(400).json({
                 message: window.status === 'ended'
                     ? 'This exam time has ended'
@@ -1133,6 +1186,15 @@ const openStudentExamConduct = async (req, res) => {
         const totalMcq = assignedMcqs.length;
         const totalQa = assignedQuestionAnswers.length;
         const totalQuestions = totalMcq + totalQa;
+        const attemptStartedAt = existingAttempt?.startedAt || new Date();
+        const durationMs = getScheduleSubjectDurationMs(row);
+        const fullDurationExpiresAt = durationMs > 0
+            ? new Date(new Date(attemptStartedAt).getTime() + durationMs)
+            : window.endAt;
+        const existingExpiresAt = existingAttempt?.expiresAt ? new Date(existingAttempt.expiresAt) : null;
+        const personalExpiresAt = existingExpiresAt && existingExpiresAt > fullDurationExpiresAt
+            ? existingExpiresAt
+            : fullDurationExpiresAt;
 
         const attempt = await ExamAttempt.findOneAndUpdate(
             {
@@ -1147,7 +1209,8 @@ const openStudentExamConduct = async (req, res) => {
                     subject: subjectId,
                     student: student._id,
                     examName: schedule.examName,
-                    startedAt: new Date()
+                    startedAt: attemptStartedAt,
+                    expiresAt: personalExpiresAt
                 },
                 $set: {
                     assignedMcqs,
@@ -1155,12 +1218,16 @@ const openStudentExamConduct = async (req, res) => {
                     totalMcq,
                     totalQa,
                     totalQuestions,
-                    passwordVerifiedAt: new Date(),
-                    expiresAt: window.endAt || null
+                    passwordVerifiedAt: new Date()
                 }
             },
             { upsert: true, new: true, setDefaultsOnInsert: true }
         );
+        if (personalExpiresAt && (!attempt.expiresAt || new Date(attempt.expiresAt) < personalExpiresAt)) {
+            attempt.expiresAt = personalExpiresAt;
+            await attempt.save();
+        }
+        const attemptWindow = getAttemptAccessWindow(attempt, window);
 
         // Map assigned questions for client (without leaking correct answers)
         const clientMcqs = assignedMcqs.map((mcq, index) => ({
@@ -1192,10 +1259,12 @@ const openStudentExamConduct = async (req, res) => {
                     theory: row.theory,
                     practical: row.practical,
                     total: row.total,
-                    status: window.status,
-                    canOpen: window.canOpen,
+                    status: attemptWindow.status,
+                    canOpen: attemptWindow.canOpen,
                     startAt: window.startAt,
-                    endAt: window.endAt
+                    endAt: window.endAt,
+                    actualStartedAt: attempt.startedAt,
+                    personalExpiresAt: attempt.expiresAt
                 }
             },
             paper: {
@@ -1209,9 +1278,9 @@ const openStudentExamConduct = async (req, res) => {
                 questionAnswers: clientQa
             },
             attempt: buildAttemptPayload(attempt),
-            canEdit: window.canOpen && !attempt.isSubmitted,
-            status: window.status,
-            window
+            canEdit: attemptWindow.canOpen && !attempt.isSubmitted,
+            status: attemptWindow.status,
+            window: attemptWindow
         });
     } catch (error) {
         console.error(error);
@@ -1256,9 +1325,9 @@ const saveStudentExamConduct = async (req, res) => {
             return res.status(404).json({ message: 'Subject not found in schedule' });
         }
 
-        const window = getScheduleSubjectWindow(row);
-        if (!window.canOpen) {
-            return res.status(400).json({ message: 'Exam time is over or not started yet' });
+        const rowDateKey = getDateKey(row.date);
+        if (!isStudentPresentForScheduleRow(schedule, student._id, rowDateKey)) {
+            return res.status(403).json({ message: 'Your exam attendance is not marked PRESENT.' });
         }
 
         const attempt = await ExamAttempt.findOne({
@@ -1272,6 +1341,9 @@ const saveStudentExamConduct = async (req, res) => {
         }
         if (attempt.isSubmitted) {
             return res.status(400).json({ message: 'Exam already submitted' });
+        }
+        if (!attempt.expiresAt || Date.now() > new Date(attempt.expiresAt).getTime()) {
+            return res.status(400).json({ message: 'Your full exam duration has ended' });
         }
 
         const cleanedAnswers = Array.isArray(answers)
@@ -1293,7 +1365,6 @@ const saveStudentExamConduct = async (req, res) => {
             item.type === 'mcq' ? Boolean(item.selectedOption) : Boolean(item.answerText.trim())
         ).length;
         attempt.lastSavedAt = new Date();
-        attempt.expiresAt = window.endAt || attempt.expiresAt;
 
         await attempt.save();
 
@@ -1337,6 +1408,11 @@ const submitStudentExamConduct = async (req, res) => {
         const row = getScheduleSubjectRow(schedule, subjectId);
         if (!row) {
             return res.status(404).json({ message: 'Subject not found in schedule' });
+        }
+
+        const rowDateKey = getDateKey(row.date);
+        if (!isStudentPresentForScheduleRow(schedule, student._id, rowDateKey)) {
+            return res.status(403).json({ message: 'Your exam attendance is not marked PRESENT.' });
         }
 
         const attempt = await ExamAttempt.findOne({

@@ -383,7 +383,20 @@ const getExamSchedules = asyncHandler(async (req, res) => {
         .populate('timeTable.subject', 'name')
         .sort({ createdAt: -1 });
 
-    res.json(schedules);
+    const attempts = await ExamAttempt.find({ schedule: { $in: schedules.map(schedule => schedule._id) } })
+        .select('schedule subject student startedAt expiresAt submittedAt isSubmitted')
+        .lean();
+    const attemptsBySchedule = new Map();
+    attempts.forEach((attempt) => {
+        const key = String(attempt.schedule);
+        if (!attemptsBySchedule.has(key)) attemptsBySchedule.set(key, []);
+        attemptsBySchedule.get(key).push(attempt);
+    });
+
+    res.json(schedules.map(schedule => ({
+        ...schedule.toObject(),
+        attempts: attemptsBySchedule.get(String(schedule._id)) || []
+    })));
 });
 
 // @desc    Create Exam Schedule
@@ -719,6 +732,8 @@ const getExamScheduleConductSummary = asyncHandler(async (req, res) => {
                 answeredCount: attempt?.answeredCount || 0,
                 totalQuestions: attempt?.totalQuestions || 0,
                 isSubmitted: Boolean(attempt?.isSubmitted),
+                startedAt: attempt?.startedAt || null,
+                expiresAt: attempt?.expiresAt || null,
                 submittedAt: attempt?.submittedAt || null,
                 lastSavedAt: attempt?.lastSavedAt || null,
                 mcqCorrectCount: score.mcqCorrectCount,
@@ -758,6 +773,8 @@ const getExamScheduleConductSummary = asyncHandler(async (req, res) => {
             totalQuestions: attempt.totalQuestions,
             answeredCount: attempt.answeredCount,
             isSubmitted: attempt.isSubmitted,
+            startedAt: attempt.startedAt,
+            expiresAt: attempt.expiresAt,
             submittedAt: attempt.submittedAt,
             lastSavedAt: attempt.lastSavedAt,
             updatedAt: attempt.updatedAt,
@@ -1071,6 +1088,17 @@ const createAbsentReExamSchedules = asyncHandler(async (req, res) => {
 
     const created = [];
     for (const group of groupMap.values()) {
+        const reExamDateKey = getDateKey(group.date);
+        const inheritedBranchExaminers = (group.originalSchedule.branchExaminers || []).map((config) => ({
+            examDate: reExamDateKey,
+            branchId: config.branchId || undefined,
+            branchName: config.branchName || '',
+            examiner: config.examiner || undefined,
+            alternateExaminer: config.alternateExaminer || undefined,
+            conductPasswordEnabled: passwordEnabled,
+            conductPasswordText: normalizedPassword.passwordText,
+            conductPasswordHash: normalizedPassword.passwordHash
+        }));
         const schedule = await ExamSchedule.create({
             course: group.originalSchedule.course,
             examName: String(examName).trim(),
@@ -1080,7 +1108,10 @@ const createAbsentReExamSchedules = asyncHandler(async (req, res) => {
             isReExam: true,
             reExamOf: group.originalSchedule._id,
             attendees: [...group.studentIds],
-            examiner: examiner || undefined,
+            attendance: [],
+            examiner: examiner || group.originalSchedule.examiner || undefined,
+            alternateExaminer: group.originalSchedule.alternateExaminer || undefined,
+            branchExaminers: inheritedBranchExaminers,
             conductPasswordEnabled: passwordEnabled,
             conductPasswordText: normalizedPassword.passwordText,
             conductPasswordHash: normalizedPassword.passwordHash,
@@ -1180,6 +1211,13 @@ const saveExamAttendance = asyncHandler(async (req, res) => {
         res.status(400);
         throw new Error('Invalid attendance payload');
     }
+    const hasInvalidAttendance = attendanceRecords.some((record) => (
+        !record?.studentId || !['Present', 'Absent'].includes(record.status)
+    ));
+    if (hasInvalidAttendance) {
+        res.status(400);
+        throw new Error('Each attendance record must be explicitly Present or Absent');
+    }
 
     const schedules = await ExamSchedule.find({ _id: { $in: scheduleIds } });
     if (!schedules || schedules.length === 0) {
@@ -1201,7 +1239,7 @@ const saveExamAttendance = asyncHandler(async (req, res) => {
             schedule.attendance.push({
                 student: rec.studentId,
                 examDate,
-                status: rec.status === 'Absent' ? 'Absent' : 'Present',
+                status: rec.status,
                 updatedAt: new Date()
             });
         });

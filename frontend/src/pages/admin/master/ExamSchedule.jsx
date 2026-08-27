@@ -472,7 +472,14 @@ const ExamSchedule = () => {
             })
             .catch(err => toast.error("Failed to load details"))
             .finally(() => setIsDetailLoading(false));
+        const timer = setInterval(() => {
+          axios.get(`${import.meta.env.VITE_API_URL}/master/exam-schedule/${detailView}/conduct`, { withCredentials: true })
+            .then((response) => setConductData(response.data))
+            .catch(() => {});
+        }, 10000);
+        return () => clearInterval(timer);
     }
+    return undefined;
   }, [detailView]);
 
   const onSearch = () => dispatch(fetchExamSchedules(filters));
@@ -563,6 +570,12 @@ const ExamSchedule = () => {
   // Pagination Logic (Client-side for now as Slice returns all)
   const paginatedData = examSchedules.slice((page - 1) * pageSize, page * pageSize);
   const totalPages = Math.ceil(examSchedules.length / pageSize);
+
+  const conductStartedRows = (conductData?.attendees || []).flatMap((student) =>
+    (student.rows || [])
+      .filter((row) => row.startedAt)
+      .map((row) => ({ student, row }))
+  );
 
   return (
     <div className="container mx-auto p-6">
@@ -1346,6 +1359,40 @@ const ExamSchedule = () => {
                                             </tr>
                                         )) : (
                                             <tr><td colSpan="5" className="text-center py-4 text-gray-400 italic">No attendees found.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        {/* 3. Actual student start times (visible to Super Admin / assigned examiner) */}
+                        <section>
+                            <h4 className="text-sm font-bold text-blue-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <Check size={16} className="text-emerald-600"/>
+                                Student Exam Start Times
+                            </h4>
+                            <div className="border rounded-lg overflow-hidden shadow-sm">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50 text-[10px] font-bold text-gray-500 uppercase">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left">Student</th>
+                                            <th className="px-4 py-3 text-left">Subject</th>
+                                            <th className="px-4 py-3 text-left">Actual Start</th>
+                                            <th className="px-4 py-3 text-left">Personal End</th>
+                                            <th className="px-4 py-3 text-center">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 text-sm">
+                                        {conductStartedRows.length > 0 ? conductStartedRows.map(({ student, row }) => (
+                                            <tr key={`${student._id}-${row.subjectId?._id || row.subjectId}`} className="hover:bg-blue-50/30">
+                                                <td className="px-4 py-3"><div className="font-bold text-gray-900">{student.name}</div><div className="text-xs text-gray-500">{student.regNo || '-'}</div></td>
+                                                <td className="px-4 py-3 font-semibold text-gray-700">{row.subjectName}</td>
+                                                <td className="px-4 py-3 text-emerald-700 font-semibold">{new Date(row.startedAt).toLocaleString('en-IN')}</td>
+                                                <td className="px-4 py-3 text-blue-700 font-semibold">{row.expiresAt ? new Date(row.expiresAt).toLocaleString('en-IN') : '-'}</td>
+                                                <td className="px-4 py-3 text-center"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${row.isSubmitted ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{row.isSubmitted ? 'Submitted' : 'In Progress'}</span></td>
+                                            </tr>
+                                        )) : (
+                                            <tr><td colSpan="5" className="text-center py-5 text-gray-400 italic">No student has started this exam yet.</td></tr>
                                         )}
                                     </tbody>
                                 </table>

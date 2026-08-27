@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
   BookOpenCheck,
@@ -69,6 +69,10 @@ const formatDateLabel = (dateKey) => {
   return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
+const formatDateTime = (value) => value
+  ? new Date(value).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })
+  : '-';
+
 const buildTimeTablePayload = (schedule, dateKey, current) => {
   const password = String(current.conductPassword || '').trim();
   const enabled = Boolean(current.conductPasswordEnabled);
@@ -99,12 +103,13 @@ const buildTimeTablePayload = (schedule, dateKey, current) => {
 const ExamSet = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { exams, examSchedules, employees, isLoading } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
   const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
 
-  const [selectedExamName, setSelectedExamName] = useState('');
-  const [testingDate, setTestingDate] = useState('');
+  const [selectedExamName, setSelectedExamName] = useState(searchParams.get('examName') || '');
+  const [testingDate, setTestingDate] = useState(searchParams.get('examDate') || '');
   const [branchSettings, setBranchSettings] = useState({});
   const [savingKey, setSavingKey] = useState('');
 
@@ -124,6 +129,14 @@ const ExamSet = () => {
     dispatch(fetchExamSchedules());
     dispatch(fetchEmployees());
   }, [dispatch]);
+
+  useEffect(() => {
+    if (!studentModalOpen || !selectedExamName) return undefined;
+    const timer = setInterval(() => {
+      dispatch(fetchExamSchedules({ examName: selectedExamName }));
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [dispatch, selectedExamName, studentModalOpen]);
 
   const examOptions = useMemo(() => {
     const map = new Map();
@@ -339,18 +352,18 @@ const ExamSet = () => {
 
     const scheduleIds = schedules.map((s) => s._id);
 
-    // Build initial attendance map with default preset = 'Present'
+    // Keep unmarked students blocked until an examiner explicitly marks attendance.
     const initialAtt = {};
     list.forEach((st) => {
       const sId = String(st._id);
-      let existingStatus = 'Present'; // DEFAULT PRESET IS PRESENT
+      let existingStatus = '';
 
       for (const sched of schedules) {
         const att = (sched.attendance || []).find(
           (a) => String(a.student?._id || a.student) === sId && (!a.examDate || a.examDate === dateKey)
         );
         if (att) {
-          existingStatus = att.status || 'Present';
+          existingStatus = att.status || '';
           break;
         }
       }
@@ -382,10 +395,9 @@ const ExamSet = () => {
 
     try {
       setIsSavingAttendance(true);
-      const records = Object.entries(attendanceMap).map(([studentId, status]) => ({
-        studentId,
-        status
-      }));
+      const records = Object.entries(attendanceMap)
+        .filter(([, status]) => status === 'Present' || status === 'Absent')
+        .map(([studentId, status]) => ({ studentId, status }));
 
       await axios.post(`${import.meta.env.VITE_API_URL}/master/exam-schedule/attendance`, {
         scheduleIds: modalScheduleIds,
@@ -416,6 +428,19 @@ const ExamSet = () => {
       return name.includes(term) || reg.includes(term) || mob.includes(term) || branch.includes(term) || course.includes(term);
     });
   }, [modalStudentList, modalSearchTerm]);
+
+  const getModalAttemptsForStudent = (studentId) => selectedSchedules.flatMap((schedule) => {
+    if (!modalScheduleIds.includes(schedule._id)) return [];
+    const subjectIdsForDate = new Set(
+      (schedule.timeTable || [])
+        .filter((row) => getDateKey(row.date) === modalDateKey)
+        .map((row) => String(getSubjectId(row)))
+    );
+    return (schedule.attempts || []).filter((attempt) => (
+      String(attempt.student?._id || attempt.student) === String(studentId)
+      && subjectIdsForDate.has(String(attempt.subject?._id || attempt.subject))
+    ));
+  });
 
   const handleSaveBranchSettings = async (dateGroup, branchGroup) => {
     if (!isSuperAdmin) {
@@ -824,6 +849,9 @@ const ExamSet = () => {
                   <span className="bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-xl">
                     Absent: {Object.values(attendanceMap).filter(s => s === 'Absent').length}
                   </span>
+                  <span className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-xl">
+                    Not Marked: {Object.values(attendanceMap).filter(s => !s).length}
+                  </span>
                 </div>
               </div>
 
@@ -838,20 +866,22 @@ const ExamSet = () => {
                       <th className="px-4 py-3">Course</th>
                       <th className="px-4 py-3">Branch</th>
                       <th className="px-4 py-3">Contact No</th>
+                      <th className="px-4 py-3">Actual Start / Personal End</th>
                       <th className="px-4 py-3 text-center w-48">Exam Attendance</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 font-medium">
                     {filteredModalStudents.length === 0 ? (
                       <tr>
-                        <td colSpan="7" className="px-4 py-12 text-center text-gray-400 text-sm">
+                        <td colSpan="8" className="px-4 py-12 text-center text-gray-400 text-sm">
                           No scheduled students found matching your search.
                         </td>
                       </tr>
                     ) : (
                       filteredModalStudents.map((student, index) => {
                         const sId = String(student._id);
-                        const currentStatus = attendanceMap[sId] || 'Present';
+                        const currentStatus = attendanceMap[sId] || '';
+                        const studentAttempts = getModalAttemptsForStudent(sId);
 
                         return (
                           <tr key={sId || index} className="hover:bg-indigo-50/40 transition">
@@ -875,6 +905,14 @@ const ExamSet = () => {
                                 <Phone size={13} className="text-gray-400" />
                                 {student.mobileStudent || student.mobileParent || '-'}
                               </span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 font-medium whitespace-nowrap">
+                              {studentAttempts.length > 0 ? studentAttempts.map((examAttempt) => (
+                                <div key={examAttempt._id} className="space-y-0.5">
+                                  <div><span className="font-bold text-emerald-700">Start:</span> {formatDateTime(examAttempt.startedAt)}</div>
+                                  <div><span className="font-bold text-blue-700">End:</span> {formatDateTime(examAttempt.expiresAt)}</div>
+                                </div>
+                              )) : <span className="text-gray-400">Not started</span>}
                             </td>
                             <td className="px-4 py-3 text-center">
                               <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
@@ -914,7 +952,7 @@ const ExamSet = () => {
             {/* Modal Footer */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-gray-100 bg-gray-50 px-6 py-3.5 shrink-0">
               <div className="text-xs font-semibold text-gray-500">
-                Default preset is <span className="font-bold text-emerald-700">Present</span>. Toggle to <span className="font-bold text-rose-600">Absent</span> for missing students.
+                Paper tab tak locked rahega jab tak student ko explicitly <span className="font-bold text-emerald-700">Present</span> mark karke attendance save nahi hoti.
               </div>
               <div className="flex items-center gap-2">
                 <button

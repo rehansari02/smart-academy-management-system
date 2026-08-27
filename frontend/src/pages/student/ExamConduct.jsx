@@ -12,6 +12,7 @@ const statusStyles = {
   upcoming: 'bg-amber-100 text-amber-700 border-amber-200',
   ended: 'bg-gray-100 text-gray-600 border-gray-200',
   absent: 'bg-red-100 text-red-700 border-red-200',
+  attendance: 'bg-orange-100 text-orange-700 border-orange-200',
   reExam: 'bg-amber-100 text-amber-700 border-amber-200'
 };
 
@@ -76,7 +77,7 @@ const ExamConduct = () => {
   }, [rowsWithCountdown]);
 
   const liveRows = useMemo(
-    () => rowsWithCountdown.filter(({ countdownInfo }) => countdownInfo.isLive && !countdownInfo.isSubmitted && !countdownInfo.isAbsent),
+    () => rowsWithCountdown.filter(({ countdownInfo, row }) => (countdownInfo.isLive || (row.status === 'live' && row.canOpen)) && !countdownInfo.isSubmitted && !countdownInfo.isAbsent),
     [rowsWithCountdown]
   );
 
@@ -119,6 +120,9 @@ const ExamConduct = () => {
 
     if (isAbsent) {
       return { label: 'Absent', action: 'Absent', style: 'absent', disabled: true, icon: Lock };
+    }
+    if (!item.isPresent) {
+      return { label: 'Attendance Pending', action: 'Ask Examiner', style: 'attendance', disabled: true, icon: UserCheck };
     }
     if (isSubmitted) {
       return { label: 'Submitted', action: 'Submitted', style: 'live', disabled: true, icon: Lock };
@@ -186,6 +190,11 @@ const ExamConduct = () => {
                     <div className="inline-flex items-center gap-1 whitespace-nowrap">
                       <Clock3 size={14} className="text-gray-400" />
                       {item.startTime && item.endTime ? `${item.startTime} To ${item.endTime}` : item.startTime || item.endTime || '-'}
+                      {item.startedAt && (
+                        <div className="mt-1 text-[11px] font-semibold text-emerald-700">
+                          Started {moment(item.startedAt).format('hh:mm:ss A')} · Ends {moment(item.expiresAt).format('hh:mm:ss A')}
+                        </div>
+                      )}
                     </div>
                   </td>
                   <td className="p-3 text-center">

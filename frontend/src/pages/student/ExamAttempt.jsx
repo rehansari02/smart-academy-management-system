@@ -74,7 +74,7 @@ const ExamAttempt = () => {
       setStatusMessage(data.status === 'live' ? 'Exam open' : data.status === 'ended' ? 'Exam closed' : 'Exam not started yet');
       setGate({ open: true, password: '', loading: false, error: '' });
 
-      const endAt = data.window?.endAt || data.schedule?.timeRow?.endAt;
+      const endAt = data.attempt?.expiresAt || data.window?.endAt || data.schedule?.timeRow?.personalExpiresAt;
       if (endAt) {
         const tick = () => {
           const diff = moment(endAt).diff(moment(), 'seconds');
@@ -421,6 +421,12 @@ const ExamAttempt = () => {
           <div className="mt-4 text-sm text-gray-700 flex items-center gap-2">
             <Clock3 size={16} className="text-blue-600" />
             Time left: {formatClock(remainingSeconds)}
+          </div>
+        )}
+        {attempt?.startedAt && (
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs font-semibold text-gray-600">
+            <span>Actual start: <strong className="text-emerald-700">{moment(attempt.startedAt).format('DD/MM/YYYY, hh:mm:ss A')}</strong></span>
+            <span>Personal end: <strong className="text-blue-700">{moment(attempt.expiresAt).format('DD/MM/YYYY, hh:mm:ss A')}</strong></span>
           </div>
         )}
         {statusMessage && (

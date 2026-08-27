@@ -18,7 +18,8 @@ import {
   BookOpenCheck,
   ShieldCheck,
   Phone,
-  Printer
+  Printer,
+  UserCheck
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { fetchExamSchedules, fetchExams } from '../../../features/master/masterSlice';
@@ -81,6 +82,7 @@ const ExamSetAbsent = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [selectedExamDate, setSelectedExamDate] = useState('all');
+  const [lastCreatedReExam, setLastCreatedReExam] = useState(null);
 
   const componentRef = useRef(null);
 
@@ -140,18 +142,15 @@ const ExamSetAbsent = () => {
       const nextRows = Array.isArray(res.data?.rows) ? res.data.rows : [];
       setRows(nextRows);
 
-      // Auto check all absent rows by default
-      const autoSelected = {};
       const nextRowTimes = {};
       nextRows.forEach((row) => {
-        autoSelected[row.key] = true;
         nextRowTimes[row.key] = rowTimes[row.key] || {
           date: '',
           startTime: DEFAULT_START_TIME,
           endTime: DEFAULT_END_TIME
         };
       });
-      setSelectedRows(autoSelected);
+      setSelectedRows({});
       setRowTimes(nextRowTimes);
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to load absent students');
@@ -369,6 +368,11 @@ const ExamSetAbsent = () => {
       };
       const res = await axios.post(`${API_URL}exam-schedule/absent-reexam`, payload);
       toast.success(res.data?.message || 'Re-exam timetable created successfully!');
+      const createdSchedules = Array.isArray(res.data?.schedules) ? res.data.schedules : [];
+      setLastCreatedReExam({
+        count: createdSchedules.length,
+        dates: [...new Set(createdSchedules.map((schedule) => getDateKey(schedule.timeTable?.[0]?.date)).filter((value) => value !== 'no-date'))]
+      });
       setPassword('');
       await loadAbsentRows(selectedExamName);
       dispatch(fetchExamSchedules({ examName: selectedExamName }));
@@ -417,6 +421,11 @@ const ExamSetAbsent = () => {
       };
       const res = await axios.post(`${API_URL}exam-schedule/absent-reexam`, payload);
       toast.success(res.data?.message || `Re-exam scheduled for ${row.student?.name || 'student'} successfully!`);
+      const createdSchedules = Array.isArray(res.data?.schedules) ? res.data.schedules : [];
+      setLastCreatedReExam({
+        count: createdSchedules.length,
+        dates: [...new Set(createdSchedules.map((schedule) => getDateKey(schedule.timeTable?.[0]?.date)).filter((value) => value !== 'no-date'))]
+      });
       await loadAbsentRows(selectedExamName);
       dispatch(fetchExamSchedules({ examName: selectedExamName }));
     } catch (error) {
@@ -466,6 +475,29 @@ const ExamSetAbsent = () => {
           </button>
         </div>
       </div>
+
+      {lastCreatedReExam && (
+        <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 shadow-sm print:hidden">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <UserCheck className="mt-0.5 shrink-0 text-emerald-700" size={22} />
+              <div>
+                <h2 className="font-black text-emerald-900">Re-Exam timetable created — attendance ab dobara leni hai</h2>
+                <p className="mt-1 text-xs font-semibold text-emerald-800">
+                  {lastCreatedReExam.count} schedule(s) created. Exam Set mein re-exam date open karke student ko Present/Absent mark karein. Fresh attendance save hone tak paper locked rahega.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate(`/master/exam-set?examName=${encodeURIComponent(selectedExamName)}${lastCreatedReExam.dates[0] ? `&examDate=${encodeURIComponent(lastCreatedReExam.dates[0])}` : ''}`)}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white shadow-sm hover:bg-emerald-800"
+            >
+              <UserCheck size={16} /> Mark Re-Exam Attendance
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filter & Metrics Card (Mirrors ExamSet.jsx) */}
       <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm space-y-4 print:hidden">

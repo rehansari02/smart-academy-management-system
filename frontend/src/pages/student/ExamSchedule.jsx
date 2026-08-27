@@ -74,8 +74,8 @@ const ExamSchedule = () => {
                                     <td className="p-3 text-center text-gray-700 font-medium">{item.practical ?? 0}</td>
                                     <td className="p-3 text-center text-blue-700 font-bold">{item.total ?? 0}</td>
                                     <td className="p-3 text-center">
-                                        <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-black ${item.isSubmitted ? 'bg-green-100 text-green-700' : item.isAbsent ? 'bg-red-100 text-red-700' : isReExam ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
-                                            {item.isSubmitted ? 'Submitted' : item.isAbsent ? 'Absent' : isReExam ? 'Re-Exam' : item.status === 'upcoming' ? 'Upcoming' : item.status === 'live' ? 'Live' : 'Ended'}
+                                        <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-black ${item.isSubmitted ? 'bg-green-100 text-green-700' : item.isAbsent ? 'bg-red-100 text-red-700' : item.attendanceStatus === 'Not Marked' ? 'bg-orange-100 text-orange-700' : item.isPresent && isReExam ? 'bg-emerald-100 text-emerald-700' : isReExam ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
+                                            {item.isSubmitted ? 'Submitted' : item.isAbsent ? 'Absent' : item.attendanceStatus === 'Not Marked' ? 'Attendance Pending' : item.isPresent && isReExam ? 'Present / Ready' : isReExam ? 'Re-Exam' : item.status === 'upcoming' ? 'Upcoming' : item.status === 'live' ? 'Live' : 'Ended'}
                                         </span>
                                     </td>
                                 </tr>
@@ -115,7 +115,7 @@ const ExamSchedule = () => {
                     {regularSchedules.map((schedule) => renderSchedule(schedule, false))}
                     {reExamSchedules.length > 0 && (
                         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
-                            Re-Exam Time Table - Last warning to come exam center.
+                            Re-Exam Time Table — examiner ko is re-exam ke liye fresh attendance dobara save karni hogi. Present mark hone tak paper locked rahega.
                         </div>
                     )}
                     {reExamSchedules.map((schedule) => renderSchedule(schedule, true))}
