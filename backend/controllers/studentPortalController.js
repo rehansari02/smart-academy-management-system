@@ -334,6 +334,17 @@ const getEffectiveConductPassword = (row, schedule) => ({
     text: String(row?.conductPasswordText || schedule?.conductPasswordText || '').trim()
 });
 
+const isPasswordRequiredForConduct = (conductPassword) => (
+    conductPassword.enabled && Boolean(conductPassword.hash || conductPassword.text)
+);
+
+const isAttemptVerifiedForSession = (attempt, authSessionId) => Boolean(
+    attempt
+    && authSessionId
+    && Array.isArray(attempt.passwordVerifiedSessionIds)
+    && attempt.passwordVerifiedSessionIds.includes(authSessionId)
+);
+
 const getSchedulePaper = async (courseId, subjectId) => {
     return FinalExamQuestionPaper.findOne({
         isDeleted: false,
@@ -1118,7 +1129,7 @@ const openStudentExamConduct = async (req, res) => {
             schedule: schedule._id,
             subject: subjectId,
             student: student._id
-        });
+        }).select('+passwordVerifiedSessionIds');
 
         const existingAccessWindow = getAttemptAccessWindow(existingAttempt, window);
         if (!window.canOpen && !existingAccessWindow.canOpen && !existingAttempt?.isSubmitted) {
@@ -1129,9 +1140,9 @@ const openStudentExamConduct = async (req, res) => {
             });
         }
 
-        const isAlreadyVerified = existingAttempt && Boolean(existingAttempt.passwordVerifiedAt || existingAttempt.startedAt);
+        const isAlreadyVerified = isAttemptVerifiedForSession(existingAttempt, req.authSessionId);
 
-        if (!isAlreadyVerified && conductPassword.enabled && Boolean(conductPassword.hash || conductPassword.text)) {
+        if (!isAlreadyVerified && isPasswordRequiredForConduct(conductPassword)) {
             const passwordCheck = await validateSchedulePassword({
                 conductPasswordHash: conductPassword.hash,
                 conductPasswordText: conductPassword.text
@@ -1219,7 +1230,8 @@ const openStudentExamConduct = async (req, res) => {
                     totalQa,
                     totalQuestions,
                     passwordVerifiedAt: new Date()
-                }
+                },
+                $addToSet: { passwordVerifiedSessionIds: req.authSessionId }
             },
             { upsert: true, new: true, setDefaultsOnInsert: true }
         );
@@ -1334,10 +1346,17 @@ const saveStudentExamConduct = async (req, res) => {
             schedule: schedule._id,
             subject: subjectId,
             student: student._id
-        });
+        }).select('+passwordVerifiedSessionIds');
 
         if (!attempt) {
             return res.status(404).json({ message: 'Exam attempt not found. Open the exam first.' });
+        }
+        const conductPassword = getEffectiveConductPassword(row, schedule);
+        if (
+            isPasswordRequiredForConduct(conductPassword)
+            && !isAttemptVerifiedForSession(attempt, req.authSessionId)
+        ) {
+            return res.status(401).json({ message: 'Exam password verification required for this login session.' });
         }
         if (attempt.isSubmitted) {
             return res.status(400).json({ message: 'Exam already submitted' });
@@ -1419,10 +1438,17 @@ const submitStudentExamConduct = async (req, res) => {
             schedule: schedule._id,
             subject: subjectId,
             student: student._id
-        });
+        }).select('+passwordVerifiedSessionIds');
 
         if (!attempt) {
             return res.status(404).json({ message: 'Exam attempt not found. Open the exam first.' });
+        }
+        const conductPassword = getEffectiveConductPassword(row, schedule);
+        if (
+            isPasswordRequiredForConduct(conductPassword)
+            && !isAttemptVerifiedForSession(attempt, req.authSessionId)
+        ) {
+            return res.status(401).json({ message: 'Exam password verification required for this login session.' });
         }
 
         attempt.isSubmitted = true;

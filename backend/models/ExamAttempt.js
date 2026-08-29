@@ -62,7 +62,8 @@ const examAttemptSchema = new mongoose.Schema({
     lastSavedAt: { type: Date },
     submittedAt: { type: Date },
     expiresAt: { type: Date },
-    passwordVerifiedAt: { type: Date }
+    passwordVerifiedAt: { type: Date },
+    passwordVerifiedSessionIds: { type: [String], default: [], select: false }
 }, { timestamps: true });
 
 examAttemptSchema.index({ schedule: 1, subject: 1, student: 1 }, { unique: true });

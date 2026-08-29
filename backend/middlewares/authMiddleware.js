@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 const User = require('../models/User');
 
 const protect = asyncHandler(async (req, res, next) => {
@@ -13,6 +14,10 @@ const protect = asyncHandler(async (req, res, next) => {
         try {
             // Verify token
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+            // A login-specific identifier used for session-scoped security gates.
+            // The hash fallback keeps already-issued JWTs working until they expire.
+            req.authSessionId = decoded.jti || crypto.createHash('sha256').update(token).digest('hex');
 
             // Get user from the token (exclude password)
             req.user = await User.findById(decoded.userId).select('-password');

@@ -1,9 +1,13 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
+const crypto = require('crypto');
 
 const generateToken = (res, userId) => {
-    const token = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '30d' });
+    const token = jwt.sign({ userId }, process.env.JWT_SECRET, {
+        expiresIn: '30d',
+        jwtid: crypto.randomUUID()
+    });
     res.cookie('jwt', token, {
         httpOnly: true,
         secure: true, // Required for sameSite: 'None'
