@@ -137,6 +137,10 @@ app.use(
 );
 
 // Middleware
+// Imported final-exam question banks can contain hundreds of questions and
+// legitimately exceed Express' default 100 KB JSON limit. Keep the higher
+// limit scoped to this endpoint instead of weakening every API route.
+app.use('/api/master/final-exam-question-paper', express.json({ limit: '10mb' }));
 app.use(express.json());
 app.use(cookieParser());
 
