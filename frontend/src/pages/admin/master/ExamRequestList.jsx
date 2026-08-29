@@ -21,10 +21,14 @@ const ExamRequestList = () => {
   const [cancelModal, setCancelModal] = useState({ show: false, requestId: null, reason: '' });
   const [selectedRequests, setSelectedRequests] = useState([]);
   const navigate = useNavigate();
+  const normalizedExamRequests = React.useMemo(
+    () => (Array.isArray(examRequests) ? examRequests.flat().filter(Boolean) : []),
+    [examRequests]
+  );
   const pendingCourseOptions = React.useMemo(() => {
     const courseMap = new Map();
 
-    (examRequests || [])
+    normalizedExamRequests
       .filter(req => req.status === 'Pending' && req.student?.course?._id)
       .forEach(req => {
         const course = req.student.course;
@@ -32,7 +36,7 @@ const ExamRequestList = () => {
       });
 
     return [...courseMap.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  }, [examRequests]);
+  }, [normalizedExamRequests]);
 
   useEffect(() => {
     dispatch(fetchExamRequests());
@@ -54,7 +58,7 @@ const ExamRequestList = () => {
 
   const handleSelectAll = (e) => {
     if (e.target.checked) {
-        setSelectedRequests(examRequests.map(r => r._id));
+        setSelectedRequests(normalizedExamRequests.map(r => r._id));
     } else {
         setSelectedRequests([]);
     }
@@ -69,7 +73,7 @@ const ExamRequestList = () => {
   const handleScheduleExam = () => {
     if (selectedRequests.length === 0) return;
     
-    const selectedData = examRequests.filter(r => selectedRequests.includes(r._id));
+    const selectedData = normalizedExamRequests.filter(r => selectedRequests.includes(r._id));
     const courseIds = [...new Set(selectedData.map(r => r.student?.course?._id).filter(Boolean))];
 
     navigate('/master/exam-schedule', { 
@@ -172,7 +176,7 @@ const ExamRequestList = () => {
                       type="checkbox" 
                       className="rounded border-gray-300 text-primary h-4 w-4"
                       onChange={handleSelectAll}
-                      checked={selectedRequests.length === examRequests.length && examRequests.length > 0}
+                      checked={selectedRequests.length === normalizedExamRequests.length && normalizedExamRequests.length > 0}
                   />
               </th>
               <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Serial No</th>
@@ -188,8 +192,8 @@ const ExamRequestList = () => {
           <tbody className="bg-white divide-y divide-gray-200">
             {isLoading ? (
                 <tr><td colSpan="9" className="text-center py-4">Loading...</td></tr>
-            ) : examRequests.filter(r => r.status === 'Pending').length > 0 ? (
-                examRequests.filter(r => r.status === 'Pending').map((req, index) => (
+            ) : normalizedExamRequests.filter(r => r.status === 'Pending').length > 0 ? (
+                normalizedExamRequests.filter(r => r.status === 'Pending').map((req, index) => (
                     <tr key={req._id || index} className={`hover:bg-gray-50 ${selectedRequests.includes(req._id) ? 'bg-blue-50/50' : ''}`}>
                         <td className="px-6 py-4">
                             <input 

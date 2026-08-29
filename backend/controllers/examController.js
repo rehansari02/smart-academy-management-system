@@ -3,6 +3,12 @@ const ExamRequest = require('../models/ExamRequest');
 const Student = require('../models/Student');
 const Branch = require('../models/Branch');
 
+const populateExamRequest = (query) => query.populate({
+    path: 'student',
+    populate: { path: 'course', select: 'name duration' },
+    select: 'firstName lastName regNo enrollmentNo admissionDate mobileParent mobileStudent branchId course'
+});
+
 // @desc    Get Exam Requests with Filters
 // @route   GET /api/master/exam-request
 const getExamRequests = asyncHandler(async (req, res) => {
@@ -140,18 +146,51 @@ const cancelExamRequest = asyncHandler(async (req, res) => {
 // @route   POST /api/master/exam-request
 const createExamRequest = asyncHandler(async (req, res) => {
     const { studentId, studentIds } = req.body;
-    
-    if (studentIds && Array.isArray(studentIds)) {
-        const requests = [];
-        for (const id of studentIds) {
-            const req = await ExamRequest.create({ student: id });
-            requests.push(req);
-        }
-        res.status(201).json(requests);
-    } else {
-        const request = await ExamRequest.create({ student: studentId });
-        res.status(201).json(request);
+
+    const isBulkRequest = Array.isArray(studentIds);
+    const requestedIds = isBulkRequest ? studentIds : [studentId];
+    const uniqueStudentIds = [...new Set(requestedIds.filter(Boolean).map(String))];
+
+    if (uniqueStudentIds.length === 0) {
+        res.status(400);
+        throw new Error('At least one student is required');
     }
+
+    const students = await Student.find({
+        _id: { $in: uniqueStudentIds },
+        isDeleted: false
+    }).select('_id').lean();
+    const validStudentIds = new Set(students.map(student => String(student._id)));
+    const invalidStudentIds = uniqueStudentIds.filter(id => !validStudentIds.has(id));
+
+    if (invalidStudentIds.length > 0) {
+        res.status(400);
+        throw new Error('One or more selected students no longer exist');
+    }
+
+    const existingRequests = await ExamRequest.find({
+        student: { $in: uniqueStudentIds },
+        isDeleted: false,
+        status: { $in: ['Pending', 'Approved'] }
+    }).select('student').lean();
+    const existingStudentIds = new Set(existingRequests.map(request => String(request.student)));
+    const idsToCreate = uniqueStudentIds.filter(id => !existingStudentIds.has(id));
+
+    if (idsToCreate.length === 0) {
+        res.status(409);
+        throw new Error('Exam request already exists for the selected student(s)');
+    }
+
+    const createdRequests = [];
+    for (const id of idsToCreate) {
+        createdRequests.push(await ExamRequest.create({ student: id }));
+    }
+
+    const populatedRequests = await populateExamRequest(
+        ExamRequest.find({ _id: { $in: createdRequests.map(request => request._id) } })
+    ).sort({ createdAt: -1 }).lean();
+
+    res.status(201).json(isBulkRequest ? populatedRequests : populatedRequests[0]);
 });
 
 module.exports = { getExamRequests, getExamRequestBranches, cancelExamRequest, createExamRequest, getPendingExams };

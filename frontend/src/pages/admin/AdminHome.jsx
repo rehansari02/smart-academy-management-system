@@ -231,6 +231,8 @@ const AdminHome = () => {
                     setConfirmModal({ show: false, student: null, bulk: false });
                     setSelectedStudents([]);
                     navigate('/master/exam-request-list');
+                } else {
+                    toast.error(res.payload || 'Failed to create exam requests');
                 }
             });
         } else {
@@ -240,6 +242,8 @@ const AdminHome = () => {
                     toast.success("Exam request created successfully!");
                     dispatch(fetchExamPendingStudents({ ...examFilters, page: examPendingPagination.page }));
                     setConfirmModal({ show: false, student: null, bulk: false });
+                } else {
+                    toast.error(res.payload || 'Failed to create exam request');
                 }
             });
         }

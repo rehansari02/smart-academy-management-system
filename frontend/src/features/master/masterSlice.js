@@ -157,7 +157,9 @@ export const createExamRequest = createAsyncThunk('master/createExamRequest', as
     try {
         const response = await axios.post(API_URL + 'exam-request', data);
         return response.data;
-    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+    } catch (error) {
+        return thunkAPI.rejectWithValue(error.response?.data?.message || error.message);
+    }
 });
 
 export const cancelExamRequest = createAsyncThunk('master/cancelExamRequest', async ({ id, data }, thunkAPI) => {
@@ -735,7 +737,10 @@ const masterSlice = createSlice({
                 state.isLoading = false;
                 state.isSuccess = true;
                 state.message = 'Exam Request Created Successfully';
-                state.examRequests.unshift(action.payload);
+                const createdRequests = Array.isArray(action.payload)
+                    ? action.payload
+                    : [action.payload];
+                state.examRequests.unshift(...createdRequests.filter(Boolean));
             })
             .addCase(cancelExamRequest.fulfilled, (state, action) => {
                 state.isLoading = false;

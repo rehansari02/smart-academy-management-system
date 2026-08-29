@@ -13,7 +13,9 @@ const errorHandler = (err, req, res, next) => {
         }
     }
 
-    const statusCode = res.statusCode ? res.statusCode : 500;
+    // Express responses start with statusCode 200. If an exception reaches this
+    // middleware without an explicit error status, it must still be a server error.
+    const statusCode = res.statusCode && res.statusCode !== 200 ? res.statusCode : 500;
     res.status(statusCode);
     res.json({
         message: err.message,

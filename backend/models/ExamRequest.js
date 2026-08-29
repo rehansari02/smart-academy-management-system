@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const Counter = require('./Counter');
 
 const examRequestSchema = new mongoose.Schema({
     student: { 
@@ -20,8 +21,33 @@ const examRequestSchema = new mongoose.Schema({
 // Auto-generate Serial No
 examRequestSchema.pre('save', async function() {
     if (!this.examSerialNo) {
-        const count = await mongoose.model('ExamRequest').countDocuments();
-        this.examSerialNo = `EX-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+        const year = new Date().getFullYear();
+        const serialPrefix = `EX-${year}-`;
+        const latestRequest = await mongoose.model('ExamRequest')
+            .findOne({ examSerialNo: { $regex: `^${serialPrefix}` } })
+            .sort({ examSerialNo: -1 })
+            .select('examSerialNo')
+            .lean();
+        const latestSequence = Number(latestRequest?.examSerialNo?.split('-').pop()) || 0;
+
+        const counter = await Counter.findOneAndUpdate(
+            { _id: `examRequestSeq-${year}` },
+            [
+                {
+                    $set: {
+                        seq: {
+                            $add: [
+                                { $ifNull: ['$seq', latestSequence] },
+                                1
+                            ]
+                        }
+                    }
+                }
+            ],
+            { upsert: true, returnDocument: 'after', updatePipeline: true }
+        );
+
+        this.examSerialNo = `${serialPrefix}${String(counter.seq).padStart(4, '0')}`;
     }
 });
 
