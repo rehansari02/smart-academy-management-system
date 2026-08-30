@@ -211,25 +211,35 @@ const buildChapterProgress = (subject, logs, responses) => {
 
 const parseExamTime = (dateValue, timeValue) => {
     if (!dateValue) return null;
-    const date = moment(dateValue);
-    if (!date.isValid()) return null;
+    const storedDate = moment(dateValue);
+    if (!storedDate.isValid()) return null;
 
+    // Build the exam instant explicitly in IST so UTC production and IST local servers agree.
+    const examDateKey = storedDate.clone().utcOffset(330).format('YYYY-MM-DD');
     const time = String(timeValue || '').trim();
     const time24Match = time.match(/^(\d{1,2}):(\d{2})$/);
+    let hour;
+    let minute;
+
     if (time24Match) {
-        date.hour(Number(time24Match[1])).minute(Number(time24Match[2])).second(0).millisecond(0);
-        return date.toDate();
+        hour = Number(time24Match[1]);
+        minute = Number(time24Match[2]);
+    } else {
+        const match = time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+        if (!match) return null;
+        hour = Number(match[1]);
+        minute = Number(match[2]);
+        const period = match[3].toUpperCase();
+        if (period === 'PM' && hour < 12) hour += 12;
+        if (period === 'AM' && hour === 12) hour = 0;
     }
-    const match = time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-    if (!match) return date.toDate();
 
-    let hour = Number(match[1]);
-    const minute = Number(match[2]);
-    const period = match[3].toUpperCase();
-    if (period === 'PM' && hour < 12) hour += 12;
-    if (period === 'AM' && hour === 12) hour = 0;
-
-    return date.clone().hour(hour).minute(minute).second(0).millisecond(0).toDate();
+    const parsed = moment.parseZone(
+        `${examDateKey} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} +05:30`,
+        'YYYY-MM-DD HH:mm Z',
+        true
+    );
+    return parsed.isValid() ? parsed.toDate() : null;
 };
 
 const getScheduleSubjectWindow = (row) => {

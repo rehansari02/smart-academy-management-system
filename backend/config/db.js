@@ -2,14 +2,15 @@ const mongoose = require("mongoose");
 
 const connectDB = async () => {
   try {
-    if (!process.env.MONGO_URI) {
-      throw new Error("MONGO_URI is missing in backend/.env");
+    const mongoUri = process.env.MONGO_URI || process.env.MONGO_URL;
+    if (!mongoUri) {
+      throw new Error("MONGO_URI or MONGO_URL is missing in backend/.env");
     }
 
     mongoose.set("bufferCommands", false);
 
     console.log("Mongoose version:", mongoose.version);
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
+    const conn = await mongoose.connect(mongoUri, {
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 10000,
       socketTimeoutMS: 45000,

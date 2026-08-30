@@ -2,6 +2,8 @@ console.log("SERVER STARTING...");
 const dotenv = require("dotenv");
 const path = require("path");
 dotenv.config({ path: path.join(__dirname, ".env"), override: true });
+// Support the legacy env key already used by local installations.
+process.env.MONGO_URI = process.env.MONGO_URI || process.env.MONGO_URL;
 console.log("Env loaded:", process.env.MONGO_URI ? "YES" : "NO");
 
 console.log("Loading express...");
