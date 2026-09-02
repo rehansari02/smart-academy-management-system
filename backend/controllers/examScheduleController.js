@@ -812,7 +812,15 @@ const buildAttemptReviewDetail = async (attempt) => {
     const mcqAnswerMap = new Map(answers.filter((item) => item.type === 'mcq').map((item) => [Number(item.questionIndex) || 0, item]));
     const qaAnswerMap = new Map(answers.filter((item) => item.type === 'qa').map((item) => [Number(item.questionIndex) || 0, item]));
 
-    const mcqs = (subjectPaper?.mcqs || []).map((mcq, index) => {
+    const sourceMcqs = Array.isArray(attempt.assignedMcqs) && attempt.assignedMcqs.length > 0
+        ? attempt.assignedMcqs
+        : (Array.isArray(subjectPaper?.mcqs) ? subjectPaper.mcqs : []);
+
+    const sourceQuestionAnswers = Array.isArray(attempt.assignedQuestionAnswers) && attempt.assignedQuestionAnswers.length > 0
+        ? attempt.assignedQuestionAnswers
+        : (Array.isArray(subjectPaper?.questionAnswers) ? subjectPaper.questionAnswers : []);
+
+    const mcqs = sourceMcqs.map((mcq, index) => {
         const questionIndex = index + 1;
         const answer = mcqAnswerMap.get(questionIndex);
         const correctOption = getMcqCorrectOptionLetter(mcq);
@@ -830,7 +838,7 @@ const buildAttemptReviewDetail = async (attempt) => {
         };
     });
 
-    const questionAnswers = (subjectPaper?.questionAnswers || []).map((qa, index) => {
+    const questionAnswers = sourceQuestionAnswers.map((qa, index) => {
         const questionIndex = index + 1;
         const answer = qaAnswerMap.get(questionIndex);
         return {
@@ -857,10 +865,10 @@ const buildAttemptReviewDetail = async (attempt) => {
             mobile: attempt.student?.mobile || '',
             branchName: attempt.student?.branchName || ''
         },
-        totalQuestions: attempt.totalQuestions,
-        answeredCount: attempt.answeredCount,
-        totalMcq: attempt.totalMcq,
-        totalQa: attempt.totalQa,
+        totalQuestions: attempt.totalQuestions || (mcqs.length + questionAnswers.length),
+        answeredCount: attempt.answeredCount || answers.filter((a) => a.selectedOption || a.answerText).length,
+        totalMcq: attempt.totalMcq || mcqs.length,
+        totalQa: attempt.totalQa || questionAnswers.length,
         isSubmitted: attempt.isSubmitted,
         startedAt: attempt.startedAt,
         lastSavedAt: attempt.lastSavedAt,
@@ -882,26 +890,32 @@ const getExamStudentMarks = asyncHandler(async (req, res) => {
         .populate('subject', 'name printedName')
         .sort({ submittedAt: -1, updatedAt: -1 });
 
-    res.json(attempts.map((attempt) => ({
-        _id: attempt._id,
-        examName: attempt.examName,
-        course: attempt.course,
-        schedule: attempt.schedule?._id || attempt.schedule,
-        student: {
-            _id: attempt.student?._id,
-            name: buildStudentName(attempt.student),
-            regNo: attempt.student?.regNo || '',
-            mobile: attempt.student?.mobile || '',
-            branchName: attempt.student?.branchName || ''
-        },
-        subject: attempt.subject,
-        totalQuestions: attempt.totalQuestions,
-        answeredCount: attempt.answeredCount,
-        isSubmitted: Boolean(attempt.isSubmitted),
-        submittedAt: attempt.submittedAt,
-        lastSavedAt: attempt.lastSavedAt,
-        updatedAt: attempt.updatedAt
-    })));
+    res.json(attempts.map((attempt) => {
+        const totalAssigned = (Array.isArray(attempt.assignedMcqs) ? attempt.assignedMcqs.length : 0) + 
+                              (Array.isArray(attempt.assignedQuestionAnswers) ? attempt.assignedQuestionAnswers.length : 0);
+        const calcAnswered = Array.isArray(attempt.answers) ? attempt.answers.filter((a) => a.selectedOption || a.answerText).length : 0;
+
+        return {
+            _id: attempt._id,
+            examName: attempt.examName,
+            course: attempt.course,
+            schedule: attempt.schedule?._id || attempt.schedule,
+            student: {
+                _id: attempt.student?._id,
+                name: buildStudentName(attempt.student),
+                regNo: attempt.student?.regNo || '',
+                mobile: attempt.student?.mobile || '',
+                branchName: attempt.student?.branchName || ''
+            },
+            subject: attempt.subject,
+            totalQuestions: attempt.totalQuestions || totalAssigned || attempt.totalMcq || 0,
+            answeredCount: attempt.answeredCount || calcAnswered,
+            isSubmitted: Boolean(attempt.isSubmitted),
+            submittedAt: attempt.submittedAt,
+            lastSavedAt: attempt.lastSavedAt,
+            updatedAt: attempt.updatedAt
+        };
+    }));
 });
 
 const getExamStudentMarksDetail = asyncHandler(async (req, res) => {

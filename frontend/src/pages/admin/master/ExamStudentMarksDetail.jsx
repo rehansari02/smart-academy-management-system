@@ -35,15 +35,25 @@ const ExamStudentMarksDetail = () => {
     loadDetail();
   }, [attemptId]);
 
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else if (detail) {
+      navigate(`/master/exam-student-marks?examName=${encodeURIComponent(detail.examName || '')}&courseId=${detail.course?._id || ''}&studentId=${detail.student?._id || ''}`);
+    } else {
+      navigate('/master/exam-student-marks');
+    }
+  };
+
   return (
     <div className="container mx-auto p-6">
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <button type="button" onClick={() => navigate('/master/exam-student-marks')} className="mb-3 inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50">
-            <ArrowLeft size={16} /> Back
+          <button type="button" onClick={handleBack} className="mb-3 inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-gray-700 shadow-sm hover:bg-gray-50 transition">
+            <ArrowLeft size={16} /> Back to Student's Subjects
           </button>
           <h2 className="text-2xl font-bold text-gray-800">Answer Sheet</h2>
-          {detail && <p className="mt-1 text-sm font-semibold text-gray-500">{detail.student?.name} | {detail.course?.name} | {detail.subject?.name || detail.subject?.printedName}</p>}
+          {detail && <p className="mt-1 text-sm font-semibold text-gray-500">{detail.student?.name} &bull; {detail.course?.name} &bull; {detail.subject?.name || detail.subject?.printedName}</p>}
         </div>
         <button type="button" onClick={loadDetail} disabled={loading} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60">
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Refresh
