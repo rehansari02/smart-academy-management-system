@@ -92,6 +92,7 @@ const StudentAdmission = () => {
   };
   const { branches } = useSelector((state) => state.branch);
   const { user } = useSelector((state) => state.auth); // Get Auth User
+  const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
 
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -857,7 +858,7 @@ const StudentAdmission = () => {
             paymentMode: data.receiptPaymentMode,
             // FIXED: If remarks is empty, send 'Admission Fee'
             remarks: data.remarks || 'Admission Fee',
-            date: data.receiptDate,
+            date: isSuperAdmin ? (data.receiptDate || getTodayDateISO()) : getTodayDateISO(),
             // Dynamic Fields
             bankName: data.bankName,
             chequeNumber: data.chequeNumber,
@@ -2363,7 +2364,8 @@ const StudentAdmission = () => {
                     <input
                       type="date"
                       {...register("receiptDate")}
-                      className="input"
+                      disabled={!isSuperAdmin}
+                      className={`input ${!isSuperAdmin ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""}`}
                     />
                   </div>
                   <div>

@@ -47,6 +47,7 @@ const PendingAdmissionFeePayment = () => {
   } = useSelector((state) => state.transaction);
 
   const { user } = useSelector((state) => state.auth);
+  const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
   const submitLockRef = useRef(false);
   const paymentRequestKeyRef = useRef(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -189,7 +190,7 @@ const PendingAdmissionFeePayment = () => {
       onlinePaymentType: formData.onlinePaymentType,
       paymentProviderName: formData.paymentProviderName,
       paymentDetails: formData.onlinePaymentType === 'UPI' ? formData.upiId : formData.paymentDetails,
-      date: formData.date,
+      date: isSuperAdmin ? (formData.date || new Date().toISOString().split("T")[0]) : new Date().toISOString().split("T")[0],
       idempotencyKey: paymentRequestKeyRef.current,
     };
 
@@ -318,11 +319,12 @@ const PendingAdmissionFeePayment = () => {
                 <input
                   type="date"
                   required
+                  disabled={!isSuperAdmin}
                   value={formData.date}
                   onChange={(e) =>
-                    setFormData({ ...formData, date: e.target.value })
+                    isSuperAdmin && setFormData({ ...formData, date: e.target.value })
                   }
-                  className="w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200"
+                  className={`w-full border rounded px-3 py-2 focus:ring focus:ring-blue-200 ${!isSuperAdmin ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                 />
               </div>
 

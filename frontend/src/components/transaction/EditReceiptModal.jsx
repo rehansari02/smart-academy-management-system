@@ -7,6 +7,8 @@ import { toast } from 'react-toastify';
 const EditReceiptModal = ({ isOpen, onClose, receipt, onUpdateSuccess }) => {
     const dispatch = useDispatch();
     const { isSuccess, message } = useSelector(state => state.transaction);
+    const { user } = useSelector(state => state.auth);
+    const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
 
     const [editFormData, setEditFormData] = useState({
         receiptNo: '',
@@ -106,8 +108,9 @@ const EditReceiptModal = ({ isOpen, onClose, receipt, onUpdateSuccess }) => {
                             <input 
                                 type="date" 
                                 value={editFormData.date}
-                                onChange={(e) => setEditFormData({...editFormData, date: e.target.value})}
-                                className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                disabled={!isSuperAdmin}
+                                onChange={(e) => isSuperAdmin && setEditFormData({...editFormData, date: e.target.value})}
+                                className={`w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none text-sm ${!isSuperAdmin ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                             />
                         </div>
 

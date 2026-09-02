@@ -33,6 +33,7 @@ const StudentRegistrationProcess = () => {
   
   const { currentStudent: student, isLoading } = useSelector((state) => state.students);
   const { user } = useSelector((state) => state.auth);
+  const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
   const registerLockRef = useRef(false);
   const registrationRequestKeyRef = useRef(null);
   const [isRegistering, setIsRegistering] = useState(false);
@@ -261,6 +262,7 @@ const StudentRegistrationProcess = () => {
             ...regData,
             feeDetails: {
                 ...feeData,
+                date: isSuperAdmin ? (feeData.date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
                 amount: Number(feeData.amount) || 0,
                 paymentDetails: feeData.onlinePaymentType === 'UPI' ? feeData.upiId : feeData.paymentDetails,
                 idempotencyKey: registrationRequestKeyRef.current
@@ -427,15 +429,16 @@ const StudentRegistrationProcess = () => {
                          )}
                      </div>
                  </div>
-                 <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                     <input 
-                         type="date" 
-                         value={feeData.date} 
-                         onChange={(e) => setFeeData({...feeData, date: e.target.value})}
-                         className="w-full border rounded px-3 py-2" 
-                     />
-                 </div>
+                  <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Receipt Date</label>
+                      <input 
+                          type="date" 
+                          value={feeData.date} 
+                          disabled={!isSuperAdmin}
+                          onChange={(e) => isSuperAdmin && setFeeData({...feeData, date: e.target.value})}
+                          className={`w-full border rounded px-3 py-2 ${!isSuperAdmin ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`} 
+                      />
+                  </div>
                  <div>
                      <label className="block text-sm font-medium text-gray-700 mb-1">Course Name</label>
                      <input type="text" disabled value={student.course?.name} className="w-full bg-gray-100 border rounded px-3 py-2" />

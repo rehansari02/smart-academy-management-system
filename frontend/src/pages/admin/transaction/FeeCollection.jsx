@@ -290,6 +290,7 @@ const FeeCollection = () => {
 
         const payload = {
             ...data,
+            date: isSuperAdmin ? (data.date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
             studentId: data.studentId,
             courseId: selectedStudent.course?._id,
             paymentDetails: data.onlinePaymentType === 'UPI' ? data.upiId : data.paymentDetails,
@@ -404,7 +405,8 @@ const FeeCollection = () => {
                             <input 
                                 type="date" 
                                 {...register('date', { required: true })} 
-                                className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base"
+                                disabled={!isSuperAdmin}
+                                className={`w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-base ${!isSuperAdmin ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                             />
                         </div>
 
