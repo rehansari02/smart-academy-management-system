@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchCourses, fetchExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, resetMasterStatus, fetchExams, createExam, updateExam, deleteExam, fetchBranches } from '../../../features/master/masterSlice';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { Plus, Search, RefreshCw, Edit, Trash2, Eye, X, Save, AlertCircle, Pencil, Check } from 'lucide-react';
+import { Plus, Search, RefreshCw, Edit, Trash2, Eye, X, Save, AlertCircle, Pencil, Check, ArrowLeft, BookOpen, Users, Calendar, Clock, CheckCircle2, ChevronRight, FileText } from 'lucide-react';
 import axios from 'axios'; // For direct detail fetch
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
@@ -61,6 +61,12 @@ const ExamSchedule = () => {
   const [detailData, setDetailData] = useState([]);
   const [conductData, setConductData] = useState(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+
+  // Grouped Exam States
+  const [selectedExamGroup, setSelectedExamGroup] = useState(null);
+  const [activeCourseTab, setActiveCourseTab] = useState('all');
+  const [showEditScheduleModal, setShowEditScheduleModal] = useState(false);
+  const [selectedGroupToEdit, setSelectedGroupToEdit] = useState(null);
 
   // Local State for Exam Search & Quick Add
   const [isExamDropdownOpen, setIsExamDropdownOpen] = useState(false);
@@ -559,17 +565,94 @@ const ExamSchedule = () => {
     }
   };
 
-  const handleDelete = (id) => {
+  // Group exam schedules by examName
+  const groupedExamSchedules = React.useMemo(() => {
+    const groupsMap = new Map();
+
+    (examSchedules || []).forEach((schedule) => {
+      const rawExamName = schedule?.examName?.trim() || 'Unnamed Exam';
+      const key = rawExamName.toLowerCase();
+
+      if (!groupsMap.has(key)) {
+        groupsMap.set(key, {
+          examName: rawExamName,
+          schedules: [],
+          courses: [],
+          allAttendees: [],
+          isActive: false,
+          createdAt: schedule.createdAt
+        });
+      }
+
+      const group = groupsMap.get(key);
+      group.schedules.push(schedule);
+
+      const courseObj = schedule.course && typeof schedule.course === 'object'
+        ? schedule.course
+        : courses.find(c => String(c._id) === String(schedule.course));
+
+      if (courseObj && !group.courses.some(c => String(c._id) === String(courseObj._id))) {
+        group.courses.push(courseObj);
+      }
+
+      if (schedule.isActive) {
+        group.isActive = true;
+      }
+
+      if (Array.isArray(schedule.attendees)) {
+        schedule.attendees.forEach((student) => {
+          const studentId = student?._id ? String(student._id) : String(student);
+          if (!group.allAttendees.some(s => (s?._id ? String(s._id) : String(s)) === studentId)) {
+            group.allAttendees.push(student);
+          }
+        });
+      }
+    });
+
+    return [...groupsMap.values()].map(group => ({
+      ...group,
+      totalAttendeesCount: group.allAttendees.length
+    }));
+  }, [examSchedules, courses]);
+
+  // Keep selectedExamGroup synced with current examSchedules
+  const currentSelectedGroup = React.useMemo(() => {
+    if (!selectedExamGroup) return null;
+    return groupedExamSchedules.find(g => g.examName.toLowerCase() === selectedExamGroup.examName.toLowerCase()) || null;
+  }, [selectedExamGroup, groupedExamSchedules]);
+
+  const handleDeleteGroup = (group) => {
     if (!canDelete) {
       showPermissionDenied("You don't have authority to delete exam schedules.");
       return;
     }
-    if(window.confirm("Are you sure?")) dispatch(deleteExamSchedule(id));
+    const count = group.schedules.length;
+    if (window.confirm(`Are you sure you want to delete all schedules for "${group.examName}" (${count} course${count > 1 ? 's' : ''})?`)) {
+      group.schedules.forEach(schedule => {
+        dispatch(deleteExamSchedule(schedule._id));
+      });
+      if (selectedExamGroup?.examName.toLowerCase() === group.examName.toLowerCase()) {
+        setSelectedExamGroup(null);
+      }
+    }
   };
 
-  // Pagination Logic (Client-side for now as Slice returns all)
-  const paginatedData = examSchedules.slice((page - 1) * pageSize, page * pageSize);
-  const totalPages = Math.ceil(examSchedules.length / pageSize);
+  const handleEditGroupClick = (group) => {
+    if (!edit) {
+      showPermissionDenied("You don't have authority to edit exam schedules.");
+      return;
+    }
+    if (group.schedules.length === 1) {
+      handleEdit(group.schedules[0]);
+    } else {
+      setSelectedGroupToEdit(group);
+      setShowEditScheduleModal(true);
+    }
+  };
+
+  // Pagination Logic for Grouped Exams
+  const paginatedData = groupedExamSchedules.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.ceil(groupedExamSchedules.length / pageSize);
 
   const conductStartedRows = (conductData?.attendees || []).flatMap((student) =>
     (student.rows || [])
@@ -581,8 +664,8 @@ const ExamSchedule = () => {
     <div className="container mx-auto p-6">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Exam Schedule</h2>
-        {!showForm && !detailView && (
-            <button onClick={() => { setShowForm(true); reset(); setEditMode(null); }} className="bg-primary text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700">
+        {!showForm && !detailView && !currentSelectedGroup && (
+            <button onClick={() => { setShowForm(true); reset(); setEditMode(null); }} className="bg-primary text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700 shadow-sm transition-all">
                 <Plus size={18} /> Add New Exam Schedule
             </button>
         )}
@@ -983,7 +1066,7 @@ const ExamSchedule = () => {
       )}
 
       {/* --- FILTER SECTION --- */}
-      {!showForm && !detailView && (
+      {!showForm && !detailView && !currentSelectedGroup && (
         <div className="bg-white p-4 rounded shadow mb-6 flex flex-wrap gap-4 items-end">
             <div className="flex-1 min-w-[200px] relative">
                 <label className="block text-xs font-bold text-gray-600 mb-1">Filter by Exam Name</label>
@@ -1218,38 +1301,78 @@ const ExamSchedule = () => {
         </div>
       )}
 
-      {/* --- TABLE SECTION --- */}
-      {!detailView && (
-        <div className="bg-white rounded shadow overflow-hidden">
+      {/* --- GROUPED TABLE SECTION --- */}
+      {!detailView && !currentSelectedGroup && (
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                     <tr>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Serial No</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Exam Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Course Name</th>
-                        <th className="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase">Active Status</th>
-                        <th className="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase">Actions</th>
+                        <th className="px-6 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Serial No</th>
+                        <th className="px-6 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Exam Name</th>
+                        <th className="px-6 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Courses Included</th>
+                        <th className="px-6 py-3.5 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Students</th>
+                        <th className="px-6 py-3.5 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Active Status</th>
+                        <th className="px-6 py-3.5 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                    {paginatedData.length > 0 ? paginatedData.map((schedule, index) => (
-                        <tr key={schedule._id} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 text-sm text-gray-500">{(page - 1) * pageSize + index + 1}</td>
-                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{schedule.examName}</td>
-                            <td className="px-6 py-4 text-sm text-gray-600">{schedule.course?.name}</td>
+                    {paginatedData.length > 0 ? paginatedData.map((group, index) => (
+                        <tr key={group.examName} className="hover:bg-blue-50/30 transition-colors">
+                            <td className="px-6 py-4 text-sm text-gray-500 font-medium">{(page - 1) * pageSize + index + 1}</td>
+                            <td className="px-6 py-4">
+                                <div className="text-sm font-bold text-gray-900">{group.examName}</div>
+                                <div className="text-xs text-gray-500 mt-0.5">{group.schedules.length} Course Schedule{group.schedules.length > 1 ? 's' : ''}</div>
+                            </td>
+                            <td className="px-6 py-4">
+                                <div className="flex flex-wrap gap-1.5 max-w-lg">
+                                    {group.courses.map((c, i) => (
+                                        <span key={c._id || i} className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+                                            {c.name}
+                                        </span>
+                                    ))}
+                                    {group.courses.length === 0 && (
+                                        <span className="text-xs text-gray-400 italic">No courses</span>
+                                    )}
+                                </div>
+                            </td>
                             <td className="px-6 py-4 text-center">
-                                <span className={`px-2 py-1 text-xs rounded-full ${schedule.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                    {schedule.isActive ? 'Active' : 'Inactive'}
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700">
+                                    <Users size={13} /> {group.totalAttendeesCount} Students
                                 </span>
                             </td>
-                            <td className="px-6 py-4 text-center flex justify-center gap-3">
-                                <button onClick={() => setDetailView(schedule._id)} className="text-blue-600 hover:text-blue-800" title="View Details"><Eye size={18} /></button>
-                                <button onClick={() => handleEdit(schedule)} className="text-green-600 hover:text-green-800" title="Edit"><Edit size={18} /></button>
-                                <button onClick={() => handleDelete(schedule._id)} className="text-red-600 hover:text-red-800" title="Delete"><Trash2 size={18} /></button>
+                            <td className="px-6 py-4 text-center">
+                                <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${group.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                    {group.isActive ? 'Active' : 'Inactive'}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                                <div className="flex justify-center items-center gap-2">
+                                    <button 
+                                        onClick={() => { setSelectedExamGroup(group); setActiveCourseTab('all'); }} 
+                                        className="p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-800 rounded-lg transition" 
+                                        title="View All Details & Student Papers"
+                                    >
+                                        <Eye size={18} />
+                                    </button>
+                                    <button 
+                                        onClick={() => handleEditGroupClick(group)} 
+                                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800 rounded-lg transition" 
+                                        title="Edit Schedules"
+                                    >
+                                        <Edit size={18} />
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDeleteGroup(group)} 
+                                        className="p-1.5 text-red-600 hover:bg-red-50 hover:text-red-800 rounded-lg transition" 
+                                        title="Delete Exam"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     )) : (
-                        <tr><td colSpan="5" className="text-center py-8 text-gray-500">No schedules found.</td></tr>
+                        <tr><td colSpan="6" className="text-center py-10 text-gray-500">No schedules found.</td></tr>
                     )}
                 </tbody>
             </table>
@@ -1268,6 +1391,316 @@ const ExamSchedule = () => {
                     <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="px-3 py-1 border rounded bg-white disabled:opacity-50">Next</button>
                 </div>
             </div>
+        </div>
+      )}
+
+      {/* --- EXAM GROUP DETAILS VIEW (DEDICATED PAGE) --- */}
+      {currentSelectedGroup && !showForm && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Top Bar / Header */}
+          <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 rounded-2xl p-6 text-white shadow-xl">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <button 
+                  onClick={() => { setSelectedExamGroup(null); setActiveCourseTab('all'); }} 
+                  className="inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all mb-3 backdrop-blur-sm shadow-sm"
+                >
+                  <ArrowLeft size={16} /> Back to Exam Schedule List
+                </button>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-2xl md:text-3xl font-black tracking-tight">{currentSelectedGroup.examName}</h2>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${currentSelectedGroup.isActive ? 'bg-emerald-500/90 text-white' : 'bg-rose-500/90 text-white'}`}>
+                    {currentSelectedGroup.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                <p className="text-blue-100 text-sm mt-1">
+                  Complete Course-wise Time Tables & Enrolled Student Papers
+                </p>
+              </div>
+
+              {/* Quick Action in Header */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleEditGroupClick(currentSelectedGroup)}
+                  className="bg-white text-blue-800 hover:bg-blue-50 px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-lg transition-all"
+                >
+                  <Edit size={16} /> Edit Schedules
+                </button>
+                <button
+                  onClick={() => handleDeleteGroup(currentSelectedGroup)}
+                  className="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-lg transition-all"
+                >
+                  <Trash2 size={16} /> Delete Exam
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Metrics Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t border-white/15">
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3.5 border border-white/10">
+                <div className="text-xs text-blue-200 font-semibold flex items-center gap-1.5"><BookOpen size={14} /> Total Courses</div>
+                <div className="text-2xl font-black mt-1">{currentSelectedGroup.courses.length}</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3.5 border border-white/10">
+                <div className="text-xs text-blue-200 font-semibold flex items-center gap-1.5"><Users size={14} /> Total Students</div>
+                <div className="text-2xl font-black mt-1">{currentSelectedGroup.totalAttendeesCount}</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3.5 border border-white/10">
+                <div className="text-xs text-blue-200 font-semibold flex items-center gap-1.5"><FileText size={14} /> Total Schedules</div>
+                <div className="text-2xl font-black mt-1">{currentSelectedGroup.schedules.length}</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3.5 border border-white/10">
+                <div className="text-xs text-blue-200 font-semibold flex items-center gap-1.5"><CheckCircle2 size={14} /> Status</div>
+                <div className="text-2xl font-black mt-1">{currentSelectedGroup.isActive ? 'Active' : 'Inactive'}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Course Tabs Navigation */}
+          <div className="bg-white rounded-xl shadow-sm border p-2 flex items-center gap-2 overflow-x-auto custom-scrollbar">
+            <button
+              onClick={() => setActiveCourseTab('all')}
+              className={`px-4 py-2.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${activeCourseTab === 'all' ? 'bg-primary text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              <span>All Courses</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] ${activeCourseTab === 'all' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'}`}>
+                {currentSelectedGroup.courses.length}
+              </span>
+            </button>
+            {currentSelectedGroup.schedules.map((schedule) => {
+              const cId = String(schedule.course?._id || schedule.course);
+              const cName = schedule.course?.name || 'Unknown Course';
+              const studentCount = schedule.attendees?.length || 0;
+              const isTabActive = activeCourseTab === cId;
+              return (
+                <button
+                  key={schedule._id}
+                  onClick={() => setActiveCourseTab(cId)}
+                  className={`px-4 py-2.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${isTabActive ? 'bg-primary text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                  <BookOpen size={14} />
+                  <span>{cName}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] ${isTabActive ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700 font-bold'}`}>
+                    {studentCount} Students
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* List of Schedules (filtered by activeCourseTab) */}
+          <div className="space-y-6">
+            {currentSelectedGroup.schedules
+              .filter((schedule) => activeCourseTab === 'all' || String(schedule.course?._id || schedule.course) === String(activeCourseTab))
+              .map((schedule, sIndex) => {
+                const courseName = schedule.course?.name || 'Course Name';
+                const attendeesList = schedule.attendees || [];
+                const timeTableList = schedule.timeTable || [];
+
+                return (
+                  <div key={schedule._id} className="bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+                    {/* Course Header Banner */}
+                    <div className="bg-slate-50 border-b p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 font-black flex items-center justify-center text-sm shadow-inner">
+                          {sIndex + 1}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-lg font-bold text-gray-900">{courseName}</h3>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${schedule.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {schedule.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {timeTableList.length} Subjects / Papers &bull; {attendeesList.length} Students Scheduled
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleEdit(schedule)}
+                          className="px-3.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-bold flex items-center gap-1 transition-all"
+                        >
+                          <Edit size={14} /> Edit Course Schedule
+                        </button>
+                        <button
+                          onClick={() => handleDelete(schedule._id)}
+                          className="px-3.5 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 text-xs font-bold flex items-center gap-1 transition-all"
+                        >
+                          <Trash2 size={14} /> Delete
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-6 space-y-6">
+                      {/* 1. Examination Time Table */}
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                            <Calendar size={14} className="text-blue-600" /> Examination Time Table ({timeTableList.length} Papers)
+                          </h4>
+                        </div>
+                        <div className="border rounded-xl overflow-hidden shadow-sm">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-slate-100 text-[11px] font-bold text-gray-600 uppercase">
+                              <tr>
+                                <th className="px-4 py-3 text-left w-12">#</th>
+                                <th className="px-4 py-3 text-left">Subject / Paper</th>
+                                <th className="px-4 py-3 text-left">Exam Date</th>
+                                <th className="px-4 py-3 text-left">Time Slot</th>
+                                <th className="px-4 py-3 text-center">Theory</th>
+                                <th className="px-4 py-3 text-center">Practical</th>
+                                <th className="px-4 py-3 text-center">Total Marks</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 text-xs">
+                              {timeTableList.length > 0 ? (
+                                timeTableList.map((tt, i) => (
+                                  <tr key={i} className="hover:bg-blue-50/40 transition-colors">
+                                    <td className="px-4 py-3 text-gray-400 font-medium">{i + 1}</td>
+                                    <td className="px-4 py-3 font-bold text-gray-800">{tt.subject?.name || 'Subject'}</td>
+                                    <td className="px-4 py-3 text-gray-700 font-semibold">
+                                      {tt.date ? new Date(tt.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                                    </td>
+                                    <td className="px-4 py-3 text-gray-600">
+                                      {tt.startTime && tt.endTime ? `${tt.startTime} - ${tt.endTime}` : tt.startTime || tt.endTime || '-'}
+                                    </td>
+                                    <td className="px-4 py-3 text-center text-gray-700">{tt.theory || 0}</td>
+                                    <td className="px-4 py-3 text-center text-gray-700">{tt.practical || 0}</td>
+                                    <td className="px-4 py-3 text-center font-bold text-blue-700">{tt.total || 0}</td>
+                                  </tr>
+                                ))
+                              ) : (
+                                <tr>
+                                  <td colSpan="7" className="text-center py-5 text-gray-400 italic">No timetable configured for this course.</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* 2. Scheduled Students & Paper Details */}
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                            <Users size={14} className="text-blue-600" /> Scheduled Students & Papers ({attendeesList.length} Students)
+                          </h4>
+                          <span className="text-xs bg-indigo-50 text-indigo-700 font-bold px-3 py-1 rounded-full">
+                            Course: {courseName}
+                          </span>
+                        </div>
+                        <div className="border rounded-xl overflow-hidden shadow-sm">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-slate-100 text-[11px] font-bold text-gray-600 uppercase">
+                              <tr>
+                                <th className="px-4 py-3 text-left w-12">#</th>
+                                <th className="px-4 py-3 text-left">Reg No</th>
+                                <th className="px-4 py-3 text-left">Student Name</th>
+                                <th className="px-4 py-3 text-left">Contact / Mobile</th>
+                                <th className="px-4 py-3 text-left">Branch</th>
+                                <th className="px-4 py-3 text-left">Scheduled Papers</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 text-xs">
+                              {attendeesList.length > 0 ? (
+                                attendeesList.map((student, i) => {
+                                  const fullName = [student.firstName, student.middleName, student.lastName].filter(Boolean).join(' ') || student.studentName || 'Student';
+                                  const mobile = student.mobileStudent || student.contactHome || student.mobile || '-';
+                                  const regNo = student.regNo || student.enrollmentNo || '-';
+                                  const branch = student.branchName || '-';
+
+                                  return (
+                                    <tr key={student._id || i} className="hover:bg-blue-50/40 transition-colors">
+                                      <td className="px-4 py-3 text-gray-400 font-medium">{i + 1}</td>
+                                      <td className="px-4 py-3 font-mono font-bold text-gray-700">{regNo}</td>
+                                      <td className="px-4 py-3 font-bold text-primary">{fullName}</td>
+                                      <td className="px-4 py-3 text-gray-600">{mobile}</td>
+                                      <td className="px-4 py-3 text-gray-600 font-medium">{branch}</td>
+                                      <td className="px-4 py-3">
+                                        <div className="flex flex-wrap gap-1">
+                                          {timeTableList.length > 0 ? (
+                                            timeTableList.map((tt, tIdx) => (
+                                              <span key={tIdx} className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded text-[10px] font-semibold">
+                                                {tt.subject?.name || 'Subject'}
+                                              </span>
+                                            ))
+                                          ) : (
+                                            <span className="text-gray-400 italic text-[11px]">-</span>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              ) : (
+                                <tr>
+                                  <td colSpan="6" className="text-center py-6 text-gray-400 italic">No students scheduled for this course paper yet.</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+
+          {/* Bottom Back Button */}
+          <div className="flex justify-start pt-2">
+            <button
+              onClick={() => { setSelectedExamGroup(null); setActiveCourseTab('all'); }}
+              className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-6 py-2.5 rounded-xl font-bold text-xs shadow-sm flex items-center gap-2 transition-all"
+            >
+              <ArrowLeft size={16} /> Back to Exam Schedule List
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* --- EDIT COURSE SCHEDULE SELECTOR MODAL --- */}
+      {showEditScheduleModal && selectedGroupToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden p-6 border border-gray-100">
+            <div className="flex items-center justify-between pb-3 border-b mb-4">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Select Course Schedule to Edit</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{selectedGroupToEdit.examName}</p>
+              </div>
+              <button 
+                onClick={() => { setShowEditScheduleModal(false); setSelectedGroupToEdit(null); }}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 max-h-[350px] overflow-y-auto">
+              {selectedGroupToEdit.schedules.map((schedule) => (
+                <div 
+                  key={schedule._id} 
+                  onClick={() => {
+                    setShowEditScheduleModal(false);
+                    setSelectedGroupToEdit(null);
+                    handleEdit(schedule);
+                  }}
+                  className="flex items-center justify-between p-3.5 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 cursor-pointer transition-all group"
+                >
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-800 group-hover:text-blue-700">{schedule.course?.name || 'Course Name'}</h4>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {schedule.timeTable?.length || 0} Papers &bull; {schedule.attendees?.length || 0} Students
+                    </p>
+                  </div>
+                  <ChevronRight size={18} className="text-gray-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
