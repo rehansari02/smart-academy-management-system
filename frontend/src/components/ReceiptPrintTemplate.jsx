@@ -91,7 +91,8 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
       overflow: 'hidden',
       pageBreakInside: 'avoid',
       border: '0px solid #ddd',
-      padding: '20px',
+      // A light inset keeps the receipt printable without squeezing its content.
+      padding: '8px 10px',
       fontFamily: '"Calibri", "Arial", sans-serif',
       fontSize: '11px',
       boxSizing: 'border-box',
