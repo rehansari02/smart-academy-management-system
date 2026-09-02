@@ -1257,7 +1257,7 @@ const ExamResultPrint = () => {
             <div
               style={{
                 position: "absolute",
-                top: "100mm",
+                top: "98mm",
                 left: "17.5mm",
                 width: "175mm",
                 display: "flex",
@@ -1273,8 +1273,8 @@ const ExamResultPrint = () => {
               <p
                 className="cert-cursive"
                 style={{
-                  fontSize: "6.5mm",
-                  margin: "4mm 0 2mm 0",
+                  fontSize: "6.2mm",
+                  margin: "2mm 0 1.5mm 0",
                   color: "#222",
                 }}
               >
@@ -1286,8 +1286,8 @@ const ExamResultPrint = () => {
                 className="cert-name"
                 style={{
                   fontWeight: "700",
-                  fontSize: "8.4mm",
-                  margin: "0 0 2mm 0",
+                  fontSize: "8.0mm",
+                  margin: "0 0 1.5mm 0",
                   color: "#111",
                   letterSpacing: "0.3px",
                 }}
@@ -1299,9 +1299,9 @@ const ExamResultPrint = () => {
               <p
                 className="cert-serif-text"
                 style={{
-                  fontSize: "5.0mm",
-                  lineHeight: "1.5",
-                  margin: "0 0 3mm 0",
+                  fontSize: "4.8mm",
+                  lineHeight: "1.45",
+                  margin: "0 0 2mm 0",
                   color: "#111",
                 }}
               >
@@ -1326,10 +1326,10 @@ const ExamResultPrint = () => {
                 className="cert-course-title"
                 style={{
                   fontWeight: "bold",
-                  fontSize: "5.8mm",
+                  fontSize: "5.5mm",
                   textDecoration: "underline",
                   textTransform: "uppercase",
-                  margin: "0 0 2.5mm 0",
+                  margin: "0 0 2mm 0",
                   color: "#000",
                   letterSpacing: "0.4px",
                   display: "inline-block",
@@ -1342,8 +1342,8 @@ const ExamResultPrint = () => {
               <p
                 className="cert-serif-text"
                 style={{
-                  fontSize: "5.0mm",
-                  margin: "0 0 4.5mm 0",
+                  fontSize: "4.8mm",
+                  margin: "0 0 2.5mm 0",
                   color: "#111",
                 }}
               >
@@ -1358,8 +1358,8 @@ const ExamResultPrint = () => {
               <p
                 className="cert-cursive"
                 style={{
-                  fontSize: "5.4mm",
-                  margin: "0 0 3.5mm 0",
+                  fontSize: "5.0mm",
+                  margin: "0 0 2mm 0",
                   color: "#222",
                 }}
               >
@@ -1372,12 +1372,12 @@ const ExamResultPrint = () => {
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr",
-                  gap: "2.0mm 8mm",
+                  gap: "1.8mm 8mm",
                   width: "100%",
-                  maxWidth: "145mm",
+                  maxWidth: "132mm",
+                  margin: "0 auto",
                   textAlign: "left",
-                  paddingLeft: "12mm",
-                  fontSize: "4.4mm",
+                  fontSize: "4.0mm",
                   color: "#222",
                 }}
               >
@@ -1411,12 +1411,12 @@ const ExamResultPrint = () => {
               </div>
             </div>
 
-            {/* Absolute positioned Certificate Details block on bottom left */}
+            {/* Absolute positioned Certificate Details block on bottom left (clear of bottom stamps and subjects) */}
             <div
               style={{
                 position: "absolute",
-                bottom: "58mm",
-                left: "22mm",
+                bottom: "48mm",
+                left: "16mm",
                 display: "flex",
                 flexDirection: "column",
                 gap: "1.2mm",
@@ -1428,11 +1428,11 @@ const ExamResultPrint = () => {
                 textAlign: "left",
               }}
             >
-              <p>
+              <p style={{ margin: 0, padding: 0 }}>
                 Certificate No :{" "}
                 {formatCertificateNumber(result.somNumber)}
               </p>
-              <p>
+              <p style={{ margin: 0, padding: 0 }}>
                 Date of issue :{" "}
                 {issueDate.isValid()
                   ? issueDate.format("DD MMMM YYYY")
