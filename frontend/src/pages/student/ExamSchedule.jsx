@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchStudentExamSchedules } from '../../features/student/studentPortalSlice';
 import Loading from '../../components/Loading';
-import { CalendarDays, Clock3, BookOpen, BadgeInfo, ShieldAlert } from 'lucide-react';
+import { CalendarDays, Clock3, BookOpen, BadgeInfo, RefreshCw, ShieldAlert } from 'lucide-react';
 import moment from 'moment';
 
 const formatDate = (value) => {
@@ -13,7 +13,7 @@ const formatDate = (value) => {
 
 const ExamSchedule = () => {
     const dispatch = useDispatch();
-    const { examSchedules, examStudent, isLoading } = useSelector((state) => state.studentPortal);
+    const { examSchedules, examStudent, isLoading, isError, message } = useSelector((state) => state.studentPortal);
 
     useEffect(() => {
         dispatch(fetchStudentExamSchedules());
@@ -110,7 +110,20 @@ const ExamSchedule = () => {
                 </div>
             </section>
 
-            {examSchedules.length > 0 ? (
+            {isError && (
+                <section className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
+                    <span>{message || 'Exam timetable could not be loaded.'}</span>
+                    <button
+                        type="button"
+                        onClick={() => dispatch(fetchStudentExamSchedules())}
+                        className="inline-flex w-fit items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700"
+                    >
+                        <RefreshCw size={14} /> Retry
+                    </button>
+                </section>
+            )}
+
+            {!isError && examSchedules.length > 0 ? (
                 <>
                     {regularSchedules.map((schedule) => renderSchedule(schedule, false))}
                     {reExamSchedules.length > 0 && (
@@ -120,7 +133,7 @@ const ExamSchedule = () => {
                     )}
                     {reExamSchedules.map((schedule) => renderSchedule(schedule, true))}
                 </>
-            ) : (
+            ) : !isError ? (
                 <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-10 text-center">
                     <CalendarDays size={42} className="mx-auto text-gray-300 mb-3" />
                     <h2 className="text-lg font-bold text-gray-800">No exam timetable found</h2>
@@ -128,7 +141,7 @@ const ExamSchedule = () => {
                         When an exam schedule is published for your course, it will appear here.
                     </p>
                 </section>
-            )}
+            ) : null}
         </div>
     );
 };

@@ -89,7 +89,7 @@ const loginUser = asyncHandler(async (req, res) => {
     // 1. If role is Student, first try to find by Enrollment Number or Registration Number
     if (role === 'Student') {
         const Student = require('../models/Student');
-        studentProfile = await Student.findOne({
+        const studentProfiles = await Student.find({
             $or: [
                 { enrollmentNo: email },
                 { regNo: email }
@@ -97,8 +97,32 @@ const loginUser = asyncHandler(async (req, res) => {
             isDeleted: false
         }).populate('userId');
 
-        if (studentProfile && studentProfile.userId) {
+        const linkedProfiles = studentProfiles.filter(profile => profile.userId);
+        if (linkedProfiles.length === 1) {
+            studentProfile = linkedProfiles[0];
             user = studentProfile.userId;
+        } else if (linkedProfiles.length > 1) {
+            // Enrollment numbers are branch-wise and can repeat. Resolve the
+            // correct linked account with the submitted password instead of
+            // letting findOne() select an arbitrary student's panel.
+            const passwordMatches = [];
+            for (const profile of linkedProfiles) {
+                if (await profile.userId.matchPassword(password)) {
+                    passwordMatches.push(profile);
+                }
+            }
+
+            const exactRegistrationMatches = passwordMatches.filter(profile => profile.regNo === email);
+            const resolvedProfile = exactRegistrationMatches[0]
+                || (passwordMatches.length === 1 ? passwordMatches[0] : null);
+
+            if (resolvedProfile) {
+                studentProfile = resolvedProfile;
+                user = resolvedProfile.userId;
+            } else if (passwordMatches.length > 1) {
+                res.status(409);
+                throw new Error('This enrollment number exists in multiple branches. Please use your registration number or login username.');
+            }
         }
     }
 

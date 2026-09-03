@@ -400,7 +400,7 @@ const ExamSchedule = () => {
         }
         setCoursesWithRequests(Object.values(uniqueCoursesMap));
       })
-      .catch(err => {
+      .catch(() => {
         toast.error("Failed to load courses with pending requests");
       })
       .finally(() => {
@@ -437,10 +437,29 @@ const ExamSchedule = () => {
                 if (selectedFromRequest) {
                     requests = requests.filter(s => location.state.selectedStudentIds.includes(s._id));
                 }
+
+                // Approved requests disappear from the pending-request API. While
+                // editing, keep the schedule's existing attendees in the list so
+                // their checked state can be viewed and changed safely.
+                if (editMode) {
+                    const currentSchedule = examSchedules.find(s => String(s._id) === String(editMode));
+                    const currentCourseId = currentSchedule?.course?._id || currentSchedule?.course;
+                    const requestIds = new Set(requests.map(student => String(student._id)));
+                    const existingAttendees = (currentSchedule?.attendees || []).map(student => (
+                        typeof student === 'object'
+                            ? { ...student, course: student.course || currentCourseId }
+                            : { _id: student, course: currentCourseId, firstName: 'Scheduled', lastName: 'Student' }
+                    ));
+
+                    requests = [
+                        ...requests,
+                        ...existingAttendees.filter(student => !requestIds.has(String(student._id)))
+                    ];
+                }
                 
                 setPendingRequests(requests);
             })
-            .catch(err => toast.error("Failed to fetch pending requests"))
+            .catch(() => toast.error("Failed to fetch pending requests"))
             .finally(() => setIsRequestsLoading(false));
         
         // Populate Time Table based on course subjects
@@ -476,7 +495,7 @@ const ExamSchedule = () => {
                 setDetailData(detailsRes.data);
                 setConductData(conductRes.data);
             })
-            .catch(err => toast.error("Failed to load details"))
+            .catch(() => toast.error("Failed to load details"))
             .finally(() => setIsDetailLoading(false));
         const timer = setInterval(() => {
           axios.get(`${import.meta.env.VITE_API_URL}/master/exam-schedule/${detailView}/conduct`, { withCredentials: true })
@@ -497,14 +516,14 @@ const ExamSchedule = () => {
     dispatch(fetchExamSchedules());
   };
 
-  const onSubmit = (data) => {
+  const onSubmit = async (data) => {
     if (editMode ? !edit : !add) {
       showPermissionDenied(`You don't have authority to ${editMode ? 'edit' : 'add'} exam schedules.`);
       return;
     }
     const finalData = { 
         ...data, 
-        attendees: selectedAttendees,
+        attendees: selectedAttendees.map(student => student?._id || student),
         timeTable: timeTableData.map(item => ({
             subject: item.subject,
             date: item.date,
@@ -515,10 +534,13 @@ const ExamSchedule = () => {
             total: item.total || ((Number(item.theory) || 0) + (Number(item.practical) || 0)),
         }))
     };
-    if (editMode) {
-        dispatch(updateExamSchedule({ id: editMode, data: finalData }));
-    } else {
-        dispatch(createExamSchedule(finalData));
+    const resultAction = editMode
+        ? await dispatch(updateExamSchedule({ id: editMode, data: finalData }))
+        : await dispatch(createExamSchedule(finalData));
+
+    if ((editMode && updateExamSchedule.rejected.match(resultAction))
+        || (!editMode && createExamSchedule.rejected.match(resultAction))) {
+        toast.error(resultAction.payload || 'Exam schedule could not be saved');
     }
   };
 
@@ -554,7 +576,7 @@ const ExamSchedule = () => {
     setValue('examName', schedule.examName);
     setValue('remarks', schedule.remarks);
     setValue('isActive', schedule.isActive);
-    setSelectedAttendees(schedule.attendees || []);
+    setSelectedAttendees((schedule.attendees || []).map(student => student?._id || student));
     
     // Map existing timeTable with names from course
     const course = courses.find(c => c._id === schedule.course?._id);
@@ -634,6 +656,22 @@ const ExamSchedule = () => {
       if (selectedExamGroup?.examName.toLowerCase() === group.examName.toLowerCase()) {
         setSelectedExamGroup(null);
       }
+    }
+  };
+
+  const handleDelete = async (scheduleId) => {
+    if (!canDelete) {
+      showPermissionDenied("You don't have authority to delete exam schedules.");
+      return;
+    }
+
+    const schedule = (examSchedules || []).find(item => String(item._id) === String(scheduleId));
+    const courseName = schedule?.course?.name || 'this course';
+    if (!window.confirm(`Are you sure you want to delete the exam schedule for ${courseName}?`)) return;
+
+    const resultAction = await dispatch(deleteExamSchedule(scheduleId));
+    if (deleteExamSchedule.rejected.match(resultAction)) {
+      toast.error(resultAction.payload || 'Exam schedule could not be deleted');
     }
   };
 

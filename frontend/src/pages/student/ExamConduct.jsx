@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import moment from 'moment';
-import { CalendarDays, Clock3, Lock, PlayCircle, ShieldAlert, Timer, UserCheck } from 'lucide-react';
+import { CalendarDays, Clock3, Lock, PlayCircle, RefreshCw, ShieldAlert, Timer, UserCheck } from 'lucide-react';
 import Loading from '../../components/Loading';
 import { formatCountdownTime, getRowCountdownInfo } from '../../utils/examTimeUtils';
 
@@ -24,10 +24,13 @@ const ExamConduct = () => {
   const [message, setMessage] = useState('');
   const [nowTick, setNowTick] = useState(Date.now());
 
-  const fetchData = async () => {
+  const fetchData = async ({ showLoader = false } = {}) => {
+    if (showLoader) setLoading(true);
+    setMessage('');
     try {
       const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/student-portal/exam-conduct`, {
-        withCredentials: true
+        withCredentials: true,
+        params: { _t: Date.now() }
       });
       setStudentInfo(data.student || null);
       setSchedules(data.schedules || []);
@@ -40,14 +43,20 @@ const ExamConduct = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchData({ showLoader: true });
 
     // Tick every 1 second for live countdown
     const timer = setInterval(() => {
       setNowTick(Date.now());
     }, 1000);
 
-    return () => clearInterval(timer);
+    const refreshWhenFocused = () => fetchData();
+    window.addEventListener('focus', refreshWhenFocused);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', refreshWhenFocused);
+    };
   }, []);
 
   const allRows = useMemo(
@@ -262,8 +271,15 @@ const ExamConduct = () => {
       </section>
 
       {message && (
-        <section className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4">
-          {message}
+        <section className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
+          <span>{message}</span>
+          <button
+            type="button"
+            onClick={() => fetchData({ showLoader: true })}
+            className="inline-flex w-fit items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700"
+          >
+            <RefreshCw size={14} /> Retry
+          </button>
         </section>
       )}
 

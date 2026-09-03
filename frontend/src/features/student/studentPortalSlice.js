@@ -123,7 +123,10 @@ export const fetchStudentExamSchedules = createAsyncThunk(
     'studentPortal/fetchStudentExamSchedules',
     async (_, thunkAPI) => {
         try {
-            const response = await axios.get(`${API_URL}exam-schedules`);
+            const response = await axios.get(`${API_URL}exam-schedules`, {
+                withCredentials: true,
+                params: { _t: Date.now() }
+            });
             return response.data;
         } catch (error) {
             return thunkAPI.rejectWithValue(error.response?.data?.message || error.message);
@@ -284,9 +287,17 @@ const studentPortalSlice = createSlice({
                 state.message = action.payload;
             })
             // Student Exam Schedules
-            .addCase(fetchStudentExamSchedules.pending, (state) => { state.isLoading = true; })
+            .addCase(fetchStudentExamSchedules.pending, (state) => {
+                state.isLoading = true;
+                state.isError = false;
+                state.message = '';
+                // Never show another login's cached timetable while refreshing.
+                state.examSchedules = [];
+                state.examStudent = null;
+            })
             .addCase(fetchStudentExamSchedules.fulfilled, (state, action) => {
                 state.isLoading = false;
+                state.isError = false;
                 state.examSchedules = action.payload?.schedules || [];
                 state.examStudent = action.payload?.student || null;
             })
@@ -294,6 +305,8 @@ const studentPortalSlice = createSlice({
                 state.isLoading = false;
                 state.isError = true;
                 state.message = action.payload;
+                state.examSchedules = [];
+                state.examStudent = null;
             })
             .addCase(fetchStudentSyllabus.pending, (state) => { state.isLoading = true; state.isError = false; })
             .addCase(fetchStudentSyllabus.fulfilled, (state, action) => {

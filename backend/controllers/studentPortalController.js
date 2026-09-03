@@ -865,7 +865,7 @@ const getStudentExamSchedules = async (req, res) => {
             return res.json({
                 student: {
                     _id: student._id,
-                    name: `${student.firstName} ${student.lastName}`.trim(),
+                    name: `${student.firstName || ''} ${student.middleName || ''} ${student.lastName || ''}`.replace(/\s+/g, ' ').trim(),
                     courseName: ''
                 },
                 schedules: []
@@ -873,7 +873,8 @@ const getStudentExamSchedules = async (req, res) => {
         }
 
         const schedules = await ExamSchedule.find({
-            isDeleted: false,
+            // Imported schedules may not have this flag at all.
+            isDeleted: { $ne: true },
             isActive: true,
             course: student.course._id
         })
@@ -933,7 +934,7 @@ const getStudentExamSchedules = async (req, res) => {
         res.json({
             student: {
                 _id: student._id,
-                name: `${student.firstName} ${student.lastName}`.trim(),
+                name: `${student.firstName || ''} ${student.middleName || ''} ${student.lastName || ''}`.replace(/\s+/g, ' ').trim(),
                 courseName: student.course?.name || ''
             },
             schedules: payload
@@ -966,7 +967,7 @@ const getStudentExamConduct = async (req, res) => {
             return res.json({
                 student: {
                     _id: student._id,
-                    name: `${student.firstName} ${student.lastName}`.trim(),
+                    name: `${student.firstName || ''} ${student.middleName || ''} ${student.lastName || ''}`.replace(/\s+/g, ' ').trim(),
                     courseName: ''
                 },
                 schedules: []
@@ -974,7 +975,7 @@ const getStudentExamConduct = async (req, res) => {
         }
 
         const schedules = await ExamSchedule.find({
-            isDeleted: false,
+            isDeleted: { $ne: true },
             isActive: true,
             course: student.course._id
         })
@@ -1069,7 +1070,7 @@ const getStudentExamConduct = async (req, res) => {
         res.json({
             student: {
                 _id: student._id,
-                name: `${student.firstName} ${student.lastName}`.trim(),
+                name: `${student.firstName || ''} ${student.middleName || ''} ${student.lastName || ''}`.replace(/\s+/g, ' ').trim(),
                 courseName: student.course?.name || ''
             },
             schedules: payload
@@ -1102,7 +1103,7 @@ const openStudentExamConduct = async (req, res) => {
 
         const schedule = await ExamSchedule.findOne({
             _id: scheduleId,
-            isDeleted: false,
+            isDeleted: { $ne: true },
             isActive: true,
             course: student.course._id
         })
@@ -1330,7 +1331,7 @@ const saveStudentExamConduct = async (req, res) => {
 
         const schedule = await ExamSchedule.findOne({
             _id: scheduleId,
-            isDeleted: false,
+            isDeleted: { $ne: true },
             isActive: true,
             course: student.course?._id
         });
@@ -1422,7 +1423,7 @@ const submitStudentExamConduct = async (req, res) => {
 
         const schedule = await ExamSchedule.findOne({
             _id: scheduleId,
-            isDeleted: false,
+            isDeleted: { $ne: true },
             isActive: true,
             course: student.course?._id
         });

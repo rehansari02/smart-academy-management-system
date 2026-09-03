@@ -173,28 +173,28 @@ export const fetchExamSchedules = createAsyncThunk('master/fetchExamSchedules', 
     try {
         const response = await axios.get(API_URL + 'exam-schedule', { params });
         return response.data;
-    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
 });
 
 export const createExamSchedule = createAsyncThunk('master/createExamSchedule', async (data, thunkAPI) => {
     try {
         const response = await axios.post(API_URL + 'exam-schedule', data);
         return response.data;
-    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
 });
 
 export const updateExamSchedule = createAsyncThunk('master/updateExamSchedule', async ({ id, data }, thunkAPI) => {
     try {
         const response = await axios.put(`${API_URL}exam-schedule/${id}`, data);
         return response.data;
-    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
 });
 
 export const deleteExamSchedule = createAsyncThunk('master/deleteExamSchedule', async (id, thunkAPI) => {
     try {
         const response = await axios.delete(`${API_URL}exam-schedule/${id}`);
         return response.data;
-    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+    } catch (error) { return thunkAPI.rejectWithValue(error.response?.data?.message || error.message); }
 });
 
 export const fetchExamScheduleDetails = createAsyncThunk('master/fetchExamScheduleDetails', async (id, thunkAPI) => {

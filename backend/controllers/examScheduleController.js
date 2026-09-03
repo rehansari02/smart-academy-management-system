@@ -341,7 +341,9 @@ const queueExamScheduleSms = (scheduleId) => {
 const getExamSchedules = asyncHandler(async (req, res) => {
     const { courseId, examName, branchId } = req.query;
 
-    let query = { isDeleted: false };
+    // Legacy schedules do not always have the isDeleted field. Treat a missing
+    // flag as "not deleted" so imported schedules remain visible/manageable.
+    let query = { isDeleted: { $ne: true } };
 
     if (courseId) {
         query.course = courseId;
@@ -356,20 +358,30 @@ const getExamSchedules = asyncHandler(async (req, res) => {
 
     const isSuperAdmin = req.user && (req.user.role === 'Super Admin' || req.user.type === 'Super Admin');
     if (!isSuperAdmin && req.user) {
-        const employee = await Employee.findOne({
-            userAccount: req.user._id,
-            isDeleted: { $ne: true }
-        }).select('_id').lean();
+        const userRights = await UserRight.findOne({ user: req.user._id }).lean();
+        const canManageSchedules = userRights?.permissions?.some((permission) => (
+            permission.page === 'Exam Schedule'
+            && (permission.view || permission.add || permission.edit || permission.delete)
+        ));
 
-        if (employee) {
-            query.$or = [
-                { examiner: employee._id },
-                { alternateExaminer: employee._id },
-                { 'branchExaminers.examiner': employee._id },
-                { 'branchExaminers.alternateExaminer': employee._id }
-            ];
-        } else {
-            query._id = null;
+        // Users who have explicit access to the CRUD must be able to see its
+        // records. Faculty without that right only see schedules assigned to them.
+        if (!canManageSchedules) {
+            const employee = await Employee.findOne({
+                userAccount: req.user._id,
+                isDeleted: { $ne: true }
+            }).select('_id').lean();
+
+            if (employee) {
+                query.$or = [
+                    { examiner: employee._id },
+                    { alternateExaminer: employee._id },
+                    { 'branchExaminers.examiner': employee._id },
+                    { 'branchExaminers.alternateExaminer': employee._id }
+                ];
+            } else {
+                query._id = null;
+            }
         }
     }
 
@@ -469,7 +481,9 @@ const createExamSchedule = asyncHandler(async (req, res) => {
         .populate('examiner', 'name designation role')
         .populate('alternateExaminer', 'name designation role')
         .populate('branchExaminers.examiner', 'name designation role')
-        .populate('branchExaminers.alternateExaminer', 'name designation role');
+        .populate('branchExaminers.alternateExaminer', 'name designation role')
+        .populate('attendees', 'firstName middleName lastName regNo enrollmentNo admissionDate course branchId branchName')
+        .populate('timeTable.subject', 'name');
     queueExamScheduleSms(schedule._id);
     res.status(201).json(populated);
 });
@@ -492,7 +506,7 @@ const updateExamSchedule = asyncHandler(async (req, res) => {
         }
         schedule.course = course || schedule.course;
         schedule.examName = examName || schedule.examName;
-        schedule.remarks = remarks || schedule.remarks;
+        if (remarks !== undefined) schedule.remarks = remarks;
         schedule.isActive = isActive !== undefined ? isActive : schedule.isActive;
         schedule.attendees = attendees || schedule.attendees;
         schedule.timeTable = normalizedTimeTable;
@@ -570,9 +584,9 @@ const updateExamSchedule = asyncHandler(async (req, res) => {
             .populate('examiner', 'name designation role')
             .populate('alternateExaminer', 'name designation role')
             .populate('branchExaminers.examiner', 'name designation role')
-            .populate('branchExaminers.alternateExaminer', 'name designation role');
-        res.json(populated);
-        res.json(populated);
+            .populate('branchExaminers.alternateExaminer', 'name designation role')
+            .populate('attendees', 'firstName middleName lastName regNo enrollmentNo admissionDate course branchId branchName')
+            .populate('timeTable.subject', 'name');
         res.json(populated);
     } else {
         res.status(404); throw new Error('Schedule not found');
@@ -948,7 +962,7 @@ const getAbsentExamStudents = asyncHandler(async (req, res) => {
     if (!examName) return res.json({ examName: '', rows: [] });
 
     const schedules = await ExamSchedule.find({
-        isDeleted: false,
+        isDeleted: { $ne: true },
         examName: { $regex: `^${examName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
     })
         .populate('course', 'name shortName')
@@ -958,7 +972,7 @@ const getAbsentExamStudents = asyncHandler(async (req, res) => {
 
     const scheduleIds = schedules.map((schedule) => schedule._id);
     const reExamSchedules = await ExamSchedule.find({
-        isDeleted: false,
+        isDeleted: { $ne: true },
         isActive: true,
         isReExam: true,
         examName: { $regex: `^${examName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
@@ -1066,7 +1080,7 @@ const createAbsentReExamSchedules = asyncHandler(async (req, res) => {
     const scheduleIds = [...new Set(selectedRows.map((row) => row.scheduleId).filter(Boolean))];
     const schedules = await ExamSchedule.find({
         _id: { $in: scheduleIds },
-        isDeleted: false
+        isDeleted: { $ne: true }
     }).populate('timeTable.subject', 'name printedName');
     const scheduleMap = new Map(schedules.map((schedule) => [String(schedule._id), schedule]));
     const groupMap = new Map();
@@ -1175,7 +1189,7 @@ const getMyExamSchedules = asyncHandler(async (req, res) => {
     }
 
     const schedules = await ExamSchedule.find({
-        isDeleted: false,
+        isDeleted: { $ne: true },
         isActive: true,
         course: student.course._id
     })
