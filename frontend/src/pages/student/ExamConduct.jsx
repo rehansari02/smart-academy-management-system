@@ -262,6 +262,11 @@ const ExamConduct = () => {
             <p className="text-sm text-gray-500 mt-1">
               {studentInfo?.name || 'Student'}{studentInfo?.courseName ? ` - ${studentInfo.courseName}` : ''}
             </p>
+            {studentInfo && (
+              <p className="mt-1 text-xs font-bold text-blue-700">
+                Reg No: {studentInfo.regNo || '-'}{studentInfo.branchName ? ` | ${studentInfo.branchName}` : ''}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
             <UserCheck size={14} className="text-blue-500" />

@@ -102,6 +102,11 @@ const ExamSchedule = () => {
                         <p className="text-sm text-gray-500 mt-1">
                             {examStudent?.name || 'Student'}{examStudent?.courseName ? ` - ${examStudent.courseName}` : ''}
                         </p>
+                        {examStudent && (
+                            <p className="mt-1 text-xs font-bold text-blue-700">
+                                Reg No: {examStudent.regNo || '-'}{examStudent.branchName ? ` | ${examStudent.branchName}` : ''}
+                            </p>
+                        )}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
                         <BadgeInfo size={14} className="text-blue-500" />

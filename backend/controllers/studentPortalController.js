@@ -865,7 +865,11 @@ const getStudentExamSchedules = async (req, res) => {
             return res.json({
                 student: {
                     _id: student._id,
+                    userId: student.userId,
                     name: `${student.firstName || ''} ${student.middleName || ''} ${student.lastName || ''}`.replace(/\s+/g, ' ').trim(),
+                    regNo: student.regNo || '',
+                    enrollmentNo: student.enrollmentNo || '',
+                    branchName: student.branchName || '',
                     courseName: ''
                 },
                 schedules: []
@@ -934,7 +938,11 @@ const getStudentExamSchedules = async (req, res) => {
         res.json({
             student: {
                 _id: student._id,
+                userId: student.userId,
                 name: `${student.firstName || ''} ${student.middleName || ''} ${student.lastName || ''}`.replace(/\s+/g, ' ').trim(),
+                regNo: student.regNo || '',
+                enrollmentNo: student.enrollmentNo || '',
+                branchName: student.branchName || '',
                 courseName: student.course?.name || ''
             },
             schedules: payload
@@ -967,7 +975,11 @@ const getStudentExamConduct = async (req, res) => {
             return res.json({
                 student: {
                     _id: student._id,
+                    userId: student.userId,
                     name: `${student.firstName || ''} ${student.middleName || ''} ${student.lastName || ''}`.replace(/\s+/g, ' ').trim(),
+                    regNo: student.regNo || '',
+                    enrollmentNo: student.enrollmentNo || '',
+                    branchName: student.branchName || '',
                     courseName: ''
                 },
                 schedules: []
@@ -1070,7 +1082,11 @@ const getStudentExamConduct = async (req, res) => {
         res.json({
             student: {
                 _id: student._id,
+                userId: student.userId,
                 name: `${student.firstName || ''} ${student.middleName || ''} ${student.lastName || ''}`.replace(/\s+/g, ' ').trim(),
+                regNo: student.regNo || '',
+                enrollmentNo: student.enrollmentNo || '',
+                branchName: student.branchName || '',
                 courseName: student.course?.name || ''
             },
             schedules: payload

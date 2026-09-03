@@ -297,9 +297,16 @@ const loginUser = asyncHandler(async (req, res) => {
              }
         }        // ----------------------------------
 
+        const studentDisplayName = studentProfile
+            ? `${studentProfile.firstName || ''} ${studentProfile.middleName || ''} ${studentProfile.lastName || ''}`.replace(/\s+/g, ' ').trim()
+            : user.name;
+
         res.json({
             _id: user._id, 
-            name: user.name, 
+            name: studentDisplayName,
+            studentId: studentProfile?._id,
+            studentRegNo: studentProfile?.regNo,
+            studentEnrollmentNo: studentProfile?.enrollmentNo,
             username: user.username,
             email: user.email, 
             role: user.role,
