@@ -250,9 +250,10 @@ const ExamSchedule = () => {
   }, [filterCourseOptions, filters.courseId]);
 
   const buildTimeTableFromCourse = (course, existingTimeTable = []) => {
+    const existingRows = Array.isArray(existingTimeTable) ? existingTimeTable : [];
     const existingBySubject = new Map(
-        (existingTimeTable || []).map(item => [
-            String(item.subject?._id || item.subject),
+        existingRows.map(item => [
+            String(item.subject?._id || item.subject || ''),
             item
         ])
     );
@@ -262,29 +263,58 @@ const ExamSchedule = () => {
         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
     if (courseSubjects.length === 0) {
-        return (existingTimeTable || []).map(item => ({
-            ...item,
-            subject: item.subject?._id || item.subject,
-            name: item.subject?.name || item.name || 'Subject',
-            total: Number(item.total) || (Number(item.theory) || 0) + (Number(item.practical) || 0)
-        }));
+        return existingRows.map(item => {
+            let dateStr = '';
+            if (item.date) {
+                try {
+                    dateStr = new Date(item.date).toISOString().split('T')[0];
+                } catch (e) {
+                    dateStr = String(item.date).split('T')[0];
+                }
+            }
+            const theory = item.theory ?? 0;
+            const practical = item.practical ?? 0;
+            const total = Number(item.total) || (Number(theory) + Number(practical));
+
+            return {
+                subject: String(item.subject?._id || item.subject || ''),
+                name: item.subject?.name || item.name || 'Subject',
+                date: dateStr,
+                startTime: item.startTime || '10:00 AM',
+                endTime: item.endTime || '01:00 PM',
+                theory,
+                practical,
+                total
+            };
+        });
     }
 
     return courseSubjects.map(item => {
         const subject = item.subject;
-        const saved = existingBySubject.get(String(subject._id));
+        const subId = String(subject._id || subject);
+        const saved = existingBySubject.get(subId);
         const theory = saved?.theory ?? subject.theoryMarks ?? 0;
         const practical = saved?.practical ?? subject.practicalMarks ?? 0;
+        const total = Number(saved?.total) || Number(subject.totalMarks) || (Number(theory) + Number(practical));
+
+        let dateStr = '';
+        if (saved?.date) {
+            try {
+                dateStr = new Date(saved.date).toISOString().split('T')[0];
+            } catch (e) {
+                dateStr = String(saved.date).split('T')[0];
+            }
+        }
 
         return {
-            subject: subject._id,
-            name: subject.name,
-            date: saved?.date || '',
+            subject: subId,
+            name: subject.name || saved?.subject?.name || saved?.name || 'Subject',
+            date: dateStr,
             startTime: saved?.startTime || '10:00 AM',
             endTime: saved?.endTime || '01:00 PM',
             theory,
             practical,
-            total: Number(saved?.total) || Number(subject.totalMarks) || ((Number(theory) || 0) + (Number(practical) || 0))
+            total
         };
     });
   };
@@ -462,20 +492,18 @@ const ExamSchedule = () => {
             .catch(() => toast.error("Failed to fetch pending requests"))
             .finally(() => setIsRequestsLoading(false));
         
-        // Populate Time Table based on course subjects
-        const course = courses.find(c => c._id === selectedCourse);
-        if (course && course.subjects) {
-            // Only re-populate if it's a new entry (not editing or if course changed)
-            // If editing, the timeTable is usually loaded from the record
-            if (!editMode || timeTableData.length === 0) {
+        // Populate Time Table based on course subjects for NEW entries only
+        if (!editMode) {
+            const course = courses.find(c => String(c._id) === String(selectedCourse));
+            if (course && course.subjects) {
                 setTimeTableData(buildTimeTableFromCourse(course));
             }
         }
-    } else {
+    } else if (!showForm) {
         setPendingRequests([]);
         setTimeTableData([]);
     }
-  }, [selectedCourse, showForm, courses, editMode, location.state]); // Removed timeTableData from deps to avoid loop
+  }, [selectedCourse, showForm, courses, editMode, location.state]);
 
   useEffect(() => {
     if (!isFromExamRequestList || !selectedCourse) return;
@@ -569,21 +597,60 @@ const ExamSchedule = () => {
     );
   };
 
-  const handleEdit = (schedule) => {
+  const handleEdit = async (schedule) => {
     setEditMode(schedule._id);
     setShowForm(true);
-    setValue('course', schedule.course?._id);
+    setShowEditScheduleModal(false);
+    setSelectedGroupToEdit(null);
+    setSelectedExamGroup(null);
+
+    const courseId = schedule.course?._id || schedule.course;
+    setValue('course', courseId);
     setValue('examName', schedule.examName);
-    setValue('remarks', schedule.remarks);
-    setValue('isActive', schedule.isActive);
+    setValue('remarks', schedule.remarks || '');
+    setValue('isActive', schedule.isActive !== undefined ? schedule.isActive : true);
     setSelectedAttendees((schedule.attendees || []).map(student => student?._id || student));
     
-    // Map existing timeTable with names from course
-    const course = courses.find(c => c._id === schedule.course?._id);
-    if (course) {
-        setTimeTableData(buildTimeTableFromCourse(course, schedule.timeTable));
-    } else {
-        setTimeTableData(buildTimeTableFromCourse(null, schedule.timeTable));
+    // 1. Initial build from schedule.timeTable and Redux courses
+    const course = courses.find(c => String(c._id) === String(courseId));
+    const initialTimeTable = buildTimeTableFromCourse(course, schedule.timeTable);
+    setTimeTableData(initialTimeTable);
+
+    // 2. Fetch fresh populated details from API to ensure complete subject data
+    try {
+      const res = await axios.get(`${import.meta.env.VITE_API_URL}/master/exam-schedule/${schedule._id}/details`, { withCredentials: true });
+      if (res.data && Array.isArray(res.data.timeTable) && res.data.timeTable.length > 0) {
+        const mapped = res.data.timeTable.map(item => {
+          const subId = String(item.subject?._id || item.subject || '');
+          const subName = item.subject?.name || item.name || 'Subject';
+          const theory = item.theory ?? item.subject?.theoryMarks ?? 0;
+          const practical = item.practical ?? item.subject?.practicalMarks ?? 0;
+          const total = Number(item.total) || (Number(theory) + Number(practical));
+          
+          let dateStr = '';
+          if (item.date) {
+            try {
+              dateStr = new Date(item.date).toISOString().split('T')[0];
+            } catch (e) {
+              dateStr = String(item.date).split('T')[0];
+            }
+          }
+
+          return {
+            subject: subId,
+            name: subName,
+            date: dateStr,
+            startTime: item.startTime || '10:00 AM',
+            endTime: item.endTime || '01:00 PM',
+            theory,
+            practical,
+            total
+          };
+        });
+        setTimeTableData(mapped);
+      }
+    } catch (err) {
+      console.error("Failed to load details for edit:", err);
     }
   };
 
