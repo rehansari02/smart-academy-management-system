@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import * as XLSX from 'xlsx';
 import { ArrowLeft, Download, FileQuestion, FileSpreadsheet, Loader, Plus, Save, Trash2, Upload, X } from 'lucide-react';
@@ -170,6 +170,11 @@ const parseFinalExamExcel = (workbook) => {
 const AddFinalExamQuestionPaper = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const urlCourseId = searchParams.get('courseId');
+  const urlSubjectId = searchParams.get('subjectId');
+  const urlPaperId = searchParams.get('paperId');
+
   const { courses, finalExamQuestionPapers, isLoading } = useSelector((state) => state.master);
   const { add, edit } = useUserRights('Final Exam Question Paper');
 
@@ -223,12 +228,15 @@ const AddFinalExamQuestionPaper = () => {
     [finalExamQuestionPapers, form.course]
   );
 
-  const availableSubjectOptions = useMemo(() => {
+  const subjectDropdownOptions = useMemo(() => {
     const savedSubjectIds = new Set(
       (existingCoursePaper?.subjects || []).map((row) => String(row.subject?._id || row.subject))
     );
 
-    return subjectOptions.filter((subject) => !savedSubjectIds.has(String(subject._id)));
+    return subjectOptions.map((subject) => ({
+      ...subject,
+      isConfigured: savedSubjectIds.has(String(subject._id))
+    }));
   }, [existingCoursePaper, subjectOptions]);
 
   const linkedSubjectCourses = useMemo(() => {
@@ -238,15 +246,24 @@ const AddFinalExamQuestionPaper = () => {
     );
   }, [courses, form.subject]);
 
-  const existingSubjectRow = useMemo(() => {
-    if (!existingCoursePaper || !form.subject) return null;
-    return (existingCoursePaper.subjects || []).find((row) => String(row.subject?._id || row.subject) === String(form.subject)) || null;
-  }, [existingCoursePaper, form.subject]);
-
   useEffect(() => {
     dispatch(fetchCourses());
     dispatch(fetchFinalExamQuestionPapers());
   }, [dispatch]);
+
+  // Auto-select course from URL
+  useEffect(() => {
+    if (urlCourseId && courses.length > 0 && !form.course) {
+      handleCourseChange(urlCourseId);
+    }
+  }, [urlCourseId, courses, form.course]);
+
+  // Auto-select subject from URL
+  useEffect(() => {
+    if (urlSubjectId && form.course && subjectOptions.length > 0 && form.subject !== urlSubjectId) {
+      handleSubjectChange(urlSubjectId);
+    }
+  }, [urlSubjectId, form.course, subjectOptions, form.subject]);
 
   const handleCourseChange = (courseId) => {
     const course = courses.find((item) => String(item._id) === String(courseId));
@@ -609,7 +626,13 @@ const AddFinalExamQuestionPaper = () => {
     toast.success(`Question Bank ${needsEdit ? 'Updated' : 'Added'} Successfully for ${targetCourses.length} Course${targetCourses.length > 1 ? 's' : ''}`);
     dispatch(fetchFinalExamQuestionPapers());
     dispatch(resetMasterStatus());
-    navigate('/master/final-exam-question-paper');
+
+    const targetPaperId = urlPaperId || targetCoursePapers[0]?._id;
+    if (targetPaperId) {
+      navigate(`/master/final-exam-question-paper/subjects/${targetPaperId}`);
+    } else {
+      navigate('/master/final-exam-question-paper');
+    }
   };
 
   const handleDownloadTemplate = () => {
@@ -631,13 +654,21 @@ const AddFinalExamQuestionPaper = () => {
     XLSX.writeFile(wb, 'MCQ_Import_Template.xlsx');
   };
 
+  const returnPath = urlPaperId
+    ? `/master/final-exam-question-paper/subjects/${urlPaperId}`
+    : existingCoursePaper?._id
+    ? `/master/final-exam-question-paper/subjects/${existingCoursePaper._id}`
+    : '/master/final-exam-question-paper';
+
   return (
     <FinalExamQuestionPaperAccessGate requiredAction="add">
     <div className="container mx-auto p-4">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Add Question Bank</h1>
-          <p className="text-sm text-gray-500">Select a course first, then choose a subject to create the MCQ bank.</p>
+          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">
+            {form.subject && subjectDropdownOptions.find(s => String(s._id) === String(form.subject))?.isConfigured ? 'Edit Question Bank' : 'Add Question Bank'}
+          </h1>
+          <p className="text-sm text-gray-500">Course select karke subject ke questions manage karein.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -661,8 +692,8 @@ const AddFinalExamQuestionPaper = () => {
             <Upload size={17} />
             Import Excel
           </button>
-          <button onClick={() => navigate('/master/final-exam-question-paper')} className="border border-gray-300 bg-white text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm font-bold">
-            <ArrowLeft size={17} /> Back To List
+          <button onClick={() => navigate(returnPath)} className="border border-gray-300 bg-white text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2 text-sm font-bold">
+            <ArrowLeft size={17} /> Back
           </button>
         </div>
       </div>
@@ -686,7 +717,11 @@ const AddFinalExamQuestionPaper = () => {
               <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Subject *</label>
               <select value={form.subject} onChange={(e) => handleSubjectChange(e.target.value)} disabled={!form.course} className="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-100">
                 <option value="">{form.course ? 'Select Subject' : 'Select Course First'}</option>
-                {availableSubjectOptions.map((subject) => <option key={subject._id} value={subject._id}>{subject.name}</option>)}
+                {subjectDropdownOptions.map((subject) => (
+                  <option key={subject._id} value={subject._id}>
+                    {subject.name} {subject.isConfigured ? '(Configured)' : ''}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

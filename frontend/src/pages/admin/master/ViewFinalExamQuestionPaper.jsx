@@ -67,6 +67,10 @@ const ViewFinalExamQuestionPaper = () => {
     : (paper.subjects || []);
   const firstSubject = visibleSubjects[0] || paper.subjects?.[0];
 
+  const returnPath = id
+    ? `/master/final-exam-question-paper/subjects/${id}`
+    : '/master/final-exam-question-paper';
+
   return (
     <FinalExamQuestionPaperAccessGate requiredAction="view">
     <div className="bg-gray-100 min-h-screen print:bg-white">
@@ -98,8 +102,8 @@ const ViewFinalExamQuestionPaper = () => {
 
       <div className="print:hidden sticky top-20 z-20 bg-white border-b shadow-sm">
         <div className="container mx-auto p-3 flex justify-between items-center gap-3">
-          <button onClick={() => navigate('/master/final-exam-question-paper')} className="border border-gray-300 px-4 py-2 rounded text-sm font-bold flex items-center gap-2 hover:bg-gray-50">
-            <ArrowLeft size={16} /> Back To List
+          <button onClick={() => navigate(returnPath)} className="border border-gray-300 px-4 py-2 rounded text-sm font-bold flex items-center gap-2 hover:bg-gray-50">
+            <ArrowLeft size={16} /> Back To Subjects
           </button>
           <button onClick={() => window.print()} className="bg-primary text-white px-5 py-2 rounded text-sm font-bold flex items-center gap-2 hover:bg-blue-800">
             <Printer size={17} /> Print
