@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const moment = require('moment');
 const ExamSchedule = require('../models/ExamSchedule');
 const ExamAttempt = require('../models/ExamAttempt');
+const ExamResult = require('../models/ExamResult');
 const FinalExamQuestionPaper = require('../models/FinalExamQuestionPaper');
 const Student = require('../models/Student');
 const ExamRequest = require('../models/ExamRequest');
@@ -11,6 +12,8 @@ const UserRight = require('../models/UserRight');
 const sendSMS = require('../utils/smsSender');
 const { getParentSmsRecipients } = require('../utils/smsRecipients');
 const bcrypt = require('bcryptjs');
+
+const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const formatDate = (value) => {
     if (!value) return '';
@@ -663,18 +666,108 @@ const getExamScheduleDetails = asyncHandler(async (req, res) => {
             })
         : schedule.timeTable;
 
-    // Transform to flat format for table (Students)
-    const attendees = (schedule.attendees || []).map(student => ({
-        _id: student._id,
-        admissionDate: student.admissionDate,
-        regNo: student.regNo,
-        studentName: `${student.firstName} ${student.lastName}`,
-        mobile: student.mobileStudent,
-        courseName: schedule.course
-    }));
+    // Find all sibling schedules sharing the same examName and course
+    const escapedExamName = escapeRegex(String(schedule.examName || '').trim());
+    const siblingSchedules = await ExamSchedule.find({
+        examName: { $regex: `^${escapedExamName}$`, $options: 'i' },
+        course: schedule.course,
+        isDeleted: false
+    }).populate({
+        path: 'attendees',
+        select: 'firstName middleName lastName regNo admissionDate mobileStudent branchName course'
+    }).lean();
+
+    const studentMap = new Map();
+
+    // 1. Gather all scheduled attendees across all matching schedules
+    for (const s of siblingSchedules) {
+        for (const student of (s.attendees || [])) {
+            if (!student?._id) continue;
+            const sId = String(student._id);
+            if (!studentMap.has(sId)) {
+                const studentName = [student.firstName, student.middleName, student.lastName].filter(Boolean).join(' ').trim() || 'Student';
+                studentMap.set(sId, {
+                    _id: sId,
+                    admissionDate: student.admissionDate,
+                    regNo: student.regNo || '',
+                    studentName,
+                    mobile: student.mobileStudent || '',
+                    branchName: student.branchName || '',
+                    courseName: schedule.course,
+                    scheduleId: String(s._id),
+                    hasAttempted: false,
+                    submittedPapersCount: 0,
+                    hasResult: false
+                });
+            }
+        }
+    }
+
+    // 2. Gather students who actually attempted/submitted papers for this exam and course
+    const attempts = await ExamAttempt.find({
+        examName: { $regex: `^${escapedExamName}$`, $options: 'i' },
+        course: schedule.course,
+        isSubmitted: true
+    }).populate('student', 'firstName middleName lastName regNo admissionDate mobileStudent branchName course').lean();
+
+    for (const attempt of attempts) {
+        if (!attempt.student?._id) continue;
+        const sId = String(attempt.student._id);
+        if (!studentMap.has(sId)) {
+            const student = attempt.student;
+            const studentName = [student.firstName, student.middleName, student.lastName].filter(Boolean).join(' ').trim() || 'Student';
+            studentMap.set(sId, {
+                _id: sId,
+                admissionDate: student.admissionDate,
+                regNo: student.regNo || '',
+                studentName,
+                mobile: student.mobileStudent || '',
+                branchName: student.branchName || '',
+                courseName: schedule.course,
+                scheduleId: String(attempt.schedule || schedule._id),
+                hasAttempted: true,
+                submittedPapersCount: 1,
+                hasResult: false
+            });
+        } else {
+            const item = studentMap.get(sId);
+            item.hasAttempted = true;
+            item.submittedPapersCount = (item.submittedPapersCount || 0) + 1;
+            if (attempt.schedule) {
+                item.scheduleId = String(attempt.schedule);
+            }
+        }
+    }
+
+    // 3. Mark which students already have an ExamResult created for this course and exam
+    const allScheduleIds = siblingSchedules.map(s => s._id);
+    const studentIds = Array.from(studentMap.keys());
+    if (studentIds.length > 0) {
+        const results = await ExamResult.find({
+            course: schedule.course,
+            student: { $in: studentIds },
+            isDeleted: false,
+            exam: { $in: allScheduleIds }
+        }).select('student exam').lean();
+
+        results.forEach(r => {
+            const sId = String(r.student);
+            if (studentMap.has(sId)) {
+                studentMap.get(sId).hasResult = true;
+            }
+        });
+    }
+
+    // Sort: students who gave the exam first, then alphabetical
+    const sortedAttendees = Array.from(studentMap.values()).sort((a, b) => {
+        if (a.hasAttempted && !b.hasAttempted) return -1;
+        if (!a.hasAttempted && b.hasAttempted) return 1;
+        return (a.studentName || '').localeCompare(b.studentName || '');
+    });
 
     res.json({
-        attendees,
+        _id: schedule._id,
+        attendees: sortedAttendees,
         timeTable,
         conduct: getSchedulePasswordSnapshot(schedule)
     });

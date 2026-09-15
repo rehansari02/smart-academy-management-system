@@ -33,6 +33,8 @@ const normalizeResultNumbers = (result) => {
     return output;
 };
 
+const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const normalizeAnswerText = (value) => String(value || '').trim().toLowerCase();
 
 const getMcqCorrectOptionLetter = (mcq) => {
@@ -487,9 +489,10 @@ const getExamAttemptMarksForResult = asyncHandler(async (req, res) => {
 
     const resolvedExamName = selectedSchedule?.examName || examName;
     const resolvedCourseId = selectedSchedule?.course?._id || selectedSchedule?.course || courseId;
+    const escapedExamName = escapeRegex(String(resolvedExamName || '').trim());
 
     const scheduleQuery = {
-        examName: resolvedExamName,
+        examName: { $regex: `^${escapedExamName}$`, $options: 'i' },
         course: resolvedCourseId,
         isDeleted: false
     };
@@ -509,7 +512,7 @@ const getExamAttemptMarksForResult = asyncHandler(async (req, res) => {
     }));
 
     const attempts = await ExamAttempt.find({
-        examName: resolvedExamName,
+        examName: { $regex: `^${escapedExamName}$`, $options: 'i' },
         course: resolvedCourseId,
         student: studentId,
         isSubmitted: true
@@ -519,7 +522,7 @@ const getExamAttemptMarksForResult = asyncHandler(async (req, res) => {
         .lean();
 
     const paper = await FinalExamQuestionPaper.findOne({
-        examName: resolvedExamName,
+        examName: { $regex: `^${escapedExamName}$`, $options: 'i' },
         course: resolvedCourseId,
         isActive: true,
         isDeleted: false
