@@ -6,6 +6,8 @@ import { QRCodeSVG } from "qrcode.react";
 
 import markshettkl from "../../../assets/markshettkl.png";
 import certificateImg from "../../../assets/certificate.png";
+import signImg from "../../../assets/sign.png";
+import centerImg from "../../../assets/center.png";
 
 const ExamResultPrint = () => {
   const { id } = useParams();
@@ -1479,6 +1481,52 @@ const ExamResultPrint = () => {
             </div>
           </>
         )}
+
+        {/* Centre Seal & Signature Overlay (Applies to both Marksheet and Certificate above the printed 'Centre Seal & Signature' text) */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: "30mm",
+            left: "28.5mm",
+            width: "18mm",
+            zIndex: 25,
+            pointerEvents: "none",
+          }}
+        >
+          <img
+            src={centerImg}
+            alt="Centre Seal & Signature"
+            style={{
+              width: "100%",
+              height: "auto",
+              display: "block",
+              objectFit: "contain",
+            }}
+          />
+        </div>
+
+        {/* Managing Director Signature Overlay (Applies to both Marksheet and Certificate above the printed 'Managing Director' text) */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: "30mm",
+            left: "162mm",
+            width: "25mm",
+            zIndex: 25,
+            pointerEvents: "none",
+          }}
+        >
+          <img
+            src={signImg}
+            alt="Managing Director Signature"
+            style={{
+              width: "100%",
+              height: "auto",
+              display: "block",
+              objectFit: "contain",
+            }}
+          />
+        </div>
       </div>
 
       {/* Custom Print Style overrides to strip page margins & load Montserrat/Playfair fonts */}

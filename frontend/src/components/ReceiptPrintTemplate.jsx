@@ -2,6 +2,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
 import logo from '../assets/logo2.png';
+import stampImg from '../assets/stamp.png';
 
 const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   const { user } = useSelector((state) => state.auth);
@@ -268,30 +269,95 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
         </div>
       </div>
 
-      {/* Bottom Details */}
-      <div style={{ display: 'flex', minHeight: '120px', marginBottom: '30px' }}>
-        <div style={{ width: '60%' }}>
-          <div style={{ marginBottom: '5px', padding: '4px 10px', backgroundColor: '#f2f2f2' }}>
-            <span style={{ color: '#0066cc' }}>THROUGH : </span>
-            <span>{receipt.paymentMode}</span>
-          </div>
-          <div style={{ padding: '4px 10px', backgroundColor: '#f2f2f2' }}>
-            <span style={{ color: '#0066cc' }}>BATCH TIME : </span>
-            <span>{getBatchTime()}</span>
-          </div>
+      {/* Through & Batch Time Info & Fees Non-refundable */}
+      <div style={{ width: '55%', marginTop: '6px' }}>
+        <div style={{ marginBottom: '4px', padding: '3px 10px', backgroundColor: '#f2f2f2' }}>
+          <span style={{ color: '#0066cc', fontWeight: 'bold' }}>THROUGH : </span>
+          <span>{receipt.paymentMode}</span>
+        </div>
+        <div style={{ padding: '3px 10px', backgroundColor: '#f2f2f2' }}>
+          <span style={{ color: '#0066cc', fontWeight: 'bold' }}>BATCH TIME : </span>
+          <span>{getBatchTime()}</span>
+        </div>
 
-          <div style={{ padding: '10px', marginTop: '10px' }}>
-            <span style={{ color: '#0066cc', fontWeight: 'bold' }}>FEES WILL BE NOT REFUNDABLE</span>
+        <div style={{ padding: '4px 2px', marginTop: '6px' }}>
+          <span style={{ color: '#0066cc', fontWeight: 'bold', fontSize: '10.5px' }}>
+            FEES WILL BE NOT REFUNDABLE
+          </span>
+        </div>
+      </div>
+
+      {/* Bottom Signature & Stamp Row (Positioned nicely above the bottom dashed line and footer) */}
+      <div style={{
+        position: 'absolute',
+        bottom: '48px',
+        left: '10px',
+        right: '10px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-end',
+        boxSizing: 'border-box'
+      }}>
+        {/* Left: Guardian & Student Sign */}
+        <div style={{ width: '38%' }}>
+          <div style={{
+            borderTop: '1px solid #777',
+            paddingTop: '3px',
+            color: '#0066cc',
+            fontSize: '9.5px',
+            fontWeight: 'bold',
+            display: 'inline-block',
+            minWidth: '170px',
+            textAlign: 'center'
+          }}>
+            GUARDIAN & STUDENT SIGN
           </div>
         </div>
 
-        <div style={{ flex: 1, position: 'relative', minHeight: '120px' }}>
-          {/* Signature Area */}
-          <div style={{ position: 'absolute', bottom: '4px', right: '10px', textAlign: 'right' }}>
-            <div style={{ marginBottom: '4px', fontWeight: 'bold' }}>
+        {/* Center: Official Stamp (Rotated -60deg anticlockwise) */}
+        <div style={{
+          flex: '0 0 auto',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingBottom: '2px'
+        }}>
+          <img
+            src={stampImg}
+            alt="Smart Institute Stamp"
+            style={{
+              width: '85px',
+              height: '85px',
+              objectFit: 'contain',
+              display: 'block',
+              transform: 'rotate(-60deg)',
+              transformOrigin: 'center center'
+            }}
+          />
+        </div>
+
+        {/* Right: Prepared By Sign */}
+        <div style={{
+          width: '35%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          justifyContent: 'flex-end',
+          paddingRight: '10px'
+        }}>
+          <div style={{ textAlign: 'center', minWidth: '140px' }}>
+            <div style={{ marginBottom: '4px', fontWeight: 'bold', fontSize: '11px', color: '#000' }}>
               {user?.name || 'Admin'}
             </div>
-            <div style={{ color: '#0066cc', fontSize: '9px', borderTop: '1px solid #ccc', paddingTop: '2px' }}>
+            <div style={{
+              color: '#0066cc',
+              fontSize: '9.5px',
+              borderTop: '1px solid #777',
+              paddingTop: '3px',
+              fontWeight: 'bold',
+              textAlign: 'center'
+            }}>
               PREPARED BY
             </div>
           </div>
