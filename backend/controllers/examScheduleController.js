@@ -929,10 +929,32 @@ const getExamStudentMarks = asyncHandler(async (req, res) => {
         .populate('subject', 'name printedName')
         .sort({ submittedAt: -1, updatedAt: -1 });
 
+    // Fetch relevant question papers for fallback if assignedMcqs are empty
+    const courseIds = [...new Set(attempts.map((a) => String(a.course?._id || a.course)).filter(Boolean))];
+    const papers = await FinalExamQuestionPaper.find({
+        isDeleted: false,
+        isActive: true,
+        course: { $in: courseIds }
+    }).populate('subjects.subject', 'name printedName');
+
+    const paperMap = new Map();
+    papers.forEach((p) => {
+        (p.subjects || []).forEach((s) => {
+            const key = `${String(p.course?._id || p.course)}:${String(s.subject?._id || s.subject)}`;
+            if (!paperMap.has(key) || p.examName === examName) {
+                paperMap.set(key, s);
+            }
+        });
+    });
+
     res.json(attempts.map((attempt) => {
         const totalAssigned = (Array.isArray(attempt.assignedMcqs) ? attempt.assignedMcqs.length : 0) + 
                               (Array.isArray(attempt.assignedQuestionAnswers) ? attempt.assignedQuestionAnswers.length : 0);
         const calcAnswered = Array.isArray(attempt.answers) ? attempt.answers.filter((a) => a.selectedOption || a.answerText).length : 0;
+        
+        const paperKey = `${String(attempt.course?._id || attempt.course)}:${String(attempt.subject?._id || attempt.subject)}`;
+        const fallbackSubjectPaper = paperMap.get(paperKey);
+        const score = scoreAttemptAgainstPaper(attempt, fallbackSubjectPaper);
 
         return {
             _id: attempt._id,
@@ -952,7 +974,8 @@ const getExamStudentMarks = asyncHandler(async (req, res) => {
             isSubmitted: Boolean(attempt.isSubmitted),
             submittedAt: attempt.submittedAt,
             lastSavedAt: attempt.lastSavedAt,
-            updatedAt: attempt.updatedAt
+            updatedAt: attempt.updatedAt,
+            score
         };
     }));
 });

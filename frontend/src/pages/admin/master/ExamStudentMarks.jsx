@@ -12,6 +12,9 @@ import {
   Users, 
   FileText, 
   CheckCircle2, 
+  CheckCircle,
+  XCircle,
+  AlertCircle,
   Clock, 
   ChevronRight, 
   GraduationCap 
@@ -304,9 +307,9 @@ const ExamStudentMarks = () => {
                 </button>
               </div>
 
-              {/* Student Profile Card */}
+              {/* Student Profile Card & Overview Stats */}
               <div className="rounded-2xl border bg-gradient-to-r from-blue-700 to-indigo-800 p-6 text-white shadow-md">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                   <div>
                     <span className="bg-white/20 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                       Student Details
@@ -321,10 +324,37 @@ const ExamStudentMarks = () => {
                       <span>Course: <strong className="text-white">{currentCourseGroup?.courseName}</strong></span>
                     </div>
                   </div>
-                  <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-xl p-3.5 text-center min-w-[140px]">
-                    <div className="text-2xl font-black">{currentStudentGroup.attempts.length}</div>
-                    <div className="text-[10px] uppercase font-bold text-blue-200">Papers Scheduled</div>
-                  </div>
+
+                  {/* Calculated Totals across all subjects for this student */}
+                  {(() => {
+                    const totalQuestionsAcross = currentStudentGroup.attempts.reduce((sum, a) => sum + (a.totalQuestions || 0), 0);
+                    const totalAnsweredAcross = currentStudentGroup.attempts.reduce((sum, a) => sum + (a.answeredCount || 0), 0);
+                    const totalCorrectAcross = currentStudentGroup.attempts.reduce((sum, a) => sum + (a.score?.mcqCorrectCount || 0), 0);
+                    const totalWrongAcross = currentStudentGroup.attempts.reduce((sum, a) => sum + (a.score?.mcqWrongCount || 0), 0);
+                    const totalMarksObtained = currentStudentGroup.attempts.reduce((sum, a) => sum + (a.score?.totalMarksObtained || 0), 0);
+                    const totalMarksPossible = currentStudentGroup.attempts.reduce((sum, a) => sum + (a.score?.totalMarksPossible || 0), 0);
+
+                    return (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-xl p-3 text-center min-w-[100px]">
+                          <div className="text-xl font-black text-white">{totalAnsweredAcross}/{totalQuestionsAcross}</div>
+                          <div className="text-[10px] uppercase font-bold text-blue-200 mt-0.5">Total Attempted</div>
+                        </div>
+                        <div className="bg-white/10 backdrop-blur-sm border border-emerald-400/30 rounded-xl p-3 text-center min-w-[100px]">
+                          <div className="text-xl font-black text-emerald-300">{totalCorrectAcross}</div>
+                          <div className="text-[10px] uppercase font-bold text-emerald-200 mt-0.5">MCQ Correct</div>
+                        </div>
+                        <div className="bg-white/10 backdrop-blur-sm border border-rose-400/30 rounded-xl p-3 text-center min-w-[100px]">
+                          <div className="text-xl font-black text-rose-300">{totalWrongAcross}</div>
+                          <div className="text-[10px] uppercase font-bold text-rose-200 mt-0.5">MCQ Wrong</div>
+                        </div>
+                        <div className="bg-white/10 backdrop-blur-sm border border-amber-400/30 rounded-xl p-3 text-center min-w-[100px]">
+                          <div className="text-xl font-black text-amber-300">{totalMarksObtained}/{totalMarksPossible}</div>
+                          <div className="text-[10px] uppercase font-bold text-amber-200 mt-0.5">Total Marks</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -344,45 +374,72 @@ const ExamStudentMarks = () => {
                       <tr>
                         <th className="px-4 py-3 text-center w-12">#</th>
                         <th className="px-4 py-3">Subject / Paper Name</th>
-                        <th className="px-4 py-3 text-center">Answered Questions</th>
+                        <th className="px-4 py-3 text-center">Attempted</th>
+                        <th className="px-4 py-3 text-center text-green-700">MCQ Correct</th>
+                        <th className="px-4 py-3 text-center text-red-700">MCQ Wrong</th>
+                        <th className="px-4 py-3 text-center text-blue-700">Marks</th>
                         <th className="px-4 py-3 text-center">Status</th>
                         <th className="px-4 py-3">Submission Date & Time</th>
                         <th className="px-4 py-3 text-center">View Paper</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-xs">
-                      {currentStudentGroup.attempts.map((attempt, idx) => (
-                        <tr key={attempt._id} className="hover:bg-blue-50/40 transition-colors">
-                          <td className="px-4 py-3 text-center font-bold text-gray-400">{idx + 1}</td>
-                          <td className="px-4 py-3 font-bold text-gray-900 text-sm">
-                            {getSubjectName(attempt)}
-                          </td>
-                          <td className="px-4 py-3 text-center font-bold text-gray-700">
-                            <span className="px-2.5 py-1 bg-gray-100 rounded-md">
-                              {attempt.answeredCount || 0} / {attempt.totalQuestions || 0}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black ${attempt.isSubmitted ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                              {attempt.isSubmitted ? <CheckCircle2 size={12} /> : <Clock size={12} />}
-                              {attempt.isSubmitted ? 'Submitted' : 'Draft / In Progress'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-gray-600 font-medium">
-                            {formatDateTime(attempt.submittedAt || attempt.lastSavedAt)}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/master/exam-student-marks/${attempt._id}`)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition"
-                              title="Open Answer Sheet / Paper"
-                            >
-                              <Eye size={14} /> View Paper
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {currentStudentGroup.attempts.map((attempt, idx) => {
+                        const score = attempt.score || {};
+                        const correctCount = score.mcqCorrectCount ?? '-';
+                        const wrongCount = score.mcqWrongCount ?? '-';
+                        const marksText = score.totalMarksPossible !== undefined 
+                          ? `${score.totalMarksObtained || 0} / ${score.totalMarksPossible}`
+                          : '-';
+
+                        return (
+                          <tr key={attempt._id} className="hover:bg-blue-50/40 transition-colors">
+                            <td className="px-4 py-3 text-center font-bold text-gray-400">{idx + 1}</td>
+                            <td className="px-4 py-3 font-bold text-gray-900 text-sm">
+                              {getSubjectName(attempt)}
+                            </td>
+                            <td className="px-4 py-3 text-center font-bold text-gray-700">
+                              <span className="px-2.5 py-1 bg-gray-100 rounded-md">
+                                {attempt.answeredCount || 0} / {attempt.totalQuestions || 0}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center font-bold">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">
+                                <CheckCircle size={12} /> {correctCount}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center font-bold">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200">
+                                <XCircle size={12} /> {wrongCount}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center font-bold">
+                              <span className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 font-black border border-blue-200">
+                                {marksText}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black ${attempt.isSubmitted ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {attempt.isSubmitted ? <CheckCircle2 size={12} /> : <Clock size={12} />}
+                                {attempt.isSubmitted ? 'Submitted' : 'Draft / In Progress'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 font-medium">
+                              {formatDateTime(attempt.submittedAt || attempt.lastSavedAt)}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/master/exam-student-marks/${attempt._id}`)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition"
+                                title="Open Answer Sheet / Paper"
+                              >
+                                <Eye size={14} /> View Paper
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -460,15 +517,15 @@ const ExamStudentMarks = () => {
 
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
-                    <thead className="bg-slate-100 text-left text-[11px] font-bold uppercase text-gray-600">
+                    <thead className="bg-slate-100 text-left text-[11px] font-bold uppercase text-gray-600 tracking-wider">
                       <tr>
-                        <th className="px-4 py-3 text-center w-12">#</th>
-                        <th className="px-4 py-3">Reg No</th>
-                        <th className="px-4 py-3">Student Name</th>
-                        <th className="px-4 py-3">Contact / Mobile</th>
-                        <th className="px-4 py-3">Branch</th>
-                        <th className="px-4 py-3 text-center">Papers / Attempts</th>
-                        <th className="px-4 py-3 text-center">Action</th>
+                        <th className="px-4 py-3.5 text-center w-12">#</th>
+                        <th className="px-4 py-3.5 whitespace-nowrap">Reg No</th>
+                        <th className="px-4 py-3.5 whitespace-nowrap">Student Name</th>
+                        <th className="px-4 py-3.5 whitespace-nowrap">Contact / Mobile</th>
+                        <th className="px-4 py-3.5 whitespace-nowrap">Branch</th>
+                        <th className="px-4 py-3.5 text-center whitespace-nowrap">Papers / Attempts</th>
+                        <th className="px-4 py-3.5 text-center whitespace-nowrap">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-xs">
@@ -481,20 +538,20 @@ const ExamStudentMarks = () => {
                           return (
                             <tr key={s.studentId || idx} className="hover:bg-blue-50/40 transition-colors">
                               <td className="px-4 py-3 text-center font-bold text-gray-400">{idx + 1}</td>
-                              <td className="px-4 py-3 font-mono font-bold text-gray-700">{student?.regNo || '-'}</td>
-                              <td className="px-4 py-3 font-bold text-primary text-sm">{student?.name || 'Student'}</td>
-                              <td className="px-4 py-3 text-gray-600 font-medium">{student?.mobile || '-'}</td>
-                              <td className="px-4 py-3 text-gray-600">{student?.branchName || '-'}</td>
-                              <td className="px-4 py-3 text-center">
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${submittedCount === totalAttempts ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+                              <td className="px-4 py-3 font-mono font-bold text-gray-700 whitespace-nowrap">{student?.regNo || '-'}</td>
+                              <td className="px-4 py-3 font-bold text-primary text-sm whitespace-nowrap">{student?.name || 'Student'}</td>
+                              <td className="px-4 py-3 text-gray-600 font-medium whitespace-nowrap">{student?.mobile || '-'}</td>
+                              <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{student?.branchName || '-'}</td>
+                              <td className="px-4 py-3 text-center whitespace-nowrap">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${submittedCount === totalAttempts ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
                                   {submittedCount}/{totalAttempts} Submitted
                                 </span>
                               </td>
-                              <td className="px-4 py-3 text-center">
+                              <td className="px-4 py-3 text-center whitespace-nowrap">
                                 <button
                                   type="button"
                                   onClick={() => handleSelectStudent(s.studentId)}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition"
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all"
                                   title="View Student Subject Marks"
                                 >
                                   <Eye size={14} /> View Marks
