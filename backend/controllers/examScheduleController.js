@@ -834,11 +834,28 @@ const buildAttemptReviewDetail = async (attempt) => {
         ? attempt.assignedQuestionAnswers
         : (Array.isArray(subjectPaper?.questionAnswers) ? subjectPaper.questionAnswers : []);
 
+    // Helper to resolve chapter name/no for legacy attempts if not directly on assignedMcq
+    const findChapterForQuestion = (qText) => {
+        if (!subjectPaper?.chapters || !qText) return null;
+        for (const ch of subjectPaper.chapters) {
+            const hasMcq = (ch.mcqs || []).some((m) => (m.question || '').trim() === qText.trim());
+            const hasQa = (ch.questionAnswers || []).some((qa) => (qa.question || '').trim() === qText.trim());
+            if (hasMcq || hasQa) {
+                return { chapterNo: ch.chapterNo || '', chapterName: ch.chapterName || '' };
+            }
+        }
+        return null;
+    };
+
     const mcqs = sourceMcqs.map((mcq, index) => {
         const questionIndex = index + 1;
         const answer = mcqAnswerMap.get(questionIndex);
         const correctOption = getMcqCorrectOptionLetter(mcq);
         const selectedOption = answer?.selectedOption || '';
+        const fallbackCh = (!mcq.chapterName && !mcq.chapterNo) ? findChapterForQuestion(mcq.question) : null;
+        const chapterNo = mcq.chapterNo || fallbackCh?.chapterNo || '';
+        const chapterName = mcq.chapterName || fallbackCh?.chapterName || '';
+
         return {
             type: 'mcq',
             questionIndex,
@@ -848,6 +865,8 @@ const buildAttemptReviewDetail = async (attempt) => {
             correctOption,
             marks: mcq.marks || 0,
             isCorrect: Boolean(selectedOption && correctOption && normalizeAnswerText(selectedOption) === normalizeAnswerText(correctOption)),
+            chapterNo,
+            chapterName,
             savedAt: answer?.savedAt || null
         };
     });
@@ -855,6 +874,10 @@ const buildAttemptReviewDetail = async (attempt) => {
     const questionAnswers = sourceQuestionAnswers.map((qa, index) => {
         const questionIndex = index + 1;
         const answer = qaAnswerMap.get(questionIndex);
+        const fallbackCh = (!qa.chapterName && !qa.chapterNo) ? findChapterForQuestion(qa.question) : null;
+        const chapterNo = qa.chapterNo || fallbackCh?.chapterNo || '';
+        const chapterName = qa.chapterName || fallbackCh?.chapterName || '';
+
         return {
             type: 'qa',
             questionIndex,
@@ -862,6 +885,8 @@ const buildAttemptReviewDetail = async (attempt) => {
             expectedAnswer: qa.answer || '',
             answerText: answer?.answerText || '',
             marks: qa.marks || 0,
+            chapterNo,
+            chapterName,
             savedAt: answer?.savedAt || null
         };
     });

@@ -78,7 +78,24 @@ const ExamStudentMarksDetail = () => {
               <div className="space-y-3">
                 {detail.mcqs?.length ? detail.mcqs.map((q) => (
                   <div key={`mcq-${q.questionIndex}`} className="rounded-lg border p-4">
-                    <div className="flex justify-between gap-3"><p className="font-bold text-gray-900">{q.questionIndex}. {q.question}</p><span className={`h-fit rounded-full px-2 py-1 text-[10px] font-black ${q.isCorrect ? 'bg-green-100 text-green-700' : q.selectedOption ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{q.isCorrect ? 'Correct' : q.selectedOption ? 'Wrong' : 'Not Answered'}</span></div>
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          {(q.chapterNo || q.chapterName) && (
+                            <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[11px] font-extrabold text-amber-800 border border-amber-300">
+                              Ch {q.chapterNo ? `${q.chapterNo}: ` : ''}{q.chapterName || 'Chapter'}
+                            </span>
+                          )}
+                          <span className="text-[11px] font-bold text-gray-500">
+                            {q.marks || 1} mark{(q.marks || 1) > 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <p className="font-bold text-gray-900">{q.questionIndex}. {q.question}</p>
+                      </div>
+                      <span className={`h-fit self-start rounded-full px-2.5 py-1 text-[10px] font-black shrink-0 ${q.isCorrect ? 'bg-green-100 text-green-700 border border-green-200' : q.selectedOption ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
+                        {q.isCorrect ? 'Correct' : q.selectedOption ? 'Wrong' : 'Not Answered'}
+                      </span>
+                    </div>
                     <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">{(q.options || []).map((option, idx) => { const letter = String.fromCharCode(65 + idx); const isSelected = q.selectedOption === letter; const isCorrect = q.correctOption === letter; return <div key={letter} className={`rounded border px-3 py-2 text-sm ${isCorrect ? 'border-green-400 bg-green-50 font-bold text-green-800' : isSelected ? 'border-red-400 bg-red-50 font-bold text-red-800' : 'bg-gray-50'}`}><span>{letter}. {option}</span>{isSelected && <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-[10px] font-black uppercase text-blue-700">Selected</span>}{isCorrect && <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-[10px] font-black uppercase text-green-700">Correct</span>}</div>; })}</div>
                     <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
                       <div className={`rounded-lg border p-3 ${q.isCorrect ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
@@ -100,6 +117,16 @@ const ExamStudentMarksDetail = () => {
               <div className="space-y-3">
                 {detail.questionAnswers?.length ? detail.questionAnswers.map((q) => (
                   <div key={`qa-${q.questionIndex}`} className="rounded-lg border p-4">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      {(q.chapterNo || q.chapterName) && (
+                        <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[11px] font-extrabold text-amber-800 border border-amber-300">
+                          Ch {q.chapterNo ? `${q.chapterNo}: ` : ''}{q.chapterName || 'Chapter'}
+                        </span>
+                      )}
+                      <span className="text-[11px] font-bold text-gray-500">
+                        {q.marks || 1} mark{(q.marks || 1) > 1 ? 's' : ''}
+                      </span>
+                    </div>
                     <p className="font-bold text-gray-900">{q.questionIndex}. {q.question}</p>
                     <div className="mt-3 rounded-lg border bg-blue-50 p-3"><div className="text-[10px] font-black uppercase text-blue-700">Student Answer</div><p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{q.answerText || '-'}</p></div>
                     <div className="mt-3 rounded-lg border bg-green-50 p-3"><div className="text-[10px] font-black uppercase text-green-700">Expected Answer</div><p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{q.expectedAnswer || '-'}</p></div>

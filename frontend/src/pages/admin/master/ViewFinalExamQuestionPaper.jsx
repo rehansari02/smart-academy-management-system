@@ -25,6 +25,7 @@ const ViewFinalExamQuestionPaper = () => {
   const [paper, setPaper] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [viewMode, setViewMode] = useState(searchParams.get('viewMode') || 'mix'); // 'mix' or 'chapters'
 
   useEffect(() => {
     const fetchPaper = async () => {
@@ -67,7 +68,9 @@ const ViewFinalExamQuestionPaper = () => {
     : (paper.subjects || []);
   const firstSubject = visibleSubjects[0] || paper.subjects?.[0];
 
-  const returnPath = id
+  const returnPath = id && subjectId
+    ? `/master/final-exam-question-paper/subjects/${id}/chapters/${subjectId}`
+    : id
     ? `/master/final-exam-question-paper/subjects/${id}`
     : '/master/final-exam-question-paper';
 
@@ -101,11 +104,36 @@ const ViewFinalExamQuestionPaper = () => {
       `}</style>
 
       <div className="print:hidden sticky top-20 z-20 bg-white border-b shadow-sm">
-        <div className="container mx-auto p-3 flex justify-between items-center gap-3">
+        <div className="container mx-auto p-3 flex flex-wrap justify-between items-center gap-3">
           <button onClick={() => navigate(returnPath)} className="border border-gray-300 px-4 py-2 rounded text-sm font-bold flex items-center gap-2 hover:bg-gray-50">
-            <ArrowLeft size={16} /> Back To Subjects
+            <ArrowLeft size={16} /> Back
           </button>
-          <button onClick={() => window.print()} className="bg-primary text-white px-5 py-2 rounded text-sm font-bold flex items-center gap-2 hover:bg-blue-800">
+
+          {/* View Mode Toggle */}
+          <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-200">
+            <button
+              onClick={() => setViewMode('mix')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                viewMode === 'mix'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Combined Mix Paper (All Chapters)
+            </button>
+            <button
+              onClick={() => setViewMode('chapters')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                viewMode === 'chapters'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Chapter-Wise View
+            </button>
+          </div>
+
+          <button onClick={() => window.print()} className="bg-primary text-white px-5 py-2 rounded text-sm font-bold flex items-center gap-2 hover:bg-blue-800 shadow-xs">
             <Printer size={17} /> Print
           </button>
         </div>
@@ -141,69 +169,171 @@ const ViewFinalExamQuestionPaper = () => {
         </header>
 
         <section className="print-content p-6">
-          {visibleSubjects.map((subjectRow, subjectIndex) => (
-            <div key={subjectIndex} className="print-break mb-8">
-              <div className="print-subject-box bg-gray-100 border px-4 py-2 mb-4">
-                <h3 className="text-lg font-bold text-gray-900">
-                  Subject: {getSubjectName(subjectRow)}
-                </h3>
-                <p className="text-sm text-gray-700 mt-1">
-                  <span className="font-bold">Time Duration:</span> {subjectRow.duration || '________________'}
-                </p>
-              </div>
+          {visibleSubjects.map((subjectRow, subjectIndex) => {
+            const allMcqs = [
+              ...((subjectRow.chapters || []).flatMap((ch) =>
+                (ch.mcqs || []).map((m) => ({ ...m, chapterTag: `Ch ${ch.chapterNo}: ${ch.chapterName}` }))
+              )),
+              ...(subjectRow.mcqs || []).map((m) => ({ ...m, chapterTag: 'General / Mix' }))
+            ];
+            const allQa = [
+              ...((subjectRow.chapters || []).flatMap((ch) =>
+                (ch.questionAnswers || []).map((qa) => ({ ...qa, chapterTag: `Ch ${ch.chapterNo}: ${ch.chapterName}` }))
+              )),
+              ...(subjectRow.questionAnswers || []).map((qa) => ({ ...qa, chapterTag: 'General / Mix' }))
+            ];
+            const hasChapters = (subjectRow.chapters || []).some((ch) => (ch.mcqs?.length || 0) > 0);
 
-              {subjectRow.mcqs?.length > 0 && (
-                <div className="mb-6">
-                  <h4 className="print-section-title text-sm font-black uppercase text-blue-800 mb-3 flex items-center justify-between gap-3">
-                    <span>A. MCQ Questions</span>
-                    <span className="text-black font-black normal-case">
-                      {sumMarks(subjectRow.mcqs)} marks, {getEachMarksText(subjectRow.mcqs)}
-                    </span>
-                  </h4>
-                  <ol className="print-questions list-decimal ml-6 space-y-4 text-sm text-gray-900">
-                    {subjectRow.mcqs.map((mcq, index) => (
-                      <li key={index} className="pl-1">
-                        <div className="font-semibold">
-                          {mcq.question}
+            return (
+              <div key={subjectIndex} className="print-break mb-8">
+                <div className="print-subject-box bg-gray-100 border px-4 py-2 mb-4">
+                  <h3 className="text-lg font-bold text-gray-900">
+                    Subject: {getSubjectName(subjectRow)}
+                  </h3>
+                  <p className="text-sm text-gray-700 mt-1">
+                    <span className="font-bold">Time Duration:</span> {subjectRow.duration || '________________'}
+                  </p>
+                </div>
+
+                {/* Combined Mix View (All Chapters Combined) */}
+                {viewMode === 'mix' ? (
+                  allMcqs.length > 0 ? (
+                    <div className="mb-6">
+                      <h4 className="print-section-title text-sm font-black uppercase text-blue-800 mb-3 flex items-center justify-between gap-3 border-b pb-2">
+                        <span>A. Combined Multiple Choice Questions (All Chapters)</span>
+                        <span className="text-black font-black normal-case">
+                          {sumMarks(allMcqs)} marks, {allMcqs.length} questions ({getEachMarksText(allMcqs)})
+                        </span>
+                      </h4>
+                      <ol className="print-questions list-decimal ml-6 space-y-4 text-sm text-gray-900">
+                        {allMcqs.map((mcq, index) => (
+                          <li key={index} className="pl-1">
+                            <div className="font-semibold flex items-start justify-between gap-2">
+                              <span>{mcq.question}</span>
+                              {mcq.chapterTag && (
+                                <span className="print:hidden text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded shrink-0">
+                                  {mcq.chapterTag}
+                                </span>
+                              )}
+                            </div>
+                            <div className="print-options grid grid-cols-1 md:grid-cols-2 gap-1 mt-2 text-gray-800">
+                              {(mcq.options || []).map((option, optionIndex) => (
+                                <div key={optionIndex}>{String.fromCharCode(65 + optionIndex)}. {option}</div>
+                              ))}
+                            </div>
+                            {mcq.correctAnswer && (
+                              <div className="print:hidden text-xs text-green-700 mt-1 font-semibold">Answer: {mcq.correctAnswer}</div>
+                            )}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-gray-400 text-sm">No MCQs found.</div>
+                  )
+                ) : (
+                  /* Chapter-wise View */
+                  hasChapters ? (
+                    <div className="space-y-6">
+                      {(subjectRow.chapters || []).filter((ch) => (ch.mcqs?.length || 0) > 0).map((ch, chIdx) => (
+                        <div key={ch._id || chIdx} className="border-b pb-4">
+                          <h4 className="text-sm font-black uppercase text-blue-900 bg-blue-50 px-3 py-1.5 rounded mb-3">
+                            Chapter {ch.chapterNo}: {ch.chapterName} ({ch.mcqs.length} MCQs)
+                          </h4>
+                          <ol className="print-questions list-decimal ml-6 space-y-4 text-sm text-gray-900">
+                            {ch.mcqs.map((mcq, index) => (
+                              <li key={index} className="pl-1">
+                                <div className="font-semibold">{mcq.question}</div>
+                                <div className="print-options grid grid-cols-1 md:grid-cols-2 gap-1 mt-2 text-gray-800">
+                                  {(mcq.options || []).map((option, optionIndex) => (
+                                    <div key={optionIndex}>{String.fromCharCode(65 + optionIndex)}. {option}</div>
+                                  ))}
+                                </div>
+                                {mcq.correctAnswer && (
+                                  <div className="print:hidden text-xs text-green-700 mt-1">Answer: {mcq.correctAnswer}</div>
+                                )}
+                              </li>
+                            ))}
+                          </ol>
                         </div>
-                        <div className="print-options grid grid-cols-1 md:grid-cols-2 gap-1 mt-2 text-gray-800">
-                          {(mcq.options || []).map((option, optionIndex) => (
-                            <div key={optionIndex}>{String.fromCharCode(65 + optionIndex)}. {option}</div>
+                      ))}
+
+                      {/* Unassigned Mix questions if any */}
+                      {(subjectRow.mcqs?.length || 0) > 0 && (
+                        <div className="border-b pb-4">
+                          <h4 className="text-sm font-black uppercase text-amber-900 bg-amber-50 px-3 py-1.5 rounded mb-3">
+                            General / Mix Questions ({subjectRow.mcqs.length} MCQs)
+                          </h4>
+                          <ol className="print-questions list-decimal ml-6 space-y-4 text-sm text-gray-900">
+                            {subjectRow.mcqs.map((mcq, index) => (
+                              <li key={index} className="pl-1">
+                                <div className="font-semibold">{mcq.question}</div>
+                                <div className="print-options grid grid-cols-1 md:grid-cols-2 gap-1 mt-2 text-gray-800">
+                                  {(mcq.options || []).map((option, optionIndex) => (
+                                    <div key={optionIndex}>{String.fromCharCode(65 + optionIndex)}. {option}</div>
+                                  ))}
+                                </div>
+                                {mcq.correctAnswer && (
+                                  <div className="print:hidden text-xs text-green-700 mt-1">Answer: {mcq.correctAnswer}</div>
+                                )}
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    allMcqs.length > 0 && (
+                      <div className="mb-6">
+                        <h4 className="print-section-title text-sm font-black uppercase text-blue-800 mb-3 flex items-center justify-between gap-3">
+                          <span>A. MCQ Questions</span>
+                          <span className="text-black font-black normal-case">
+                            {sumMarks(allMcqs)} marks, {getEachMarksText(allMcqs)}
+                          </span>
+                        </h4>
+                        <ol className="print-questions list-decimal ml-6 space-y-4 text-sm text-gray-900">
+                          {allMcqs.map((mcq, index) => (
+                            <li key={index} className="pl-1">
+                              <div className="font-semibold">{mcq.question}</div>
+                              <div className="print-options grid grid-cols-1 md:grid-cols-2 gap-1 mt-2 text-gray-800">
+                                {(mcq.options || []).map((option, optionIndex) => (
+                                  <div key={optionIndex}>{String.fromCharCode(65 + optionIndex)}. {option}</div>
+                                ))}
+                              </div>
+                              {mcq.correctAnswer && (
+                                <div className="print:hidden text-xs text-green-700 mt-1">Answer: {mcq.correctAnswer}</div>
+                              )}
+                            </li>
                           ))}
-                        </div>
-                        {mcq.correctAnswer && (
-                          <div className="print:hidden text-xs text-green-700 mt-1">Answer: {mcq.correctAnswer}</div>
-                        )}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
+                        </ol>
+                      </div>
+                    )
+                  )
+                )}
 
-              {subjectRow.questionAnswers?.length > 0 && (
-                <div>
-                  <h4 className="print-section-title text-sm font-black uppercase text-green-800 mb-3 flex items-center justify-between gap-3">
-                    <span>B. Question Answer</span>
-                    <span className="text-black font-black normal-case">
-                      {sumMarks(subjectRow.questionAnswers)} marks, {getEachMarksText(subjectRow.questionAnswers)}
-                    </span>
-                  </h4>
-                  <ol className="print-questions list-decimal ml-6 space-y-4 text-sm text-gray-900">
-                    {subjectRow.questionAnswers.map((qa, index) => (
-                      <li key={index} className="pl-1">
-                        <div className="font-semibold">
-                          {qa.question}
-                        </div>
-                        {qa.answer && (
-                          <div className="print:hidden text-gray-700 mt-1">Answer: {qa.answer}</div>
-                        )}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-            </div>
-          ))}
+                {allQa.length > 0 && (
+                  <div className="mt-6">
+                    <h4 className="print-section-title text-sm font-black uppercase text-green-800 mb-3 flex items-center justify-between gap-3">
+                      <span>B. Question Answer</span>
+                      <span className="text-black font-black normal-case">
+                        {sumMarks(allQa)} marks, {getEachMarksText(allQa)}
+                      </span>
+                    </h4>
+                    <ol className="print-questions list-decimal ml-6 space-y-4 text-sm text-gray-900">
+                      {allQa.map((qa, index) => (
+                        <li key={index} className="pl-1">
+                          <div className="font-semibold">{qa.question}</div>
+                          {qa.answer && (
+                            <div className="print:hidden text-gray-700 mt-1">Answer: {qa.answer}</div>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           {paper.remarks && (
             <div className="mt-6 border-t pt-4 text-sm text-gray-700">

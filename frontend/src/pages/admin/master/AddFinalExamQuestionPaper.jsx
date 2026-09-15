@@ -239,6 +239,15 @@ const AddFinalExamQuestionPaper = () => {
     }));
   }, [existingCoursePaper, subjectOptions]);
 
+  const availableSubjectOptions = useMemo(() => {
+    return subjectDropdownOptions.filter((s) => !s.isConfigured);
+  }, [subjectDropdownOptions]);
+
+  const existingSubjectRow = useMemo(() => {
+    if (!existingCoursePaper || !form.subject) return null;
+    return (existingCoursePaper.subjects || []).find((row) => String(row.subject?._id || row.subject) === String(form.subject)) || null;
+  }, [existingCoursePaper, form.subject]);
+
   const linkedSubjectCourses = useMemo(() => {
     if (!form.subject) return [];
     return courses.filter((course) =>

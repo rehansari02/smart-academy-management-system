@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { ArrowLeft, Download, Edit, Eye, FileQuestion, Loader, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, Edit, Eye, FileQuestion, Layers, Loader, Plus, Printer, Trash2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { toast } from 'react-toastify';
 import { fetchFinalExamQuestionPapers, updateFinalExamQuestionPaper } from '../../../features/master/masterSlice';
@@ -19,7 +19,7 @@ const FinalExamQuestionPaperSubjects = () => {
   const dispatch = useDispatch();
   const { finalExamQuestionPapers, isLoading } = useSelector((state) => state.master);
   const { user } = useSelector((state) => state.auth);
-  const { add, edit, delete: canDelete } = useUserRights('Final Exam Question Paper');
+  const { add, delete: canDelete } = useUserRights('Final Exam Question Paper');
   const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
 
   useEffect(() => {
@@ -44,12 +44,20 @@ const FinalExamQuestionPaperSubjects = () => {
     const subjectName = getSubjectName(subjectRow);
     const wb = XLSX.utils.book_new();
 
-    // 1. MCQs Sheet
-    const mcqData = [
-      ['Question', 'Option 1', 'Option 2', 'Option 3', 'Option 4', 'Correct Answer', 'Marks']
+    // 1. Combine all MCQs across chapters & mix paper
+    const allMcqs = [
+      ...(subjectRow.mcqs || []).map((m) => ({ ...m, chapter: 'Mix / General' })),
+      ...((subjectRow.chapters || []).flatMap((ch) =>
+        (ch.mcqs || []).map((m) => ({ ...m, chapter: `Chapter ${ch.chapterNo}: ${ch.chapterName}` }))
+      ))
     ];
-    (subjectRow.mcqs || []).forEach((mcq) => {
+
+    const mcqData = [
+      ['Chapter', 'Question', 'Option 1', 'Option 2', 'Option 3', 'Option 4', 'Correct Answer', 'Marks']
+    ];
+    allMcqs.forEach((mcq) => {
       mcqData.push([
+        mcq.chapter || 'General',
         mcq.question || '',
         mcq.options?.[0] || '',
         mcq.options?.[1] || '',
@@ -61,22 +69,11 @@ const FinalExamQuestionPaperSubjects = () => {
     });
     const mcqWs = XLSX.utils.aoa_to_sheet(mcqData);
     mcqWs['!cols'] = [
-      { wch: 40 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 18 }, { wch: 8 }
+      { wch: 25 }, { wch: 40 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 18 }, { wch: 8 }
     ];
     XLSX.utils.book_append_sheet(wb, mcqWs, 'MCQs');
 
-    // 2. Q&A Sheet (if any)
-    if (subjectRow.questionAnswers?.length) {
-      const qaData = [['Question', 'Answer', 'Marks']];
-      subjectRow.questionAnswers.forEach((qa) => {
-        qaData.push([qa.question || '', qa.answer || '', qa.marks || 1]);
-      });
-      const qaWs = XLSX.utils.aoa_to_sheet(qaData);
-      qaWs['!cols'] = [{ wch: 45 }, { wch: 45 }, { wch: 8 }];
-      XLSX.utils.book_append_sheet(wb, qaWs, 'Question Answers');
-    }
-
-    const cleanFileName = `${courseName}_${subjectName}_Questions.xlsx`.replace(/[/\\?%*:|"<>]/g, '_');
+    const cleanFileName = `${courseName}_${subjectName}_All_Questions.xlsx`.replace(/[/\\?%*:|"<>]/g, '_');
     XLSX.writeFile(wb, cleanFileName);
     toast.success(`Downloaded questions for ${subjectName}`);
   };
@@ -108,7 +105,8 @@ const FinalExamQuestionPaperSubjects = () => {
           subject: getSubjectId(s),
           duration: s.duration || '',
           mcqs: s.mcqs || [],
-          questionAnswers: s.questionAnswers || []
+          questionAnswers: s.questionAnswers || [],
+          chapters: s.chapters || []
         }))
       }
     }));
@@ -149,14 +147,14 @@ const FinalExamQuestionPaperSubjects = () => {
 
   return (
     <FinalExamQuestionPaperAccessGate requiredAction="view">
-      <div className="container mx-auto p-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+      <div className="container mx-auto p-4 max-w-7xl">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6 bg-white p-5 rounded-xl border shadow-sm">
           <div>
-            <button onClick={() => navigate('/master/final-exam-question-paper')} className="border border-gray-300 bg-white text-gray-700 px-3.5 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 hover:bg-gray-50 mb-2 shadow-sm">
+            <button onClick={() => navigate('/master/final-exam-question-paper')} className="border border-gray-300 bg-white text-gray-700 px-3.5 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 hover:bg-gray-50 mb-2 shadow-xs">
               <ArrowLeft size={14} /> Back To Course List
             </button>
             <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Subject Question Papers</h1>
-            <p className="text-sm font-semibold text-blue-700 flex items-center gap-2">
+            <p className="text-sm font-semibold text-blue-700 flex items-center gap-2 mt-1">
               <FileQuestion size={16} /> {courseName}
               <span className="text-xs text-gray-400 font-normal">({validSubjects.length} subjects configured)</span>
             </p>
@@ -173,79 +171,84 @@ const FinalExamQuestionPaperSubjects = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow overflow-x-auto border border-gray-200">
+        <div className="bg-white rounded-xl shadow-sm overflow-x-auto border border-gray-200">
           <table className="w-full border-collapse min-w-[750px]">
             <thead>
               <tr className="bg-blue-600 text-white text-left text-xs uppercase tracking-wider">
                 <th className="p-3 border w-16 text-center">Sr No</th>
                 <th className="p-3 border">Subject Name</th>
-                <th className="p-3 border text-center">Duration</th>
-                <th className="p-3 border text-center">MCQ Count</th>
-                <th className="p-3 border text-center">Q&A Count</th>
-                <th className="p-3 border text-center">Total Marks</th>
-                <th className="p-3 border text-center w-48">Actions</th>
+                <th className="p-3 border text-center w-36">Chapters</th>
+                <th className="p-3 border text-center w-40">Total Questions</th>
+                <th className="p-3 border text-center w-28">Total Marks</th>
+                <th className="p-3 border text-center w-52">Actions</th>
               </tr>
             </thead>
             <tbody>
               {validSubjects.length ? validSubjects.map((subjectRow, index) => {
                 const subjectId = getSubjectId(subjectRow);
                 const subjectName = getSubjectName(subjectRow);
-                const mcqCount = subjectRow.mcqs?.length || 0;
-                const qaCount = subjectRow.questionAnswers?.length || 0;
-                const totalMarks = sumMarks(subjectRow.mcqs) + sumMarks(subjectRow.questionAnswers);
+                const chaptersCount = subjectRow.chapters?.length || 0;
+                const chapterMcqs = (subjectRow.chapters || []).reduce((acc, ch) => acc + (ch.mcqs?.length || 0), 0);
+                const mixMcqsCount = subjectRow.mcqs?.length || 0;
+                const totalMcqs = chapterMcqs + mixMcqsCount;
+                const qaCount = (subjectRow.questionAnswers?.length || 0) + (subjectRow.chapters || []).reduce((acc, ch) => acc + (ch.questionAnswers?.length || 0), 0);
+                const totalMarks = sumMarks(subjectRow.mcqs) + sumMarks(subjectRow.questionAnswers)
+                  + (subjectRow.chapters || []).reduce((acc, ch) => acc + sumMarks(ch.mcqs) + sumMarks(ch.questionAnswers), 0);
 
                 return (
                   <tr key={subjectId || index} className="hover:bg-blue-50 text-sm border-b border-gray-100">
                     <td className="p-3 border text-center font-medium text-gray-600">{index + 1}</td>
                     <td className="p-3 border">
-                      <div className="font-bold text-gray-900">{subjectName}</div>
-                    </td>
-                    <td className="p-3 border text-center text-gray-700 font-medium">
-                      {subjectRow.duration || '-'}
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/master/final-exam-question-paper/subjects/${paper._id}/chapters/${subjectId}`)}
+                        className="font-bold text-gray-900 hover:text-indigo-700 hover:underline text-left"
+                        title="Manage Chapters & Questions"
+                      >
+                        {subjectName}
+                      </button>
                     </td>
                     <td className="p-3 border text-center">
-                      <span className="inline-block bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded text-xs border border-blue-200">
-                        {mcqCount} MCQs
+                      <span className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 font-bold px-2.5 py-0.5 rounded-full text-xs border border-purple-200">
+                        <Layers size={13} /> {chaptersCount} Chapters
                       </span>
                     </td>
                     <td className="p-3 border text-center">
-                      <span className="inline-block bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded text-xs border border-emerald-200">
-                        {qaCount} Q&A
+                      <span className="inline-block bg-blue-50 text-blue-700 font-bold px-2.5 py-0.5 rounded text-xs border border-blue-200">
+                        {totalMcqs} MCQs {qaCount > 0 ? `| ${qaCount} Q&A` : ''}
                       </span>
                     </td>
                     <td className="p-3 border text-center font-bold text-gray-800">
                       {totalMarks} Marks
                     </td>
                     <td className="p-3 border">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {/* View / Print */}
+                      <div className="flex items-center justify-center gap-2">
+                        {/* View / Manage Chapters & MCQs */}
+                        <button
+                          onClick={() => navigate(`/master/final-exam-question-paper/subjects/${paper._id}/chapters/${subjectId}`)}
+                          className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs"
+                          title="Manage Chapters & MCQs"
+                        >
+                          <Eye size={14} /> Chapters
+                        </button>
+
+                        {/* View / Print Full Subject Paper */}
                         <button
                           onClick={() => navigate(`/master/final-exam-question-paper/view/${paper._id}?subjectId=${subjectId}`)}
                           className="p-1.5 rounded text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800"
-                          title="View / Print Subject Paper"
+                          title="View / Print Full Paper"
                         >
-                          <Eye size={17} />
+                          <Printer size={16} />
                         </button>
-
-                        {/* Edit Subject Paper */}
-                        {edit && (
-                          <button
-                            onClick={() => navigate(`/master/final-exam-question-paper/add?courseId=${courseId}&subjectId=${subjectId}&paperId=${paper._id}`)}
-                            className="p-1.5 rounded text-blue-600 hover:bg-blue-50 hover:text-blue-800"
-                            title="Edit Questions"
-                          >
-                            <Edit size={17} />
-                          </button>
-                        )}
 
                         {/* Download Excel - Super Admin only */}
                         {isSuperAdmin && (
                           <button
                             onClick={() => downloadSubjectExcel(subjectRow)}
                             className="p-1.5 rounded text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800"
-                            title="Download Questions (Excel)"
+                            title="Download All Questions (Excel)"
                           >
-                            <Download size={17} />
+                            <Download size={16} />
                           </button>
                         )}
 
@@ -256,7 +259,7 @@ const FinalExamQuestionPaperSubjects = () => {
                             className="p-1.5 rounded text-red-600 hover:bg-red-50 hover:text-red-800"
                             title="Delete Subject Paper"
                           >
-                            <Trash2 size={17} />
+                            <Trash2 size={16} />
                           </button>
                         )}
                       </div>
@@ -265,7 +268,7 @@ const FinalExamQuestionPaperSubjects = () => {
                 );
               }) : (
                 <tr>
-                  <td colSpan="7" className="text-center py-10 text-gray-400">
+                  <td colSpan="6" className="text-center py-10 text-gray-400">
                     No subject question papers found in this course.
                   </td>
                 </tr>

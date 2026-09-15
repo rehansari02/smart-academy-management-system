@@ -17,13 +17,17 @@ const assignedMcqSchema = new mongoose.Schema({
     question: { type: String, required: true },
     options: [{ type: String, required: true }],
     correctAnswer: { type: String },
-    marks: { type: Number, default: 1 }
+    marks: { type: Number, default: 1 },
+    chapterNo: { type: String, default: '' },
+    chapterName: { type: String, default: '' }
 }, { _id: false });
 
 const assignedQaSchema = new mongoose.Schema({
     question: { type: String, required: true },
     answer: { type: String },
-    marks: { type: Number, default: 1 }
+    marks: { type: Number, default: 1 },
+    chapterNo: { type: String, default: '' },
+    chapterName: { type: String, default: '' }
 }, { _id: false });
 
 const examAttemptSchema = new mongoose.Schema({

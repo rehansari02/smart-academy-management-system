@@ -21,13 +21,24 @@ const normalizeQuestionAnswers = (questions = []) => questions
         marks: Number(item.marks) || 1
     }));
 
+const normalizeChapters = (chapters = []) => (chapters || [])
+    .filter((ch) => ch && (String(ch.chapterName || '').trim() || String(ch.chapterNo || '').trim()))
+    .map((ch) => ({
+        _id: ch._id,
+        chapterNo: String(ch.chapterNo || '').trim() || '1',
+        chapterName: String(ch.chapterName || '').trim() || `Chapter ${ch.chapterNo || 1}`,
+        mcqs: normalizeMcqs(ch.mcqs),
+        questionAnswers: normalizeQuestionAnswers(ch.questionAnswers)
+    }));
+
 const normalizeSubjects = (subjects = []) => subjects
     .filter((item) => item?.subject)
     .map((item) => ({
         subject: item.subject,
         duration: String(item.duration || '').trim(),
         mcqs: normalizeMcqs(item.mcqs),
-        questionAnswers: normalizeQuestionAnswers(item.questionAnswers)
+        questionAnswers: normalizeQuestionAnswers(item.questionAnswers),
+        chapters: normalizeChapters(item.chapters)
     }));
 
 const getFinalExamQuestionPapers = asyncHandler(async (req, res) => {

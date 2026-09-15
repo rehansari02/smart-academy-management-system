@@ -13,6 +13,13 @@ const answerQuestionSchema = new mongoose.Schema({
     marks: { type: Number, default: 1 }
 }, { _id: true });
 
+const chapterSchema = new mongoose.Schema({
+    chapterNo: { type: String, default: '1' },
+    chapterName: { type: String, required: true },
+    mcqs: { type: [mcqQuestionSchema], default: [] },
+    questionAnswers: { type: [answerQuestionSchema], default: [] }
+}, { _id: true });
+
 const subjectPaperSchema = new mongoose.Schema({
     subject: {
         type: mongoose.Schema.Types.ObjectId,
@@ -21,7 +28,8 @@ const subjectPaperSchema = new mongoose.Schema({
     },
     duration: { type: String },
     mcqs: { type: [mcqQuestionSchema], default: [] },
-    questionAnswers: { type: [answerQuestionSchema], default: [] }
+    questionAnswers: { type: [answerQuestionSchema], default: [] },
+    chapters: { type: [chapterSchema], default: [] }
 }, { _id: false });
 
 const finalExamQuestionPaperSchema = new mongoose.Schema({

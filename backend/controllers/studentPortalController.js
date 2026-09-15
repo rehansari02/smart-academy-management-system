@@ -372,18 +372,39 @@ const serializeQuestionPaperSubject = (paper, subjectId) => {
     );
     if (!subjectRow) return null;
 
+    const allMcqs = [
+        ...(subjectRow.mcqs || []).map((m) => ({ ...m.toObject?.() || m, chapterNo: '', chapterName: '' })),
+        ...((subjectRow.chapters || []).flatMap((ch) =>
+            (ch.mcqs || []).map((m) => ({
+                ...m.toObject?.() || m,
+                chapterNo: ch.chapterNo || '',
+                chapterName: ch.chapterName || ''
+            }))
+        ))
+    ];
+    const allQa = [
+        ...(subjectRow.questionAnswers || []).map((q) => ({ ...q.toObject?.() || q, chapterNo: '', chapterName: '' })),
+        ...((subjectRow.chapters || []).flatMap((ch) =>
+            (ch.questionAnswers || []).map((q) => ({
+                ...q.toObject?.() || q,
+                chapterNo: ch.chapterNo || '',
+                chapterName: ch.chapterName || ''
+            }))
+        ))
+    ];
+
     return {
         subject: subjectRow.subject,
         duration: subjectRow.duration || '',
-        rawMcqs: subjectRow.mcqs || [],
-        rawQuestionAnswers: subjectRow.questionAnswers || [],
-        mcqs: (subjectRow.mcqs || []).map((mcq, index) => ({
+        rawMcqs: allMcqs,
+        rawQuestionAnswers: allQa,
+        mcqs: allMcqs.map((mcq, index) => ({
             questionId: `mcq-${index + 1}`,
             question: mcq.question || '',
             options: mcq.options || [],
             marks: Number(mcq.marks) || 1
         })),
-        questionAnswers: (subjectRow.questionAnswers || []).map((qa, index) => ({
+        questionAnswers: allQa.map((qa, index) => ({
             questionId: `qa-${index + 1}`,
             question: qa.question || '',
             marks: Number(qa.marks) || 1
@@ -1192,7 +1213,7 @@ const openStudentExamConduct = async (req, res) => {
         let assignedMcqs = existingAttempt?.assignedMcqs || [];
         let assignedQuestionAnswers = existingAttempt?.assignedQuestionAnswers || [];
 
-        // If no assigned questions yet for this student attempt, select 50 random MCQs from Question Bank
+        // If no assigned questions yet for this student attempt, select 50 random MCQs from Question Bank across chapters
         if (assignedMcqs.length === 0) {
             const rawMcqs = subjectPaper.rawMcqs || [];
             const MAX_MCQS = 50;
@@ -1211,13 +1232,17 @@ const openStudentExamConduct = async (req, res) => {
                 question: mcq.question || '',
                 options: mcq.options || [],
                 correctAnswer: mcq.correctAnswer || '',
-                marks: Number(mcq.marks) || 1
+                marks: Number(mcq.marks) || 1,
+                chapterNo: mcq.chapterNo || '',
+                chapterName: mcq.chapterName || ''
             }));
 
             assignedQuestionAnswers = (subjectPaper.rawQuestionAnswers || []).map((qa) => ({
                 question: qa.question || '',
                 answer: qa.answer || '',
-                marks: Number(qa.marks) || 1
+                marks: Number(qa.marks) || 1,
+                chapterNo: qa.chapterNo || '',
+                chapterName: qa.chapterName || ''
             }));
         }
 

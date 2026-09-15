@@ -85,6 +85,7 @@ const ExamStudentMarksDetail = lazy(() => import("./pages/admin/master/ExamStude
 const FinalExamQuestionPaper = lazy(() => import("./pages/admin/master/FinalExamQuestionPaper"));
 const AddFinalExamQuestionPaper = lazy(() => import("./pages/admin/master/AddFinalExamQuestionPaper"));
 const FinalExamQuestionPaperSubjects = lazy(() => import("./pages/admin/master/FinalExamQuestionPaperSubjects"));
+const FinalExamQuestionPaperChapters = lazy(() => import("./pages/admin/master/FinalExamQuestionPaperChapters"));
 const ViewFinalExamQuestionPaper = lazy(() => import("./pages/admin/master/ViewFinalExamQuestionPaper"));
 const ExamResult = lazy(() => import("./pages/admin/master/ExamResult"));
 const AddEditExamResult = lazy(() => import("./pages/admin/master/AddEditExamResult"));
@@ -428,6 +429,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <FinalExamQuestionPaperSubjects />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/master/final-exam-question-paper/subjects/:id/chapters/:subjectId"
+                element={
+                  <PrivateRoute>
+                    <FinalExamQuestionPaperChapters />
                   </PrivateRoute>
                 }
               />
