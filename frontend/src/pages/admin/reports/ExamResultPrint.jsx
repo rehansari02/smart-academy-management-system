@@ -249,36 +249,74 @@ const ExamResultPrint = () => {
   // Helper to get matching subject details (name + subtext) based on input
   const getSubjectDetails = (name, index) => {
     const rawName = String(name || "").trim();
-    const n = rawName.toUpperCase();
+    if (!rawName) return { name: "", subtext: "" };
 
-    if (n === "PROJECT") return { name: "PROJECT", subtext: "" };
-    if (n === "DISCIPLINE" || n === "DESCIPLINE") return { name: "DISCIPLINE", subtext: "" };
+    // Strip any existing trailing Roman numeral or numbers in parentheses e.g. "(I)", "(II)", "(V)", "(1)"
+    const cleanName = rawName
+      .replace(/\s*\(\s*(?:[IVXLCDM]+|\d+)\s*\)\s*$/i, "")
+      .trim();
+    const n = cleanName.toUpperCase();
 
-    const romanNumerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
-    const romanTag = romanNumerals[index] ? ` (${romanNumerals[index]})` : "";
-
-    const defaultsMap = {
-      BASIC: { name: "BASIC (I)", subtext: "Os-XP/Windows7, Dos, Word, Excel, Powerpoint" },
-      HTML: { name: "H.T.M.L. (II)", subtext: "Hyper Text Markup Language" },
-      DTP: { name: "DESKTOP PUBLISHING- D.T.P. (IV)", subtext: "Photoshop Cs3, Corel Draw, Pagemaker" },
-      INTERNET: { name: "INTERNET & SEMINAR (V)", subtext: "Internet & Seminar" },
-    };
-
-    if (n.includes("BASIC") && !n.includes("(")) return defaultsMap.BASIC;
-    if ((n.includes("HTML") || n.includes("MARKUP")) && !n.includes("(")) return defaultsMap.HTML;
-    if ((n.includes("DTP") || n.includes("DESKTOP PUBLISHING")) && !n.includes("(")) return defaultsMap.DTP;
-    if ((n.includes("INTERNET") || n.includes("SEMINAR")) && !n.includes("(")) return defaultsMap.INTERNET;
-
-    // Use actual subject name with dynamic Roman numeral if no specific tag present
-    let displayName = n;
-    if (!n.includes("(") && !n.includes(")") && n !== "PROJECT" && n !== "DISCIPLINE") {
-      displayName = `${n}${romanTag}`;
+    // Internal grading / non-exam modules do not have Roman numeral suffixes
+    if (n === "PROJECT" || n.includes("PROJECT")) {
+      return { name: "PROJECT", subtext: "" };
+    }
+    if (
+      n === "DISCIPLINE" ||
+      n === "DESCIPLINE" ||
+      n.includes("DISCIPLINE") ||
+      n.includes("DESCIPLINE")
+    ) {
+      return { name: "DISCIPLINE", subtext: "" };
     }
 
-    let subtext = "";
-    if (n.includes("TALLY")) subtext = "Tally.9, Tally ERP.9, Tally Prime";
+    // Dynamic Roman Numeral Serial based on the subject's position
+    const romanNumerals = [
+      "I",
+      "II",
+      "III",
+      "IV",
+      "V",
+      "VI",
+      "VII",
+      "VIII",
+      "IX",
+      "X",
+      "XI",
+      "XII",
+    ];
+    const romanTag = romanNumerals[index] ? ` (${romanNumerals[index]})` : "";
 
-    return { name: displayName, subtext };
+    let baseName = cleanName.toUpperCase();
+    let subtext = "";
+
+    if (n.includes("BASIC")) {
+      baseName = "BASIC";
+      subtext = "Os-XP/Windows7, Dos, Word, Excel, Powerpoint";
+    } else if (n.includes("HTML") || n.includes("MARKUP")) {
+      baseName = "H.T.M.L.";
+      subtext = "Hyper Text Markup Language";
+    } else if (n.includes("DTP") || n.includes("DESKTOP PUBLISHING")) {
+      baseName = "DESKTOP PUBLISHING- D.T.P.";
+      subtext = "Photoshop Cs3, Corel Draw, Pagemaker";
+    } else if (n.includes("INTERNET") || n.includes("SEMINAR")) {
+      baseName = "INTERNET & SEMINAR";
+      subtext = "Internet & Seminar";
+    } else if (n.includes("TALLY")) {
+      baseName = n.includes("PRIME") ? "TALLY PRIME" : "TALLY";
+      subtext = "Tally.9, Tally ERP.9, Tally Prime";
+    } else if (n.includes("FINANCIAL ACCOUNTING")) {
+      baseName = "FINANCIAL ACCOUNTING";
+      subtext = "Manual Accounting, GST, Inventory";
+    } else if (n.includes("PROGRAMMING")) {
+      baseName = "PROGRAMMING";
+      subtext = "C, C++ Programming";
+    }
+
+    return {
+      name: `${baseName}${romanTag}`,
+      subtext,
+    };
   };
 
   const formatMark = (val) => {
@@ -1401,11 +1439,11 @@ const ExamResultPrint = () => {
                   })
                 ) : (
                   <>
-                    <div>1- Basic</div>
-                    <div>2- Desktop Publishing &amp; (Modeling)</div>
-                    <div>3- Financial Accounting</div>
-                    <div>4- Programming in C, C++</div>
-                    <div>5- Internet &amp; Seminar</div>
+                    <div>1- BASIC (I)</div>
+                    <div>2- DESKTOP PUBLISHING- D.T.P. (II)</div>
+                    <div>3- FINANCIAL ACCOUNTING (III)</div>
+                    <div>4- PROGRAMMING (IV)</div>
+                    <div>5- INTERNET &amp; SEMINAR (V)</div>
                   </>
                 )}
               </div>
