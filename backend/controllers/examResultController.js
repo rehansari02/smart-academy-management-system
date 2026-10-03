@@ -154,30 +154,33 @@ const getStudentAttendanceSummary = async (studentId, exam) => {
 const getExamResults = asyncHandler(async (req, res) => {
     const { examId, batch, regNo, studentName, courseId, examName, branchId } = req.query;
 
-    let query = { isDeleted: false };
+    let query = { isDeleted: { $ne: true } };
 
-    if (examId) query.exam = examId;
-    if (courseId) query.course = courseId;
-    if (examName) {
-        const schedules = await ExamSchedule.find({ examName: { $regex: examName, $options: 'i' } }).select('_id');
+    if (examId && String(examId).trim()) query.exam = String(examId).trim();
+    if (courseId && String(courseId).trim()) query.course = String(courseId).trim();
+    if (examName && String(examName).trim()) {
+        const escaped = escapeRegex(String(examName).trim());
+        const schedules = await ExamSchedule.find({ examName: { $regex: escaped, $options: 'i' } }).select('_id');
         query.exam = { $in: schedules.map(s => s._id) };
     }
-    if (batch) query.batch = { $regex: batch, $options: 'i' };
-    if (req.query.studentId) query.student = req.query.studentId;
+    if (batch && String(batch).trim()) query.batch = { $regex: escapeRegex(String(batch).trim()), $options: 'i' };
+    if (req.query.studentId && String(req.query.studentId).trim()) query.student = String(req.query.studentId).trim();
     
     // Filter by Student details (requires looking up students first)
     if (regNo || studentName || branchId) {
-        let studentQuery = {};
-        if (regNo) studentQuery.regNo = { $regex: regNo, $options: 'i' };
-        if (studentName) {
+        let studentQuery = { isDeleted: { $ne: true } };
+        if (regNo && String(regNo).trim()) studentQuery.regNo = { $regex: escapeRegex(String(regNo).trim()), $options: 'i' };
+        if (studentName && String(studentName).trim()) {
+            const escapedName = escapeRegex(String(studentName).trim());
             studentQuery.$or = [
-                { firstName: { $regex: studentName, $options: 'i' } },
-                { lastName: { $regex: studentName, $options: 'i' } }
+                { firstName: { $regex: escapedName, $options: 'i' } },
+                { middleName: { $regex: escapedName, $options: 'i' } },
+                { lastName: { $regex: escapedName, $options: 'i' } }
             ];
         }
-        if (branchId) studentQuery.branchId = branchId;
+        if (branchId && String(branchId).trim()) studentQuery.branchId = String(branchId).trim();
         const students = await Student.find(studentQuery).select('_id');
-        query.student = { $in: students };
+        query.student = { $in: students.map(s => s._id) };
     }
 
     const results = await ExamResult.find(query)

@@ -2,7 +2,9 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
 import logo from '../assets/logo2.png';
-import stampImg from '../assets/stamp.png';
+import bhestanStampImg from '../assets/BHESTAN Smart Institute Seal.png';
+import godadraStampImg from '../assets/Godadra Smart Institute Circular Blue Seal.png';
+import defaultStampImg from '../assets/stamp.png';
 
 const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   const { user } = useSelector((state) => state.auth);
@@ -81,6 +83,43 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
     const branchName = String(name || '').trim();
     if (!branchName) return 'Main Branch';
     return /\bbranch$/i.test(branchName) ? branchName : `${branchName} Branch`;
+  };
+
+  const getStampImage = () => {
+    const candidates = [
+      branchInfo?.name,
+      receipt.student?.branchName,
+      receipt.branch?.name,
+      receipt.student?.branchId?.name,
+      receipt.branchName,
+      branchInfo?.address,
+      branchInfo?.city,
+      user?.branchDetails?.name,
+      user?.branchDetails?.address,
+      user?.branchName
+    ];
+
+    const branchText = candidates.filter(Boolean).join(' ').toLowerCase();
+
+    const branchIds = [
+      typeof receipt.branch === 'string' ? receipt.branch : receipt.branch?._id,
+      typeof receipt.student?.branchId === 'string' ? receipt.student?.branchId : receipt.student?.branchId?._id,
+      user?.branch,
+      user?.branchId
+    ].filter(Boolean).map(String);
+
+    const isGodadaraId = branchIds.includes('bbdfec9f4c34795332f0d738');
+    const isBhestanId = branchIds.includes('e4743ebfe7f863834609acc2');
+
+    if (isGodadaraId || branchText.includes('godad') || branchText.includes('godra')) {
+      return godadraStampImg;
+    }
+
+    if (isBhestanId || branchText.includes('bhestan') || branchText.includes('bhestn')) {
+      return bhestanStampImg;
+    }
+
+    return bhestanStampImg || defaultStampImg;
   };
 
   // Single Receipt markup
@@ -324,14 +363,14 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
           paddingBottom: '2px'
         }}>
           <img
-            src={stampImg}
+            src={getStampImage()}
             alt="Smart Institute Stamp"
             style={{
               width: '85px',
               height: '85px',
               objectFit: 'contain',
               display: 'block',
-              transform: 'rotate(-60deg)',
+              transform: 'rotate(-90deg)',
               transformOrigin: 'center center'
             }}
           />

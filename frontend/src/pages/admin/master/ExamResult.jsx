@@ -1,14 +1,15 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { 
   fetchExamSchedules, 
   fetchBatches, 
   fetchExamResults, 
+  fetchCourses,
   deleteExamResult 
 } from '../../../features/master/masterSlice';
 
-import { Search, RefreshCw, Edit, Printer, Award, Trash2, Plus } from 'lucide-react';
+import { Search, RefreshCw, Edit, Printer, Award, Trash2, Plus, X } from 'lucide-react';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
 
@@ -30,11 +31,12 @@ const formatCsrNumber = (result) => {
 const ExamResult = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { examSchedules, examResults, batches } = useSelector((state) => state.master);
+  const { examSchedules, examResults, batches, courses } = useSelector((state) => state.master);
   const { delete: canDelete } = useUserRights('Exam Result');
 
   // Local State for Filters
   const [filters, setFilters] = useState({ examName: '', courseId: '', studentId: '' });
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Search dropdown states
   const [isFilterExamDropdownOpen, setIsFilterExamDropdownOpen] = useState(false);
@@ -44,6 +46,11 @@ const ExamResult = () => {
   const [isFilterStudentDropdownOpen, setIsFilterStudentDropdownOpen] = useState(false);
   const [filterStudentSearch, setFilterStudentSearch] = useState('');
 
+  // Dropdown Refs for Click Outside
+  const examDropdownRef = useRef(null);
+  const courseDropdownRef = useRef(null);
+  const studentDropdownRef = useRef(null);
+
   // Pagination State
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
@@ -51,48 +58,157 @@ const ExamResult = () => {
   useEffect(() => {
     dispatch(fetchExamSchedules());
     dispatch(fetchBatches());
+    dispatch(fetchCourses());
     dispatch(fetchExamResults());
   }, [dispatch]);
 
-  const activeExamSchedules = useMemo(() => {
-    return examSchedules.filter(e => e.isActive && !e.isDeleted && e.course && e.examName && e.attendees && e.attendees.length > 0);
-  }, [examSchedules]);
+  // Click outside listener to close dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (examDropdownRef.current && !examDropdownRef.current.contains(event.target)) {
+        setIsFilterExamDropdownOpen(false);
+      }
+      if (courseDropdownRef.current && !courseDropdownRef.current.contains(event.target)) {
+        setIsFilterCourseDropdownOpen(false);
+      }
+      if (studentDropdownRef.current && !studentDropdownRef.current.contains(event.target)) {
+        setIsFilterStudentDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
+  // Unique Exam Names from Schedules AND Results
   const uniqueExamNames = useMemo(() => {
     const names = new Set();
-    activeExamSchedules.forEach(e => {
-      if (e.examName) names.add(e.examName);
+    (examSchedules || []).forEach(e => {
+      if (e?.examName && !e?.isDeleted) names.add(e.examName.trim());
     });
-    return Array.from(names);
-  }, [activeExamSchedules]);
+    (examResults || []).forEach(r => {
+      if (r?.exam?.examName) names.add(r.exam.examName.trim());
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [examSchedules, examResults]);
 
+  // Courses filtered by selected exam, or all courses if no exam selected
   const coursesForSelectedExamFilter = useMemo(() => {
     const coursesMap = new Map();
-    activeExamSchedules
-      .filter(e => !filters.examName || e.examName === filters.examName)
-      .forEach(e => {
-        if (e.course && e.course._id) {
-          coursesMap.set(e.course._id, e.course);
-        }
-      });
-    return Array.from(coursesMap.values());
-  }, [filters.examName, activeExamSchedules]);
 
+    if (filters.examName) {
+      const targetExam = filters.examName.trim().toLowerCase();
+      (examSchedules || [])
+        .filter(e => !e.isDeleted && e.examName?.trim().toLowerCase() === targetExam)
+        .forEach(e => {
+          if (e.course?._id) coursesMap.set(String(e.course._id), e.course);
+        });
+
+      (examResults || [])
+        .filter(r => r.exam?.examName?.trim().toLowerCase() === targetExam)
+        .forEach(r => {
+          if (r.course?._id) coursesMap.set(String(r.course._id), r.course);
+        });
+    } else {
+      (courses || []).forEach(c => {
+        if (c?._id && !c?.isDeleted) coursesMap.set(String(c._id), c);
+      });
+      (examResults || []).forEach(r => {
+        if (r.course?._id) coursesMap.set(String(r.course._id), r.course);
+      });
+      (examSchedules || []).forEach(e => {
+        if (e.course?._id && !e.isDeleted) coursesMap.set(String(e.course._id), e.course);
+      });
+    }
+
+    return Array.from(coursesMap.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [filters.examName, examSchedules, examResults, courses]);
+
+  // Students who have results matching current exam and course
   const studentsWithResultsFiltered = useMemo(() => {
     const studentsMap = new Map();
-    examResults.forEach(res => {
-      if (filters.examName && res.exam?.examName !== filters.examName) return;
-      if (filters.courseId && res.course?._id !== filters.courseId) return;
+    const targetExam = filters.examName ? filters.examName.trim().toLowerCase() : null;
+
+    (examResults || []).forEach(res => {
+      if (targetExam && res.exam?.examName?.trim().toLowerCase() !== targetExam) return;
+      if (filters.courseId && String(res.course?._id) !== String(filters.courseId)) return;
       if (res.student && res.student._id) {
-          studentsMap.set(res.student._id, res.student);
+        studentsMap.set(String(res.student._id), res.student);
       }
     });
-    return Array.from(studentsMap.values());
+
+    return Array.from(studentsMap.values()).sort((a, b) => {
+      const nameA = [a.firstName, a.lastName].filter(Boolean).join(' ');
+      const nameB = [b.firstName, b.lastName].filter(Boolean).join(' ');
+      return nameA.localeCompare(nameB);
+    });
   }, [examResults, filters.examName, filters.courseId]);
 
-  const onSearch = () => dispatch(fetchExamResults(filters));
+  const selectedStudent = useMemo(() => {
+    if (!filters.studentId) return null;
+    const fromFiltered = studentsWithResultsFiltered.find(s => String(s._id) === String(filters.studentId));
+    if (fromFiltered) return fromFiltered;
+    const fromResults = (examResults || []).find(r => String(r.student?._id) === String(filters.studentId));
+    return fromResults?.student || null;
+  }, [filters.studentId, studentsWithResultsFiltered, examResults]);
+
+  const selectedCourse = useMemo(() => {
+    if (!filters.courseId) return null;
+    return coursesForSelectedExamFilter.find(c => String(c._id) === String(filters.courseId))
+      || (courses || []).find(c => String(c._id) === String(filters.courseId))
+      || (examResults || []).find(r => String(r.course?._id) === String(filters.courseId))?.course
+      || null;
+  }, [filters.courseId, coursesForSelectedExamFilter, courses, examResults]);
+
+  // Filtered Exam Results for Display (Reactive client-side + server synced)
+  const filteredExamResults = useMemo(() => {
+    return (examResults || []).filter(res => {
+      if (filters.examName && res.exam?.examName?.trim().toLowerCase() !== filters.examName.trim().toLowerCase()) {
+        return false;
+      }
+      if (filters.courseId && String(res.course?._id) !== String(filters.courseId)) {
+        return false;
+      }
+      if (filters.studentId && String(res.student?._id) !== String(filters.studentId)) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const fullName = [res.student?.firstName, res.student?.middleName, res.student?.lastName].filter(Boolean).join(' ').toLowerCase();
+        const regNo = (res.student?.regNo || '').toLowerCase();
+        const enrollNo = (res.student?.enrollmentNo || '').toLowerCase();
+        const som = (res.somNumber || '').toLowerCase();
+        const csr = (res.csrNumber || res.certificateNumber || '').toLowerCase();
+        const batch = (res.batch || '').toLowerCase();
+        const courseName = (res.course?.name || '').toLowerCase();
+        const examName = (res.exam?.examName || '').toLowerCase();
+
+        const match = fullName.includes(q) || 
+                      regNo.includes(q) || 
+                      enrollNo.includes(q) || 
+                      som.includes(q) || 
+                      csr.includes(q) || 
+                      batch.includes(q) ||
+                      courseName.includes(q) ||
+                      examName.includes(q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [examResults, filters, searchQuery]);
+
+  const onSearch = () => {
+    setPage(1);
+    const queryParams = {};
+    if (filters.examName) queryParams.examName = filters.examName;
+    if (filters.courseId) queryParams.courseId = filters.courseId;
+    if (filters.studentId) queryParams.studentId = filters.studentId;
+    dispatch(fetchExamResults(queryParams));
+  };
+
   const onReset = () => {
     setFilters({ examName: '', courseId: '', studentId: '' });
+    setSearchQuery('');
+    setPage(1);
     dispatch(fetchExamResults());
   };
 
@@ -110,9 +226,12 @@ const ExamResult = () => {
     }
   };
 
-  // Client-side pagination
-  const paginatedData = examResults.slice((page - 1) * pageSize, page * pageSize);
-  const totalPages = Math.ceil(examResults.length / pageSize);
+  // Pagination on filtered results
+  const paginatedData = useMemo(() => {
+    return filteredExamResults.slice((page - 1) * pageSize, page * pageSize);
+  }, [filteredExamResults, page, pageSize]);
+
+  const totalPages = Math.ceil(filteredExamResults.length / pageSize) || 1;
 
   return (
     <div className="container mx-auto p-6">
@@ -131,7 +250,7 @@ const ExamResult = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               
               {/* Exam Name Search Dropdown */}
-              <div className="relative">
+              <div className="relative" ref={examDropdownRef}>
                   <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wider">Exam Name</label>
                   <div className="relative">
                       <button 
@@ -139,10 +258,25 @@ const ExamResult = () => {
                           onClick={() => setIsFilterExamDropdownOpen(!isFilterExamDropdownOpen)}
                           className="border p-2 rounded w-full text-left bg-white flex justify-between items-center text-sm min-h-[38px]"
                       >
-                          <span className={filters.examName ? 'text-gray-900 font-medium' : 'text-gray-400'}>
+                          <span className={`truncate mr-1 ${filters.examName ? 'text-gray-900 font-semibold' : 'text-gray-400'}`}>
                               {filters.examName || '-- All Exams --'}
                           </span>
-                          <span className="text-gray-400 text-xs">▼</span>
+                          <span className="flex items-center gap-1 shrink-0">
+                              {filters.examName && (
+                                  <span
+                                      onClick={(e) => {
+                                          e.stopPropagation();
+                                          setFilters(f => ({ ...f, examName: '', courseId: '', studentId: '' }));
+                                          setPage(1);
+                                      }}
+                                      className="hover:text-red-600 p-0.5 rounded cursor-pointer text-gray-400"
+                                      title="Clear Exam"
+                                  >
+                                      <X size={14} />
+                                  </span>
+                              )}
+                              <span className="text-gray-400 text-xs">▼</span>
+                          </span>
                       </button>
                       
                       {isFilterExamDropdownOpen && (
@@ -162,6 +296,7 @@ const ExamResult = () => {
                                           setFilters({...filters, examName: '', courseId: '', studentId: ''});
                                           setIsFilterExamDropdownOpen(false);
                                           setFilterExamSearch('');
+                                          setPage(1);
                                       }}
                                       className="p-2 text-xs hover:bg-blue-50 text-gray-500 cursor-pointer rounded italic"
                                   >
@@ -174,8 +309,9 @@ const ExamResult = () => {
                                               setFilters({...filters, examName: name, courseId: '', studentId: ''});
                                               setIsFilterExamDropdownOpen(false);
                                               setFilterExamSearch('');
+                                              setPage(1);
                                           }}
-                                          className="p-2 text-xs hover:bg-blue-50 text-gray-700 cursor-pointer rounded font-bold"
+                                          className={`p-2 text-xs hover:bg-blue-50 cursor-pointer rounded ${filters.examName === name ? 'bg-blue-50 text-primary font-bold' : 'text-gray-700 font-semibold'}`}
                                       >
                                           {name}
                                       </div>
@@ -187,7 +323,7 @@ const ExamResult = () => {
               </div>
 
               {/* Course Name Search Dropdown */}
-              <div className="relative">
+              <div className="relative" ref={courseDropdownRef}>
                   <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wider">Course Name</label>
                   <div className="relative">
                       <button 
@@ -195,10 +331,25 @@ const ExamResult = () => {
                           onClick={() => setIsFilterCourseDropdownOpen(!isFilterCourseDropdownOpen)}
                           className="border p-2 rounded w-full text-left bg-white flex justify-between items-center text-sm min-h-[38px]"
                       >
-                          <span className={filters.courseId ? 'text-gray-900 font-medium' : 'text-gray-400'}>
-                              {coursesForSelectedExamFilter.find(c => c._id === filters.courseId)?.name || '-- All Courses --'}
+                          <span className={`truncate mr-1 ${filters.courseId ? 'text-gray-900 font-semibold' : 'text-gray-400'}`}>
+                              {selectedCourse ? selectedCourse.name : '-- All Courses --'}
                           </span>
-                          <span className="text-gray-400 text-xs">▼</span>
+                          <span className="flex items-center gap-1 shrink-0">
+                              {filters.courseId && (
+                                  <span
+                                      onClick={(e) => {
+                                          e.stopPropagation();
+                                          setFilters(f => ({ ...f, courseId: '', studentId: '' }));
+                                          setPage(1);
+                                      }}
+                                      className="hover:text-red-600 p-0.5 rounded cursor-pointer text-gray-400"
+                                      title="Clear Course"
+                                  >
+                                      <X size={14} />
+                                  </span>
+                              )}
+                              <span className="text-gray-400 text-xs">▼</span>
+                          </span>
                       </button>
                       
                       {isFilterCourseDropdownOpen && (
@@ -218,20 +369,22 @@ const ExamResult = () => {
                                           setFilters({...filters, courseId: '', studentId: ''});
                                           setIsFilterCourseDropdownOpen(false);
                                           setFilterCourseSearch('');
+                                          setPage(1);
                                       }}
                                       className="p-2 text-xs hover:bg-blue-50 text-gray-500 cursor-pointer rounded italic"
                                   >
                                       -- All Courses --
                                   </div>
-                                  {coursesForSelectedExamFilter && coursesForSelectedExamFilter.filter(c => c.name.toLowerCase().includes(filterCourseSearch.toLowerCase())).map(c => (
+                                  {coursesForSelectedExamFilter && coursesForSelectedExamFilter.filter(c => (c.name || '').toLowerCase().includes(filterCourseSearch.toLowerCase())).map(c => (
                                       <div 
                                           key={c._id} 
                                           onClick={() => {
                                               setFilters({...filters, courseId: c._id, studentId: ''});
                                               setIsFilterCourseDropdownOpen(false);
                                               setFilterCourseSearch('');
+                                              setPage(1);
                                           }}
-                                          className="p-2 text-xs hover:bg-blue-50 text-gray-700 cursor-pointer rounded font-bold"
+                                          className={`p-2 text-xs hover:bg-blue-50 cursor-pointer rounded ${filters.courseId === c._id ? 'bg-blue-50 text-primary font-bold' : 'text-gray-700 font-semibold'}`}
                                       >
                                           {c.name}
                                       </div>
@@ -243,7 +396,7 @@ const ExamResult = () => {
               </div>
 
               {/* Student Name Search Dropdown */}
-              <div className="relative">
+              <div className="relative" ref={studentDropdownRef}>
                   <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wider">Student Name</label>
                   <div className="relative">
                       <button 
@@ -251,12 +404,27 @@ const ExamResult = () => {
                           onClick={() => setIsFilterStudentDropdownOpen(!isFilterStudentDropdownOpen)}
                           className="border p-2 rounded w-full text-left bg-white flex justify-between items-center text-sm min-h-[38px]"
                       >
-                          <span className={filters.studentId ? 'text-gray-900 font-medium' : 'text-gray-400'}>
-                              {studentsWithResultsFiltered.find(s => s._id === filters.studentId)
-                                  ? (() => { const s = studentsWithResultsFiltered.find(s => s._id === filters.studentId); return `${[s?.firstName, s?.middleName, s?.lastName].filter(Boolean).join(' ')} (${s?.regNo})`; })()
+                          <span className={`truncate mr-1 ${filters.studentId ? 'text-gray-900 font-semibold' : 'text-gray-400'}`}>
+                              {selectedStudent 
+                                  ? `${[selectedStudent.firstName, selectedStudent.middleName, selectedStudent.lastName].filter(Boolean).join(' ')} (${selectedStudent.regNo || ''})`
                                   : '-- All Students --'}
                           </span>
-                          <span className="text-gray-400 text-xs">▼</span>
+                          <span className="flex items-center gap-1 shrink-0">
+                              {filters.studentId && (
+                                  <span
+                                      onClick={(e) => {
+                                          e.stopPropagation();
+                                          setFilters(f => ({ ...f, studentId: '' }));
+                                          setPage(1);
+                                      }}
+                                      className="hover:text-red-600 p-0.5 rounded cursor-pointer text-gray-400"
+                                      title="Clear Student"
+                                  >
+                                      <X size={14} />
+                                  </span>
+                              )}
+                              <span className="text-gray-400 text-xs">▼</span>
+                          </span>
                       </button>
                       
                       {isFilterStudentDropdownOpen && (
@@ -276,13 +444,14 @@ const ExamResult = () => {
                                           setFilters({...filters, studentId: ''});
                                           setIsFilterStudentDropdownOpen(false);
                                           setFilterStudentSearch('');
+                                          setPage(1);
                                       }}
                                       className="p-2 text-xs hover:bg-blue-50 text-gray-500 cursor-pointer rounded italic"
                                   >
                                       -- All Students --
                                   </div>
                                   {studentsWithResultsFiltered && studentsWithResultsFiltered.filter(s => {
-                                      const fullName = `${s.firstName} ${s.lastName}`.toLowerCase();
+                                      const fullName = `${s.firstName || ''} ${s.lastName || ''}`.toLowerCase();
                                       const regNo = (s.regNo || '').toLowerCase();
                                       const search = filterStudentSearch.toLowerCase();
                                       return fullName.includes(search) || regNo.includes(search);
@@ -293,8 +462,9 @@ const ExamResult = () => {
                                               setFilters({...filters, studentId: student._id});
                                               setIsFilterStudentDropdownOpen(false);
                                               setFilterStudentSearch('');
+                                              setPage(1);
                                           }}
-                                          className="p-2 text-xs hover:bg-blue-50 text-gray-700 cursor-pointer rounded font-bold"
+                                          className={`p-2 text-xs hover:bg-blue-50 cursor-pointer rounded ${filters.studentId === student._id ? 'bg-blue-50 text-primary font-bold' : 'text-gray-700 font-semibold'}`}
                                       >
                                           {[student.firstName, student.middleName, student.lastName].filter(Boolean).join(' ')} ({student.regNo})
                                       </div>
@@ -310,6 +480,34 @@ const ExamResult = () => {
                   <button onClick={onSearch} className="bg-gray-900 text-white px-6 py-2 rounded font-bold hover:bg-black w-full transition-all flex items-center justify-center gap-2">
                       <Search size={18} /> Search
                   </button>
+              </div>
+          </div>
+
+          {/* Quick Search & Summary Row */}
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mt-4 pt-3 border-t border-gray-100">
+              <div className="relative w-full sm:w-96">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                      type="text"
+                      placeholder="Search by student, reg no, enrollment, SOM, CSR..."
+                      value={searchQuery}
+                      onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+                      className="border border-gray-200 pl-9 pr-8 py-1.5 rounded-lg text-xs w-full focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all font-medium"
+                  />
+                  {searchQuery && (
+                      <button
+                          onClick={() => { setSearchQuery(''); setPage(1); }}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                          <X size={14} />
+                      </button>
+                  )}
+              </div>
+              <div className="text-xs font-semibold text-gray-500 whitespace-nowrap self-end sm:self-center">
+                  Showing <span className="font-bold text-gray-800">{filteredExamResults.length}</span> results
+                  {filteredExamResults.length !== (examResults || []).length && (
+                      <span className="text-gray-400 font-normal"> (filtered from {examResults?.length || 0} total)</span>
+                  )}
               </div>
           </div>
       </div>
@@ -398,9 +596,12 @@ const ExamResult = () => {
         <div className="p-4 flex justify-between items-center bg-gray-50 border-t border-gray-100">
             <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Show</span>
-                <select className="border rounded-lg px-2 py-1 text-sm font-bold text-gray-600" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+                <select className="border rounded-lg px-2 py-1 text-sm font-bold text-gray-600" value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}>
                     <option value={10}>10</option><option value={20}>20</option><option value={50}>50</option>
                 </select>
+                <span className="text-xs text-gray-500 font-medium ml-2 hidden sm:inline">
+                    Showing {filteredExamResults.length === 0 ? 0 : (page - 1) * pageSize + 1} - {Math.min(page * pageSize, filteredExamResults.length)} of {filteredExamResults.length}
+                </span>
             </div>
             <div className="flex items-center gap-4">
                 <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="p-2 border rounded-lg bg-white shadow-sm disabled:opacity-50 hover:bg-gray-50 transition-colors">

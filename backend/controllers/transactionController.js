@@ -2586,4 +2586,10 @@ module.exports = {
   getStudentPaymentSummaries,
   getStudentPaymentHistory,
   generateReceiptReport,
+  getFeeCaps,
+  allocateReceiptPayments,
+  getReceiptLifecycleInfo,
+  resolveReceiptPurposeForPayment,
+  calculateLedgerFeeTotals,
+  calculateStudentPaymentSummary,
 };

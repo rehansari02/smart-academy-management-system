@@ -28,6 +28,53 @@ const ExamResultPrint = () => {
   const formatCertificateNumber = (somNumber) =>
     formatSomNumber(somNumber).replace(/^SOM-/i, "CSR-");
 
+  const monthMap = {
+    jan: "January", january: "January",
+    feb: "February", february: "February",
+    mar: "March", march: "March",
+    apr: "April", april: "April",
+    may: "May",
+    jun: "June", june: "June",
+    jul: "July", july: "July",
+    aug: "August", august: "August", ausust: "August",
+    sep: "September", sept: "September", september: "September",
+    oct: "October", october: "October",
+    nov: "November", november: "November",
+    dec: "December", december: "December",
+  };
+
+  const formatExamMonthYear = (name, fallbackDate) => {
+    const str = String(name || "").trim();
+    const match = str.match(
+      /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|ausust|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s*[-/]?\s*(\d{4}|\d{2})\b/i
+    );
+
+    if (match) {
+      const rawMonth = match[1].toLowerCase().replace(/\.$/, "");
+      const fullMonth =
+        monthMap[rawMonth] ||
+        rawMonth.charAt(0).toUpperCase() + rawMonth.slice(1).toLowerCase();
+      let year = match[2];
+      if (year.length === 2) {
+        year = "20" + year;
+      }
+      return `${fullMonth}-${year}`;
+    }
+
+    if (fallbackDate) {
+      const d = new Date(fallbackDate);
+      if (!isNaN(d.getTime())) {
+        const months = [
+          "January", "February", "March", "April", "May", "June",
+          "July", "August", "September", "October", "November", "December",
+        ];
+        return `${months[d.getMonth()]}-${d.getFullYear()}`;
+      }
+    }
+
+    return str || "September-2026";
+  };
+
   useEffect(() => {
     const fetchResult = async () => {
       try {
@@ -1102,7 +1149,10 @@ const ExamResultPrint = () => {
                           fontSize: botTableFontSize,
                         }}
                       >
-                        {exam?.examName || "JANUARY - 2019"}
+                        {formatExamMonthYear(
+                          exam?.examName,
+                          exam?.timeTable?.[0]?.date || result.issueDate
+                        )}
                       </td>
                       <td
                         className="td-blue"
