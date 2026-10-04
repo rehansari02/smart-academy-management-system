@@ -219,50 +219,47 @@ const sortReceiptsChronologically = (receipts = []) => [...receipts].sort((a, b)
 
 const getReceiptLifecycleInfo = (receipts = [], student = null) => {
   const receiptInfo = new Map();
-  let hasAdmission = false;
-  let hasRegistration = false;
-  let installmentNumber = 0;
+  const sorted = sortReceiptsChronologically(receipts);
   const contextStudent = student || receipts[0]?.student || {};
   const contextCourse = contextStudent?.course && typeof contextStudent.course === 'object'
     ? contextStudent.course
     : (receipts[0]?.course || {});
-  const admissionFee = Number(contextCourse?.admissionFees || contextStudent?.admissionFeeAmount || 0);
-  const registrationFee = Number(contextCourse?.registrationFees || 0);
+  const { admissionFee, registrationFee } = getFeeCaps(contextStudent, sorted);
 
-  sortReceiptsChronologically(receipts).forEach((receipt) => {
+  let hasAdmission = false;
+  let hasRegistration = false;
+  let accumulatedAdmission = 0;
+  let accumulatedRegistration = 0;
+  let installmentNumber = 0;
+
+  sorted.forEach((receipt, idx) => {
     const normalizedRemarks = (receipt.remarks || '').trim().toLowerCase();
-    const hasPurposeInRemarks = normalizedRemarks.includes('admission')
-      || normalizedRemarks.includes('registration')
-      || normalizedRemarks.includes('installment');
     const amount = getReceiptAmount(receipt);
-    let purpose = getReceiptPurpose(receipt);
+    const rawPurpose = receipt.receiptPurpose || (
+      normalizedRemarks.includes('admission') ? 'admission' :
+      normalizedRemarks.includes('registration') ? 'registration' : 'installment'
+    );
 
-    // Older receipts were created before purpose fields existed. Infer their two
-    // opening milestones from the configured fee amounts, then number the rest.
-    if (!hasPurposeInRemarks && !hasAdmission && admissionFee > 0 && amount === admissionFee) {
+    let purpose = rawPurpose;
+
+    // Milestone 1: Admission
+    if (!hasAdmission && (purpose === 'admission' || (!normalizedRemarks.includes('installment') && !normalizedRemarks.includes('registration') && idx === 0))) {
       purpose = 'admission';
-    } else if (!hasPurposeInRemarks && !hasRegistration && registrationFee > 0 && amount === registrationFee) {
+      hasAdmission = true;
+    }
+    // Milestone 2: Registration
+    else if (!hasRegistration && (purpose === 'registration' || (!normalizedRemarks.includes('installment') && idx === 1))) {
       purpose = 'registration';
+      hasRegistration = true;
     }
-    let displayInstallmentNumber = Number(receipt.displayInstallmentNumber || 0);
-
-    // Admission and registration are lifecycle milestones and should appear only
-    // once. Any later receipt carrying the same label is part of the installment
-    // stream (this also repairs histories created before receiptPurpose was saved).
-    if (purpose === "admission") {
-      if (hasAdmission) purpose = "installment";
-      else hasAdmission = true;
-    } else if (purpose === "registration") {
-      if (hasRegistration) purpose = "installment";
-      else hasRegistration = true;
+    // Milestone 3: Installment (line se 1, 2, 3...)
+    else {
+      purpose = 'installment';
     }
 
-    if (purpose === "installment") {
-      // Display numbers are derived from the chronological history so legacy
-      // stored values cannot create gaps such as starting from installment 2.
+    let displayInstallmentNumber = 0;
+    if (purpose === 'installment') {
       displayInstallmentNumber = ++installmentNumber;
-    } else {
-      displayInstallmentNumber = 0;
     }
 
     receiptInfo.set(receipt._id.toString(), {
@@ -273,18 +270,20 @@ const getReceiptLifecycleInfo = (receipts = [], student = null) => {
 
   return receiptInfo;
 };
+
 const getFeeCaps = (student, receipts = []) => {
   const firstReceipt = receipts[0] || {};
   const course = student?.course || firstReceipt.course || {};
-  const storedAdmissionFee = Number(student?.admissionFeeAmount || 0);
   const courseAdmissionFee = Number(course.admissionFees || 0);
-  const admissionFee = student?.isAdmissionFeesPaid && storedAdmissionFee > 0
-    ? storedAdmissionFee
-    : Math.max(courseAdmissionFee, storedAdmissionFee);
+  const admissionFee = courseAdmissionFee > 0 ? courseAdmissionFee : 500;
+
+  const courseRegFee = Number(course.registrationFees || 0);
+  const emiRegFee = Number(student?.emiDetails?.registrationFees || 0);
+  const registrationFee = emiRegFee > 0 ? emiRegFee : courseRegFee;
 
   return {
     admissionFee,
-    registrationFee: Number(course.registrationFees || 0)
+    registrationFee
   };
 };
 
@@ -303,9 +302,8 @@ const allocateReceiptPayments = (student, receipts = []) => {
   sortedReceipts.forEach((receipt) => {
     let amount = getReceiptAmount(receipt);
     const allocation = { admission: 0, registration: 0, installment: 0 };
-    const purpose = receipt?._id
-      ? receiptLifecycleInfo.get(receipt._id.toString())?.purpose || receipt.receiptPurpose || getReceiptPurpose(receipt)
-      : getReceiptPurpose(receipt);
+    const lifecycle = receipt?._id ? receiptLifecycleInfo.get(receipt._id.toString()) : null;
+    const purpose = lifecycle?.purpose || receipt.receiptPurpose || getReceiptPurpose(receipt);
 
     if (purpose === "admission" && admissionRemaining > 0) {
       const used = Math.min(amount, admissionRemaining);
@@ -438,7 +436,7 @@ const isCourseDurationCompleted = (student, customDate = null) => {
 const calculateLedgerFeeTotals = (student, receipts = []) => {
   const course = student?.course || {};
   const courseAdmissionFee = Number(course.admissionFees || 0);
-  const effectiveAdmissionFee = Math.max(courseAdmissionFee, Number(student?.admissionFeeAmount || 0));
+  const effectiveAdmissionFee = courseAdmissionFee > 0 ? courseAdmissionFee : 500;
   const totalCourseFees = Number(student?.totalFees || 0) + effectiveAdmissionFee;
   const totalPaid = receipts.reduce((acc, curr) => acc + Number(curr.amountPaid || 0), 0);
   const dueAmount = Math.max(0, totalCourseFees - totalPaid);
@@ -2056,26 +2054,35 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
   // 4. Update Student Pending Fees & Status
   let admissionCompletedNow = false;
 
+  const maxAdmissionFee = Number(student.course?.admissionFees || 500);
+
   if (receiptPurpose.purpose === "admission") {
     // If it's an admission fee payment, we update admission-specific fields
     if (!student.isAdmissionFeesPaid) {
       student.isAdmissionFeesPaid = true;
-      student.admissionFeeAmount = Number(amountPaid);
+      student.admissionFeeAmount = Math.min(maxAdmissionFee, Number(amountPaid));
       admissionCompletedNow = true;
 
       if (!student.enrollmentNo && student.branchId) {
         student.enrollmentNo = await generateEnrollmentNumber(student.branchId);
       }
     } else {
-      // If already paid, increment the amount
-      student.admissionFeeAmount = (student.admissionFeeAmount || 0) + Number(amountPaid);
+      // Keep admission fee capped at course admission fee (500)
+      student.admissionFeeAmount = Math.min(maxAdmissionFee, (student.admissionFeeAmount || 0) + Number(amountPaid));
+    }
+
+    // Any payment beyond admission fee reduces pending course fees
+    const excess = Math.max(0, Number(amountPaid) - maxAdmissionFee);
+    if (excess > 0) {
+      student.pendingFees = Math.max(0, (student.pendingFees || 0) - excess);
     }
   } else if (receiptPurpose.purpose === "registration") {
-    // Registration fee payment — track on student record
+    // Registration fee payment — track on student record and reduce pendingFees
     student.registrationFeeAmount = (student.registrationFeeAmount || 0) + Number(amountPaid);
+    student.pendingFees = Math.max(0, (student.pendingFees || 0) - Number(amountPaid));
   } else {
-    // Normal fee payment reduces the course balance
-    student.pendingFees = Math.max(0, student.pendingFees - Number(amountPaid));
+    // Normal installment fee payment reduces the course balance
+    student.pendingFees = Math.max(0, (student.pendingFees || 0) - Number(amountPaid));
   }
 
   await student.save();
@@ -2160,13 +2167,14 @@ const updateFeeReceipt = asyncHandler(async (req, res) => {
       const student = await Student.findById(receipt.student);
       if (student) {
         const diff = Number(req.body.amountPaid) - Number(receipt.amountPaid);
-        const isAdmission = (receipt.remarks || "").toLowerCase().includes("admission");
-        const isRegistration = (receipt.remarks || "").toLowerCase().includes("registration");
+        const isAdmission = receipt.receiptPurpose === "admission" || (!receipt.receiptPurpose && (receipt.remarks || "").toLowerCase().includes("admission"));
+        const isRegistration = receipt.receiptPurpose === "registration" || (!receipt.receiptPurpose && (receipt.remarks || "").toLowerCase().includes("registration"));
         
         if (isAdmission) {
-            student.admissionFeeAmount = (student.admissionFeeAmount || 0) + diff;
+            student.admissionFeeAmount = Math.min(500, Math.max(0, (student.admissionFeeAmount || 0) + diff));
         } else if (isRegistration) {
             student.registrationFeeAmount = Math.max(0, (student.registrationFeeAmount || 0) + diff);
+            student.pendingFees = Math.max(0, student.pendingFees - diff);
         } else {
             student.pendingFees = Math.max(0, student.pendingFees - diff);
         }
@@ -2205,8 +2213,8 @@ const deleteFeeReceipt = asyncHandler(async (req, res) => {
   if (receipt) {
     const student = await Student.findById(receipt.student);
     if (student) {
-      const isAdmission = (receipt.remarks || "").toLowerCase().includes("admission");
-      const isRegistration = (receipt.remarks || "").toLowerCase().includes("registration");
+      const isAdmission = receipt.receiptPurpose === "admission" || (!receipt.receiptPurpose && (receipt.remarks || "").toLowerCase().includes("admission"));
+      const isRegistration = receipt.receiptPurpose === "registration" || (!receipt.receiptPurpose && (receipt.remarks || "").toLowerCase().includes("registration"));
       
       if (isAdmission) {
           student.admissionFeeAmount = Math.max(0, (student.admissionFeeAmount || 0) - Number(receipt.amountPaid));
@@ -2215,6 +2223,7 @@ const deleteFeeReceipt = asyncHandler(async (req, res) => {
           }
       } else if (isRegistration) {
           student.registrationFeeAmount = Math.max(0, (student.registrationFeeAmount || 0) - Number(receipt.amountPaid));
+          student.pendingFees = student.pendingFees + Number(receipt.amountPaid);
       } else {
           student.pendingFees = student.pendingFees + Number(receipt.amountPaid);
       }
@@ -2383,9 +2392,11 @@ const calculateStudentPaymentSummary = (student, receipts, customDate = null) =>
 
   // monthlyOutstanding: Can be negative (credit/advance).
   // Shows current month's net due after applying any prepaid/advance.
-  const monthlyOutstanding = courseCompleted && dueAmount > 0
-    ? dueAmount
-    : totalDue - installmentPrepaid;
+  const monthlyOutstanding = dueAmount <= 0
+    ? 0
+    : (courseCompleted && dueAmount > 0
+        ? dueAmount
+        : totalDue - installmentPrepaid);
 
   // outstandingAmount: Non-negative version for FeeCollection auto-fill compatibility
   const outstandingAmount = Math.max(0, monthlyOutstanding);
@@ -2592,4 +2603,5 @@ module.exports = {
   resolveReceiptPurposeForPayment,
   calculateLedgerFeeTotals,
   calculateStudentPaymentSummary,
+  attachReceiptDisplayInfo,
 };
