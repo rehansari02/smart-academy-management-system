@@ -6,9 +6,36 @@ import bhestanStampImg from '../assets/BHESTAN Smart Institute Seal.png';
 import godadraStampImg from '../assets/Godadra Smart Institute Circular Blue Seal.png';
 import defaultStampImg from '../assets/stamp.png';
 
+const GODADARA_BRANCH_ID = 'bbdfec9f4c34795332f0d738';
+const BHESTAN_BRANCH_ID = 'e4743ebfe7f863834609acc2';
+
+const GODADARA_DEFAULTS = {
+  name: 'Godadara Branch',
+  shortCode: 'GOD',
+  address: '1st & 2nd Floor, 50 Kuber Nagar, Opp. Baba Baijnath Mandir, Nilgiri Road, Aas Pass Circle, Godadara',
+  city: 'Surat',
+  state: 'Gujarat',
+  pincode: '395010',
+  phone: '9898830409',
+  mobile: '9601749300',
+  email: 'smartinstitutes@gmail.com'
+};
+
+const BHESTAN_DEFAULTS = {
+  name: 'Bhestan Branch',
+  shortCode: 'BHE',
+  address: '309-A/B, 3rd Floor, Sai Square Building, Bhestan Circle',
+  city: 'Surat',
+  state: 'Gujarat',
+  pincode: '395023',
+  phone: '0261-3126315',
+  mobile: '9601749300',
+  email: 'smartinstitutes@gmail.com'
+};
+
 const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   const { user } = useSelector((state) => state.auth);
-  const { batches } = useSelector((state) => state.master);
+  const { batches, branches } = useSelector((state) => state.master);
 
   if (!receipt) return null;
 
@@ -57,24 +84,86 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
     return receipt.remarks || '';
   };
 
-  const getBranchInfo = () => {
-    const branch = receipt.branch && typeof receipt.branch === 'object' ? receipt.branch : null;
-    const studentBranch = receipt.student?.branchId && typeof receipt.student.branchId === 'object' ? receipt.student.branchId : null;
-    const fallbackAddress = user?.branchDetails?.address || '309-A, 309-B, 3rd Floor, Sai Square Building';
-    const fallbackCity = user?.branchDetails?.city || 'Bhestan';
-    const fallbackState = user?.branchDetails?.state || 'Gujarat';
-    const fallbackPhone = user?.branchDetails?.phone || '9601749300';
-    const fallbackMobile = user?.branchDetails?.mobile || '9898830409';
-    const fallbackEmail = user?.branchDetails?.email || 'smartinstitutes@gmail.com';
+  const resolveBranchKey = () => {
+    // 1. RegNo pattern check (Most authoritative: -GOD vs -BHE)
+    const regNo = String(receipt.student?.regNo || receipt.regNo || '').trim().toUpperCase();
+    if (regNo.endsWith('-GOD') || regNo.includes('-GOD')) return 'GODADARA';
+    if (regNo.endsWith('-BHE') || regNo.includes('-BHE')) return 'BHESTAN';
 
-    return branch || studentBranch || {
+    // 2. Receipt's own branch ID
+    const receiptBranchId = typeof receipt.branch === 'string'
+      ? receipt.branch
+      : (receipt.branch?._id ? String(receipt.branch._id) : null);
+    if (receiptBranchId === GODADARA_BRANCH_ID) return 'GODADARA';
+    if (receiptBranchId === BHESTAN_BRANCH_ID) return 'BHESTAN';
+
+    // 3. Student's branch ID
+    const studentBranchId = typeof receipt.student?.branchId === 'string'
+      ? receipt.student.branchId
+      : (receipt.student?.branchId?._id ? String(receipt.student.branchId._id) : null);
+    if (studentBranchId === GODADARA_BRANCH_ID) return 'GODADARA';
+    if (studentBranchId === BHESTAN_BRANCH_ID) return 'BHESTAN';
+
+    // 4. ShortCode check
+    const shortCode = String(receipt.branch?.shortCode || receipt.student?.branchId?.shortCode || '').trim().toUpperCase();
+    if (shortCode === 'GOD') return 'GODADARA';
+    if (shortCode === 'BHE') return 'BHESTAN';
+
+    // 5. Branch name & address keywords
+    const textPool = [
+      receipt.branch?.name,
+      receipt.branch?.address,
+      receipt.student?.branchName,
+      receipt.student?.branchId?.name,
+      receipt.student?.branchId?.address,
+      receipt.branchName
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    if (textPool.includes('godad') || textPool.includes('godra')) return 'GODADARA';
+    if (textPool.includes('bhestan') || textPool.includes('bhestn')) return 'BHESTAN';
+
+    return null;
+  };
+
+  const branchKey = resolveBranchKey();
+
+  const getBranchInfo = () => {
+    // 1. Check Redux master branches list
+    if (branches && Array.isArray(branches) && branches.length > 0) {
+      if (branchKey === 'GODADARA') {
+        const found = branches.find(b => String(b._id) === GODADARA_BRANCH_ID || b.shortCode === 'GOD');
+        if (found) return found;
+      }
+      if (branchKey === 'BHESTAN') {
+        const found = branches.find(b => String(b._id) === BHESTAN_BRANCH_ID || b.shortCode === 'BHE');
+        if (found) return found;
+      }
+    }
+
+    // 2. Populated object on receipt.branch
+    if (receipt.branch && typeof receipt.branch === 'object' && receipt.branch.name) {
+      return receipt.branch;
+    }
+
+    // 3. Populated object on receipt.student.branchId
+    if (receipt.student?.branchId && typeof receipt.student.branchId === 'object' && receipt.student.branchId.name) {
+      return receipt.student.branchId;
+    }
+
+    // 4. Reliable defaults for each branch
+    if (branchKey === 'GODADARA') return GODADARA_DEFAULTS;
+    if (branchKey === 'BHESTAN') return BHESTAN_DEFAULTS;
+
+    // 5. General fallback
+    return {
       name: receipt.student?.branchName || 'Main Branch',
-      address: fallbackAddress,
-      city: fallbackCity,
-      state: fallbackState,
-      phone: fallbackPhone,
-      mobile: fallbackMobile,
-      email: fallbackEmail
+      address: user?.branchDetails?.address || BHESTAN_DEFAULTS.address,
+      city: user?.branchDetails?.city || BHESTAN_DEFAULTS.city,
+      state: user?.branchDetails?.state || BHESTAN_DEFAULTS.state,
+      pincode: user?.branchDetails?.pincode || BHESTAN_DEFAULTS.pincode,
+      phone: user?.branchDetails?.phone || BHESTAN_DEFAULTS.phone,
+      mobile: user?.branchDetails?.mobile || BHESTAN_DEFAULTS.mobile,
+      email: user?.branchDetails?.email || BHESTAN_DEFAULTS.email
     };
   };
 
@@ -86,40 +175,22 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   };
 
   const getStampImage = () => {
-    const candidates = [
-      branchInfo?.name,
-      receipt.student?.branchName,
-      receipt.branch?.name,
-      receipt.student?.branchId?.name,
-      receipt.branchName,
-      branchInfo?.address,
-      branchInfo?.city,
-      user?.branchDetails?.name,
-      user?.branchDetails?.address,
-      user?.branchName
-    ];
-
-    const branchText = candidates.filter(Boolean).join(' ').toLowerCase();
-
-    const branchIds = [
-      typeof receipt.branch === 'string' ? receipt.branch : receipt.branch?._id,
-      typeof receipt.student?.branchId === 'string' ? receipt.student?.branchId : receipt.student?.branchId?._id,
-      user?.branch,
-      user?.branchId
-    ].filter(Boolean).map(String);
-
-    const isGodadaraId = branchIds.includes('bbdfec9f4c34795332f0d738');
-    const isBhestanId = branchIds.includes('e4743ebfe7f863834609acc2');
-
-    if (isGodadaraId || branchText.includes('godad') || branchText.includes('godra')) {
+    if (branchKey === 'GODADARA') {
       return godadraStampImg;
     }
-
-    if (isBhestanId || branchText.includes('bhestan') || branchText.includes('bhestn')) {
+    if (branchKey === 'BHESTAN') {
       return bhestanStampImg;
     }
 
-    return bhestanStampImg || defaultStampImg;
+    const nameStr = String(branchInfo?.name || '').toLowerCase();
+    if (nameStr.includes('godad') || nameStr.includes('godra')) {
+      return godadraStampImg;
+    }
+    if (nameStr.includes('bhestan') || nameStr.includes('bhestn')) {
+      return bhestanStampImg;
+    }
+
+    return defaultStampImg;
   };
 
   // Single Receipt markup
@@ -370,7 +441,7 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
               height: '85px',
               objectFit: 'contain',
               display: 'block',
-              transform: 'rotate(-90deg)',
+              transform: 'rotate(-85deg)',
               transformOrigin: 'center center'
             }}
           />

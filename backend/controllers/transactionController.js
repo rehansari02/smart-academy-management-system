@@ -1893,7 +1893,7 @@ const getFeeReceipts = asyncHandler(async (req, res) => {
   }
 
   let receiptQuery = FeeReceipt.find(query)
-    .populate("student", "firstName lastName regNo enrollmentNo middleName mobileStudent mobileParent batch totalFees pendingFees branchName emiDetails admissionFeeAmount")
+    .populate("student", "firstName lastName regNo enrollmentNo middleName mobileStudent mobileParent batch totalFees pendingFees branchName emiDetails branchId admissionFeeAmount")
     .populate("course", "name shortName admissionFees")
     .populate("branch", "name shortCode address city state phone mobile email") // Populate full Branch details for print rendering
     .sort({ createdAt: -1 });
@@ -1962,7 +1962,7 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
   } = req.body;
   const requestKey = String(idempotencyKey || "").trim();
   const receiptPopulate = [
-    { path: "student", select: "firstName lastName regNo enrollmentNo middleName mobileStudent mobileParent batch totalFees pendingFees branchName emiDetails admissionFeeAmount" },
+    { path: "student", select: "firstName lastName regNo enrollmentNo middleName mobileStudent mobileParent batch totalFees pendingFees branchName emiDetails branchId admissionFeeAmount" },
     { path: "course", select: "name shortName admissionFees" },
     { path: "branch", select: "name shortCode address city state phone mobile email" }
   ];
