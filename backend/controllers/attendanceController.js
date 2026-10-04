@@ -48,7 +48,7 @@ const getCourseEndDate = (student) => {
     const duration = Number(student?.course?.duration || 0);
     if (!duration) return null;
 
-    const startDate = new Date(student.registrationDate || student.admissionDate || student.batchStartDate);
+    const startDate = new Date(student.admissionDate || student.batchStartDate || student.registrationDate);
     if (Number.isNaN(startDate.getTime())) return null;
 
     startDate.setUTCHours(0, 0, 0, 0);
@@ -69,7 +69,7 @@ const getCourseEndDate = (student) => {
 
 const getStudentAttendanceStartDate = (student) => {
     // Attendance is valid from registration through the calculated course end.
-    const rawStartDate = student?.registrationDate || student?.admissionDate || student?.batchStartDate;
+    const rawStartDate = student?.admissionDate || student?.batchStartDate || student?.registrationDate;
     if (!rawStartDate) return null;
     const startDate = parseLocalDate(rawStartDate);
     if (Number.isNaN(startDate.getTime())) return null;

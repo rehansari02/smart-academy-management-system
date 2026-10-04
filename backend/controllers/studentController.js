@@ -14,6 +14,7 @@ const { getParentSmsRecipients } = require('../utils/smsRecipients');
 const asyncHandler = require('express-async-handler');
 const Counter = require('../models/Counter');
 const generateEnrollmentNumber = require('../utils/enrollmentGenerator');
+const { autoMarkAttendanceOnRegistration } = require('../utils/attendanceHelper');
 
 const getBatchCapacityStatus = async ({ batchName, courseId, branchId, excludeStudentId = null }) => {
     if (!batchName || !courseId) {
@@ -580,6 +581,9 @@ const confirmStudentRegistration = asyncHandler(async (req, res) => {
                 student.userId = newUser._id;
             }
             await student.save();
+
+            // Auto-mark attendance from admissionDate to registrationDate
+            await autoMarkAttendanceOnRegistration(student, selectedRegistrationDate);
         
             const contacts = getParentSmsRecipients(student);
 
@@ -968,7 +972,15 @@ const getExamPendingStudents = asyncHandler(async (req, res) => {
     const skip = limit * (Number(page) - 1);
     const pendingDays = Number(minPendingDays) || 30;
 
-    let query = { isDeleted: false, isRegistered: true, isActive: true, isCancelled: false };
+    let query = {
+        isDeleted: false,
+        isActive: true,
+        isCancelled: false,
+        $or: [
+            { isRegistered: true },
+            { registrationFeeAmount: { $gt: 0 } }
+        ]
+    };
 
     if (req.user.role !== 'Super Admin' && req.user.branchId) {
         query.branchId = req.user.branchId;
@@ -990,16 +1002,17 @@ const getExamPendingStudents = asyncHandler(async (req, res) => {
 
     // Filter students whose course ends within the selected days range or has already ended
     let pendingStudents = allStudents.filter(student => {
-        if (!student.course || !student.admissionDate) return false;
+        const rawStartDate = student.admissionDate || student.batchStartDate;
+        if (!student.course || !rawStartDate) return false;
 
-        const startDate = new Date(student.admissionDate);
-        const duration = student.course.duration || 0;
-        const type = student.course.durationType || 'Month';
+        const startDate = new Date(rawStartDate);
+        const duration = Number(student.course.duration || 0);
+        const type = String(student.course.durationType || 'Month').toLowerCase();
 
         let endDate = new Date(startDate);
-        if (type === 'Month') endDate.setMonth(endDate.getMonth() + duration);
-        else if (type === 'Year') endDate.setFullYear(endDate.getFullYear() + duration);
-        else if (type === 'Days') endDate.setDate(endDate.getDate() + duration);
+        if (type.includes('month')) endDate.setMonth(endDate.getMonth() + duration);
+        else if (type.includes('year')) endDate.setFullYear(endDate.getFullYear() + duration);
+        else if (type.includes('day')) endDate.setDate(endDate.getDate() + duration);
 
         student.courseEndDate = endDate;
         

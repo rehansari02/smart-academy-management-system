@@ -13,7 +13,7 @@ import { toast } from 'react-toastify';
 import axios from 'axios';
 
 const getStudentStartDate = (student) => {
-    const date = moment(student?.batchStartDate || student?.admissionDate);
+    const date = moment(student?.admissionDate || student?.batchStartDate);
     return date.isValid() ? date.startOf('day') : null;
 };
 

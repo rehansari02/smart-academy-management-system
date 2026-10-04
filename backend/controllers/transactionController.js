@@ -14,6 +14,7 @@ const asyncHandler = require("express-async-handler");
 const generateEnrollmentNumber = require("../utils/enrollmentGenerator");
 const sendSMS = require("../utils/smsSender"); // Moved to top for global use
 const { getParentSmsRecipients } = require("../utils/smsRecipients");
+const { autoMarkAttendanceOnRegistration } = require("../utils/attendanceHelper");
 const XLSX = require("xlsx");
 const mongoose = require("mongoose");
 const moment = require("moment");
@@ -411,7 +412,7 @@ const isCourseDurationCompleted = (student, customDate = null) => {
   // Default to 12 months if duration is missing or 0
   const duration = Number(course.duration) || 12;
   const durationType = String(course.durationType || "Month").toLowerCase();
-  const startDate = student?.batchStartDate || student?.admissionDate || student?.createdAt;
+  const startDate = student?.admissionDate || student?.batchStartDate || student?.createdAt;
 
   if (!startDate) return false;
 
@@ -2080,12 +2081,20 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
     // Registration fee payment — track on student record and reduce pendingFees
     student.registrationFeeAmount = (student.registrationFeeAmount || 0) + Number(amountPaid);
     student.pendingFees = Math.max(0, (student.pendingFees || 0) - Number(amountPaid));
+    if (!student.isRegistered) {
+      student.isRegistered = true;
+      student.registrationDate = date ? new Date(date) : new Date();
+    }
   } else {
     // Normal installment fee payment reduces the course balance
     student.pendingFees = Math.max(0, (student.pendingFees || 0) - Number(amountPaid));
   }
 
   await student.save();
+
+  if (receiptPurpose.purpose === "registration") {
+    await autoMarkAttendanceOnRegistration(student, student.registrationDate || date || new Date());
+  }
 
   // 4.5. Remove from Admin "Online Admission" list when admission fee paid (student had inquiryId)
   if (admissionCompletedNow && student.inquiryId) {
@@ -2338,7 +2347,7 @@ const calculateStudentPaymentSummary = (student, receipts, customDate = null) =>
       emiStructure = `₹${monthlyInstallment.toLocaleString('en-IN')} x ${months} months`;
     }
 
-    let startDate = student.batchStartDate || student.admissionDate || student.createdAt;
+    let startDate = student.admissionDate || student.batchStartDate || student.createdAt;
     
     // Fallback: The course shouldn't start after the first payment was made
     if (receipts.length > 0) {

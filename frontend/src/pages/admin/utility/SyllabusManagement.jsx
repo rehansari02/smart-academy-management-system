@@ -206,7 +206,7 @@ const fetchSyllabusStudents = async ({ branchId, courseId, batchName }) => {
 };
 
 const getStudentStartDate = (student) => {
-  const date = moment(student?.registrationDate || student?.admissionDate || student?.batchStartDate);
+  const date = moment(student?.admissionDate || student?.batchStartDate || student?.registrationDate);
   return date.isValid() ? date.startOf('day') : null;
 };
 
