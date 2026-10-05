@@ -8,7 +8,7 @@ import { Search, Printer, Edit2, Trash2, RefreshCw, FileText, X, CheckSquare, Sq
 import moment from 'moment';
 import { TableSkeleton } from '../../../components/common/SkeletonLoader';
 import EditReceiptModal from '../../../components/transaction/EditReceiptModal';
-import ReceiptPrintTemplate from '../../../components/ReceiptPrintTemplate';
+import ReceiptPrintTemplate, { preloadReceiptAssets } from '../../../components/ReceiptPrintTemplate';
 import StudentSearch from '../../../components/StudentSearch';
 import { receiptPrintPageStyle, useReceiptPrinter } from '../../../hooks/useReceiptPrinter';
 import { useUserRights } from '../../../hooks/useUserRights';
@@ -67,6 +67,7 @@ const AllReceipts = () => {
     };
 
     useEffect(() => {
+        preloadReceiptAssets();
         // Initial fetch
         const today = moment().format('YYYY-MM-DD');
         const initialFilters = {

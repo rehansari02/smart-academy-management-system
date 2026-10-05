@@ -7,7 +7,7 @@ import axios from 'axios';
 import { toast } from 'react-toastify';
 import { RotateCcw, FileText, Printer, Edit2, Eye, Save, DollarSign, Calendar, Receipt } from 'lucide-react';
 import StudentSearch from '../../../components/StudentSearch';
-import ReceiptPrintTemplate from '../../../components/ReceiptPrintTemplate';
+import ReceiptPrintTemplate, { preloadReceiptAssets } from '../../../components/ReceiptPrintTemplate';
 import moment from 'moment';
 import EditReceiptModal from '../../../components/transaction/EditReceiptModal';
 import { useLocation } from 'react-router-dom';
@@ -116,6 +116,7 @@ const FeeCollection = () => {
 
     // Fetch next receipt number on mount
     useEffect(() => {
+        preloadReceiptAssets();
         fetchNextReceiptNo();
         
         // Check if we navigated here with a receipt to edit

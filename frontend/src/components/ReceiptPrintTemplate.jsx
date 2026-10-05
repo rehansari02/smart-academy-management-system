@@ -33,6 +33,19 @@ const BHESTAN_DEFAULTS = {
   email: 'smartinstitutes@gmail.com'
 };
 
+// Eagerly preload all receipt print assets into browser memory/cache
+export const preloadReceiptAssets = () => {
+  if (typeof window === 'undefined') return;
+  [logo, bhestanStampImg, godadraStampImg, defaultStampImg].forEach((src) => {
+    if (src) {
+      const img = new window.Image();
+      img.src = src;
+    }
+  });
+};
+
+preloadReceiptAssets();
+
 const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
   const { user } = useSelector((state) => state.auth);
   const { batches, branches } = useSelector((state) => state.master);
@@ -219,6 +232,8 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
           <img
             src={logo}
             alt="Logo"
+            loading="eager"
+            decoding="sync"
             style={{ width: '180px', height: 'auto', objectFit: 'contain' }}
           />
         </div>
@@ -436,12 +451,14 @@ const ReceiptPrintTemplate = React.forwardRef(({ receipt }, ref) => {
           <img
             src={getStampImage()}
             alt="Smart Institute Stamp"
+            loading="eager"
+            decoding="sync"
             style={{
               width: '85px',
               height: '85px',
               objectFit: 'contain',
               display: 'block',
-              transform: 'rotate(-85deg)',
+              // transform: 'rotate(-85deg)',
               transformOrigin: 'center center'
             }}
           />
