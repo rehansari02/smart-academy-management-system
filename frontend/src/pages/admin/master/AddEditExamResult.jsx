@@ -82,6 +82,7 @@ const AddEditExamResult = () => {
   const [formCourseSearch, setFormCourseSearch] = useState('');
   const [isFormStudentDropdownOpen, setIsFormStudentDropdownOpen] = useState(false);
   const [formStudentSearch, setFormStudentSearch] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Dropdown container refs for outside-click dismissal
   const examDropdownRef = useRef(null);
@@ -278,6 +279,9 @@ const AddEditExamResult = () => {
 
         if (marks.length > 0) {
           replace(marks);
+          if (data.examId) {
+            setValue('examId', String(data.examId));
+          }
           if (marks.some((item) => item.attempted)) {
             toast.success('Student online exam marks loaded in theory column.');
           } else {
@@ -444,18 +448,63 @@ const AddEditExamResult = () => {
     setValue(`subjectMarks.${index}.${field}`, newVal, { shouldValidate: true, shouldDirty: true, shouldTouch: true });
   };
 
-  const onSubmit = (data) => {
-    const processedMarks = data.subjectMarks.map(s => ({
-      ...s,
-      total: (Number(s.theory) || 0) + (Number(s.practical) || 0)
-    }));
+  const onSubmit = async (data) => {
+    if (!data.examId) {
+      toast.error('Please select an Exam Name and Course (Steps 1 & 2).');
+      return;
+    }
+    if (!data.studentId) {
+      toast.error('Please select a Student (Step 3).');
+      return;
+    }
+    if (!data.subjectMarks || data.subjectMarks.length === 0) {
+      toast.error('No subjects loaded for this exam result.');
+      return;
+    }
 
-    const finalData = { ...data, subjectMarks: processedMarks };
+    try {
+      setIsSubmitting(true);
+      const processedMarks = (data.subjectMarks || []).map(s => ({
+        subjectId: s.subjectId,
+        subjectName: s.subjectName,
+        theory: Number(s.theory) || 0,
+        practical: Number(s.practical) || 0,
+        total: (Number(s.theory) || 0) + (Number(s.practical) || 0),
+        maxMarks: Number(s.maxMarks) || 100
+      }));
 
-    if (isEditMode) {
-      dispatch(updateExamResult({ id, data: finalData }));
+      const finalData = {
+        ...data,
+        subjectMarks: processedMarks,
+        grade: watch('grade') || data.grade || ''
+      };
+
+      if (isEditMode) {
+        await dispatch(updateExamResult({ id, data: finalData })).unwrap();
+        toast.success('Exam Result updated successfully!');
+      } else {
+        await dispatch(createExamResult(finalData)).unwrap();
+        toast.success('Exam Result created successfully!');
+      }
+      dispatch(resetMasterStatus());
+      navigate('/master/exam-result');
+    } catch (err) {
+      toast.error(typeof err === 'string' ? err : (err?.message || 'Failed to save exam result'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const onInvalid = (errors) => {
+    console.warn('Form validation failed:', errors);
+    if (errors.studentId) {
+      toast.error('Please select a Student from Step 3.');
+    } else if (errors.examId) {
+      toast.error('Please select an Exam Name and Course from Steps 1 & 2.');
+    } else if (errors.issueDate) {
+      toast.error('Please provide an Issue Date.');
     } else {
-      dispatch(createExamResult(finalData));
+      toast.error('Please fill in all required fields before saving.');
     }
   };
 
@@ -520,7 +569,7 @@ const AddEditExamResult = () => {
         </div>
 
         {/* Form Container */}
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
           
           {/* Card 1: 3-Step Selection Pipeline */}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-visible">
@@ -603,8 +652,8 @@ const AddEditExamResult = () => {
                                 onClick={() => {
                                   setSelectedExamNameForm(name);
                                   setSelectedCourseIdForm('');
-                                  setValue('examId', '');
-                                  setValue('studentId', '');
+                                  setValue('examId', '', { shouldValidate: true });
+                                  setValue('studentId', '', { shouldValidate: true });
                                   setIsFormExamDropdownOpen(false);
                                   setFormExamSearch('');
                                 }}
@@ -687,7 +736,7 @@ const AddEditExamResult = () => {
                                 onClick={() => {
                                   const chosenCourseId = String(c._id);
                                   setSelectedCourseIdForm(chosenCourseId);
-                                  setValue('studentId', '');
+                                  setValue('studentId', '', { shouldValidate: true });
                                   setIsFormCourseDropdownOpen(false);
                                   setFormCourseSearch('');
                                   
@@ -697,12 +746,14 @@ const AddEditExamResult = () => {
                                     (e.examName || '').trim().toLowerCase() === targetExam && 
                                     String(e.course?._id || e.course) === chosenCourseId
                                   );
-                                  const bestMatch = matchingSchedules.find(e => !e.isReExam && ((e.attendees && e.attendees.length > 0) || (e.attempts && e.attempts.length > 0)))
+                                  const bestMatch = matchingSchedules.find(e => !e.isReExam && (e.timeTable && e.timeTable.length > 1))
+                                    || matchingSchedules.find(e => !e.isReExam && ((e.attendees && e.attendees.length > 0) || (e.attempts && e.attempts.length > 0)))
+                                    || matchingSchedules.find(e => !e.isReExam)
                                     || matchingSchedules.find(e => (e.attendees && e.attendees.length > 0) || (e.attempts && e.attempts.length > 0))
                                     || matchingSchedules[0];
 
                                   if (bestMatch) {
-                                    setValue('examId', String(bestMatch._id));
+                                    setValue('examId', String(bestMatch._id), { shouldValidate: true });
                                   }
                                 }}
                                 className={`p-3 text-xs font-semibold hover:bg-indigo-50/70 cursor-pointer transition-all flex items-center justify-between ${
@@ -795,9 +846,9 @@ const AddEditExamResult = () => {
                               <div 
                                 key={student._id} 
                                 onClick={() => {
-                                  setValue('studentId', String(student._id));
+                                  setValue('studentId', String(student._id), { shouldValidate: true });
                                   if (student.scheduleId) {
-                                    setValue('examId', String(student.scheduleId));
+                                    setValue('examId', String(student.scheduleId), { shouldValidate: true });
                                   }
                                   setIsFormStudentDropdownOpen(false);
                                   setFormStudentSearch('');
@@ -1004,8 +1055,15 @@ const AddEditExamResult = () => {
                         <td className="px-6 py-4 text-center font-black text-blue-600 text-base">
                           {(Number(subjectMarksValues[index]?.theory) || 0) + (Number(subjectMarksValues[index]?.practical) || 0)}
                         </td>
-                        <td className="px-6 py-4 text-center font-semibold text-slate-400">
-                          <input type="number" {...register(`subjectMarks.${index}.maxMarks`)} className="w-full bg-transparent text-center font-semibold text-slate-400 outline-none" readOnly />
+                        <td className="px-6 py-4 text-center">
+                          <input 
+                            type="number" 
+                            {...register(`subjectMarks.${index}.maxMarks`, { valueAsNumber: true })} 
+                            className="w-16 mx-auto bg-slate-50 border border-slate-200 rounded-lg py-1 text-center font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 focus:bg-white transition-all text-xs sm:text-sm" 
+                            min="0"
+                            max="500"
+                            title="Max Marks"
+                          />
                         </td>
                       </tr>
                     ))}
@@ -1163,11 +1221,11 @@ const AddEditExamResult = () => {
               </button>
               <button 
                 type="submit" 
-                disabled={isLoading} 
+                disabled={isSubmitting || isLoading} 
                 className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-8 py-3 rounded-xl font-bold text-sm flex items-center gap-2.5 hover:from-emerald-700 hover:to-teal-700 shadow-md shadow-emerald-600/20 disabled:opacity-70 disabled:cursor-not-allowed transition-all cursor-pointer active:scale-95"
               >
-                {isLoading ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />} 
-                {isLoading ? 'Saving...' : (isEditMode ? 'Update Exam Result' : 'Save & Generate Result')}
+                {isSubmitting || isLoading ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />} 
+                {isSubmitting ? 'Saving...' : (isEditMode ? 'Update Exam Result' : 'Save & Generate Result')}
               </button>
             </div>
           </div>

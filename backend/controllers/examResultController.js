@@ -6,6 +6,8 @@ const ExamSchedule = require('../models/ExamSchedule');
 const StudentAttendance = require('../models/StudentAttendance');
 const ExamAttempt = require('../models/ExamAttempt');
 const FinalExamQuestionPaper = require('../models/FinalExamQuestionPaper');
+const Course = require('../models/Course');
+const Subject = require('../models/Subject');
 
 const normalizeSomNumber = (value) => {
     const somNumber = String(value || '').trim();
@@ -203,20 +205,31 @@ const createExamResult = asyncHandler(async (req, res) => {
         res.status(404); throw new Error('Student not found');
     }
 
-    // Auto-generate SOM and CSR if not provided
+    // Auto-generate SOM and CSR if not provided or if already taken
     let finalSom = normalizeSomNumber(somNumber);
-    let finalCsr = csrNumber;
 
-    if (!finalSom) {
+    const isSomTaken = finalSom ? await ExamResult.exists({ somNumber: finalSom }) : true;
+    if (isSomTaken) {
+        // Find max used SOM-G in DB to avoid any duplicate key conflict
+        const results = await ExamResult.find({ somNumber: /^SOM-G\d+/i }).select('somNumber').lean();
+        let maxUsedSeq = 0;
+        results.forEach(r => {
+            const match = String(r.somNumber || '').match(/SOM-G(\d+)/i);
+            if (match) {
+                const n = parseInt(match[1], 10);
+                if (n > maxUsedSeq) maxUsedSeq = n;
+            }
+        });
+
         const counter = await Counter.findOneAndUpdate(
             { _id: 'examResultSeq' },
-            { $inc: { seq: 1 } },
-            { new: true, upsert: true }
+            { $set: { seq: maxUsedSeq + 1 } },
+            { returnDocument: 'after', upsert: true }
         );
         finalSom = `SOM-G${counter.seq.toString().padStart(5, '0')}`;
     }
 
-    finalCsr = normalizeCsrNumber(finalCsr, finalSom);
+    let finalCsr = normalizeCsrNumber(csrNumber, finalSom);
 
     let finalCert = certificateNumber;
     if (!finalCert || /^(CERT|CSR)-LEGACY-/i.test(finalCert)) {
@@ -355,12 +368,25 @@ const getExamResultById = asyncHandler(async (req, res) => {
 // @desc    Get Next Available SOM and CSR Numbers
 // @route   GET /api/master/exam-result/next-numbers
 const getNextResultNumbers = asyncHandler(async (req, res) => {
+    const results = await ExamResult.find({ somNumber: /^SOM-G\d+/i }).select('somNumber').lean();
+    let maxUsedSeq = 0;
+    results.forEach(r => {
+        const match = String(r.somNumber || '').match(/SOM-G(\d+)/i);
+        if (match) {
+            const n = parseInt(match[1], 10);
+            if (n > maxUsedSeq) maxUsedSeq = n;
+        }
+    });
+
     let counter = await Counter.findById('examResultSeq');
     if (!counter) {
-        const count = await ExamResult.countDocuments();
-        counter = await Counter.create({ _id: 'examResultSeq', seq: count });
+        counter = await Counter.create({ _id: 'examResultSeq', seq: maxUsedSeq });
+    } else if (counter.seq < maxUsedSeq) {
+        counter.seq = maxUsedSeq;
+        await counter.save();
     }
-    const nextSeq = counter.seq + 1;
+
+    const nextSeq = Math.max(counter.seq, maxUsedSeq) + 1;
     const nextSom = `SOM-G${nextSeq.toString().padStart(5, '0')}`;
     res.json({
         somNumber: nextSom,
@@ -487,12 +513,17 @@ const getExamAttemptMarksForResult = asyncHandler(async (req, res) => {
     }
 
     const selectedSchedule = examId
-        ? await ExamSchedule.findById(examId).populate('timeTable.subject', 'name printedName')
+        ? await ExamSchedule.findById(examId).populate('timeTable.subject', 'name printedName totalMarks theoryMarks practicalMarks')
         : null;
 
+    const student = await Student.findById(studentId).lean();
     const resolvedExamName = selectedSchedule?.examName || examName;
-    const resolvedCourseId = selectedSchedule?.course?._id || selectedSchedule?.course || courseId;
+    const resolvedCourseId = selectedSchedule?.course?._id || selectedSchedule?.course || courseId || student?.course;
     const escapedExamName = escapeRegex(String(resolvedExamName || '').trim());
+
+    const course = resolvedCourseId
+        ? await Course.findById(resolvedCourseId).populate('subjects.subject').lean()
+        : null;
 
     const scheduleQuery = {
         examName: { $regex: `^${escapedExamName}$`, $options: 'i' },
@@ -500,27 +531,93 @@ const getExamAttemptMarksForResult = asyncHandler(async (req, res) => {
         isDeleted: false
     };
 
-    const schedules = await ExamSchedule.find(scheduleQuery).populate('timeTable.subject', 'name printedName').lean();
-    const baseSchedule = selectedSchedule ? selectedSchedule.toObject() : schedules.find((item) => !item.isReExam) || schedules[0];
+    const schedules = await ExamSchedule.find(scheduleQuery).populate('timeTable.subject', 'name printedName totalMarks theoryMarks practicalMarks').lean();
+    const regularSchedules = schedules.filter((item) => !item.isReExam);
+    const baseSchedule = regularSchedules.sort((a, b) => (b.timeTable?.length || 0) - (a.timeTable?.length || 0))[0]
+        || schedules.sort((a, b) => (b.timeTable?.length || 0) - (a.timeTable?.length || 0))[0]
+        || (selectedSchedule ? selectedSchedule.toObject() : null);
 
-    if (!baseSchedule) {
+    if (!baseSchedule && !course) {
         res.status(404);
-        throw new Error('Exam schedule not found');
+        throw new Error('Exam schedule or course not found');
     }
 
-    const subjectRows = (baseSchedule.timeTable || []).map((row) => ({
-        subjectId: String(row.subject?._id || row.subject),
-        subjectName: row.subject?.name || row.subject?.printedName || 'Subject',
-        maxMarks: Number(row.total) || ((Number(row.theory) || 0) + (Number(row.practical) || 0)) || 100
-    }));
+    const timetableMap = new Map();
+    (baseSchedule?.timeTable || []).forEach((row) => {
+        if (row.subject) {
+            const sId = String(row.subject._id || row.subject);
+            timetableMap.set(sId, row);
+        }
+    });
 
+    const subjectMap = new Map();
+
+    // 1. First add all subjects from Course curriculum (authoritative source for course requirements)
+    if (course && Array.isArray(course.subjects) && course.subjects.length > 0) {
+        course.subjects
+            .filter((cs) => cs.subject && !cs.subject.isDeleted)
+            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+            .forEach((cs) => {
+                const sub = cs.subject;
+                const subId = String(sub._id);
+                const ttRow = timetableMap.get(subId);
+
+                const subName = sub.name || sub.printedName || 'Subject';
+                const n = subName.toUpperCase();
+                const isDisciplineOrProject = n.includes('DISCIPLINE') || n.includes('DESCIPLINE') || n.includes('PROJECT');
+
+                let maxMarks = Number(sub.totalMarks) || 0;
+                if (!maxMarks && ttRow && Number(ttRow.total)) {
+                    maxMarks = Number(ttRow.total);
+                }
+                if (!maxMarks) {
+                    maxMarks = isDisciplineOrProject ? 50 : 100;
+                }
+
+                subjectMap.set(subId, {
+                    subjectId: subId,
+                    subjectName: subName,
+                    maxMarks: maxMarks,
+                    theory: 0,
+                    practical: 0,
+                    total: 0,
+                    attempted: false,
+                    submittedAt: null
+                });
+            });
+    }
+
+    // 2. Add any subjects from baseSchedule timetable that might not be in course.subjects
+    (baseSchedule?.timeTable || []).forEach((row) => {
+        if (!row.subject) return;
+        const subId = String(row.subject._id || row.subject);
+        if (!subjectMap.has(subId)) {
+            const subName = row.subject?.name || row.subject?.printedName || 'Subject';
+            const n = subName.toUpperCase();
+            const defaultMax = (n.includes('DISCIPLINE') || n.includes('DESCIPLINE') || n.includes('PROJECT')) ? 50 : 100;
+            const maxMarks = Number(row.subject?.totalMarks) || Number(row.total) || ((Number(row.theory) || 0) + (Number(row.practical) || 0)) || defaultMax;
+
+            subjectMap.set(subId, {
+                subjectId: subId,
+                subjectName: subName,
+                maxMarks: maxMarks,
+                theory: 0,
+                practical: 0,
+                total: 0,
+                attempted: false,
+                submittedAt: null
+            });
+        }
+    });
+
+    // 3. Load student's submitted attempts and score them
     const attempts = await ExamAttempt.find({
         examName: { $regex: `^${escapedExamName}$`, $options: 'i' },
         course: resolvedCourseId,
         student: studentId,
         isSubmitted: true
     })
-        .populate('subject', 'name printedName')
+        .populate('subject', 'name printedName totalMarks')
         .sort({ submittedAt: -1, updatedAt: -1 })
         .lean();
 
@@ -535,48 +632,42 @@ const getExamAttemptMarksForResult = asyncHandler(async (req, res) => {
         (paper?.subjects || []).map((subjectPaper) => [String(subjectPaper.subject), subjectPaper])
     );
 
-    const attemptMarksBySubject = new Map();
-    attempts.forEach((attempt) => {
-        const subjectId = String(attempt.subject?._id || attempt.subject);
-        if (attemptMarksBySubject.has(subjectId)) return;
-        const score = scoreAttemptAgainstPaper(attempt, paperBySubject.get(subjectId));
-        attemptMarksBySubject.set(subjectId, {
-            theory: score.totalMarksObtained,
-            attempted: true,
-            submittedAt: attempt.submittedAt || attempt.updatedAt,
-            possibleMarks: score.totalMarksPossible
-        });
-    });
+    for (const attempt of attempts) {
+        if (!attempt.subject) continue;
+        const subId = String(attempt.subject._id || attempt.subject);
+        const score = scoreAttemptAgainstPaper(attempt, paperBySubject.get(subId));
 
-    attempts.forEach((attempt) => {
-        const subjectId = String(attempt.subject?._id || attempt.subject);
-        if (!subjectRows.some((row) => row.subjectId === subjectId)) {
-            const score = attemptMarksBySubject.get(subjectId) || scoreAttemptAgainstPaper(attempt, paperBySubject.get(subjectId));
-            subjectRows.push({
-                subjectId,
-                subjectName: attempt.subject?.name || attempt.subject?.printedName || 'Subject',
-                maxMarks: score.possibleMarks || 100
+        if (subjectMap.has(subId)) {
+            const item = subjectMap.get(subId);
+            item.theory = Number(score.totalMarksObtained) || 0;
+            item.total = Number(score.totalMarksObtained) || 0;
+            item.attempted = true;
+            item.submittedAt = attempt.submittedAt || attempt.updatedAt;
+        } else {
+            const subName = attempt.subject?.name || attempt.subject?.printedName || 'Subject';
+            const n = subName.toUpperCase();
+            const defaultMax = (n.includes('DISCIPLINE') || n.includes('DESCIPLINE') || n.includes('PROJECT')) ? 50 : 100;
+            const maxMarks = Number(attempt.subject?.totalMarks) || defaultMax;
+
+            subjectMap.set(subId, {
+                subjectId: subId,
+                subjectName: subName,
+                maxMarks: maxMarks,
+                theory: Number(score.totalMarksObtained) || 0,
+                practical: 0,
+                total: Number(score.totalMarksObtained) || 0,
+                attempted: true,
+                submittedAt: attempt.submittedAt || attempt.updatedAt
             });
         }
-    });
+    }
 
-    const subjects = subjectRows.map((row) => {
-        const attemptScore = attemptMarksBySubject.get(row.subjectId);
-        return {
-            subjectId: row.subjectId,
-            subjectName: row.subjectName,
-            theory: Number(attemptScore?.theory) || 0,
-            practical: 0,
-            total: Number(attemptScore?.theory) || 0,
-            maxMarks: Number(row.maxMarks) || Number(attemptScore?.possibleMarks) || 100,
-            attempted: Boolean(attemptScore?.attempted),
-            submittedAt: attemptScore?.submittedAt || null
-        };
-    });
+    const subjects = Array.from(subjectMap.values());
 
     res.json({
         examName: resolvedExamName,
         courseId: resolvedCourseId,
+        examId: baseSchedule?._id || selectedSchedule?._id || examId,
         studentId,
         subjects
     });

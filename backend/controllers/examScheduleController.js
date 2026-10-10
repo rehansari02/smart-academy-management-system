@@ -678,6 +678,9 @@ const getExamScheduleDetails = asyncHandler(async (req, res) => {
     }).lean();
 
     const studentMap = new Map();
+    const regularSchedule = siblingSchedules.find(s => !s.isReExam && (s.timeTable?.length || 0) > 1) 
+        || siblingSchedules.find(s => !s.isReExam) 
+        || siblingSchedules[0];
 
     // 1. Gather all scheduled attendees across all matching schedules
     for (const s of siblingSchedules) {
@@ -694,7 +697,7 @@ const getExamScheduleDetails = asyncHandler(async (req, res) => {
                     mobile: student.mobileStudent || '',
                     branchName: student.branchName || '',
                     courseName: schedule.course,
-                    scheduleId: String(s._id),
+                    scheduleId: String(regularSchedule?._id || s._id),
                     hasAttempted: false,
                     submittedPapersCount: 0,
                     hasResult: false
@@ -724,7 +727,7 @@ const getExamScheduleDetails = asyncHandler(async (req, res) => {
                 mobile: student.mobileStudent || '',
                 branchName: student.branchName || '',
                 courseName: schedule.course,
-                scheduleId: String(attempt.schedule || schedule._id),
+                scheduleId: String(regularSchedule?._id || attempt.schedule || schedule._id),
                 hasAttempted: true,
                 submittedPapersCount: 1,
                 hasResult: false
@@ -733,9 +736,6 @@ const getExamScheduleDetails = asyncHandler(async (req, res) => {
             const item = studentMap.get(sId);
             item.hasAttempted = true;
             item.submittedPapersCount = (item.submittedPapersCount || 0) + 1;
-            if (attempt.schedule) {
-                item.scheduleId = String(attempt.schedule);
-            }
         }
     }
 

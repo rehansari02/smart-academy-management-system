@@ -229,14 +229,18 @@ export const createExamResult = createAsyncThunk('master/createExamResult', asyn
     try {
         const response = await axios.post(API_URL + 'exam-result', data);
         return response.data;
-    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+    } catch (error) { 
+        return thunkAPI.rejectWithValue(error.response?.data?.message || error.message || 'Failed to create exam result'); 
+    }
 });
 
 export const updateExamResult = createAsyncThunk('master/updateExamResult', async ({ id, data }, thunkAPI) => {
     try {
         const response = await axios.put(`${API_URL}exam-result/${id}`, data);
         return response.data;
-    } catch (error) { return thunkAPI.rejectWithValue(error.message); }
+    } catch (error) { 
+        return thunkAPI.rejectWithValue(error.response?.data?.message || error.message || 'Failed to update exam result'); 
+    }
 });
 
 export const deleteExamResult = createAsyncThunk('master/deleteExamResult', async (id, thunkAPI) => {
@@ -784,16 +788,36 @@ const masterSlice = createSlice({
             .addCase(fetchExamResults.fulfilled, (state, action) => {
                 state.examResults = action.payload;
             })
+            .addCase(createExamResult.pending, (state) => {
+                state.isLoading = true;
+                state.isError = false;
+            })
             .addCase(createExamResult.fulfilled, (state, action) => {
+                state.isLoading = false;
                 state.examResults.unshift(action.payload);
                 state.isSuccess = true;
                 state.message = 'Result Added Successfully';
             })
+            .addCase(createExamResult.rejected, (state, action) => {
+                state.isLoading = false;
+                state.isError = true;
+                state.message = action.payload;
+            })
+            .addCase(updateExamResult.pending, (state) => {
+                state.isLoading = true;
+                state.isError = false;
+            })
             .addCase(updateExamResult.fulfilled, (state, action) => {
+                state.isLoading = false;
                 const index = state.examResults.findIndex(r => r._id === action.payload._id);
                 if (index !== -1) state.examResults[index] = action.payload;
                 state.isSuccess = true;
                 state.message = 'Result Updated Successfully';
+            })
+            .addCase(updateExamResult.rejected, (state, action) => {
+                state.isLoading = false;
+                state.isError = true;
+                state.message = action.payload;
             })
             .addCase(deleteExamResult.fulfilled, (state, action) => {
                 state.examResults = state.examResults.filter(r => r._id !== action.payload.id);
