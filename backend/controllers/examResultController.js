@@ -336,14 +336,21 @@ const deleteExamResult = asyncHandler(async (req, res) => {
 const getExamResultById = asyncHandler(async (req, res) => {
     const result = await ExamResult.findById(req.params.id)
         .populate('student', 'firstName middleName lastName relationType gender regNo enrollmentNo mobileStudent studentPhoto dob aadharCard address city state pincode batch branchId branchName')
-        .populate('course', 'name duration durationType shortName centerName')
-        .populate('subjectMarks.subject', 'name')
+        .populate({
+            path: 'course',
+            select: 'name duration durationType shortName centerName subjects',
+            populate: {
+                path: 'subjects.subject',
+                select: 'name printedName topicName totalMarks'
+            }
+        })
+        .populate('subjectMarks.subject', 'name printedName topicName totalMarks')
         .populate({
             path: 'exam',
             select: 'examName timeTable',
             populate: {
                 path: 'timeTable.subject',
-                select: 'name'
+                select: 'name printedName topicName totalMarks'
             }
         });
     

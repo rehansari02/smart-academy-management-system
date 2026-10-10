@@ -312,8 +312,27 @@ const ExamResultPrint = ({ defaultDocType }) => {
   };
 
   // Helper to get matching subject details (name + subtext) based on input
-  const getSubjectDetails = (name, index) => {
-    const rawName = String(name || "").trim();
+  const getSubjectDetails = (subjectData, index) => {
+    let rawName = "";
+    let rawTopic = "";
+
+    if (typeof subjectData === "object" && subjectData !== null) {
+      rawName =
+        subjectData.printedName ||
+        subjectData.name ||
+        subjectData.subjectName ||
+        subjectData.subject?.printedName ||
+        subjectData.subject?.name ||
+        "";
+      rawTopic =
+        subjectData.topicName ||
+        subjectData.subjectTopicName ||
+        subjectData.subject?.topicName ||
+        "";
+    } else {
+      rawName = String(subjectData || "").trim();
+    }
+
     if (!rawName) return { name: "", subtext: "" };
 
     // Strip any existing trailing Roman numeral or numbers in parentheses e.g. "(I)", "(II)", "(V)", "(1)"
@@ -324,7 +343,7 @@ const ExamResultPrint = ({ defaultDocType }) => {
 
     // Internal grading / non-exam modules do not have Roman numeral suffixes
     if (n === "PROJECT" || n.includes("PROJECT")) {
-      return { name: "PROJECT", subtext: "" };
+      return { name: "PROJECT", subtext: rawTopic.trim() };
     }
     if (
       n === "DISCIPLINE" ||
@@ -332,7 +351,7 @@ const ExamResultPrint = ({ defaultDocType }) => {
       n.includes("DISCIPLINE") ||
       n.includes("DESCIPLINE")
     ) {
-      return { name: "DISCIPLINE", subtext: "" };
+      return { name: "DISCIPLINE", subtext: rawTopic.trim() };
     }
 
     // Dynamic Roman Numeral Serial based on the subject's position
@@ -352,30 +371,34 @@ const ExamResultPrint = ({ defaultDocType }) => {
     ];
     const romanTag = romanNumerals[index] ? ` (${romanNumerals[index]})` : "";
 
-    let baseName = cleanName.toUpperCase();
-    let subtext = "";
+    // Keep the true name from Course/Subject master - do not downgrade "ADVANCE BASIC" to "BASIC"!
+    const baseName = cleanName.toUpperCase();
 
-    if (n.includes("BASIC")) {
-      baseName = "BASIC";
-      subtext = "Os-XP/Windows7, Dos, Word, Excel, Powerpoint";
-    } else if (n.includes("HTML") || n.includes("MARKUP")) {
-      baseName = "H.T.M.L.";
-      subtext = "Hyper Text Markup Language";
-    } else if (n.includes("DTP") || n.includes("DESKTOP PUBLISHING")) {
-      baseName = "DESKTOP PUBLISHING- D.T.P.";
-      subtext = "Photoshop Cs3, Corel Draw, Pagemaker";
-    } else if (n.includes("INTERNET") || n.includes("SEMINAR")) {
-      baseName = "INTERNET & SEMINAR";
-      subtext = "Internet & Seminar";
-    } else if (n.includes("TALLY")) {
-      baseName = n.includes("PRIME") ? "TALLY PRIME" : "TALLY";
-      subtext = "Tally.9, Tally ERP.9, Tally Prime";
-    } else if (n.includes("FINANCIAL ACCOUNTING")) {
-      baseName = "FINANCIAL ACCOUNTING";
-      subtext = "Manual Accounting, GST, Inventory";
-    } else if (n.includes("PROGRAMMING")) {
-      baseName = "PROGRAMMING";
-      subtext = "C, C++ Programming";
+    // Priority 1: Use the topic name configured in Subject master
+    let subtext = String(rawTopic || "").trim();
+
+    // Priority 2: Fallback subtext only if topic is not configured in master
+    if (!subtext) {
+      const cleanWithoutDots = n.replace(/\./g, "");
+      if (n.includes("ADVANCE BASIC")) {
+        subtext = "(OS-Windows-10, Dos.Word, Excel, Power Point)";
+      } else if (n === "BASIC" || (n.includes("BASIC") && !n.includes("ADVANCE"))) {
+        subtext = "Os-XP/Windows7, Dos, Word, Excel, Powerpoint";
+      } else if (n.includes("HTML") || n.includes("MARKUP")) {
+        subtext = "Hyper Text Markup Language";
+      } else if (cleanWithoutDots.includes("DTP") || n.includes("DESKTOP PUBLISHING")) {
+        subtext = "Photoshop, Corel Draw";
+      } else if (n.includes("INTERNET") || n.includes("SEMINAR")) {
+        subtext = "Internet & Seminar";
+      } else if (n.includes("TALLY")) {
+        subtext = n.includes("PRIME")
+          ? "Tally Prime With GST"
+          : "Tally.9, Tally ERP.9, Tally Prime";
+      } else if (n.includes("FINANCIAL ACCOUNTING")) {
+        subtext = "Manual Accounting, GST, Inventory";
+      } else if (n.includes("PROGRAMMING")) {
+        subtext = "Language C, C++";
+      }
     }
 
     return {
@@ -427,7 +450,7 @@ const ExamResultPrint = ({ defaultDocType }) => {
     result.attendanceSummary?.totalPresentsText ||
     "";
 
-  // Robust marksData construction: Combine exam timetable with saved marks
+  // Robust marksData construction: Combine exam timetable with saved marks and course curriculum
   // This ensures all subjects from the exam are shown, plus any specific marks recorded.
   const timetable = exam?.timeTable || [];
   const savedMarks = result.subjectMarks || [];
@@ -439,24 +462,48 @@ const ExamResultPrint = ({ defaultDocType }) => {
     if (id) savedMarksMap.set(id, sm);
   });
 
+  // Create a map of course curriculum subjects for rich metadata lookup
+  const courseSubjectsMap = new Map();
+  (course?.subjects || []).forEach((cs) => {
+    const s = cs.subject;
+    const sId = (s?._id || s)?.toString();
+    if (sId && typeof s === "object") {
+      courseSubjectsMap.set(sId, s);
+    }
+  });
+
   let marksData = [];
   if (timetable.length > 0) {
     // Use timetable as base to maintain correct order and ensure all subjects are listed
     marksData = timetable.map((tt) => {
       const id = (tt.subject?._id || tt.subject)?.toString();
       const sm = savedMarksMap.get(id);
+      const courseSub = courseSubjectsMap.get(id);
+      const subObj =
+        (typeof tt.subject === "object" && tt.subject?._id && tt.subject) ||
+        (typeof sm?.subject === "object" && sm?.subject?._id && sm?.subject) ||
+        courseSub ||
+        {};
+
       return {
-        subject: tt.subject,
+        subject: subObj,
         subjectName:
-          tt.subject?.name ||
+          subObj.printedName ||
+          subObj.name ||
           tt.subjectName ||
           sm?.subjectName ||
           sm?.name ||
           "",
+        topicName:
+          subObj.topicName ||
+          courseSub?.topicName ||
+          tt.topicName ||
+          sm?.topicName ||
+          "",
         theory: sm?.theory ?? "-",
         practical: sm?.practical ?? "-",
         total: sm?.total ?? "-",
-        maxMarks: tt.total || sm?.maxMarks || 0,
+        maxMarks: tt.total || sm?.maxMarks || subObj.totalMarks || 0,
       };
     });
 
@@ -469,26 +516,59 @@ const ExamResultPrint = ({ defaultDocType }) => {
           (tt) => (tt.subject?._id || tt.subject)?.toString() === id,
         )
       ) {
+        const courseSub = courseSubjectsMap.get(id);
+        const subObj =
+          (typeof sm.subject === "object" && sm.subject?._id && sm.subject) ||
+          courseSub ||
+          {};
         marksData.push({
-          subject: sm.subject,
-          subjectName: sm.subject?.name || sm.subjectName || sm.name || "",
+          subject: subObj,
+          subjectName:
+            subObj.printedName ||
+            subObj.name ||
+            sm.subjectName ||
+            sm.name ||
+            "",
+          topicName:
+            subObj.topicName ||
+            courseSub?.topicName ||
+            sm.topicName ||
+            "",
           theory: sm.theory,
           practical: sm.practical,
           total: sm.total,
-          maxMarks: sm.maxMarks || 0,
+          maxMarks: sm.maxMarks || subObj.totalMarks || 0,
         });
       }
     });
   } else {
     // Fallback to saved marks only if timetable is unavailable
-    marksData = savedMarks.map((sm) => ({
-      subject: sm.subject,
-      subjectName: sm.subject?.name || sm.subjectName || sm.name || "",
-      theory: sm.theory,
-      practical: sm.practical,
-      total: sm.total,
-      maxMarks: sm.maxMarks || 0,
-    }));
+    marksData = savedMarks.map((sm) => {
+      const id = (sm.subject?._id || sm.subject)?.toString();
+      const courseSub = courseSubjectsMap.get(id);
+      const subObj =
+        (typeof sm.subject === "object" && sm.subject?._id && sm.subject) ||
+        courseSub ||
+        {};
+      return {
+        subject: subObj,
+        subjectName:
+          subObj.printedName ||
+          subObj.name ||
+          sm.subjectName ||
+          sm.name ||
+          "",
+        topicName:
+          subObj.topicName ||
+          courseSub?.topicName ||
+          sm.topicName ||
+          "",
+        theory: sm.theory,
+        practical: sm.practical,
+        total: sm.total,
+        maxMarks: sm.maxMarks || subObj.totalMarks || 0,
+      };
+    });
   }
 
   // --- Dynamic Layout Calculations for Marksheet ---
@@ -903,6 +983,7 @@ const ExamResultPrint = ({ defaultDocType }) => {
                   <tbody>
                     {marksData.map((subj, index) => {
                       const subjectName =
+                        subj.subject?.printedName ||
                         subj.subject?.name ||
                         subj.subjectName ||
                         subj.name ||
@@ -919,11 +1000,11 @@ const ExamResultPrint = ({ defaultDocType }) => {
                         subj.practical !== "";
                       const totalVal = harms
                         ? hasTheoryPracticalMarks
-                          ? (Number(subj.theory) || 0) +
-                            (Number(subj.practical) || 0)
-                          : subj.total !== "-"
-                          ? subj.total
-                          : ""
+                        ? (Number(subj.theory) || 0) +
+                          (Number(subj.practical) || 0)
+                        : subj.total !== "-"
+                        ? subj.total
+                        : ""
                         : "";
                       const isProjectOrDisciplineName =
                         (subjectName || "").toUpperCase().includes("PROJECT") ||
@@ -940,9 +1021,9 @@ const ExamResultPrint = ({ defaultDocType }) => {
                         : "";
                       const wordsVal = harms ? numberToWords(totalVal) : "";
 
-                      // Resolve full subject name and subtexts intelligently
+                      // Resolve full subject name and subtexts intelligently using DB printedName and topicName
                       const subjectDetails = getSubjectDetails(
-                        subjectName,
+                        subj,
                         index,
                       );
                       const displaySubjectName = harms
@@ -1491,9 +1572,7 @@ const ExamResultPrint = ({ defaultDocType }) => {
               >
                 {marksData.length > 0 ? (
                   marksData.map((subj, i) => {
-                    const subjectName =
-                      subj.subject?.name || subj.subjectName || subj.name || "";
-                    const details = getSubjectDetails(subjectName, i);
+                    const details = getSubjectDetails(subj, i);
                     return (
                       <div
                         key={i}
