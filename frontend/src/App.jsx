@@ -885,17 +885,6 @@ function App() {
               />
 
               <Route
-                path="/print/exam-result/:id"
-                element={
-                  <PrivateRoute>
-                    <Suspense fallback={<Loading />}>
-                        <ExamResultPrint />
-                    </Suspense>
-                  </PrivateRoute>
-                }
-              />
-              
-              <Route
                 path="/master/syllabus-management"
                 element={
                   <PrivateRoute>
@@ -1143,6 +1132,32 @@ function App() {
               />
 
               <Route path="/material-preview/:id" element={<MaterialPreview />} />
+
+              {/* Public Print & Certificate Verification Routes - Accessible directly without login (for QR code scan & sharing) */}
+              <Route
+                path="/print/exam-result/:id"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <ExamResultPrint />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/certificate/:id"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <ExamResultPrint defaultDocType="Certificate" />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/verify/certificate/:id"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <ExamResultPrint defaultDocType="Certificate" />
+                  </Suspense>
+                }
+              />
 
               <Route element={<PublicLayout />}>
                 <Route

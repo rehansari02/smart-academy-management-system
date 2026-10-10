@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams, useLocation } from "react-router-dom";
 import axios from "axios";
 import moment from "moment";
 import { QRCodeSVG } from "qrcode.react";
@@ -9,10 +9,19 @@ import certificateImg from "../../../assets/certificate.png";
 import signImg from "../../../assets/sign.png";
 import centerImg from "../../../assets/center.png";
 
-const ExamResultPrint = () => {
+const ExamResultPrint = ({ defaultDocType }) => {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
-  const type = searchParams.get("type") || "Marksheet";
+  const location = useLocation();
+
+  const isCertificateRoute =
+    defaultDocType === "Certificate" ||
+    location.pathname.startsWith("/certificate") ||
+    location.pathname.startsWith("/verify/certificate");
+
+  const type =
+    searchParams.get("type") ||
+    (isCertificateRoute ? "Certificate" : "Marksheet");
 
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -84,12 +93,19 @@ const ExamResultPrint = () => {
         setResult(data);
         setLoading(false);
       } catch (error) {
-        console.error("Failed to fetch exam result", error);
+        console.error("Failed to fetch exam result with credentials, trying public fallback", error);
+        try {
+          const publicUrl = `${import.meta.env.VITE_API_URL}/master/exam-result/public/${id}`;
+          const { data } = await axios.get(publicUrl);
+          setResult(data);
+        } catch (pubErr) {
+          console.error("Public fallback also failed", pubErr);
+        }
         setLoading(false);
       }
     };
-    fetchResult();
-  }, [id]);
+    if (id) fetchResult();
+  }, [id, API_URL]);
 
   // Translate numbers to words (e.g. 66 -> "SIX SIX")
   const numberToWords = (num) => {
@@ -541,19 +557,21 @@ const ExamResultPrint = () => {
   const displayResultGrade = toUpperText(result.grade || "DISTINCTION");
 
   return (
-    <div className="bg-slate-500 min-h-screen py-10 print:py-0 print:bg-white flex flex-col items-center font-sans text-slate-900">
+    <div className="bg-slate-600 min-h-screen py-4 md:py-8 print:py-0 print:bg-white flex flex-col items-center font-sans text-slate-900 w-full overflow-x-auto">
       {/* --- Web Print Control Bar --- */}
-      <div className="fixed top-5 right-5 print:hidden flex gap-2 z-[100]">
+      <div className="fixed top-4 right-4 print:hidden flex items-center gap-2 z-[100] bg-white/95 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl border border-slate-200">
         <button
           onClick={() => window.print()}
-          className="bg-[#1565C0] text-white px-8 py-2.5 rounded-full font-extrabold shadow-lg hover:scale-105 transition-transform"
+          className="bg-[#1565C0] text-white px-5 py-2 rounded-full font-bold shadow hover:bg-[#0d47a1] hover:scale-105 transition-all text-sm flex items-center gap-2"
         >
-          🖨️ Print {type}
+          <span>🖨️</span>
+          <span>Print {type}</span>
         </button>
       </div>
 
-      {/* --- A4 Print Sheet --- */}
-      <div className="sheet bg-white w-[210mm] h-[271.85mm] relative overflow-hidden print:w-[210mm] print:h-[271.85mm] print:m-0 print:shadow-none shadow-2xl box-border">
+      {/* --- Mobile-responsive sheet container --- */}
+      <div className="w-full flex justify-center px-2 print:p-0 print:m-0">
+        <div className="sheet bg-white w-[210mm] min-w-[210mm] h-[271.85mm] relative overflow-hidden print:w-[210mm] print:h-[271.85mm] print:m-0 print:shadow-none shadow-2xl box-border">
         {type === "Marksheet" ? (
           <>
             {/* Background pre-printed template image */}
@@ -1252,7 +1270,7 @@ const ExamResultPrint = () => {
                 }}
               >
                 <QRCodeSVG
-                  value={`${window.location.origin}/print/exam-result/${id}?type=Certificate`}
+                  value={`${window.location.origin}/certificate/${id}`}
                   size={70} // Optimized size for scanning and aesthetics
                   level="H"
                   includeMargin={false}
@@ -1578,6 +1596,7 @@ const ExamResultPrint = () => {
           />
         </div>
       </div>
+    </div>
 
       {/* Custom Print Style overrides to strip page margins & load Montserrat/Playfair fonts */}
       <style type="text/css">

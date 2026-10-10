@@ -188,6 +188,7 @@ router.route('/final-exam-question-paper/:id')
 
 // --- Exam Results ---
 router.post('/exam-result/verify', verifyExamResult); // Public Access
+router.get('/exam-result/public/:id', getExamResultById); // Public Access for QR code / Certificate verification
 router.get('/exam-result/next-numbers', protect, getNextResultNumbers);
 router.get('/exam-result/attempt-marks', protect, getExamAttemptMarksForResult);
 router.route('/exam-result')
@@ -195,7 +196,7 @@ router.route('/exam-result')
     .post(protect, createExamResult); 
 
 router.route('/exam-result/:id')
-    .get(protect, getExamResultById)
+    .get(getExamResultById) // Public access for direct result viewing / QR scanning
     .put(protect, updateExamResult)
     .delete(protect, deleteExamResult);
 

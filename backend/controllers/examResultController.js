@@ -347,8 +347,11 @@ const getExamResultById = asyncHandler(async (req, res) => {
             }
         });
     
-    if (result) {
-        const attendanceSummary = await getStudentAttendanceSummary(result.student._id, result.exam);
+    if (result && !result.isDeleted) {
+        const studentId = result.student?._id || result.student;
+        const attendanceSummary = studentId
+            ? await getStudentAttendanceSummary(studentId, result.exam)
+            : { totalPresentsText: '', percentage: '0.00' };
         const marksPercentage = result.totalMarks > 0
             ? ((Number(result.marksObtained || 0) / Number(result.totalMarks)) * 100).toFixed(2)
             : '0.00';
