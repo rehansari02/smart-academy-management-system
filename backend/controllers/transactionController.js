@@ -596,6 +596,28 @@ const getInquiries = asyncHandler(async (req, res) => {
     await backfillOnlineAdmissionOwners(req.user.branchId);
   }
 
+  // Check if user has access to Admin Home / Inquiry List
+  let hasAdminHomeInquiryAccess = false;
+  let hasAdminHomeOnlineAdmissionAccess = false;
+
+  if (req.user) {
+    if (["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role)) {
+      hasAdminHomeInquiryAccess = true;
+      hasAdminHomeOnlineAdmissionAccess = true;
+    } else {
+      const UserRight = require("../models/UserRight");
+      const userRights = await UserRight.findOne({ user: req.user._id }).lean();
+      if (userRights && Array.isArray(userRights.permissions)) {
+        hasAdminHomeInquiryAccess = userRights.permissions.some(
+          p => (p.page === "Admin Home - Inquiry List" || p.page === "Admin Home" || p.page === "Inquiry List") && p.view === true
+        );
+        hasAdminHomeOnlineAdmissionAccess = userRights.permissions.some(
+          p => (p.page === "Admin Home - Online Admissions" || p.page === "Admin Home") && p.view === true
+        );
+      }
+    }
+  }
+
   const canViewBranchWideInquiries = req.user
     && ["Super Admin", "Branch Director", "Branch Admin"].includes(req.user.role);
   const employeeFilter = req.query.employeeId || req.query.allocatedTo;
@@ -610,15 +632,23 @@ const getInquiries = asyncHandler(async (req, res) => {
 
   if (req.user && !canViewBranchWideInquiries && !isAdmissionLookup) {
     const extraOwnershipConditions = getUserReferenceOwnershipConditions(req.user);
-    if (req.query.adminHome === "true" && req.user.branchId) {
-      extraOwnershipConditions.push({
-        source: "OnlineAdmission",
-        branchId: req.user.branchId,
-        $or: [
-          { allocatedTo: { $exists: false } },
-          { allocatedTo: null },
-        ],
-      });
+    if (req.query.adminHome === "true") {
+      if (hasAdminHomeInquiryAccess) {
+        extraOwnershipConditions.push({ source: "QuickContact" });
+      }
+      if (hasAdminHomeOnlineAdmissionAccess) {
+        extraOwnershipConditions.push({ source: "OnlineAdmission" });
+      }
+      if (req.user.branchId) {
+        extraOwnershipConditions.push({
+          source: "OnlineAdmission",
+          branchId: req.user.branchId,
+          $or: [
+            { allocatedTo: { $exists: false } },
+            { allocatedTo: null },
+          ],
+        });
+      }
     }
     addInquiryOwnershipScope(query, req.user._id, extraOwnershipConditions);
   }

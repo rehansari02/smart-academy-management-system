@@ -28,7 +28,9 @@ const checkPermission = (page, action) => asyncHandler(async (req, res, next) =>
         const hasAnyInquiryRight = userRights.permissions.some(p => 
             (p.page.startsWith('Inquiry - ') ||
              p.page === 'Admin Home - Inquiry List' ||
-             p.page === 'Admin Home - Online Admissions') &&
+             p.page === 'Admin Home - Online Admissions' ||
+             p.page === 'Admin Home' ||
+             p.page === 'Inquiry List') &&
             p[action] === true
         );
         if (hasAnyInquiryRight) {

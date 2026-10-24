@@ -58,7 +58,7 @@ const AdminHome = () => {
     // Initial Fetch - Fetch ALL inquiries and filter them client-side
     useEffect(() => {
         // Fetch inquiries if has any inquiry right or is admin
-        if (canViewInquiryList || canViewOnlineAdmissions || (user && user.role === 'Super Admin')) {
+        if (canViewInquiryList || canViewOnlineAdmissions || hasDashboardAccess || (user && user.role === 'Super Admin')) {
             dispatch(fetchInquiries(adminHomeInquiryParams));
         }
         
@@ -337,7 +337,7 @@ const AdminHome = () => {
             {/* --- Tab Navigation --- */}
             <div className="flex justify-center mb-8">
                 <div className="bg-white p-1 rounded-full shadow-md inline-flex border">
-                    {(canViewInquiryList || (user && user.role === 'Super Admin')) && (
+                    {(canViewInquiryList || hasDashboardAccess || (user && user.role === 'Super Admin')) && (
                         <button
                             onClick={() => openTab('inquiry')}
                             className={`px-8 py-2 rounded-full font-medium transition-all ${activeTab === 'inquiry'
@@ -349,7 +349,7 @@ const AdminHome = () => {
                         </button>
                     )}
 
-                    {(canViewOnlineAdmissions || (user && user.role === 'Super Admin')) && (
+                    {(canViewOnlineAdmissions || hasDashboardAccess || (user && user.role === 'Super Admin')) && (
                         <button
                             onClick={() => openTab('online-admission')}
                             className={`px-8 py-2 rounded-full font-medium transition-all ${activeTab === 'online-admission'
@@ -620,7 +620,7 @@ const AdminHome = () => {
             )}
 
             {/* --- CONTENT: INQUIRY LIST --- */}
-            {activeTab === 'inquiry' && (canViewInquiryList || (user && user.role === 'Super Admin')) && (
+            {activeTab === 'inquiry' && (canViewInquiryList || hasDashboardAccess || (user && user.role === 'Super Admin')) && (
                 <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden animate-fadeIn">
                     <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
                         <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -701,7 +701,7 @@ const AdminHome = () => {
             )}
 
             {/* --- CONTENT: ONLINE ADMISSION LIST --- */}
-            {activeTab === 'online-admission' && (canViewOnlineAdmissions || (user && user.role === 'Super Admin')) && (
+            {activeTab === 'online-admission' && (canViewOnlineAdmissions || hasDashboardAccess || (user && user.role === 'Super Admin')) && (
                 <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden animate-fadeIn">
                     <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
                         <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
