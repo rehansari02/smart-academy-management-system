@@ -755,7 +755,17 @@ const masterSlice = createSlice({
             
             // --- Exam Schedules ---
             .addCase(fetchExamSchedules.fulfilled, (state, action) => {
-                state.examSchedules = action.payload;
+                const filterExamName = action.meta.arg?.examName;
+                if (filterExamName && Array.isArray(state.examSchedules) && state.examSchedules.length > 0) {
+                    const key = String(filterExamName).trim().toLowerCase();
+                    const remaining = state.examSchedules.filter(
+                        s => (s?.examName || '').trim().toLowerCase() !== key
+                    );
+                    const incoming = Array.isArray(action.payload) ? action.payload : [];
+                    state.examSchedules = [...remaining, ...incoming];
+                } else {
+                    state.examSchedules = action.payload;
+                }
             })
             .addCase(createExamSchedule.fulfilled, (state, action) => {
                 state.examSchedules.unshift(action.payload);

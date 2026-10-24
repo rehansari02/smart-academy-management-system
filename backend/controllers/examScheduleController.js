@@ -352,7 +352,8 @@ const getExamSchedules = asyncHandler(async (req, res) => {
         query.course = courseId;
     }
     if (examName) {
-        query.examName = { $regex: examName, $options: 'i' };
+        const escaped = escapeRegex(String(examName).trim());
+        query.examName = { $regex: `^${escaped}$`, $options: 'i' };
     }
     if (branchId) {
         const students = await Student.find({ branchId }).select('_id');
@@ -1150,7 +1151,7 @@ const getAbsentExamStudents = asyncHandler(async (req, res) => {
                 if (!student || student.isDeleted || student.isCancelled) return;
                 if (!schedule.isReExam && reExamMap.has(`${String(schedule.course?._id || schedule.course)}:${String(subjectId)}:${String(student._id)}`)) return;
                 const attempt = attemptMap.get(`${String(schedule._id)}:${String(subjectId)}:${String(student._id)}`);
-                if (attempt) return;
+                const isSubmitted = Boolean(attempt?.isSubmitted);
 
                 const attendanceEntry = (schedule.attendance || []).find(
                     (a) => String(a.student?._id || a.student) === String(student._id) &&
@@ -1158,9 +1159,29 @@ const getAbsentExamStudents = asyncHandler(async (req, res) => {
                 );
                 const isExplicitlyAbsent = attendanceEntry?.status === 'Absent';
                 const isExplicitlyPresent = attendanceEntry?.status === 'Present';
+                const isExplicitlyReExam = attendanceEntry?.status === 'Re-Exam' || attendanceEntry?.status === 'Rescheduled';
 
-                const isAbsent = isExplicitlyAbsent || (rowStatus.status === 'ended' && !isExplicitlyPresent);
-                if (!isAbsent) return;
+                const isEnded = rowStatus.status === 'ended';
+                // Eligible for re-exam if:
+                // - Explicitly marked 'Re-Exam' or 'Absent' in attendance
+                // - Or exam has ended and student has no submitted attempt (including students who opened paper and left)
+                const isEligible = isExplicitlyReExam || isExplicitlyAbsent || (!isSubmitted && isEnded);
+                if (!isEligible) return;
+                // If attempt was already submitted, only allow if explicitly marked for Re-Exam
+                if (isSubmitted && !isExplicitlyReExam) return;
+
+                let statusReason = 'Absent';
+                if (isExplicitlyReExam) {
+                    statusReason = 'Marked for Re-Exam';
+                } else if (isExplicitlyAbsent) {
+                    statusReason = 'Marked Absent';
+                } else if (attempt && !isSubmitted) {
+                    statusReason = 'Interrupted / Left Without Submit';
+                } else if (isEnded && !isExplicitlyPresent) {
+                    statusReason = 'Absent (Time Ended)';
+                } else if (isEnded && isExplicitlyPresent && !attempt) {
+                    statusReason = 'Present but Exam Not Started';
+                }
 
                 rows.push({
                     key: `${schedule._id}-${subjectId}-${student._id}`,
@@ -1181,7 +1202,10 @@ const getAbsentExamStudents = asyncHandler(async (req, res) => {
                     isReExam: Boolean(schedule.isReExam),
                     theory: timeRow.theory || 0,
                     practical: timeRow.practical || 0,
-                    total: timeRow.total || 0
+                    total: timeRow.total || 0,
+                    statusReason,
+                    attendanceStatus: attendanceEntry?.status || 'Not Marked',
+                    attemptStatus: attempt ? (isSubmitted ? 'Submitted' : 'Incomplete') : 'None'
                 });
             });
         });
@@ -1381,11 +1405,11 @@ const saveExamAttendance = asyncHandler(async (req, res) => {
         throw new Error('Invalid attendance payload');
     }
     const hasInvalidAttendance = attendanceRecords.some((record) => (
-        !record?.studentId || !['Present', 'Absent'].includes(record.status)
+        !record?.studentId || !['Present', 'Absent', 'Re-Exam', 'Rescheduled'].includes(record.status)
     ));
     if (hasInvalidAttendance) {
         res.status(400);
-        throw new Error('Each attendance record must be explicitly Present or Absent');
+        throw new Error('Each attendance record must be explicitly Present, Absent, or Re-Exam');
     }
 
     const schedules = await ExamSchedule.find({ _id: { $in: scheduleIds } });
@@ -1419,6 +1443,146 @@ const saveExamAttendance = asyncHandler(async (req, res) => {
     res.json({ message: 'Exam attendance saved successfully' });
 });
 
+// @desc    Reschedule a single student's exam with new date & time (for students who left or had issues)
+// @route   POST /api/master/exam-schedule/reschedule-student
+const rescheduleStudentExam = asyncHandler(async (req, res) => {
+    const {
+        scheduleId,
+        subjectId,
+        studentId,
+        newDate,
+        startTime,
+        endTime,
+        conductPasswordEnabled,
+        conductPassword,
+        reason
+    } = req.body;
+
+    if (!scheduleId || !subjectId || !studentId) {
+        res.status(400);
+        throw new Error('Schedule ID, Subject ID and Student ID are required');
+    }
+    if (!newDate || !startTime || !endTime) {
+        res.status(400);
+        throw new Error('New exam date, start time and end time are required');
+    }
+
+    const schedule = await ExamSchedule.findById(scheduleId).populate('timeTable.subject', 'name printedName');
+    if (!schedule || schedule.isDeleted) {
+        res.status(404);
+        throw new Error('Original exam schedule not found');
+    }
+
+    const student = await Student.findById(studentId);
+    if (!student || student.isDeleted) {
+        res.status(404);
+        throw new Error('Student not found');
+    }
+
+    const timeRow = (schedule.timeTable || []).find(
+        (row) => String(row.subject?._id || row.subject) === String(subjectId)
+    );
+    if (!timeRow) {
+        res.status(404);
+        throw new Error('Subject not found in this exam schedule timetable');
+    }
+
+    // 1. Check if student has an existing attempt on original schedule
+    const existingAttempt = await ExamAttempt.findOne({
+        schedule: schedule._id,
+        subject: subjectId,
+        student: student._id
+    });
+
+    if (existingAttempt && !existingAttempt.isSubmitted) {
+        // Remove incomplete attempt so student starts fresh on new schedule
+        await ExamAttempt.deleteOne({ _id: existingAttempt._id });
+    }
+
+    // 2. Mark attendance on original schedule as 'Re-Exam'
+    const originalDateKey = getDateKey(timeRow.date);
+    if (!Array.isArray(schedule.attendance)) {
+        schedule.attendance = [];
+    }
+    const existingAttIndex = schedule.attendance.findIndex(
+        (a) => String(a.student?._id || a.student) === String(student._id) &&
+               (!a.examDate || a.examDate === originalDateKey || getDateKey(a.examDate) === originalDateKey)
+    );
+    if (existingAttIndex >= 0) {
+        schedule.attendance[existingAttIndex].status = 'Re-Exam';
+        schedule.attendance[existingAttIndex].updatedAt = new Date();
+    } else {
+        schedule.attendance.push({
+            student: student._id,
+            examDate: originalDateKey,
+            status: 'Re-Exam',
+            updatedAt: new Date()
+        });
+    }
+    await schedule.save();
+
+    // 3. Create the new Re-Exam schedule with the new Date & Time
+    const passwordEnabled = Boolean(conductPasswordEnabled);
+    const normalizedPassword = await normalizeConductPassword(conductPassword, passwordEnabled);
+    const reExamDateKey = getDateKey(newDate);
+
+    const inheritedBranchExaminers = (schedule.branchExaminers || []).map((config) => ({
+        examDate: reExamDateKey,
+        branchId: config.branchId || undefined,
+        branchName: config.branchName || '',
+        examiner: config.examiner || undefined,
+        alternateExaminer: config.alternateExaminer || undefined,
+        conductPasswordEnabled: passwordEnabled,
+        conductPasswordText: normalizedPassword.passwordText,
+        conductPasswordHash: normalizedPassword.passwordHash
+    }));
+
+    const subjectName = timeRow.subject?.name || timeRow.subject?.printedName || 'Subject';
+    const studentFullName = `${student.firstName || ''} ${student.lastName || ''}`.trim() || 'Student';
+
+    const newReExamSchedule = await ExamSchedule.create({
+        course: schedule.course,
+        examName: schedule.examName,
+        remarks: reason || `Re-exam for ${studentFullName} (${subjectName}) - rescheduled`,
+        isActive: true,
+        scheduleType: 'reExam',
+        isReExam: true,
+        reExamOf: schedule._id,
+        attendees: [student._id],
+        attendance: [], // Starts empty so examiner marks Present on the new exam date
+        examiner: schedule.examiner || undefined,
+        alternateExaminer: schedule.alternateExaminer || undefined,
+        branchExaminers: inheritedBranchExaminers,
+        conductPasswordEnabled: passwordEnabled,
+        conductPasswordText: normalizedPassword.passwordText,
+        conductPasswordHash: normalizedPassword.passwordHash,
+        timeTable: [{
+            subject: subjectId,
+            date: new Date(newDate),
+            startTime: String(startTime).trim(),
+            endTime: String(endTime).trim(),
+            theory: timeRow.theory || 0,
+            practical: timeRow.practical || 0,
+            total: timeRow.total || 0,
+            conductPasswordEnabled: passwordEnabled,
+            conductPasswordText: normalizedPassword.passwordText,
+            conductPasswordHash: normalizedPassword.passwordHash
+        }]
+    });
+
+    queueExamScheduleSms(newReExamSchedule._id);
+
+    const populated = await ExamSchedule.findById(newReExamSchedule._id)
+        .populate('course', 'name shortName')
+        .populate('timeTable.subject', 'name printedName')
+        .populate('attendees', 'firstName lastName regNo');
+
+    res.status(201).json({
+        message: `Re-Exam scheduled successfully for ${studentFullName} on ${formatDateLabel(newDate)} (${startTime} - ${endTime})`,
+        schedule: populated
+    });
+});
+
 module.exports = { 
     getExamSchedules, 
     createExamSchedule, 
@@ -1431,7 +1595,8 @@ module.exports = {
     getExamStudentMarksDetail,
     getAbsentExamStudents,
     createAbsentReExamSchedules,
-    saveExamAttendance
+    saveExamAttendance,
+    rescheduleStudentExam
 };
 
 

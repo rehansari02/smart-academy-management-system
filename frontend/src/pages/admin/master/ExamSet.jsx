@@ -23,7 +23,11 @@ import {
   Users,
   X,
   ChevronRight,
-  Layers
+  Layers,
+  RotateCcw,
+  AlertCircle,
+  Calendar,
+  KeyRound
 } from 'lucide-react';
 import axios from 'axios';
 import { fetchEmployees, fetchExamSchedules, fetchExams, updateExamSchedule } from '../../../features/master/masterSlice';
@@ -78,6 +82,94 @@ const formatDateTime = (value) => value
   ? new Date(value).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })
   : '-';
 
+const parseTime12 = (val) => {
+  if (!val) return { hour: '10', minute: '00', period: 'AM' };
+  const str = String(val).trim();
+  const match12 = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?$/i);
+  if (match12) {
+    let h = parseInt(match12[1], 10);
+    const m = match12[2];
+    let p = match12[3] ? match12[3].toUpperCase() : null;
+    if (!p) {
+      p = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+    } else {
+      if (h === 0) h = 12;
+      else if (h > 12) h = h % 12;
+    }
+    return {
+      hour: String(h).padStart(2, '0'),
+      minute: m,
+      period: p
+    };
+  }
+  return { hour: '10', minute: '00', period: 'AM' };
+};
+
+const TimeDropdownPicker = ({ label, value, onChange, required = true }) => {
+  const { hour, minute, period } = parseTime12(value);
+
+  const update = (newH, newM, newP) => {
+    onChange(`${newH}:${newM} ${newP}`);
+  };
+
+  const hours = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+  const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+
+  return (
+    <div>
+      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-gray-600">
+        {label} {required && <span className="text-rose-500">*</span>}
+      </label>
+      <div className="flex items-center gap-1 bg-white border border-gray-300 rounded-xl px-1.5 h-9 shadow-xs focus-within:border-amber-500 focus-within:ring-1 focus-within:ring-amber-500">
+        <select
+          value={hour}
+          onChange={(e) => update(e.target.value, minute, period)}
+          className="bg-transparent font-bold text-xs text-gray-800 text-center outline-none cursor-pointer py-1 flex-1"
+        >
+          {hours.map((h) => (
+            <option key={h} value={h}>{h}</option>
+          ))}
+        </select>
+        <span className="font-black text-gray-400 text-xs">:</span>
+        <select
+          value={minute}
+          onChange={(e) => update(hour, e.target.value, period)}
+          className="bg-transparent font-bold text-xs text-gray-800 text-center outline-none cursor-pointer py-1 flex-1"
+        >
+          {minutes.map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+        <div className="flex rounded-lg bg-gray-100 p-0.5 shrink-0 border border-gray-200 ml-0.5">
+          <button
+            type="button"
+            onClick={() => update(hour, minute, 'AM')}
+            className={`px-1.5 py-0.5 text-[10px] font-extrabold rounded transition cursor-pointer ${
+              period === 'AM'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            AM
+          </button>
+          <button
+            type="button"
+            onClick={() => update(hour, minute, 'PM')}
+            className={`px-1.5 py-0.5 text-[10px] font-extrabold rounded transition cursor-pointer ${
+              period === 'PM'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            PM
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const buildTimeTablePayload = (schedule, dateKey, current) => {
   const password = String(current.conductPassword || '').trim();
   const enabled = Boolean(current.conductPasswordEnabled);
@@ -125,11 +217,18 @@ const ExamSet = () => {
   const [modalDateLabel, setModalDateLabel] = useState('');
   const [modalDateKey, setModalDateKey] = useState('');
   const [modalScheduleIds, setModalScheduleIds] = useState([]);
+  const [modalSchedules, setModalSchedules] = useState([]);
   const [modalStudentList, setModalStudentList] = useState([]);
   const [modalSearchTerm, setModalSearchTerm] = useState('');
   const [modalCourseTab, setModalCourseTab] = useState('all');
   const [attendanceMap, setAttendanceMap] = useState({});
   const [isSavingAttendance, setIsSavingAttendance] = useState(false);
+
+  // Reschedule / Re-Exam Modal States
+  const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
+  const [rescheduleData, setRescheduleData] = useState(null);
+  const [isSubmittingReschedule, setIsSubmittingReschedule] = useState(false);
+  const [lastRescheduledInfo, setLastRescheduledInfo] = useState(null);
 
   useEffect(() => {
     dispatch(fetchExams());
@@ -144,6 +243,8 @@ const ExamSet = () => {
     }, 10000);
     return () => clearInterval(timer);
   }, [dispatch, selectedExamName, studentModalOpen]);
+
+  const [persistentExamOptions, setPersistentExamOptions] = useState([]);
 
   const examOptions = useMemo(() => {
     const map = new Map();
@@ -168,6 +269,15 @@ const ExamSet = () => {
       .sort((a, b) => b.time - a.time || a.name.localeCompare(b.name))
       .map((option) => option.name);
   }, [exams, examSchedules]);
+
+  useEffect(() => {
+    if (examOptions.length > 0) {
+      setPersistentExamOptions((prev) => {
+        const set = new Set([...prev, ...examOptions]);
+        return Array.from(set);
+      });
+    }
+  }, [examOptions]);
 
   const selectedSchedules = useMemo(() => {
     const key = selectedExamName.trim().toLowerCase();
@@ -367,7 +477,7 @@ const ExamSet = () => {
   const handleRefresh = () => {
     dispatch(fetchExams());
     dispatch(fetchEmployees());
-    dispatch(fetchExamSchedules(selectedExamName ? { examName: selectedExamName } : undefined));
+    dispatch(fetchExamSchedules());
   };
 
   const updateBranchSetting = (settingKey, field, value) => {
@@ -410,6 +520,7 @@ const ExamSet = () => {
     setModalDateLabel(dateLabel);
     setModalDateKey(dateKey);
     setModalScheduleIds(scheduleIds);
+    setModalSchedules(schedules);
     setModalStudentList(list);
     setAttendanceMap(initialAtt);
     setModalSearchTerm('');
@@ -424,6 +535,129 @@ const ExamSet = () => {
     }));
   };
 
+  const handleOpenReschedule = (student) => {
+    const sId = String(student._id);
+    const targetSched = (modalSchedules || []).find((s) => {
+      const hasAttendee = (s.attendees || []).some(
+        (a) => String(a.student?._id || a.student || a._id || a) === sId
+      );
+      const hasCourse = String(s.course?._id || s.course) === String(student.course?._id || student.course);
+      return hasAttendee || hasCourse;
+    }) || (modalSchedules && modalSchedules[0]) || (selectedSchedules || []).find((s) => {
+      const hasAttendee = (s.attendees || []).some(
+        (a) => String(a.student?._id || a.student || a._id || a) === sId
+      );
+      return hasAttendee;
+    }) || (selectedSchedules && selectedSchedules[0]);
+
+    if (!targetSched) {
+      toast.error('Could not find active schedule for this student.');
+      return;
+    }
+
+    const subjects = (targetSched.timeTable || []).map((t) => ({
+      id: String(t.subject?._id || t.subject),
+      name: getSubjectName(t),
+      startTime: t.startTime || '10:00 AM',
+      endTime: t.endTime || '11:00 AM'
+    }));
+
+    const defaultSub = subjects[0] || {};
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    setRescheduleData({
+      student,
+      schedule: targetSched,
+      subjects,
+      selectedSubjectId: subjects.length === 1 ? subjects[0].id : '',
+      newDate: tomorrowStr,
+      startTime: defaultSub.startTime || '10:00 AM',
+      endTime: defaultSub.endTime || '11:00 AM',
+      conductPasswordEnabled: Boolean(targetSched.conductPasswordEnabled),
+      conductPassword: targetSched.conductPasswordText || '',
+      reason: 'Exam interrupted / retake scheduled'
+    });
+    // Close the previous attendance dialogue box so NO double/overlapping modal appears in background!
+    setStudentModalOpen(false);
+    setRescheduleModalOpen(true);
+  };
+
+  const handleCancelReschedule = () => {
+    setRescheduleModalOpen(false);
+    // Smoothly restore previous attendance dialogue box
+    setStudentModalOpen(true);
+  };
+
+  const handleRescheduleSubjectSelect = (subjectId) => {
+    if (!rescheduleData) return;
+    const found = rescheduleData.subjects.find((s) => s.id === subjectId);
+    setRescheduleData((prev) => ({
+      ...prev,
+      selectedSubjectId: subjectId,
+      ...(found ? { startTime: found.startTime, endTime: found.endTime } : {})
+    }));
+  };
+
+  const handleConfirmReschedule = async (e) => {
+    if (e) e.preventDefault();
+    if (!rescheduleData?.newDate) {
+      toast.error('Please select a new exam date.');
+      return;
+    }
+    if (!rescheduleData?.startTime || !rescheduleData?.endTime) {
+      toast.error('Please specify start and end time.');
+      return;
+    }
+
+    try {
+      setIsSubmittingReschedule(true);
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}/master/exam-schedule/reschedule-student`,
+        {
+          scheduleId: rescheduleData.schedule._id,
+          studentId: rescheduleData.student._id,
+          subjectId: rescheduleData.selectedSubjectId || undefined,
+          newDate: rescheduleData.newDate,
+          startTime: rescheduleData.startTime,
+          endTime: rescheduleData.endTime,
+          conductPasswordEnabled: rescheduleData.conductPasswordEnabled,
+          conductPassword: rescheduleData.conductPassword,
+          reason: rescheduleData.reason
+        },
+        { withCredentials: true }
+      );
+
+      const studentName = rescheduleData.student.firstName || rescheduleData.student.lastName
+        ? `${rescheduleData.student.firstName || ''} ${rescheduleData.student.lastName || ''}`.trim()
+        : rescheduleData.student.studentName || 'Student';
+      const courseName = rescheduleData.student.courseName || rescheduleData.student.course?.name || 'Course';
+      const formattedDate = formatDateLabel(rescheduleData.newDate);
+
+      toast.success(res.data?.message || `Exam rescheduled to ${formattedDate}!`);
+
+      // Store info to display helpful guide banner on screen
+      setLastRescheduledInfo({
+        studentName,
+        courseName,
+        newDate: rescheduleData.newDate,
+        newDateFormatted: formattedDate
+      });
+
+      // Cleanly close both dialogs
+      setRescheduleModalOpen(false);
+      setStudentModalOpen(false);
+
+      dispatch(fetchExamSchedules(selectedExamName ? { examName: selectedExamName } : undefined));
+    } catch (err) {
+      console.error(err);
+      toast.error(err.response?.data?.message || 'Failed to reschedule exam');
+    } finally {
+      setIsSubmittingReschedule(false);
+    }
+  };
+
   const handleSaveAttendance = async () => {
     if (!modalDateKey || modalScheduleIds.length === 0) {
       toast.error('Unable to save attendance: missing schedule information.');
@@ -433,7 +667,7 @@ const ExamSet = () => {
     try {
       setIsSavingAttendance(true);
       const records = Object.entries(attendanceMap)
-        .filter(([, status]) => status === 'Present' || status === 'Absent')
+        .filter(([, status]) => ['Present', 'Absent', 'Re-Exam'].includes(status))
         .map(([studentId, status]) => ({ studentId, status }));
 
       await axios.post(`${import.meta.env.VITE_API_URL}/master/exam-schedule/attendance`, {
@@ -600,11 +834,18 @@ const ExamSet = () => {
               <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-600">Select Exam</label>
               <select
                 value={selectedExamName}
-                onChange={(e) => { setSelectedExamName(e.target.value); setTestingDate(''); }}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedExamName(val);
+                  setTestingDate('');
+                  if (val) {
+                    dispatch(fetchExamSchedules({ examName: val }));
+                  }
+                }}
                 className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm font-bold text-gray-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition shadow-sm"
               >
                 <option value="">-- Select Exam Schedule --</option>
-                {examOptions.map((name) => (
+                {(persistentExamOptions.length > 0 ? persistentExamOptions : examOptions).map((name) => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
@@ -670,6 +911,60 @@ const ExamSet = () => {
         </div>
       ) : (
         <div className="space-y-8">
+          {/* Re-Exam Rescheduled Guide Banner */}
+          {lastRescheduledInfo && (
+            <div className="rounded-2xl border-2 border-emerald-400 bg-emerald-50/95 p-5 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 animate-in fade-in duration-300">
+              <div className="flex items-start sm:items-center gap-3.5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
+                  <CheckCircle2 size={24} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-black text-emerald-950">
+                      Re-Exam Successfully Scheduled!
+                    </h4>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-200 text-emerald-900 border border-emerald-300">
+                      Added to Timetable
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-900 font-semibold mt-0.5">
+                    <b>{lastRescheduledInfo.studentName}</b> ({lastRescheduledInfo.courseName}) ka re-exam <b>{lastRescheduledInfo.newDateFormatted}</b> ke timetable me add ho gaya hai.
+                  </p>
+                  <p className="text-[11px] text-emerald-800 font-medium mt-1">
+                    📌 <b>Student List Kahan Milegi:</b> Niche <b>"{lastRescheduledInfo.newDateFormatted}"</b> wale Date Section me jayein aur <b>"All Students & Attendance"</b> par click karke student ko check karein.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById(`date-group-${lastRescheduledInfo.newDate}`);
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      el.classList.add('ring-4', 'ring-emerald-400');
+                      setTimeout(() => el.classList.remove('ring-4', 'ring-emerald-400'), 3000);
+                    } else {
+                      toast.info(`Date ${lastRescheduledInfo.newDateFormatted} par scroll karein.`);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-800 transition cursor-pointer"
+                >
+                  <CalendarDays size={14} /> View "{lastRescheduledInfo.newDateFormatted}"
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLastRescheduledInfo(null)}
+                  className="rounded-xl border border-emerald-300 bg-white p-2 text-emerald-800 hover:bg-emerald-100/50 cursor-pointer"
+                  title="Dismiss notification"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {visibleDateGroups.map((dateGroup) => {
             const isToday = dateGroup.dateKey === getTodayKey();
             const branchGroups = getBranchGroupsForDate(dateGroup);
@@ -679,8 +974,10 @@ const ExamSet = () => {
               ? branchGroups
               : branchGroups.filter(b => b.branchName === activeBranchTab);
 
+            const hasReExams = dateGroup.rows.some(r => r.schedule?.isReExam || r.schedule?.scheduleType === 'reExam');
+
             return (
-              <div key={dateGroup.dateKey} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition">
+              <div key={dateGroup.dateKey} id={`date-group-${dateGroup.dateKey}`} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition">
                 {/* Date Header Banner */}
                 <div className="flex flex-col gap-3 bg-gradient-to-r from-blue-700 via-indigo-700 to-slate-900 px-6 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-3.5">
@@ -688,11 +985,16 @@ const ExamSet = () => {
                       <CalendarDays size={22} />
                     </div>
                     <div>
-                      <h2 className="text-lg font-black tracking-tight flex items-center gap-2">
+                      <h2 className="text-lg font-black tracking-tight flex items-center gap-2 flex-wrap">
                         {formatDateLabel(dateGroup.dateKey)}
                         {isToday && (
                           <span className="rounded-full bg-emerald-500 px-2.5 py-0.5 text-[10px] font-black uppercase text-white shadow-sm animate-pulse">
                             Today
+                          </span>
+                        )}
+                        {hasReExams && (
+                          <span className="rounded-full bg-amber-500 text-white px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-xs flex items-center gap-1">
+                            <RotateCcw size={10} /> Re-Exam Retake
                           </span>
                         )}
                       </h2>
@@ -885,7 +1187,14 @@ const ExamSet = () => {
                                       <BookOpen size={16} />
                                     </div>
                                     <div>
-                                      <h4 className="text-sm font-black text-gray-900">{cGroup.courseName}</h4>
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="text-sm font-black text-gray-900">{cGroup.courseName}</h4>
+                                        {cGroup.rows.some(r => r.schedule?.isReExam || r.schedule?.scheduleType === 'reExam') && (
+                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                                            <RotateCcw size={10} /> Re-Exam Schedule
+                                          </span>
+                                        )}
+                                      </div>
                                       <p className="text-[11px] text-gray-500 font-semibold">
                                         {cGroup.rows.length} Subject Papers Scheduled
                                       </p>
@@ -897,10 +1206,26 @@ const ExamSet = () => {
                                     </span>
                                     <button
                                       type="button"
-                                      onClick={() => openStudentModal(`${bGroup.branchName} &bull; ${cGroup.courseName}`, cGroup.students, formatDateLabel(dateGroup.dateKey), dateGroup.dateKey, [cGroup.schedule])}
+                                      onClick={() => openStudentModal(`${bGroup.branchName} &bull; ${cGroup.courseName}`, cGroup.students, formatDateLabel(dateGroup.dateKey), dateGroup.dateKey, cGroup.rows.map(r => r.schedule))}
                                       className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs font-bold transition cursor-pointer shadow-xs"
                                     >
                                       <Users size={13} /> Course Attendance
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const schedules = cGroup.rows.map(r => r.schedule);
+                                        setModalSchedules(schedules);
+                                        if (cGroup.students.length === 1) {
+                                          handleOpenReschedule(cGroup.students[0]);
+                                        } else {
+                                          openStudentModal(`${bGroup.branchName} &bull; ${cGroup.courseName}`, cGroup.students, formatDateLabel(dateGroup.dateKey), dateGroup.dateKey, schedules);
+                                        }
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 text-xs font-bold transition cursor-pointer shadow-xs"
+                                      title="Reschedule student exam for this course"
+                                    >
+                                      <RotateCcw size={12} /> Reschedule
                                     </button>
                                   </div>
                                 </div>
@@ -924,7 +1249,14 @@ const ExamSet = () => {
                                         <tr key={`${schedule._id}-${row._id || idx}`} className="hover:bg-blue-50/30 transition-colors">
                                           <td className="px-4 py-2.5 text-center font-bold text-gray-400">{idx + 1}</td>
                                           <td className="px-4 py-2.5 font-bold text-gray-900 text-xs">
-                                            {getSubjectName(row)}
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                              <span>{getSubjectName(row)}</span>
+                                              {(schedule?.isReExam || schedule?.scheduleType === 'reExam') && (
+                                                <span className="px-1.5 py-0.2 rounded text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                                                  Re-Exam
+                                                </span>
+                                              )}
+                                            </div>
                                           </td>
                                           <td className="px-4 py-2.5 text-gray-600 font-medium">
                                             <span className="inline-flex items-center gap-1">
@@ -1035,21 +1367,24 @@ const ExamSet = () => {
                     className="w-full rounded-xl border border-gray-300 bg-white pl-10 pr-4 py-2.5 text-sm font-semibold text-gray-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition shadow-xs"
                   />
                 </div>
-                <div className="flex items-center gap-2.5 text-xs font-bold shrink-0">
+                <div className="flex items-center gap-2.5 text-xs font-bold shrink-0 flex-wrap">
                   <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-xl">
                     Present: {Object.values(attendanceMap).filter(s => s === 'Present').length}
                   </span>
                   <span className="bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-xl">
                     Absent: {Object.values(attendanceMap).filter(s => s === 'Absent').length}
                   </span>
-                  <span className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-xl">
+                  <span className="bg-amber-50 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-xl">
+                    Re-Exam: {Object.values(attendanceMap).filter(s => s === 'Re-Exam').length}
+                  </span>
+                  <span className="bg-slate-100 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-xl">
                     Not Marked: {Object.values(attendanceMap).filter(s => !s).length}
                   </span>
                 </div>
               </div>
 
               {/* Student Table */}
-              <div className="rounded-xl border border-gray-200 shadow-xs overflow-hidden">
+              <div className="rounded-xl border border-gray-200 shadow-xs overflow-x-auto">
                 <table className="min-w-full text-xs md:text-sm">
                   <thead className="bg-slate-100 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 border-b border-gray-200">
                     <tr>
@@ -1060,13 +1395,14 @@ const ExamSet = () => {
                       <th className="px-4 py-3">Branch</th>
                       <th className="px-4 py-3">Contact No</th>
                       <th className="px-4 py-3">Exam Timings</th>
-                      <th className="px-4 py-3 text-center w-48">Exam Attendance</th>
+                      <th className="px-4 py-3 text-center min-w-[240px]">Exam Attendance</th>
+                      <th className="px-4 py-3 text-center w-28 sticky right-0 bg-slate-100 shadow-xs z-10">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 font-medium">
                     {filteredModalStudents.length === 0 ? (
                       <tr>
-                        <td colSpan="8" className="px-4 py-12 text-center text-gray-400 text-sm">
+                        <td colSpan="9" className="px-4 py-12 text-center text-gray-400 text-sm">
                           No scheduled students found matching your search.
                         </td>
                       </tr>
@@ -1083,9 +1419,18 @@ const ExamSet = () => {
                               {student.regNo || student.enrollmentNo || '-'}
                             </td>
                             <td className="px-4 py-3 font-bold text-gray-900">
-                              {student.firstName || student.lastName
-                                ? `${student.firstName || ''} ${student.lastName || ''}`
-                                : student.studentName || 'Student'}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span>
+                                  {student.firstName || student.lastName
+                                    ? `${student.firstName || ''} ${student.lastName || ''}`
+                                    : student.studentName || 'Student'}
+                                </span>
+                                {(student.isReExam || currentStatus === 'Re-Exam' || modalSchedules.some(s => s.isReExam)) && (
+                                  <span className="px-1.5 py-0.2 rounded text-[10px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                                    Re-Exam
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-3 font-bold text-slate-700">
                               {student.courseName || student.course?.name || 'Course'}
@@ -1102,7 +1447,14 @@ const ExamSet = () => {
                             <td className="px-4 py-3 text-gray-600 font-medium whitespace-nowrap">
                               {studentAttempts.length > 0 ? studentAttempts.map((examAttempt) => (
                                 <div key={examAttempt._id} className="space-y-0.5">
-                                  <div><span className="font-bold text-emerald-700">Start:</span> {formatDateTime(examAttempt.startedAt)}</div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold text-emerald-700">Start:</span> {formatDateTime(examAttempt.startedAt)}
+                                    {examAttempt.isSubmitted ? (
+                                      <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded">Submitted</span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[10px] font-bold rounded">Left / Interrupted</span>
+                                    )}
+                                  </div>
                                   <div><span className="font-bold text-blue-700">End:</span> {formatDateTime(examAttempt.expiresAt)}</div>
                                 </div>
                               )) : <span className="text-gray-400">Not started</span>}
@@ -1112,7 +1464,7 @@ const ExamSet = () => {
                                 <button
                                   type="button"
                                   onClick={() => handleToggleAttendance(sId, 'Present')}
-                                  className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
                                     currentStatus === 'Present'
                                       ? 'bg-emerald-600 text-white shadow-xs'
                                       : 'text-gray-600 hover:text-emerald-700'
@@ -1123,7 +1475,7 @@ const ExamSet = () => {
                                 <button
                                   type="button"
                                   onClick={() => handleToggleAttendance(sId, 'Absent')}
-                                  className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
                                     currentStatus === 'Absent'
                                       ? 'bg-rose-600 text-white shadow-xs'
                                       : 'text-gray-600 hover:text-rose-700'
@@ -1131,7 +1483,28 @@ const ExamSet = () => {
                                 >
                                   Absent
                                 </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleAttendance(sId, 'Re-Exam')}
+                                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                    currentStatus === 'Re-Exam'
+                                      ? 'bg-amber-600 text-white shadow-xs'
+                                      : 'text-gray-600 hover:text-amber-700'
+                                  }`}
+                                >
+                                  Re-Exam
+                                </button>
                               </div>
+                            </td>
+                            <td className="px-4 py-3 text-center sticky right-0 bg-white shadow-xs z-10">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenReschedule(student)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 transition shadow-xs cursor-pointer whitespace-nowrap"
+                                title="Reschedule / Retake Exam with new Date and Time"
+                              >
+                                <RotateCcw size={12} /> Reschedule
+                              </button>
                             </td>
                           </tr>
                         );
@@ -1145,7 +1518,7 @@ const ExamSet = () => {
             {/* Modal Footer */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-gray-100 bg-gray-50 px-6 py-3.5 shrink-0">
               <div className="text-xs font-semibold text-gray-500">
-                Paper tab tak locked rahega jab tak student ko explicitly <span className="font-bold text-emerald-700">Present</span> mark karke attendance save nahi hoti.
+                Paper tab tak locked rahega jab tak student ko explicitly <span className="font-bold text-emerald-700">Present</span> mark karke attendance save nahi hoti. Agar student exam chhod ke chala gaya hai to <span className="font-bold text-amber-700">Reschedule</span> se new date/time set karein.
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -1165,6 +1538,183 @@ const ExamSet = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule / Re-Exam Modal */}
+      {rescheduleModalOpen && rescheduleData && (
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 flex items-center justify-center">
+          <div className="fixed inset-0" onClick={() => !isSubmittingReschedule && handleCancelReschedule()} />
+          <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-gray-200 z-10 flex flex-col overflow-hidden my-auto max-h-[92vh]">
+            <div className="flex items-center justify-between border-b border-gray-100 bg-amber-50/70 px-5 py-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500 text-white shadow-xs shrink-0">
+                  <RotateCcw size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 leading-tight">Reschedule Student Exam</h3>
+                  <p className="text-[11px] font-medium text-gray-500">
+                    Set a new exam date & time schedule for this student
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isSubmittingReschedule && handleCancelReschedule()}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-white hover:text-gray-700 cursor-pointer transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmReschedule} className="flex flex-col overflow-hidden flex-1">
+              <div className="p-4 sm:p-5 space-y-3 text-xs overflow-y-auto flex-1">
+                {/* Student Info Card (Compact) */}
+                <div className="rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-bold text-gray-900 text-xs truncate">
+                      {rescheduleData.student.firstName || rescheduleData.student.lastName
+                        ? `${rescheduleData.student.firstName || ''} ${rescheduleData.student.lastName || ''}`.trim()
+                        : rescheduleData.student.studentName || 'Student'}
+                    </div>
+                    <div className="text-[11px] text-gray-500 truncate mt-0.5">
+                      Course: <b className="text-gray-700">{rescheduleData.student.courseName || rescheduleData.student.course?.name || 'Course'}</b> &bull; Branch: <b className="text-gray-700">{rescheduleData.student.branchName || 'Main Branch'}</b>
+                    </div>
+                  </div>
+                  <span className="font-mono font-bold text-primary text-xs shrink-0 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                    {rescheduleData.student.regNo || rescheduleData.student.enrollmentNo || '-'}
+                  </span>
+                </div>
+
+                {/* Subject Selection */}
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-gray-600">
+                    Subject / Paper to Reschedule
+                  </label>
+                  <select
+                    value={rescheduleData.selectedSubjectId}
+                    onChange={(e) => handleRescheduleSubjectSelect(e.target.value)}
+                    className="w-full h-9 rounded-xl border border-gray-300 bg-white px-3 text-xs font-bold text-gray-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="">All Subjects in Exam</option>
+                    {rescheduleData.subjects.map((sub) => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.name} ({sub.startTime} - {sub.endTime})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* New Exam Date & Timings in a clean responsive 3-column row */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600">
+                        Exam Date <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setRescheduleData((prev) => ({ ...prev, newDate: new Date().toISOString().split('T')[0] }))}
+                          className="text-[10px] font-extrabold text-amber-700 hover:underline cursor-pointer"
+                        >
+                          Today
+                        </button>
+                        <span className="text-gray-300 text-[10px]">&bull;</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const t = new Date();
+                            t.setDate(t.getDate() + 1);
+                            setRescheduleData((prev) => ({ ...prev, newDate: t.toISOString().split('T')[0] }));
+                          }}
+                          className="text-[10px] font-extrabold text-amber-700 hover:underline cursor-pointer"
+                        >
+                          Tomorrow
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type="date"
+                      required
+                      min={new Date().toISOString().split('T')[0]}
+                      value={rescheduleData.newDate}
+                      onChange={(e) => setRescheduleData((prev) => ({ ...prev, newDate: e.target.value }))}
+                      className="w-full h-9 rounded-xl border border-gray-300 bg-white px-2.5 text-xs font-bold text-gray-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 cursor-pointer shadow-xs"
+                    />
+                  </div>
+
+                  <TimeDropdownPicker
+                    label="Start Time"
+                    value={rescheduleData.startTime}
+                    onChange={(val) => setRescheduleData((prev) => ({ ...prev, startTime: val }))}
+                  />
+
+                  <TimeDropdownPicker
+                    label="End Time"
+                    value={rescheduleData.endTime}
+                    onChange={(val) => setRescheduleData((prev) => ({ ...prev, endTime: val }))}
+                  />
+                </div>
+
+                {/* Password Option */}
+                <div className="space-y-1.5 rounded-xl border border-gray-200 bg-slate-50 p-2.5">
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={rescheduleData.conductPasswordEnabled}
+                      onChange={(e) => setRescheduleData((prev) => ({ ...prev, conductPasswordEnabled: e.target.checked }))}
+                      className="h-3.5 w-3.5 rounded text-amber-600 cursor-pointer"
+                    />
+                    <span>Conduct Password Protection</span>
+                  </label>
+                  {rescheduleData.conductPasswordEnabled && (
+                    <input
+                      type="text"
+                      placeholder="Enter password for exam..."
+                      value={rescheduleData.conductPassword}
+                      onChange={(e) => setRescheduleData((prev) => ({ ...prev, conductPassword: e.target.value }))}
+                      className="w-full h-8 rounded-lg border border-gray-300 bg-white px-3 text-xs font-bold text-gray-800 outline-none focus:border-amber-500"
+                    />
+                  )}
+                </div>
+
+                {/* Reason */}
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-gray-600">
+                    Reason / Note
+                  </label>
+                  <input
+                    type="text"
+                    value={rescheduleData.reason}
+                    onChange={(e) => setRescheduleData((prev) => ({ ...prev, reason: e.target.value }))}
+                    placeholder="e.g. Student had to leave / System issue"
+                    className="w-full h-9 rounded-xl border border-gray-300 bg-white px-3 text-xs font-bold text-gray-800 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              {/* Fixed Footer */}
+              <div className="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50">
+                <button
+                  type="button"
+                  disabled={isSubmittingReschedule}
+                  onClick={() => handleCancelReschedule()}
+                  className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100 cursor-pointer transition shadow-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReschedule}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-5 py-2 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50 cursor-pointer shadow-xs transition"
+                >
+                  {isSubmittingReschedule ? <RefreshCw className="animate-spin" size={13} /> : <RotateCcw size={13} />}
+                  Confirm & Schedule Re-Exam
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

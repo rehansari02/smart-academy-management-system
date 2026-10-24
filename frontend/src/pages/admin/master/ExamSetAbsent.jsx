@@ -837,7 +837,18 @@ const ExamSetAbsent = () => {
                                       {row.course?.name || 'Course'}
                                     </td>
                                     <td className="px-3 py-2.5 font-bold text-indigo-700">
-                                      {row.subject?.name || row.subject?.printedName || 'Subject'}
+                                      <div>{row.subject?.name || row.subject?.printedName || 'Subject'}</div>
+                                      {row.statusReason && (
+                                        <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                          row.statusReason.includes('Interrupted')
+                                            ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                            : row.statusReason.includes('Re-Exam')
+                                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                              : 'bg-gray-100 text-gray-700'
+                                        }`}>
+                                          {row.statusReason}
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
                                       {row.originalStartTime && row.originalEndTime ? `${row.originalStartTime} - ${row.originalEndTime}` : '-'}

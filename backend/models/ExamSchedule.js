@@ -28,7 +28,7 @@ const examScheduleSchema = new mongoose.Schema({
     attendance: [{
         student: { type: mongoose.Schema.Types.ObjectId, ref: 'Student' },
         examDate: { type: String },
-        status: { type: String, enum: ['Present', 'Absent'], default: 'Present' },
+        status: { type: String, enum: ['Present', 'Absent', 'Re-Exam', 'Rescheduled'], default: 'Present' },
         updatedAt: { type: Date, default: Date.now }
     }],
     conductPasswordEnabled: { type: Boolean, default: false },
