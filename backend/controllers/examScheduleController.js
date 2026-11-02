@@ -639,32 +639,61 @@ const getExamScheduleDetails = asyncHandler(async (req, res) => {
         ])
     );
 
-    const timeTable = course?.subjects?.length
-        ? [...course.subjects]
+    const courseSubjectIds = new Set(
+        (course?.subjects || [])
             .filter(item => item.subject)
-            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-            .map(item => {
-                const saved = savedTimeTable.get(item.subject._id.toString());
-                const theory = saved?.theory ?? item.subject.theoryMarks ?? 0;
-                const practical = saved?.practical ?? item.subject.practicalMarks ?? 0;
+            .map(item => (item.subject._id ? item.subject._id.toString() : item.subject.toString()))
+    );
 
-                return {
-                    subject: item.subject,
-                    date: saved?.date || '',
-                    startTime: saved?.startTime || '10:00 AM',
-                    endTime: saved?.endTime || '01:00 PM',
-                    theory,
-                    practical,
-                    conductPasswordEnabled: Boolean(saved?.conductPasswordEnabled || schedule.conductPasswordEnabled),
-                    hasConductPassword: Boolean(
-                        saved?.conductPasswordHash ||
-                        saved?.conductPasswordText ||
-                        schedule.conductPasswordHash ||
-                        schedule.conductPasswordText
-                    ),
-                    total: saved?.total || item.subject.totalMarks || ((Number(theory) || 0) + (Number(practical) || 0))
-                };
-            })
+    const extraSavedRows = (schedule.timeTable || []).filter(item => {
+        const id = item.subject?._id?.toString() || item.subject?.toString();
+        return id && !courseSubjectIds.has(id);
+    }).map(saved => ({
+        subject: saved.subject,
+        date: saved.date || '',
+        startTime: saved.startTime || '10:00 AM',
+        endTime: saved.endTime || '01:00 PM',
+        theory: saved.theory ?? 0,
+        practical: saved.practical ?? 0,
+        conductPasswordEnabled: Boolean(saved.conductPasswordEnabled || schedule.conductPasswordEnabled),
+        hasConductPassword: Boolean(
+            saved.conductPasswordHash ||
+            saved.conductPasswordText ||
+            schedule.conductPasswordHash ||
+            schedule.conductPasswordText
+        ),
+        total: saved.total || ((Number(saved.theory) || 0) + (Number(saved.practical) || 0))
+    }));
+
+    const timeTable = course?.subjects?.length
+        ? [
+            ...[...course.subjects]
+                .filter(item => item.subject)
+                .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+                .map(item => {
+                    const saved = savedTimeTable.get(item.subject._id.toString());
+                    const theory = saved?.theory ?? item.subject.theoryMarks ?? 0;
+                    const practical = saved?.practical ?? item.subject.practicalMarks ?? 0;
+
+                    return {
+                        subject: item.subject,
+                        date: saved?.date || '',
+                        startTime: saved?.startTime || '10:00 AM',
+                        endTime: saved?.endTime || '01:00 PM',
+                        theory,
+                        practical,
+                        conductPasswordEnabled: Boolean(saved?.conductPasswordEnabled || schedule.conductPasswordEnabled),
+                        hasConductPassword: Boolean(
+                            saved?.conductPasswordHash ||
+                            saved?.conductPasswordText ||
+                            schedule.conductPasswordHash ||
+                            schedule.conductPasswordText
+                        ),
+                        total: saved?.total || item.subject.totalMarks || ((Number(theory) || 0) + (Number(practical) || 0))
+                    };
+                }),
+            ...extraSavedRows
+        ]
         : schedule.timeTable;
 
     // Find all sibling schedules sharing the same examName and course

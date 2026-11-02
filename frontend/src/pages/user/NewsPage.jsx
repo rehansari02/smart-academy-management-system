@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Calendar, ExternalLink, Search, X } from 'lucide-react';
+import { AlertCircle, Calendar, ExternalLink, Search, X, Zap } from 'lucide-react';
 import newsService from '../../services/newsService';
 import { formatDate } from '../../utils/dateUtils';
 import Reveal from '../../components/Reveal';
@@ -71,20 +71,20 @@ const NewsPage = () => {
               className="w-full rounded-xl border border-gray-300 py-3 pl-12 pr-4 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
           </div>
-          {/* <div className="flex gap-3">
+          <div className="flex gap-3">
             <button
               onClick={() => setFilter('all')}
-              className={`rounded-full px-5 py-2.5 text-sm font-bold transition ${filter === 'all' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              className={`rounded-full px-5 py-2.5 text-sm font-bold transition cursor-pointer ${filter === 'all' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               All News
             </button>
             <button
               onClick={() => setFilter('breaking')}
-              className={`rounded-full px-5 py-2.5 text-sm font-bold transition ${filter === 'breaking' ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              className={`rounded-full px-5 py-2.5 text-sm font-bold transition flex items-center gap-1.5 cursor-pointer ${filter === 'breaking' ? 'bg-red-600 text-white shadow-lg shadow-red-600/30' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
             >
-              Breaking
+              <Zap size={14} className="fill-current" /> Breaking News
             </button>
-          </div> */}
+          </div>
         </div>
       </section>
 
@@ -127,8 +127,8 @@ const NewsPage = () => {
                           <Calendar size={13} /> {formatDate(featuredNews.releaseDate)}
                         </span>
                         {featuredNews.isBreaking && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-3 py-1 text-xs font-black uppercase tracking-wider text-red-600">
-                            <AlertCircle size={13} /> Breaking
+                          <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-red-600 to-rose-600 px-3 py-1 text-xs font-black uppercase tracking-wider text-white shadow-sm shadow-red-500/30 animate-pulse">
+                            <Zap size={12} className="fill-current" /> Breaking News
                           </span>
                         )}
                       </div>
@@ -163,7 +163,9 @@ const NewsPage = () => {
                             <Calendar size={12} /> {formatDate(item.releaseDate)}
                           </span>
                           {item.isBreaking && (
-                            <span className="rounded bg-red-50 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-red-600">Breaking</span>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-red-600 to-rose-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-white shadow-sm shadow-red-500/30 animate-pulse">
+                              <Zap size={10} className="fill-current" /> Breaking
+                            </span>
                           )}
                         </div>
                         <h3 className="mb-3 line-clamp-2 text-xl font-black leading-tight text-gray-900">{item.title}</h3>

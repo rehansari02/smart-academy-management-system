@@ -72,9 +72,23 @@ const AdminHome = () => {
         }
     }, [dispatch, canViewInquiryList, canViewOnlineAdmissions, canViewExamList, user]);
 
-    // Filter inquiries based on active tab
-    const quickContactInquiries = inquiries?.filter(inq => inq.source === 'QuickContact') || [];
-    const onlineAdmissionInquiries = inquiries?.filter(inq => inq.source === 'OnlineAdmission') || [];
+    const isSuperAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
+    const userBranchId = user?.branchId?._id || user?.branchId;
+
+    // Filter inquiries based on active tab and branch (employees see their branch; Super Admin sees all)
+    const quickContactInquiries = (inquiries || []).filter(inq => {
+        if (inq.source !== 'QuickContact') return false;
+        if (isSuperAdmin || !userBranchId) return true;
+        const inqBranchId = inq.branchId?._id || inq.branchId;
+        return inqBranchId ? String(inqBranchId) === String(userBranchId) : true;
+    });
+
+    const onlineAdmissionInquiries = (inquiries || []).filter(inq => {
+        if (inq.source !== 'OnlineAdmission') return false;
+        if (isSuperAdmin || !userBranchId) return true;
+        const inqBranchId = inq.branchId?._id || inq.branchId;
+        return inqBranchId ? String(inqBranchId) === String(userBranchId) : true;
+    });
 
     const handleExamFilter = () => {
         const params = { page: 1, pageSize: 10 };
@@ -141,8 +155,8 @@ const AdminHome = () => {
         const isAdmin = user?.role === 'Super Admin' || user?.type === 'Super Admin';
         if (isAdmin) return;
         const canUseCurrentTab =
-            (activeTab === 'inquiry' && canViewInquiryList) ||
-            (activeTab === 'online-admission' && canViewOnlineAdmissions) ||
+            (activeTab === 'inquiry' && (canViewInquiryList || hasDashboardAccess)) ||
+            (activeTab === 'online-admission' && (canViewOnlineAdmissions || hasDashboardAccess)) ||
             (activeTab === 'exam' && canViewExamList) ||
             (activeTab === 'teacher-dashboard' && canViewTeacherDashboard);
 
@@ -686,7 +700,7 @@ const AdminHome = () => {
                                     </tr>
                                 )) : (
                                     <tr>
-                                        <td colSpan="10" className="py-10 text-gray-500 w-full min-w-full">
+                                        <td colSpan="11" className="py-10 text-gray-500 w-full min-w-full">
                                             <div className="flex flex-col items-center justify-center w-full text-center">
                                                 <AlertCircle size={32} className="mb-2 opacity-50" />
                                                 No Quick Contact inquiries found.

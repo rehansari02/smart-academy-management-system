@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchCourses, fetchExamSchedules, createExamSchedule, updateExamSchedule, deleteExamSchedule, resetMasterStatus, fetchExams, createExam, updateExam, deleteExam, fetchBranches } from '../../../features/master/masterSlice';
@@ -8,6 +8,25 @@ import { Plus, Search, RefreshCw, Edit, Trash2, Eye, X, Save, AlertCircle, Penci
 import axios from 'axios'; // For direct detail fetch
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
+
+const formatDateForInput = (dateVal) => {
+    if (!dateVal) return '';
+    const str = String(dateVal).trim();
+    const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) {
+        return match[1];
+    }
+    try {
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    } catch (e) {
+        return '';
+    }
+};
 
 const parseTimeToParts = (timeStr) => {
     if (!timeStr) return { hour: '10', minute: '00', period: 'AM' };
@@ -56,6 +75,9 @@ const ExamSchedule = () => {
   // Local State
   const [showForm, setShowForm] = useState(false);
   const [editMode, setEditMode] = useState(null);
+  const isEditModeRef = useRef(null);
+  const [rescheduleModalData, setRescheduleModalData] = useState(null);
+  const [isRescheduling, setIsRescheduling] = useState(false);
   const [filters, setFilters] = useState({ courseId: '', examName: '', branchId: '' });
   const [detailView, setDetailView] = useState(null); // ID of schedule to show details
   const [detailData, setDetailData] = useState([]);
@@ -264,14 +286,6 @@ const ExamSchedule = () => {
 
     if (courseSubjects.length === 0) {
         return existingRows.map(item => {
-            let dateStr = '';
-            if (item.date) {
-                try {
-                    dateStr = new Date(item.date).toISOString().split('T')[0];
-                } catch (e) {
-                    dateStr = String(item.date).split('T')[0];
-                }
-            }
             const theory = item.theory ?? 0;
             const practical = item.practical ?? 0;
             const total = Number(item.total) || (Number(theory) + Number(practical));
@@ -279,7 +293,7 @@ const ExamSchedule = () => {
             return {
                 subject: String(item.subject?._id || item.subject || ''),
                 name: item.subject?.name || item.name || 'Subject',
-                date: dateStr,
+                date: formatDateForInput(item.date),
                 startTime: item.startTime || '10:00 AM',
                 endTime: item.endTime || '01:00 PM',
                 theory,
@@ -289,7 +303,7 @@ const ExamSchedule = () => {
         });
     }
 
-    return courseSubjects.map(item => {
+    const rows = courseSubjects.map(item => {
         const subject = item.subject;
         const subId = String(subject._id || subject);
         const saved = existingBySubject.get(subId);
@@ -297,19 +311,10 @@ const ExamSchedule = () => {
         const practical = saved?.practical ?? subject.practicalMarks ?? 0;
         const total = Number(saved?.total) || Number(subject.totalMarks) || (Number(theory) + Number(practical));
 
-        let dateStr = '';
-        if (saved?.date) {
-            try {
-                dateStr = new Date(saved.date).toISOString().split('T')[0];
-            } catch (e) {
-                dateStr = String(saved.date).split('T')[0];
-            }
-        }
-
         return {
             subject: subId,
             name: subject.name || saved?.subject?.name || saved?.name || 'Subject',
-            date: dateStr,
+            date: formatDateForInput(saved?.date),
             startTime: saved?.startTime || '10:00 AM',
             endTime: saved?.endTime || '01:00 PM',
             theory,
@@ -317,6 +322,29 @@ const ExamSchedule = () => {
             total
         };
     });
+
+    // Also preserve any subjects present in existingRows that might not be in course.subjects
+    const processedIds = new Set(courseSubjects.map(item => String(item.subject?._id || item.subject || '')));
+    existingRows.forEach(item => {
+        const id = String(item.subject?._id || item.subject || '');
+        if (id && !processedIds.has(id)) {
+            const theory = item.theory ?? 0;
+            const practical = item.practical ?? 0;
+            const total = Number(item.total) || (Number(theory) + Number(practical));
+            rows.push({
+                subject: id,
+                name: item.subject?.name || item.name || 'Subject',
+                date: formatDateForInput(item.date),
+                startTime: item.startTime || '10:00 AM',
+                endTime: item.endTime || '01:00 PM',
+                theory,
+                practical,
+                total
+            });
+        }
+    });
+
+    return rows;
   };
 
   const isSingleMarksSubject = (subjectName = '') => {
@@ -402,6 +430,7 @@ const ExamSchedule = () => {
         dispatch(resetMasterStatus());
         if (showForm) setShowForm(false);
         setEditMode(null);
+        isEditModeRef.current = null;
         setSelectedAttendees([]);
         setTimeTableData([]);
         reset();
@@ -493,7 +522,7 @@ const ExamSchedule = () => {
             .finally(() => setIsRequestsLoading(false));
         
         // Populate Time Table based on course subjects for NEW entries only
-        if (!editMode) {
+        if (!editMode && !isEditModeRef.current) {
             const course = courses.find(c => String(c._id) === String(selectedCourse));
             if (course && course.subjects) {
                 setTimeTableData(buildTimeTableFromCourse(course));
@@ -597,7 +626,9 @@ const ExamSchedule = () => {
     );
   };
 
-  const handleEdit = async (schedule) => {
+  const handleEdit = async (schedule, customTimeTable = null, customAttendees = null) => {
+    if (!schedule) return;
+    isEditModeRef.current = schedule._id;
     setEditMode(schedule._id);
     setShowForm(true);
     setShowEditScheduleModal(false);
@@ -609,11 +640,16 @@ const ExamSchedule = () => {
     setValue('examName', schedule.examName);
     setValue('remarks', schedule.remarks || '');
     setValue('isActive', schedule.isActive !== undefined ? schedule.isActive : true);
-    setSelectedAttendees((schedule.attendees || []).map(student => student?._id || student));
+
+    const attendeesToSet = (customAttendees && customAttendees.length > 0)
+      ? customAttendees.map(student => student?._id || student)
+      : (schedule.attendees || []).map(student => student?._id || student);
+    setSelectedAttendees(attendeesToSet);
     
-    // 1. Initial build from schedule.timeTable and Redux courses
+    // 1. Initial build from customTimeTable / schedule.timeTable and Redux courses
     const course = courses.find(c => String(c._id) === String(courseId));
-    const initialTimeTable = buildTimeTableFromCourse(course, schedule.timeTable);
+    const tableSource = (customTimeTable && customTimeTable.length > 0) ? customTimeTable : schedule.timeTable;
+    const initialTimeTable = buildTimeTableFromCourse(course, tableSource);
     setTimeTableData(initialTimeTable);
 
     // 2. Fetch fresh populated details from API to ensure complete subject data
@@ -626,22 +662,16 @@ const ExamSchedule = () => {
           const theory = item.theory ?? item.subject?.theoryMarks ?? 0;
           const practical = item.practical ?? item.subject?.practicalMarks ?? 0;
           const total = Number(item.total) || (Number(theory) + Number(practical));
-          
-          let dateStr = '';
-          if (item.date) {
-            try {
-              dateStr = new Date(item.date).toISOString().split('T')[0];
-            } catch (e) {
-              dateStr = String(item.date).split('T')[0];
-            }
-          }
+
+          const fallback = initialTimeTable.find(t => String(t.subject) === subId);
+          const rawDate = item.date || fallback?.date || '';
 
           return {
             subject: subId,
             name: subName,
-            date: dateStr,
-            startTime: item.startTime || '10:00 AM',
-            endTime: item.endTime || '01:00 PM',
+            date: formatDateForInput(rawDate),
+            startTime: item.startTime || fallback?.startTime || '10:00 AM',
+            endTime: item.endTime || fallback?.endTime || '01:00 PM',
             theory,
             practical,
             total
@@ -652,6 +682,188 @@ const ExamSchedule = () => {
     } catch (err) {
       console.error("Failed to load details for edit:", err);
     }
+  };
+
+  const handleOpenRescheduleModal = (student, schedule, availableTimeTable = null) => {
+    if (!student || !schedule) return;
+    const timeTableList = (availableTimeTable && availableTimeTable.length > 0)
+      ? availableTimeTable
+      : (schedule.timeTable || []);
+    const defaultSubject = timeTableList[0];
+    const initialDate = defaultSubject?.date ? formatDateForInput(defaultSubject.date) : '';
+    setRescheduleModalData({
+      student,
+      schedule,
+      timeTableList,
+      subjectId: String(defaultSubject?.subject?._id || defaultSubject?.subject || ''),
+      newDate: initialDate,
+      startTime: defaultSubject?.startTime || '10:00 AM',
+      endTime: defaultSubject?.endTime || '01:00 PM',
+      reason: '',
+      conductPasswordEnabled: Boolean(defaultSubject?.conductPasswordEnabled),
+      conductPassword: ''
+    });
+  };
+
+  const handleRescheduleSubjectChange = (subjectId) => {
+    const timeTableList = rescheduleModalData?.timeTableList || rescheduleModalData?.schedule?.timeTable || [];
+    const found = timeTableList.find(
+      t => String(t.subject?._id || t.subject || '') === String(subjectId)
+    );
+    setRescheduleModalData(prev => ({
+      ...prev,
+      subjectId,
+      newDate: found?.date ? formatDateForInput(found.date) : prev.newDate,
+      startTime: found?.startTime || prev.startTime,
+      endTime: found?.endTime || prev.endTime
+    }));
+  };
+
+  const handleSubmitReschedule = async (e) => {
+    e.preventDefault();
+    if (!rescheduleModalData?.newDate) {
+      toast.error("Please select a new exam date");
+      return;
+    }
+    if (!rescheduleModalData?.subjectId) {
+      toast.error("Please select a subject to reschedule");
+      return;
+    }
+    setIsRescheduling(true);
+    try {
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/master/exam-schedule/reschedule-student`,
+        {
+          scheduleId: rescheduleModalData.schedule._id,
+          studentId: rescheduleModalData.student._id,
+          subjectId: rescheduleModalData.subjectId,
+          newDate: rescheduleModalData.newDate,
+          startTime: rescheduleModalData.startTime,
+          endTime: rescheduleModalData.endTime,
+          reason: rescheduleModalData.reason,
+          conductPasswordEnabled: rescheduleModalData.conductPasswordEnabled,
+          conductPassword: rescheduleModalData.conductPassword
+        },
+        { withCredentials: true }
+      );
+      const studentName = rescheduleModalData.student.firstName || rescheduleModalData.student.studentName || 'Student';
+      toast.success(`Exam rescheduled successfully for ${studentName}!`);
+      setRescheduleModalData(null);
+      dispatch(fetchExamSchedules());
+      if (detailView) {
+        const [detailsRes, conductRes] = await Promise.all([
+          axios.get(`${import.meta.env.VITE_API_URL}/master/exam-schedule/${detailView}/details`, { withCredentials: true }),
+          axios.get(`${import.meta.env.VITE_API_URL}/master/exam-schedule/${detailView}/conduct`, { withCredentials: true })
+        ]);
+        setDetailData(detailsRes.data);
+        setConductData(conductRes.data);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to reschedule student exam");
+    } finally {
+      setIsRescheduling(false);
+    }
+  };
+
+  const buildCourseGroupsFromSchedules = (schedules = [], allCourses = []) => {
+    const map = new Map();
+
+    (schedules || []).forEach((schedule) => {
+      const cId = String(schedule.course?._id || schedule.course || '');
+      if (!cId) return;
+
+      if (!map.has(cId)) {
+        const courseObj = schedule.course && typeof schedule.course === 'object'
+          ? schedule.course
+          : allCourses.find(c => String(c._id) === cId) || { _id: cId, name: 'Unknown Course' };
+
+        map.set(cId, {
+          courseId: cId,
+          course: courseObj,
+          courseName: courseObj.name || 'Unknown Course',
+          schedules: [],
+          mainSchedule: null,
+          allAttendees: [],
+          mergedTimeTable: [],
+          isActive: false
+        });
+      }
+
+      const cg = map.get(cId);
+      cg.schedules.push(schedule);
+      if (schedule.isActive) cg.isActive = true;
+
+      // Merge attendees uniquely by student ID
+      (schedule.attendees || []).forEach((student) => {
+        const sId = String(student?._id || student);
+        if (!cg.allAttendees.some(s => String(s?._id || s) === sId)) {
+          cg.allAttendees.push(student);
+        }
+      });
+    });
+
+    map.forEach((cg) => {
+      // Pick mainSchedule: highest number of timetable papers, not re-exam if possible
+      cg.mainSchedule = [...cg.schedules].sort((a, b) => {
+        const aLen = a.timeTable?.length || 0;
+        const bLen = b.timeTable?.length || 0;
+        if (bLen !== aLen) return bLen - aLen;
+        if (a.isReExam && !b.isReExam) return 1;
+        if (!a.isReExam && b.isReExam) return -1;
+        return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+      })[0] || cg.schedules[0];
+
+      const timeTableMap = new Map();
+
+      // 1. First add from mainSchedule:
+      (cg.mainSchedule?.timeTable || []).forEach(tt => {
+        const sId = String(tt.subject?._id || tt.subject || '');
+        if (sId) {
+          timeTableMap.set(sId, { ...tt, scheduleId: cg.mainSchedule._id });
+        }
+      });
+
+      // 2. Add from other schedules if missing or has date:
+      cg.schedules.forEach(s => {
+        (s.timeTable || []).forEach(tt => {
+          const sId = String(tt.subject?._id || tt.subject || '');
+          if (sId) {
+            const existing = timeTableMap.get(sId);
+            if (!existing) {
+              timeTableMap.set(sId, { ...tt, scheduleId: s._id });
+            } else if (!existing.date && tt.date) {
+              timeTableMap.set(sId, { ...existing, date: tt.date, startTime: tt.startTime || existing.startTime, endTime: tt.endTime || existing.endTime, scheduleId: s._id });
+            }
+          }
+        });
+      });
+
+      // 3. Add course master subjects:
+      const courseDef = allCourses.find(c => String(c._id) === cg.courseId);
+      if (courseDef && Array.isArray(courseDef.subjects)) {
+        courseDef.subjects.filter(cs => cs.subject).forEach(cs => {
+          const sub = cs.subject;
+          const sId = String(sub._id || sub);
+          if (!timeTableMap.has(sId)) {
+            timeTableMap.set(sId, {
+              subject: sub,
+              name: sub.name || 'Subject',
+              date: '',
+              startTime: '10:00 AM',
+              endTime: '01:00 PM',
+              theory: sub.theoryMarks || 0,
+              practical: sub.practicalMarks || 0,
+              total: sub.totalMarks || 0,
+              scheduleId: cg.mainSchedule?._id
+            });
+          }
+        });
+      }
+
+      cg.mergedTimeTable = Array.from(timeTableMap.values());
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.courseName.localeCompare(b.courseName));
   };
 
   // Group exam schedules by examName
@@ -710,6 +922,30 @@ const ExamSchedule = () => {
     return groupedExamSchedules.find(g => g.examName.toLowerCase() === selectedExamGroup.examName.toLowerCase()) || null;
   }, [selectedExamGroup, groupedExamSchedules]);
 
+  // Group current selected group's schedules by Course
+  const courseGroups = React.useMemo(() => {
+    if (!currentSelectedGroup) return [];
+    return buildCourseGroupsFromSchedules(currentSelectedGroup.schedules, courses);
+  }, [currentSelectedGroup, courses]);
+
+  // Group schedules in selectedGroupToEdit by Course
+  const editModalCourseGroups = React.useMemo(() => {
+    if (!selectedGroupToEdit) return [];
+    return buildCourseGroupsFromSchedules(selectedGroupToEdit.schedules, courses);
+  }, [selectedGroupToEdit, courses]);
+
+  const handleDeleteCourseSchedules = async (courseGroup) => {
+    if (!canDelete) {
+      showPermissionDenied("You don't have authority to delete exam schedules.");
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete the exam schedule for ${courseGroup.courseName}?`)) return;
+    for (const s of courseGroup.schedules) {
+      await dispatch(deleteExamSchedule(s._id));
+    }
+    dispatch(fetchExamSchedules());
+  };
+
   const handleDeleteGroup = (group) => {
     if (!canDelete) {
       showPermissionDenied("You don't have authority to delete exam schedules.");
@@ -747,8 +983,9 @@ const ExamSchedule = () => {
       showPermissionDenied("You don't have authority to edit exam schedules.");
       return;
     }
-    if (group.schedules.length === 1) {
-      handleEdit(group.schedules[0]);
+    const cGroups = buildCourseGroupsFromSchedules(group.schedules, courses);
+    if (cGroups.length === 1) {
+      handleEdit(cGroups[0].mainSchedule, cGroups[0].mergedTimeTable, cGroups[0].allAttendees);
     } else {
       setSelectedGroupToEdit(group);
       setShowEditScheduleModal(true);
@@ -770,7 +1007,7 @@ const ExamSchedule = () => {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Exam Schedule</h2>
         {!showForm && !detailView && !currentSelectedGroup && (
-            <button onClick={() => { setShowForm(true); reset(); setEditMode(null); }} className="bg-primary text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700 shadow-sm transition-all">
+            <button onClick={() => { setShowForm(true); reset(); setEditMode(null); isEditModeRef.current = null; }} className="bg-primary text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-blue-700 shadow-sm transition-all">
                 <Plus size={18} /> Add New Exam Schedule
             </button>
         )}
@@ -1017,7 +1254,7 @@ const ExamSchedule = () => {
                                                 <td className="px-3 py-2 border-r border-blue-100">
                                                     <input 
                                                         type="date" 
-                                                        value={item.date ? new Date(item.date).toISOString().split('T')[0] : ''} 
+                                                        value={formatDateForInput(item.date)} 
                                                         onChange={(e) => updateTimeTableField(index, 'date', e.target.value)}
                                                         className="w-full text-xs border rounded p-1 focus:ring-1 focus:ring-blue-400 outline-none"
                                                     />
@@ -1160,7 +1397,7 @@ const ExamSchedule = () => {
                 </div>
                 
                 <div className="md:col-span-2 flex gap-2 justify-end mt-2">
-                    <button type="button" onClick={() => { setShowForm(false); }} className="border px-4 py-2 rounded hover:bg-gray-100">Cancel</button>
+                    <button type="button" onClick={() => { setShowForm(false); setEditMode(null); isEditModeRef.current = null; }} className="border px-4 py-2 rounded hover:bg-gray-100">Cancel</button>
                     <button type="submit" disabled={isLoading} className="bg-green-600 text-white px-6 py-2 rounded flex items-center gap-2 hover:bg-green-700 disabled:opacity-70 disabled:cursor-not-allowed">
                         {isLoading ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />} 
                         {isLoading ? 'Saving...' : 'Save'}
@@ -1569,41 +1806,37 @@ const ExamSchedule = () => {
             >
               <span>All Courses</span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] ${activeCourseTab === 'all' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'}`}>
-                {currentSelectedGroup.courses.length}
+                {courseGroups.length}
               </span>
             </button>
-            {currentSelectedGroup.schedules.map((schedule) => {
-              const cId = String(schedule.course?._id || schedule.course);
-              const cName = schedule.course?.name || 'Unknown Course';
-              const studentCount = schedule.attendees?.length || 0;
-              const isTabActive = activeCourseTab === cId;
+            {courseGroups.map((cg) => {
+              const isTabActive = activeCourseTab === cg.courseId;
               return (
                 <button
-                  key={schedule._id}
-                  onClick={() => setActiveCourseTab(cId)}
+                  key={cg.courseId}
+                  onClick={() => setActiveCourseTab(cg.courseId)}
                   className={`px-4 py-2.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${isTabActive ? 'bg-primary text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
                 >
                   <BookOpen size={14} />
-                  <span>{cName}</span>
+                  <span>{cg.courseName}</span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] ${isTabActive ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700 font-bold'}`}>
-                    {studentCount} Students
+                    {cg.allAttendees.length} Students
                   </span>
                 </button>
               );
             })}
           </div>
 
-          {/* List of Schedules (filtered by activeCourseTab) */}
+          {/* List of Course Schedules (filtered by activeCourseTab) */}
           <div className="space-y-6">
-            {currentSelectedGroup.schedules
-              .filter((schedule) => activeCourseTab === 'all' || String(schedule.course?._id || schedule.course) === String(activeCourseTab))
-              .map((schedule, sIndex) => {
-                const courseName = schedule.course?.name || 'Course Name';
-                const attendeesList = schedule.attendees || [];
-                const timeTableList = schedule.timeTable || [];
+            {courseGroups
+              .filter((cg) => activeCourseTab === 'all' || cg.courseId === activeCourseTab)
+              .map((cg, sIndex) => {
+                const attendeesList = cg.allAttendees || [];
+                const timeTableList = cg.mergedTimeTable || [];
 
                 return (
-                  <div key={schedule._id} className="bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+                  <div key={cg.courseId} className="bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
                     {/* Course Header Banner */}
                     <div className="bg-slate-50 border-b p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
@@ -1612,9 +1845,9 @@ const ExamSchedule = () => {
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="text-lg font-bold text-gray-900">{courseName}</h3>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${schedule.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                              {schedule.isActive ? 'Active' : 'Inactive'}
+                            <h3 className="text-lg font-bold text-gray-900">{cg.courseName}</h3>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cg.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {cg.isActive ? 'Active' : 'Inactive'}
                             </span>
                           </div>
                           <p className="text-xs text-gray-500 mt-0.5">
@@ -1625,13 +1858,13 @@ const ExamSchedule = () => {
 
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleEdit(schedule)}
+                          onClick={() => handleEdit(cg.mainSchedule, timeTableList, attendeesList)}
                           className="px-3.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-bold flex items-center gap-1 transition-all"
                         >
                           <Edit size={14} /> Edit Course Schedule
                         </button>
                         <button
-                          onClick={() => handleDelete(schedule._id)}
+                          onClick={() => handleDeleteCourseSchedules(cg)}
                           className="px-3.5 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 text-xs font-bold flex items-center gap-1 transition-all"
                         >
                           <Trash2 size={14} /> Delete
@@ -1665,7 +1898,7 @@ const ExamSchedule = () => {
                                 timeTableList.map((tt, i) => (
                                   <tr key={i} className="hover:bg-blue-50/40 transition-colors">
                                     <td className="px-4 py-3 text-gray-400 font-medium">{i + 1}</td>
-                                    <td className="px-4 py-3 font-bold text-gray-800">{tt.subject?.name || 'Subject'}</td>
+                                    <td className="px-4 py-3 font-bold text-gray-800">{tt.subject?.name || tt.name || 'Subject'}</td>
                                     <td className="px-4 py-3 text-gray-700 font-semibold">
                                       {tt.date ? new Date(tt.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
                                     </td>
@@ -1694,7 +1927,7 @@ const ExamSchedule = () => {
                             <Users size={14} className="text-blue-600" /> Scheduled Students & Papers ({attendeesList.length} Students)
                           </h4>
                           <span className="text-xs bg-indigo-50 text-indigo-700 font-bold px-3 py-1 rounded-full">
-                            Course: {courseName}
+                            Course: {cg.courseName}
                           </span>
                         </div>
                         <div className="border rounded-xl overflow-hidden shadow-sm">
@@ -1707,6 +1940,7 @@ const ExamSchedule = () => {
                                 <th className="px-4 py-3 text-left">Contact / Mobile</th>
                                 <th className="px-4 py-3 text-left">Branch</th>
                                 <th className="px-4 py-3 text-left">Scheduled Papers</th>
+                                <th className="px-4 py-3 text-center w-36">Action</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 text-xs">
@@ -1729,7 +1963,7 @@ const ExamSchedule = () => {
                                           {timeTableList.length > 0 ? (
                                             timeTableList.map((tt, tIdx) => (
                                               <span key={tIdx} className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded text-[10px] font-semibold">
-                                                {tt.subject?.name || 'Subject'}
+                                                {tt.subject?.name || tt.name || 'Subject'}
                                               </span>
                                             ))
                                           ) : (
@@ -1737,12 +1971,23 @@ const ExamSchedule = () => {
                                           )}
                                         </div>
                                       </td>
+                                      <td className="px-4 py-3 text-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenRescheduleModal(student, cg.mainSchedule, timeTableList)}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-all shadow-sm"
+                                          title="Change date / Reschedule for this student"
+                                        >
+                                          <Calendar size={13} />
+                                          <span>Change Date</span>
+                                        </button>
+                                      </td>
                                     </tr>
                                   );
                                 })
                               ) : (
                                 <tr>
-                                  <td colSpan="6" className="text-center py-6 text-gray-400 italic">No students scheduled for this course paper yet.</td>
+                                  <td colSpan="7" className="text-center py-6 text-gray-400 italic">No students scheduled for this course paper yet.</td>
                                 </tr>
                               )}
                             </tbody>
@@ -1785,20 +2030,20 @@ const ExamSchedule = () => {
             </div>
 
             <div className="space-y-2.5 max-h-[350px] overflow-y-auto">
-              {selectedGroupToEdit.schedules.map((schedule) => (
+              {editModalCourseGroups.map((cg) => (
                 <div 
-                  key={schedule._id} 
+                  key={cg.courseId} 
                   onClick={() => {
                     setShowEditScheduleModal(false);
                     setSelectedGroupToEdit(null);
-                    handleEdit(schedule);
+                    handleEdit(cg.mainSchedule, cg.mergedTimeTable, cg.allAttendees);
                   }}
                   className="flex items-center justify-between p-3.5 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 cursor-pointer transition-all group"
                 >
                   <div>
-                    <h4 className="text-sm font-bold text-gray-800 group-hover:text-blue-700">{schedule.course?.name || 'Course Name'}</h4>
+                    <h4 className="text-sm font-bold text-gray-800 group-hover:text-blue-700">{cg.courseName}</h4>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {schedule.timeTable?.length || 0} Papers &bull; {schedule.attendees?.length || 0} Students
+                      {cg.mergedTimeTable.length} Papers &bull; {cg.allAttendees.length} Students
                     </p>
                   </div>
                   <ChevronRight size={18} className="text-gray-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
@@ -1882,6 +2127,7 @@ const ExamSchedule = () => {
                                             <th className="px-4 py-3 text-left">Student Name</th>
                                             <th className="px-4 py-3 text-left">Admission Date</th>
                                             <th className="px-4 py-3 text-left">Mobile</th>
+                                            <th className="px-4 py-3 text-center w-36">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 text-sm">
@@ -1894,9 +2140,23 @@ const ExamSchedule = () => {
                                                     {new Date(d.admissionDate).toLocaleDateString()}
                                                 </td>
                                                 <td className="px-4 py-3 text-gray-600">{d.mobile}</td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const sched = examSchedules.find(s => String(s._id) === String(detailView)) || { _id: detailView, ...detailData };
+                                                            handleOpenRescheduleModal({ ...d, firstName: d.studentName }, sched);
+                                                        }}
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-all shadow-sm"
+                                                        title="Change date / Reschedule for this student"
+                                                    >
+                                                        <Calendar size={13} />
+                                                        <span>Change Date</span>
+                                                    </button>
+                                                </td>
                                             </tr>
                                         )) : (
-                                            <tr><td colSpan="5" className="text-center py-4 text-gray-400 italic">No attendees found.</td></tr>
+                                            <tr><td colSpan="6" className="text-center py-4 text-gray-400 italic">No attendees found.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
@@ -2024,6 +2284,148 @@ const ExamSchedule = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- RESCHEDULE STUDENT EXAM MODAL --- */}
+      {rescheduleModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto animate-fadeIn">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden border">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-5 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-black flex items-center gap-2">
+                  <Calendar size={18} /> Reschedule Student Exam
+                </h3>
+                <p className="text-xs text-blue-100 mt-0.5">
+                  Change exam date & time for a particular student
+                </p>
+              </div>
+              <button 
+                onClick={() => setRescheduleModalData(null)}
+                className="bg-white/20 hover:bg-white/30 p-1.5 rounded-full transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitReschedule} className="p-6 space-y-4">
+              {/* Student & Course Details */}
+              <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-3.5 space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-500 font-semibold">Student:</span>
+                  <span className="font-bold text-gray-800">
+                    {[rescheduleModalData.student.firstName, rescheduleModalData.student.middleName, rescheduleModalData.student.lastName].filter(Boolean).join(' ') || rescheduleModalData.student.studentName || 'Student'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-500 font-semibold">Reg / Roll No:</span>
+                  <span className="font-mono font-bold text-blue-700">
+                    {rescheduleModalData.student.regNo || rescheduleModalData.student.enrollmentNo || '-'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-500 font-semibold">Exam:</span>
+                  <span className="font-bold text-gray-700">{rescheduleModalData.schedule.examName}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-500 font-semibold">Course:</span>
+                  <span className="font-bold text-indigo-700">
+                    {rescheduleModalData.schedule.course?.name || 'Course'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Paper / Subject Selection */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Select Paper / Subject *</label>
+                <select
+                  value={rescheduleModalData.subjectId}
+                  onChange={(e) => handleRescheduleSubjectChange(e.target.value)}
+                  className="w-full text-xs font-semibold border rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-blue-400 outline-none"
+                  required
+                >
+                  {(rescheduleModalData.schedule.timeTable || []).map((t, idx) => {
+                    const sId = String(t.subject?._id || t.subject || '');
+                    const sName = t.subject?.name || t.subject?.printedName || t.name || `Paper ${idx + 1}`;
+                    const curDate = t.date ? formatDateForInput(t.date) : 'No date';
+                    return (
+                      <option key={sId || idx} value={sId}>
+                        {sName} (Current: {curDate})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* New Exam Date */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">New Exam Date *</label>
+                <input
+                  type="date"
+                  value={rescheduleModalData.newDate}
+                  onChange={(e) => setRescheduleModalData(prev => ({ ...prev, newDate: e.target.value }))}
+                  className="w-full text-xs font-semibold border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-400 outline-none"
+                  required
+                />
+              </div>
+
+              {/* Time Slot */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Start Time *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 10:00 AM"
+                    value={rescheduleModalData.startTime}
+                    onChange={(e) => setRescheduleModalData(prev => ({ ...prev, startTime: e.target.value }))}
+                    className="w-full text-xs font-semibold border rounded-lg p-2 focus:ring-2 focus:ring-blue-400 outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">End Time *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 01:00 PM"
+                    value={rescheduleModalData.endTime}
+                    onChange={(e) => setRescheduleModalData(prev => ({ ...prev, endTime: e.target.value }))}
+                    className="w-full text-xs font-semibold border rounded-lg p-2 focus:ring-2 focus:ring-blue-400 outline-none"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Reason / Remarks */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Reason / Remarks (Optional)</label>
+                <textarea
+                  rows="2"
+                  placeholder="e.g. Student absent due to illness / requested new date"
+                  value={rescheduleModalData.reason}
+                  onChange={(e) => setRescheduleModalData(prev => ({ ...prev, reason: e.target.value }))}
+                  className="w-full text-xs border rounded-lg p-2 focus:ring-2 focus:ring-blue-400 outline-none resize-none"
+                />
+              </div>
+
+              {/* Buttons */}
+              <div className="flex justify-end gap-2 pt-2 border-t">
+                <button
+                  type="button"
+                  onClick={() => setRescheduleModalData(null)}
+                  className="px-4 py-2 border rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-100 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRescheduling}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition shadow-sm flex items-center gap-1.5"
+                >
+                  {isRescheduling ? 'Rescheduling...' : 'Confirm Reschedule'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

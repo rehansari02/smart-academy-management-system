@@ -596,6 +596,14 @@ const getInquiries = asyncHandler(async (req, res) => {
     await backfillOnlineAdmissionOwners(req.user.branchId);
   }
 
+  // Resolve user's effective branch if not Super Admin
+  let effectiveBranchId = req.user?.branchId;
+  if (!effectiveBranchId && req.user && req.user.role !== 'Super Admin') {
+    const Employee = require("../models/Employee");
+    const emp = await Employee.findOne({ userAccount: req.user._id }).select("branch branchId").lean();
+    effectiveBranchId = emp?.branchId || emp?.branch;
+  }
+
   // Check if user has access to Admin Home / Inquiry List
   let hasAdminHomeInquiryAccess = false;
   let hasAdminHomeOnlineAdmissionAccess = false;
@@ -634,15 +642,23 @@ const getInquiries = asyncHandler(async (req, res) => {
     const extraOwnershipConditions = getUserReferenceOwnershipConditions(req.user);
     if (req.query.adminHome === "true") {
       if (hasAdminHomeInquiryAccess) {
-        extraOwnershipConditions.push({ source: "QuickContact" });
+        if (effectiveBranchId) {
+          extraOwnershipConditions.push({ source: "QuickContact", branchId: effectiveBranchId });
+        } else {
+          extraOwnershipConditions.push({ source: "QuickContact" });
+        }
       }
       if (hasAdminHomeOnlineAdmissionAccess) {
-        extraOwnershipConditions.push({ source: "OnlineAdmission" });
+        if (effectiveBranchId) {
+          extraOwnershipConditions.push({ source: "OnlineAdmission", branchId: effectiveBranchId });
+        } else {
+          extraOwnershipConditions.push({ source: "OnlineAdmission" });
+        }
       }
-      if (req.user.branchId) {
+      if (effectiveBranchId) {
         extraOwnershipConditions.push({
           source: "OnlineAdmission",
-          branchId: req.user.branchId,
+          branchId: effectiveBranchId,
           $or: [
             { allocatedTo: { $exists: false } },
             { allocatedTo: null },
@@ -695,10 +711,11 @@ const getInquiries = asyncHandler(async (req, res) => {
   if (
     req.user &&
     req.user.role !== 'Super Admin' &&
-    canViewBranchWideInquiries &&
-    req.user.branchId
+    effectiveBranchId
   ) {
-      query.branchId = req.user.branchId;
+      if (req.query.adminHome === "true" || canViewBranchWideInquiries) {
+        query.branchId = effectiveBranchId;
+      }
   }
   if (req.user?.role === 'Super Admin' && req.query.branchId) {
       query.branchId = req.query.branchId;

@@ -15,7 +15,7 @@ import bannerService from '../services/bannerService';
 import homeSectionService from '../services/homeSectionService';
 import homeStatsService from '../services/homeStatsService';
 import awardService from '../services/awardService';
-import { ArrowRight, X, Trophy, Calendar, ChevronLeft, ChevronRight, Phone, Mail, MapPin, AlertCircle, Quote, Users, ChevronDown, ExternalLink, GraduationCap, Sparkles, Award, Briefcase, Play, BookOpen, ShieldCheck, Handshake } from 'lucide-react';
+import { ArrowRight, X, Trophy, Calendar, ChevronLeft, ChevronRight, Phone, Mail, MapPin, AlertCircle, Quote, Users, ChevronDown, ExternalLink, GraduationCap, Sparkles, Award, Briefcase, Play, BookOpen, ShieldCheck, Handshake, Zap } from 'lucide-react';
 import { formatDate } from '../utils/dateUtils';
 import HeroImage1 from '../assets/6.jpg'
 import HeroImage2 from '../assets/studentWithbooks.webp';
@@ -625,6 +625,7 @@ const HomePage = () => {
     const [latestNews, setLatestNews] = useState([]); 
     const [newsLoading, setNewsLoading] = useState(true);
     const [selectedNews, setSelectedNews] = useState(null);
+    const breakingNewsList = latestNews.filter(n => n.isBreaking);
     const [toppers, setToppers] = useState([]);
     const [toppersLoading, setToppersLoading] = useState(true);
     const [awards, setAwards] = useState([]);
@@ -800,6 +801,38 @@ const HomePage = () => {
   
     return (
       <div className="w-full">
+        {/* Breaking News Ticker Strip */}
+        {breakingNewsList.length > 0 && (
+          <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-md relative z-20 border-b border-red-500/30 overflow-hidden">
+            <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-2.5 flex items-center gap-2 sm:gap-3">
+              <div className="shrink-0 flex items-center gap-1.5 bg-white text-red-600 font-black px-2.5 py-1 rounded-full text-[10px] sm:text-xs uppercase tracking-wider shadow-sm animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-red-600 animate-ping inline-block" />
+                <Zap size={13} className="fill-current" />
+                Breaking News
+              </div>
+              <div className="flex-1 overflow-hidden relative">
+                <div className="breaking-news-track flex items-center gap-8">
+                  {[...breakingNewsList, ...breakingNewsList].map((item, idx) => (
+                    <button
+                      key={`breaking-ticker-${item._id}-${idx}`}
+                      type="button"
+                      onClick={() => setSelectedNews(item)}
+                      className="inline-flex items-center gap-2 text-white hover:text-amber-200 font-semibold text-xs sm:text-sm whitespace-nowrap transition-colors text-left group cursor-pointer"
+                    >
+                      <span className="opacity-75 text-[10px] sm:text-[11px] font-mono">[{formatDate(item.releaseDate)}]</span>
+                      <span className="group-hover:underline">{item.title}</span>
+                      <span className="text-white/40 font-normal">✦</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <a href="/news" className="shrink-0 text-white/90 hover:text-white font-bold text-[11px] sm:text-xs underline flex items-center gap-0.5 ml-2">
+                All Updates <ChevronRight size={13} />
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* 1. Custom Hero Section matching Screenshot */}
         <div className="relative bg-white pt-6 pb-12 sm:pt-8 sm:pb-16 overflow-hidden min-h-auto lg:min-h-[580px] lg:h-[640px] flex items-center">
 
@@ -821,10 +854,10 @@ const HomePage = () => {
           </div>
 
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 z-10 relative">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-12 items-center">
 
-              {/* Left text column */}
-              <div className="lg:col-span-6 space-y-5 sm:space-y-8 text-left z-10">
+              {/* Left text column - order-2 on mobile (under image), order-1 on desktop/tablet */}
+              <div className="order-2 md:order-1 lg:col-span-6 space-y-5 sm:space-y-8 text-left z-10">
                 <div className="inline-flex flex-wrap items-center gap-1.5 text-xs sm:text-[13px] font-extrabold tracking-widest uppercase">
                   <span className="text-[#0a1931]">
                     DREAM BIG. LEARN SMART. ACHIEVE MORE.
@@ -891,9 +924,9 @@ const HomePage = () => {
                 </div>
               </div>
 
-              {/* Right column spacer for mobile/desktop */}
-              <div className="lg:col-span-6 md:col-span-6 h-auto md:h-auto relative flex items-center justify-center">
-                <div className="md:hidden relative w-full flex items-center justify-center pt-3 pb-2 px-1">
+              {/* Right column spacer / Mobile image banner - order-1 on mobile (on top), order-2 on desktop */}
+              <div className="order-1 md:order-2 lg:col-span-6 md:col-span-6 h-auto md:h-auto relative flex items-center justify-center">
+                <div className="md:hidden relative w-full flex items-center justify-center pt-2 pb-2 px-1">
                   <div className="w-full max-w-[360px] sm:max-w-[440px] relative z-10">
                     <HeroBannerVisual items={heroImages} mobile />
                   </div>
@@ -1346,7 +1379,15 @@ const HomePage = () => {
                         <div className="news-vertical-viewport flex-1 overflow-hidden">
                           <div className="news-vertical-track space-y-3">
                             {[...latestNews, ...latestNews].map((item, index) => (
-                              <article key={`${item._id}-${index}`} onClick={() => setSelectedNews(item)} className="group flex cursor-pointer overflow-hidden rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-300">
+                              <article
+                                key={`${item._id}-${index}`}
+                                onClick={() => setSelectedNews(item)}
+                                className={`group flex cursor-pointer overflow-hidden rounded-xl border p-3 shadow-sm hover:shadow-md transition-all duration-300 relative ${
+                                  item.isBreaking
+                                    ? 'border-red-300 bg-gradient-to-r from-red-50/70 via-white to-white hover:border-red-400 ring-1 ring-red-200'
+                                    : 'border-gray-100 bg-white hover:border-gray-200'
+                                }`}
+                              >
                                 {item.image && (
                                   <div className="w-16 sm:w-20 h-16 sm:h-20 shrink-0 overflow-hidden rounded-lg bg-gray-50 border">
                                     <img src={item.image} alt={item.title} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -1354,10 +1395,22 @@ const HomePage = () => {
                                 )}
                                 <div className="min-w-0 flex-1 pl-3 flex flex-col justify-between">
                                   <div>
-                                    <span className="flex items-center gap-1 text-[9px] font-bold uppercase text-gray-400">
-                                      <Calendar size={10} /> {formatDate(item.releaseDate) || 'Recent'}
-                                    </span>
-                                    <h4 className="mt-1 line-clamp-2 text-xs sm:text-sm font-bold text-gray-800 group-hover:text-primary transition-colors leading-snug">{item.title}</h4>
+                                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                                      <span className="flex items-center gap-1 text-[9px] font-bold uppercase text-gray-400">
+                                        <Calendar size={10} /> {formatDate(item.releaseDate) || 'Recent'}
+                                      </span>
+                                      {item.isBreaking && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-red-600 text-white shadow-sm shadow-red-500/30 animate-pulse">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                                          Breaking
+                                        </span>
+                                      )}
+                                    </div>
+                                    <h4 className={`mt-0.5 line-clamp-2 text-xs sm:text-sm font-bold group-hover:text-primary transition-colors leading-snug ${
+                                      item.isBreaking ? 'text-gray-900 font-extrabold' : 'text-gray-800'
+                                    }`}>
+                                      {item.title}
+                                    </h4>
                                   </div>
                                   <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-primary self-start hover:underline">
                                     Read More <ChevronRight size={12} />
@@ -1426,8 +1479,8 @@ const HomePage = () => {
                     <span>{formatDate(selectedNews.releaseDate)}</span>
                   </div>
                   {selectedNews.isBreaking && (
-                    <div className="bg-red-500 text-white text-xs font-black px-3 py-1.5 rounded-full uppercase tracking-wide flex items-center gap-1">
-                      <AlertCircle size={14} /> Breaking News
+                    <div className="bg-red-500 text-white text-xs font-black px-3 py-1.5 rounded-full uppercase tracking-wide flex items-center gap-1.5 shadow-md shadow-red-900/30 animate-pulse">
+                      <Zap size={14} className="fill-current" /> Breaking News
                     </div>
                   )}
                 </div>

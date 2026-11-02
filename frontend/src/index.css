@@ -63,6 +63,22 @@
   }
 }
 
+@keyframes breakingMarquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+.breaking-news-track {
+  display: flex;
+  width: max-content;
+  animation: breakingMarquee 28s linear infinite;
+  will-change: transform;
+}
+
+.breaking-news-track:hover {
+  animation-play-state: paused;
+}
+
 @keyframes newsVerticalScroll {
   from { transform: translateY(0); }
   to { transform: translateY(-50%); }
