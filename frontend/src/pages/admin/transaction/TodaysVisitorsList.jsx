@@ -8,6 +8,7 @@ import VisitorForm from '../../../components/transaction/VisitorForm';
 import VisitorViewModal from '../../../components/transaction/VisitorViewModal';
 import VisitorFollowUpModal from '../../../components/transaction/VisitorFollowUpModal';
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
+import FollowupsDoneModal from './FollowupsDoneModal';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
 import { formatDate, getTodayDateISO } from '../../../utils/dateUtils';
@@ -295,6 +296,34 @@ const TodaysVisitorsList = () => {
     const [viewingVisitor, setViewingVisitor] = useState(null);
     const [followUpVisitor, setFollowUpVisitor] = useState(null);
     const [showRemainingVisitors, setShowRemainingVisitors] = useState(false);
+    const [showFollowupsModal, setShowFollowupsModal] = useState(false);
+    const [followupsModalRows, setFollowupsModalRows] = useState([]);
+
+    const handleOpenFollowupsModal = async () => {
+        if (Array.isArray(stats?.followupDetails) && stats.followupDetails.length > 0) {
+            setFollowupsModalRows(stats.followupDetails);
+            setShowFollowupsModal(true);
+            return;
+        }
+        try {
+            const data = await visitorService.getVisitorFollowUps({
+                fromDate,
+                toDate,
+                branchId: filterBranch,
+                employeeId: activeEmployeeId,
+                studentName,
+                referenceBy,
+                dateFilterType: 'callingDate',
+                excludeVisitorReportActivity: 'true'
+            });
+            setFollowupsModalRows(Array.isArray(data) ? data : []);
+            setShowFollowupsModal(true);
+        } catch (err) {
+            console.error('Failed to load followups for view modal', err);
+            setFollowupsModalRows([]);
+            setShowFollowupsModal(true);
+        }
+    };
     const employeeOptions = getEmployeeFilterOptions(employees, user);
     const activeEmployeeId = getScopedEmployeeId(user, employeeId);
     const activeStudentNames = [...new Set(visitors.map(v => v.studentName).filter(Boolean))].sort();
@@ -674,13 +703,22 @@ const TodaysVisitorsList = () => {
                                 <div className="mt-1 text-[10px] text-gray-400">
                                     {statsRemainingCount} remaining
                                 </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={handleOpenFollowupsModal}
+                                    className="inline-flex items-center gap-1 rounded bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-200 transition-colors"
+                                >
+                                    <Eye size={12} /> View List
+                                </button>
                                 <button
                                     type="button"
                                     onClick={handlePrintFollowupsList}
-                                    className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200"
+                                    className="inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200 transition-colors"
                                 >
                                     <Printer size={12} /> Print Followups List
                                 </button>
+                            </div>
                             </div>
                             <div className="border rounded p-3">
                                 <div className="text-xs text-gray-500 font-bold uppercase">Top Followup</div>
@@ -1040,6 +1078,19 @@ const TodaysVisitorsList = () => {
                         onSave={handleSaveFollowUp}
                     />
                 )}
+
+                {/* Followups Done Modal */}
+                <FollowupsDoneModal
+                    isOpen={showFollowupsModal}
+                    onClose={() => setShowFollowupsModal(false)}
+                    title="Today Visitors Done Followups"
+                    employeeName={activeEmployeeId ? (employeeOptions.find(e => String(e.value) === String(activeEmployeeId))?.label || 'Selected Employee') : 'All Employees'}
+                    dateRange={`${formatDate(fromDate)} to ${formatDate(toDate)}`}
+                    totalCount={followupsModalRows.length}
+                    rows={followupsModalRows}
+                    onPrint={handlePrintFollowupsList}
+                    showVisitorDate={true}
+                />
             </div>
         </div>
     );

@@ -7,11 +7,17 @@ const FinalExamQuestionPaper = require('../models/FinalExamQuestionPaper');
 const Student = require('../models/Student');
 const ExamRequest = require('../models/ExamRequest');
 const Course = require('../models/Course');
+const Subject = require('../models/Subject');
 const Employee = require('../models/Employee');
 const UserRight = require('../models/UserRight');
 const sendSMS = require('../utils/smsSender');
 const { getParentSmsRecipients } = require('../utils/smsRecipients');
 const bcrypt = require('bcryptjs');
+
+const isDisciplineOrProject = (name = '') => {
+    const n = String(name || '').toLowerCase().trim();
+    return n.includes('discipline') || n.includes('descipline') || n.includes('project');
+};
 
 const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -99,6 +105,17 @@ const normalizeScheduleTimeTable = async (timeTable = [], existingRows = []) => 
 
     for (const row of (Array.isArray(timeTable) ? timeTable : [])) {
         if (!row?.subject) {
+            continue;
+        }
+
+        const subjectId = String(row.subject?._id || row.subject);
+        let subjectName = String(row.subjectName || row.name || row.subject?.name || '').trim();
+        if (!subjectName) {
+            const subDoc = await Subject.findById(subjectId).select('name').lean();
+            subjectName = subDoc?.name || '';
+        }
+
+        if (isDisciplineOrProject(subjectName)) {
             continue;
         }
 
@@ -641,13 +658,14 @@ const getExamScheduleDetails = asyncHandler(async (req, res) => {
 
     const courseSubjectIds = new Set(
         (course?.subjects || [])
-            .filter(item => item.subject)
+            .filter(item => item.subject && !isDisciplineOrProject(item.subject.name))
             .map(item => (item.subject._id ? item.subject._id.toString() : item.subject.toString()))
     );
 
     const extraSavedRows = (schedule.timeTable || []).filter(item => {
         const id = item.subject?._id?.toString() || item.subject?.toString();
-        return id && !courseSubjectIds.has(id);
+        const name = item.subject?.name || '';
+        return id && !courseSubjectIds.has(id) && !isDisciplineOrProject(name);
     }).map(saved => ({
         subject: saved.subject,
         date: saved.date || '',
@@ -668,7 +686,7 @@ const getExamScheduleDetails = asyncHandler(async (req, res) => {
     const timeTable = course?.subjects?.length
         ? [
             ...[...course.subjects]
-                .filter(item => item.subject)
+                .filter(item => item.subject && !isDisciplineOrProject(item.subject.name))
                 .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
                 .map(item => {
                     const saved = savedTimeTable.get(item.subject._id.toString());
@@ -694,7 +712,7 @@ const getExamScheduleDetails = asyncHandler(async (req, res) => {
                 }),
             ...extraSavedRows
         ]
-        : schedule.timeTable;
+        : (schedule.timeTable || []).filter(item => !isDisciplineOrProject(item.subject?.name));
 
     // Find all sibling schedules sharing the same examName and course
     const escapedExamName = escapeRegex(String(schedule.examName || '').trim());
@@ -855,7 +873,9 @@ const getExamScheduleConductSummary = asyncHandler(async (req, res) => {
     );
 
     const attendeeSummary = attendees.map((student) => {
-        const rows = (schedule.timeTable || []).map((row) => {
+        const rows = (schedule.timeTable || [])
+            .filter((row) => !isDisciplineOrProject(row.subject?.name || row.subject?.printedName))
+            .map((row) => {
             const subjectKey = row.subject?._id?.toString() || row.subject?.toString?.() || String(row.subject || '');
             const attempt = attemptMap.get(`${student._id.toString()}:${subjectKey}`);
             const subjectPaper = paperSubjects.get(String(subjectKey));
@@ -900,7 +920,7 @@ const getExamScheduleConductSummary = asyncHandler(async (req, res) => {
             examiner: schedule.examiner,
             conductPasswordEnabled: Boolean(schedule.conductPasswordEnabled),
             hasConductPassword: Boolean(schedule.conductPasswordHash || schedule.conductPasswordText),
-            timeTable: schedule.timeTable
+            timeTable: (schedule.timeTable || []).filter((row) => !isDisciplineOrProject(row.subject?.name || row.subject?.printedName))
         },
         attendees: attendeeSummary,
         attempts: attempts.map((attempt) => ({
@@ -1403,7 +1423,9 @@ const getMyExamSchedules = asyncHandler(async (req, res) => {
         isActive: schedule.isActive,
         createdAt: schedule.createdAt,
         course: schedule.course,
-        timeTable: (schedule.timeTable || []).map((row) => ({
+        timeTable: (schedule.timeTable || [])
+            .filter((row) => !isDisciplineOrProject(row.subject?.name || row.subject?.printedName))
+            .map((row) => ({
             subject: row.subject,
             date: row.date,
             startTime: row.startTime,

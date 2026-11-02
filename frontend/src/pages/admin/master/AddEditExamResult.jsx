@@ -166,7 +166,7 @@ const AddEditExamResult = () => {
 
           // Load subject marks
           if (result.subjectMarks) {
-          const marks = result.subjectMarks.map(s => ({
+            const marks = result.subjectMarks.map(s => ({
               subjectId: s.subject?._id || s.subject,
               subjectName: s.subject?.name || 'Subject',
               theory: s.theory || 0,
@@ -174,6 +174,29 @@ const AddEditExamResult = () => {
               total: s.total || 0,
               maxMarks: s.maxMarks || 100
             }));
+
+            // Check if course has Discipline/Project missing from saved result
+            const courseSubjects = result.course?.subjects || [];
+            courseSubjects.forEach(cs => {
+              const sub = cs.subject;
+              if (!sub) return;
+              const subId = String(sub._id || sub);
+              const subName = sub.name || sub.printedName || 'Subject';
+              const n = subName.toUpperCase();
+              const isDis = n.includes('DISCIPLINE') || n.includes('DESCIPLINE') || n.includes('PROJECT');
+              const exists = marks.some(m => String(m.subjectId) === subId || m.subjectName?.toUpperCase() === n);
+              if (!exists && isDis) {
+                marks.push({
+                  subjectId: subId,
+                  subjectName: subName,
+                  theory: 0,
+                  practical: 0,
+                  total: 0,
+                  maxMarks: Number(sub.totalMarks) || 50
+                });
+              }
+            });
+
             replace(marks);
           }
         })
@@ -210,34 +233,55 @@ const AddEditExamResult = () => {
     }
   }, [nextResultNumbers, isEditMode, setValue]);
 
-  // Handle Exam Selection Change - Load subjects and details
+  // Handle Exam Selection Change - Load details
   useEffect(() => {
     if (selectedExamId) {
       dispatch(fetchExamScheduleDetails(selectedExamId));
-      
-      if (!isEditMode) {
-        // Try to find in existing list first for immediate feedback
-        const selectedExam = examSchedules.find(e => e._id === selectedExamId);
-        if (selectedExam && selectedExam.timeTable && selectedExam.timeTable.length > 0) {
-          const initialMarks = selectedExam.timeTable.map(item => ({
-            subjectId: item.subject?._id || item.subject,
-            subjectName: item.subject?.name || 'Subject',
+    }
+  }, [selectedExamId, dispatch]);
+
+  // Update subjectMarks when course or exam is chosen (ensures all subjects including Discipline & Project show)
+  useEffect(() => {
+    if (isEditMode || selectedStudentId) return;
+
+    const targetCourseId = String(
+      selectedCourseIdForm ||
+      examScheduleDetails?.course?._id ||
+      examScheduleDetails?.course ||
+      ''
+    );
+
+    const courseObj = (courses || []).find((c) => String(c._id) === targetCourseId);
+    if (courseObj && Array.isArray(courseObj.subjects) && courseObj.subjects.length > 0) {
+      const initialMarks = courseObj.subjects
+        .filter((cs) => cs.subject)
+        .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+        .map((cs) => {
+          const sub = cs.subject;
+          const subName = sub.name || sub.printedName || 'Subject';
+          const n = subName.toUpperCase();
+          const isDis = n.includes('DISCIPLINE') || n.includes('DESCIPLINE') || n.includes('PROJECT');
+          const maxMarks = Number(sub.totalMarks) || (isDis ? 50 : 100);
+
+          return {
+            subjectId: String(sub._id || sub),
+            subjectName: subName,
             theory: 0,
             practical: 0,
             total: 0,
-            maxMarks: item.total || 100
-          }));
-          replace(initialMarks);
-        }
+            maxMarks
+          };
+        });
+
+      if (initialMarks.length > 0) {
+        replace(initialMarks);
+        return;
       }
     }
-  }, [selectedExamId, examSchedules, isEditMode, dispatch, replace]);
 
-  // Update subjectMarks when full exam details are loaded (handles 7+ subjects case)
-  useEffect(() => {
-    if (examScheduleDetails && !isEditMode && String(examScheduleDetails._id) === String(selectedExamId) && !selectedStudentId) {
+    if (examScheduleDetails && String(examScheduleDetails._id) === String(selectedExamId)) {
       if (examScheduleDetails.timeTable && examScheduleDetails.timeTable.length > 0) {
-        const initialMarks = examScheduleDetails.timeTable.map(item => ({
+        const initialMarks = examScheduleDetails.timeTable.map((item) => ({
           subjectId: item.subject?._id || item.subject,
           subjectName: item.subject?.name || 'Subject',
           theory: 0,
@@ -248,7 +292,7 @@ const AddEditExamResult = () => {
         replace(initialMarks);
       }
     }
-  }, [examScheduleDetails, isEditMode, replace, selectedExamId, selectedStudentId]);
+  }, [selectedCourseIdForm, selectedExamId, examScheduleDetails, courses, isEditMode, selectedStudentId, replace]);
 
   useEffect(() => {
     if (isEditMode || !selectedExamId || !selectedStudentId || !selectedExamNameForm || !selectedCourseIdForm) return;

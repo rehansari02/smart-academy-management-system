@@ -2047,8 +2047,8 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
   let receipt;
   let retries = 0;
   while (retries < 5) {
-    // Always re-fetch max receiptNo just before insert to stay fresh
-    const lastReceipt = await FeeReceipt.findOne({ branch: branchId })
+    // Always re-fetch max receiptNo GLOBALLY just before insert to stay fresh and sequential across all branches
+    const lastReceipt = await FeeReceipt.findOne({})
       .sort({ receiptNo: -1 })
       .collation({ locale: "en_US", numericOrdering: true })
       .lean();
@@ -2087,7 +2087,7 @@ const createFeeReceipt = asyncHandler(async (req, res) => {
         if (existingReceipt) return res.status(200).json(existingReceipt);
       }
       // Duplicate receiptNo — retry with fresh number
-      if (error?.code === 11000 && error?.keyPattern?.receiptNo !== undefined) {
+      if (error?.code === 11000 && (error?.keyPattern?.receiptNo !== undefined || error?.message?.includes("receiptNo"))) {
         retries++;
         continue;
       }
@@ -2612,18 +2612,9 @@ const generateReceiptReport = asyncHandler(async (req, res) => {
 
 // @desc    Get Next Receipt Number
 const getNextReceiptNo = asyncHandler(async (req, res) => {
-    let branchId = req.query.branchId;
-    
-    // Auto-detect branch for non-admins if not provided
-    if (!branchId && req.user && req.user.role !== 'Super Admin' && req.user.branchId) {
-        branchId = req.user.branchId;
-    }
-
     let nextNum = 1;
-    // Find last receipt for this branch
-    const query = branchId ? { branch: branchId } : {};
-    
-    const lastReceipt = await FeeReceipt.findOne(query)
+    // Always find last receipt GLOBALLY so receipt numbers follow a single sequential line across all branches
+    const lastReceipt = await FeeReceipt.findOne({})
         .sort({ receiptNo: -1 })
         .collation({ locale: "en_US", numericOrdering: true });
 

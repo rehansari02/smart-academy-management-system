@@ -309,7 +309,7 @@ const createStudent = asyncHandler(async (req, res) => {
         if (feeDetails && feeDetails.amount > 0) {
             let receiptCreated = false;
             for (let attempt = 0; attempt < 5 && !receiptCreated; attempt++) {
-                const lastReceipt = await FeeReceipt.findOne({ branch: finalBranchId })
+                const lastReceipt = await FeeReceipt.findOne({})
                     .sort({ receiptNo: -1 })
                     .collation({ locale: "en_US", numericOrdering: true })
                     .lean();

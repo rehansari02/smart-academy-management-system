@@ -203,8 +203,8 @@ const FeeCollection = () => {
             clearErrors('studentId');
             setValue('courseName', student.course?.name || student.courseName || student.course?.shortName || 'N/A');
             fetchStudentPaymentData(id);
-            // Fetch next receipt number for this student's branch
-            fetchNextReceiptNo(student.branchId);
+            // Fetch next receipt number globally in sequential line
+            fetchNextReceiptNo();
         } else {
             setSelectedStudent(null);
             setPaymentSummary(null);

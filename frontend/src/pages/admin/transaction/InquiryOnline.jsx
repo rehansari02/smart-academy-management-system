@@ -17,6 +17,7 @@ import { toast } from 'react-toastify';
 import { useForm } from 'react-hook-form';
 import TimePicker12Hour from '../../../components/common/TimePicker12Hour';
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
+import FollowupsDoneModal from './FollowupsDoneModal';
 
 // --- SUB-COMPONENT: Follow Up Form ---
 import { formatDate } from '../../../utils/dateUtils';
@@ -213,6 +214,7 @@ const InquiryOnline = () => {
     const [pendingModalSave, setPendingModalSave] = useState(false);
     const [stats, setStats] = useState(null);
     const [showPendingBreakup, setShowPendingBreakup] = useState(false);
+    const [showFollowupsModal, setShowFollowupsModal] = useState(false);
     const [selectedInquiryIds, setSelectedInquiryIds] = useState(new Set());
     const [bulkAssignee, setBulkAssignee] = useState('');
     const [transferMode, setTransferMode] = useState(false);
@@ -871,13 +873,22 @@ const InquiryOnline = () => {
                             <div className="mt-1 text-[10px] text-gray-400">
                                 {statsRemainingCount} remaining
                             </div>
-                            <button
-                                type="button"
-                                onClick={handlePrintFollowupsList}
-                                className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200"
-                            >
-                                <Printer size={12} /> Print Followups List
-                            </button>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowFollowupsModal(true)}
+                                    className="inline-flex items-center gap-1 rounded bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-200 transition-colors"
+                                >
+                                    <Eye size={12} /> View List
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handlePrintFollowupsList}
+                                    className="inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200 transition-colors"
+                                >
+                                    <Printer size={12} /> Print Followups List
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1051,6 +1062,18 @@ const InquiryOnline = () => {
 
             {/* View Modal */}
             {viewInquiry && <InquiryViewModal inquiry={viewInquiry} onClose={() => setViewInquiry(null)} />}
+
+            {/* Followups Done Modal */}
+            <FollowupsDoneModal
+                isOpen={showFollowupsModal}
+                onClose={() => setShowFollowupsModal(false)}
+                title="Online Followups Done List"
+                employeeName={activeEmployeeId ? getEmployeeNameById(employeeOptions, activeEmployeeId) : 'All Employees'}
+                dateRange={`${formatDate(filters.startDate)} to ${formatDate(filters.endDate)}`}
+                totalCount={stats?.followupDetails?.length || 0}
+                rows={stats?.followupDetails || []}
+                onPrint={handlePrintFollowupsList}
+            />
         </div>
     );
 };

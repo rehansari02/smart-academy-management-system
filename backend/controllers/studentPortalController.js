@@ -10,6 +10,11 @@ const bcrypt = require('bcryptjs');
 const SyllabusLog = require('../models/SyllabusLog');
 const StudentSyllabusResponse = require('../models/StudentSyllabusResponse');
 
+const isDisciplineOrProject = (name = '') => {
+    const n = String(name || '').toLowerCase().trim();
+    return n.includes('discipline') || n.includes('descipline') || n.includes('project');
+};
+
 // Returns YYYY-MM-DD using LOCAL time (server timezone)
 const getDateKey = (date) => {
     if (!date) return 'no-date';
@@ -931,7 +936,9 @@ const getStudentExamSchedules = async (req, res) => {
             scheduleType: schedule.scheduleType || (schedule.isReExam ? 'reExam' : 'regular'),
             createdAt: schedule.createdAt,
             course: schedule.course,
-            timeTable: (schedule.timeTable || []).map((row) => {
+            timeTable: (schedule.timeTable || [])
+                .filter((row) => !isDisciplineOrProject(row.subject?.name || row.subject?.printedName))
+                .map((row) => {
                 const subjectId = row.subject?._id || row.subject;
                 const attempt = attemptMap.get(`${String(schedule._id)}:${String(subjectId)}`);
                 const window = getScheduleSubjectWindow(row);
@@ -1048,7 +1055,9 @@ const getStudentExamConduct = async (req, res) => {
             conductPasswordEnabled: Boolean(schedule.conductPasswordEnabled),
             hasConductPassword: Boolean(schedule.conductPasswordHash || schedule.conductPasswordText),
             course: schedule.course,
-            timeTable: (schedule.timeTable || []).map((row) => {
+            timeTable: (schedule.timeTable || [])
+                .filter((row) => !isDisciplineOrProject(row.subject?.name || row.subject?.printedName))
+                .map((row) => {
                 const window = getScheduleSubjectWindow(row);
                 const subjectId = row.subject?._id || row.subject;
                 const attempt = attemptMap.get(`${String(schedule._id)}:${String(subjectId)}`);

@@ -271,8 +271,18 @@ const ExamSchedule = () => {
     }
   }, [filterCourseOptions, filters.courseId]);
 
+  const isDisciplineOrProject = (subjectName = '') => {
+    const normalizedName = String(subjectName || '').toLowerCase().trim();
+    return normalizedName.includes('discipline') || normalizedName.includes('descipline') || normalizedName.includes('project');
+  };
+
+  const isSingleMarksSubject = (subjectName = '') => {
+    return isDisciplineOrProject(subjectName);
+  };
+
   const buildTimeTableFromCourse = (course, existingTimeTable = []) => {
-    const existingRows = Array.isArray(existingTimeTable) ? existingTimeTable : [];
+    const existingRows = (Array.isArray(existingTimeTable) ? existingTimeTable : [])
+      .filter(item => !isDisciplineOrProject(item.subject?.name || item.name));
     const existingBySubject = new Map(
         existingRows.map(item => [
             String(item.subject?._id || item.subject || ''),
@@ -281,7 +291,7 @@ const ExamSchedule = () => {
     );
 
     const courseSubjects = [...(course?.subjects || [])]
-        .filter(item => item.subject)
+        .filter(item => item.subject && !isDisciplineOrProject(item.subject.name))
         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
     if (courseSubjects.length === 0) {
@@ -327,13 +337,14 @@ const ExamSchedule = () => {
     const processedIds = new Set(courseSubjects.map(item => String(item.subject?._id || item.subject || '')));
     existingRows.forEach(item => {
         const id = String(item.subject?._id || item.subject || '');
-        if (id && !processedIds.has(id)) {
+        const name = item.subject?.name || item.name || 'Subject';
+        if (id && !processedIds.has(id) && !isDisciplineOrProject(name)) {
             const theory = item.theory ?? 0;
             const practical = item.practical ?? 0;
             const total = Number(item.total) || (Number(theory) + Number(practical));
             rows.push({
                 subject: id,
-                name: item.subject?.name || item.name || 'Subject',
+                name,
                 date: formatDateForInput(item.date),
                 startTime: item.startTime || '10:00 AM',
                 endTime: item.endTime || '01:00 PM',
@@ -345,11 +356,6 @@ const ExamSchedule = () => {
     });
 
     return rows;
-  };
-
-  const isSingleMarksSubject = (subjectName = '') => {
-    const normalizedName = subjectName.toLowerCase();
-    return normalizedName.includes('discipline') || normalizedName.includes('project');
   };
 
   const handleCreateExamName = async () => {
@@ -581,7 +587,9 @@ const ExamSchedule = () => {
     const finalData = { 
         ...data, 
         attendees: selectedAttendees.map(student => student?._id || student),
-        timeTable: timeTableData.map(item => ({
+        timeTable: timeTableData
+          .filter(item => !isDisciplineOrProject(item.name || item.subject?.name))
+          .map(item => ({
             subject: item.subject,
             date: item.date,
             startTime: item.startTime,
@@ -656,7 +664,9 @@ const ExamSchedule = () => {
     try {
       const res = await axios.get(`${import.meta.env.VITE_API_URL}/master/exam-schedule/${schedule._id}/details`, { withCredentials: true });
       if (res.data && Array.isArray(res.data.timeTable) && res.data.timeTable.length > 0) {
-        const mapped = res.data.timeTable.map(item => {
+        const mapped = res.data.timeTable
+          .filter(item => !isDisciplineOrProject(item.subject?.name || item.name))
+          .map(item => {
           const subId = String(item.subject?._id || item.subject || '');
           const subName = item.subject?.name || item.name || 'Subject';
           const theory = item.theory ?? item.subject?.theoryMarks ?? 0;
@@ -686,9 +696,10 @@ const ExamSchedule = () => {
 
   const handleOpenRescheduleModal = (student, schedule, availableTimeTable = null) => {
     if (!student || !schedule) return;
-    const timeTableList = (availableTimeTable && availableTimeTable.length > 0)
+    const rawList = (availableTimeTable && availableTimeTable.length > 0)
       ? availableTimeTable
       : (schedule.timeTable || []);
+    const timeTableList = rawList.filter(item => !isDisciplineOrProject(item.subject?.name || item.name));
     const defaultSubject = timeTableList[0];
     const initialDate = defaultSubject?.date ? formatDateForInput(defaultSubject.date) : '';
     setRescheduleModalData({
@@ -706,7 +717,8 @@ const ExamSchedule = () => {
   };
 
   const handleRescheduleSubjectChange = (subjectId) => {
-    const timeTableList = rescheduleModalData?.timeTableList || rescheduleModalData?.schedule?.timeTable || [];
+    const rawList = rescheduleModalData?.timeTableList || rescheduleModalData?.schedule?.timeTable || [];
+    const timeTableList = rawList.filter(item => !isDisciplineOrProject(item.subject?.name || item.name));
     const found = timeTableList.find(
       t => String(t.subject?._id || t.subject || '') === String(subjectId)
     );
@@ -818,7 +830,8 @@ const ExamSchedule = () => {
       // 1. First add from mainSchedule:
       (cg.mainSchedule?.timeTable || []).forEach(tt => {
         const sId = String(tt.subject?._id || tt.subject || '');
-        if (sId) {
+        const sName = tt.subject?.name || tt.name || '';
+        if (sId && !isDisciplineOrProject(sName)) {
           timeTableMap.set(sId, { ...tt, scheduleId: cg.mainSchedule._id });
         }
       });
@@ -827,7 +840,8 @@ const ExamSchedule = () => {
       cg.schedules.forEach(s => {
         (s.timeTable || []).forEach(tt => {
           const sId = String(tt.subject?._id || tt.subject || '');
-          if (sId) {
+          const sName = tt.subject?.name || tt.name || '';
+          if (sId && !isDisciplineOrProject(sName)) {
             const existing = timeTableMap.get(sId);
             if (!existing) {
               timeTableMap.set(sId, { ...tt, scheduleId: s._id });
@@ -841,7 +855,7 @@ const ExamSchedule = () => {
       // 3. Add course master subjects:
       const courseDef = allCourses.find(c => String(c._id) === cg.courseId);
       if (courseDef && Array.isArray(courseDef.subjects)) {
-        courseDef.subjects.filter(cs => cs.subject).forEach(cs => {
+        courseDef.subjects.filter(cs => cs.subject && !isDisciplineOrProject(cs.subject.name)).forEach(cs => {
           const sub = cs.subject;
           const sId = String(sub._id || sub);
           if (!timeTableMap.has(sId)) {
@@ -860,7 +874,7 @@ const ExamSchedule = () => {
         });
       }
 
-      cg.mergedTimeTable = Array.from(timeTableMap.values());
+      cg.mergedTimeTable = Array.from(timeTableMap.values()).filter(tt => !isDisciplineOrProject(tt.name || tt.subject?.name));
     });
 
     return Array.from(map.values()).sort((a, b) => a.courseName.localeCompare(b.courseName));
@@ -2345,7 +2359,9 @@ const ExamSchedule = () => {
                   className="w-full text-xs font-semibold border rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-blue-400 outline-none"
                   required
                 >
-                  {(rescheduleModalData.schedule.timeTable || []).map((t, idx) => {
+                  {(rescheduleModalData.timeTableList || rescheduleModalData.schedule?.timeTable || [])
+                    .filter((t) => !isDisciplineOrProject(t.subject?.name || t.subject?.printedName || t.name))
+                    .map((t, idx) => {
                     const sId = String(t.subject?._id || t.subject || '');
                     const sName = t.subject?.name || t.subject?.printedName || t.name || `Paper ${idx + 1}`;
                     const curDate = t.date ? formatDateForInput(t.date) : 'No date';

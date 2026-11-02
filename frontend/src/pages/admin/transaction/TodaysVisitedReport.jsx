@@ -13,6 +13,7 @@ import InquiryViewModal from '../../../components/transaction/InquiryViewModal';
 import { useForm } from 'react-hook-form';
 import TimePicker12Hour from '../../../components/common/TimePicker12Hour';
 import SearchableDropdown from '../../../components/common/SearchableDropdown';
+import FollowupsDoneModal from './FollowupsDoneModal';
 import { useUserRights } from '../../../hooks/useUserRights';
 import { showPermissionDenied } from '../../../utils/permissionAlert';
 import Swal from 'sweetalert2';
@@ -775,6 +776,92 @@ const TodaysVisitedReport = () => {
     const [viewingVisitor, setViewingVisitor] = useState(null);
     const [followUpVisitor, setFollowUpVisitor] = useState(null);
     const [showPendingBreakup, setShowPendingBreakup] = useState(false);
+    const [showFollowupsModal, setShowFollowupsModal] = useState(false);
+    const [followupsModalConfig, setFollowupsModalConfig] = useState({
+        title: '',
+        rows: [],
+        sections: null,
+        totalCount: 0,
+        showVisitorDate: false,
+        onPrint: null
+    });
+
+    const handleOpenDoneActivityModal = async () => {
+        setLoading(true);
+        const toastId = toast.loading('Loading followups done data...');
+        try {
+            const doneData = await fetchDoneActivityData(filters);
+            if (filters.reportType === 'visited') {
+                const rows = doneData.activityVisitors || [];
+                setFollowupsModalConfig({
+                    title: 'Activity Report - Done Visitors',
+                    rows,
+                    sections: null,
+                    totalCount: rows.length,
+                    showVisitorDate: true,
+                    onPrint: handlePrintDoneActivity
+                });
+            } else {
+                const rows = doneData.doneFollowupRows || [];
+                setFollowupsModalConfig({
+                    title: 'Activity Report - Done Followups',
+                    rows,
+                    sections: null,
+                    totalCount: rows.length,
+                    showVisitorDate: false,
+                    onPrint: handlePrintDoneActivity
+                });
+            }
+            setShowFollowupsModal(true);
+            toast.dismiss(toastId);
+        } catch (err) {
+            console.error('Error fetching done activity:', err);
+            toast.error('Failed to load followups done');
+            toast.dismiss(toastId);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleOpen6SectionsModal = async () => {
+        setLoading(true);
+        const toastId = toast.loading('Loading all 6 sections done data...');
+        try {
+            const doneActivity = await fetchDoneActivityData({ ...filters, isPrintAll: true });
+            const pageInquiryRows = doneActivity.pageInquiryRows || [];
+            const doneVisitorRows = doneActivity.todayVisitorRows || [];
+            const reportFollowupRows = doneActivity.reportFollowupRows || [];
+            const reportVisitorRows = doneActivity.reportVisitorRows || [];
+
+            const sections = [
+                { title: '1. Online Inquiry Done', data: pageInquiryRows.filter(f => f.source === 'Online') },
+                { title: '2. Offline Inquiry Done', data: pageInquiryRows.filter(f => f.source === 'Walk-in') },
+                { title: '3. DSR Inquiry Done', data: pageInquiryRows.filter(f => f.source === 'DSR') },
+                { title: '4. Today Visitors List Done', data: doneVisitorRows },
+                { title: '5. Report Follow-ups Section', data: reportFollowupRows },
+                { title: '6. Report Visitors Section', data: reportVisitorRows },
+            ];
+
+            const total = sections.reduce((sum, s) => sum + (s.data?.length || 0), 0);
+
+            setFollowupsModalConfig({
+                title: 'All Followups Done Summary (6 Sections)',
+                rows: [],
+                sections,
+                totalCount: total,
+                showVisitorDate: true,
+                onPrint: handlePrintFollowupsAll
+            });
+            setShowFollowupsModal(true);
+            toast.dismiss(toastId);
+        } catch (err) {
+            console.error('Error fetching 6 sections done activity:', err);
+            toast.error('Failed to load 6 sections data');
+            toast.dismiss(toastId);
+        } finally {
+            setLoading(false);
+        }
+    };
     
     // Inquiry Modals State for Follow-ups
     const [editInquiryData, setEditInquiryData] = useState(null);
@@ -1455,6 +1542,12 @@ const TodaysVisitedReport = () => {
                         >
                             <Printer size={16} /> 6 Print
                         </button>
+                        <button 
+                            onClick={handleOpen6SectionsModal}
+                            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 shadow-sm font-bold transition-all transform hover:scale-105"
+                        >
+                            <Eye size={16} /> 6 View
+                        </button>
                         <div className="flex bg-gray-100 p-1 rounded-xl flex-grow md:flex-none">
                             <button 
                                 onClick={() => setFilters({...filters, reportType: 'followup'})}
@@ -1564,13 +1657,22 @@ const TodaysVisitedReport = () => {
                                 <div className="mt-1 text-[10px] text-gray-400">
                                     {activeReportStats.remaining} remaining
                                 </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={handleOpenDoneActivityModal}
+                                    className="inline-flex items-center gap-1 rounded bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-200 transition-colors"
+                                >
+                                    <Eye size={12} /> {filters.reportType === 'visited' ? 'View Done Visitors' : 'View Done Followups'}
+                                </button>
                                 <button
                                     type="button"
                                     onClick={handlePrintFollowupsList}
-                                    className="mt-2 inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200"
+                                    className="inline-flex items-center gap-1 rounded bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700 hover:bg-purple-200 transition-colors"
                                 >
                                     <Printer size={12} /> {filters.reportType === 'visited' ? 'Print Done Visitors' : 'Print Done Followups'}
                                 </button>
+                            </div>
                             </div>
                             <div className="border rounded p-3">
                                 <div className="text-xs text-gray-500 font-bold uppercase">{activeReportStats.topLabel}</div>
@@ -2203,6 +2305,20 @@ const TodaysVisitedReport = () => {
                         onSave={handleSaveFollowUp}
                     />
                 )}
+
+                {/* Followups Done Modal */}
+                <FollowupsDoneModal
+                    isOpen={showFollowupsModal}
+                    onClose={() => setShowFollowupsModal(false)}
+                    title={followupsModalConfig.title}
+                    employeeName={activeEmployeeId ? getEmployeeNameById(employeeOptions, activeEmployeeId, 'All Employees') : 'All Employees'}
+                    dateRange={`${formatDate(filters.fromDate)} to ${formatDate(filters.toDate)}`}
+                    totalCount={followupsModalConfig.totalCount}
+                    rows={followupsModalConfig.rows}
+                    sections={followupsModalConfig.sections}
+                    onPrint={followupsModalConfig.onPrint}
+                    showVisitorDate={followupsModalConfig.showVisitorDate}
+                />
             </div>
         </div>
     );

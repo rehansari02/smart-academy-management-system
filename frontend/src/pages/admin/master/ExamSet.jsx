@@ -34,6 +34,11 @@ import { fetchEmployees, fetchExamSchedules, fetchExams, updateExamSchedule } fr
 
 const getSubjectName = (row) => row?.subject?.name || row?.subject?.printedName || row?.name || 'Subject';
 const getSubjectId = (row) => row?.subject?._id || row?.subject;
+
+const isDisciplineOrProject = (name = '') => {
+  const n = String(name || '').toLowerCase().trim();
+  return n.includes('discipline') || n.includes('descipline') || n.includes('project');
+};
 const getEmployeeName = (employee) => employee?.name || [employee?.firstName, employee?.lastName].filter(Boolean).join(' ') || 'Employee';
 
 const getEmployeesForBranch = (employeesList, branchId, branchName) => {
@@ -300,6 +305,9 @@ const ExamSet = () => {
 
     selectedSchedules.forEach((schedule) => {
       (schedule.timeTable || []).forEach((row, rowIndex) => {
+        const subName = getSubjectName(row);
+        if (isDisciplineOrProject(subName)) return;
+
         const dateKey = getDateKey(row.date);
         if (!groupMap.has(dateKey)) {
           groupMap.set(dateKey, {
@@ -314,11 +322,23 @@ const ExamSet = () => {
         group.rows.push({ schedule, row, rowIndex });
         group.scheduleMap.set(schedule._id, schedule);
         (schedule.attendees || []).forEach((student) => {
+          const isReExam = Boolean(schedule.isReExam || schedule.scheduleType === 'reExam' || student.isReExam);
+          const sKey = String(student._id || student.regNo || student.enrollmentNo || student.mobileStudent || student.name);
           const studentObj = {
             ...student,
+            isReExam,
+            isReExamSchedule: Boolean(schedule.isReExam || schedule.scheduleType === 'reExam'),
+            scheduleId: schedule._id,
             courseName: schedule.course?.name || 'Course'
           };
-          group.studentMap.set(student._id || `${schedule._id}-${student.regNo || student.mobile || student.name}`, studentObj);
+          if (group.studentMap.has(sKey)) {
+            const existing = group.studentMap.get(sKey);
+            if (isReExam) {
+              group.studentMap.set(sKey, { ...existing, isReExam: true, isReExamSchedule: true });
+            }
+          } else {
+            group.studentMap.set(sKey, studentObj);
+          }
         });
       });
     });
@@ -395,28 +415,45 @@ const ExamSet = () => {
 
         const bGroup = branchMap.get(bName);
         bData.students.forEach((s) => {
+          const isReExam = Boolean(schedule.isReExam || schedule.scheduleType === 'reExam' || s.isReExam);
           const studentObj = {
             ...s,
+            isReExam,
+            isReExamSchedule: Boolean(schedule.isReExam || schedule.scheduleType === 'reExam'),
+            scheduleId: schedule._id,
             courseName: schedule.course?.name || 'Course'
           };
-          bGroup.studentMap.set(s._id || s.regNo, studentObj);
+          const sKey = String(s._id || s.regNo);
+          if (bGroup.studentMap.has(sKey)) {
+            const existing = bGroup.studentMap.get(sKey);
+            if (isReExam) {
+              bGroup.studentMap.set(sKey, { ...existing, isReExam: true, isReExamSchedule: true });
+            }
+          } else {
+            bGroup.studentMap.set(sKey, studentObj);
+          }
         });
         bGroup.scheduleMap.set(schedule._id, schedule);
         bGroup.rows.push({ schedule, row, rowIndex });
 
-        // Course group under this branch
+        // Course group under this branch - SEPARATE regular from re-exam schedules
+        const isReExam = Boolean(schedule.isReExam || schedule.scheduleType === 'reExam');
         const courseId = String(schedule.course?._id || schedule.course || 'no-course');
         const courseName = schedule.course?.name || 'Course';
-        if (!bGroup.courseGroupsMap.has(courseId)) {
-          bGroup.courseGroupsMap.set(courseId, {
+        const groupKey = isReExam ? `${courseId}_reExam_${schedule._id}` : `${courseId}_regular`;
+
+        if (!bGroup.courseGroupsMap.has(groupKey)) {
+          bGroup.courseGroupsMap.set(groupKey, {
+            groupKey,
             courseId,
             courseName,
+            isReExam,
             schedule,
             rows: [],
             students: []
           });
         }
-        const cGroup = bGroup.courseGroupsMap.get(courseId);
+        const cGroup = bGroup.courseGroupsMap.get(groupKey);
         if (!cGroup.rows.some(r => r.row._id === row._id && r.schedule._id === schedule._id)) {
           cGroup.rows.push({ schedule, row, rowIndex });
         }
@@ -425,6 +462,9 @@ const ExamSet = () => {
           if (!cGroup.students.some(st => String(st._id || st.regNo) === sId)) {
             cGroup.students.push({
               ...s,
+              isReExam,
+              isReExamSchedule: isReExam,
+              scheduleId: schedule._id,
               courseName
             });
           }
@@ -432,10 +472,17 @@ const ExamSet = () => {
       });
     });
 
-    return [...branchMap.values()].map(bg => ({
-      ...bg,
-      courses: [...bg.courseGroupsMap.values()].sort((a, b) => a.courseName.localeCompare(b.courseName))
-    })).sort((a, b) => a.branchName.localeCompare(b.branchName));
+    return [...branchMap.values()].map(bg => {
+      const allCourseGroups = [...bg.courseGroupsMap.values()];
+      const regularCourses = allCourseGroups.filter(c => !c.isReExam).sort((a, b) => a.courseName.localeCompare(b.courseName));
+      const reExamCourses = allCourseGroups.filter(c => c.isReExam).sort((a, b) => a.courseName.localeCompare(b.courseName));
+      return {
+        ...bg,
+        courses: [...regularCourses, ...reExamCourses],
+        regularCourses,
+        reExamCourses
+      };
+    }).sort((a, b) => a.branchName.localeCompare(b.branchName));
   };
 
   // Initialize branch settings
@@ -472,7 +519,30 @@ const ExamSet = () => {
   }, [dateGroups, testingDate, isSuperAdmin, currentEmployee]);
 
   const totalSubjects = visibleDateGroups.reduce((total, group) => total + group.rows.length, 0);
-  const totalStudents = visibleDateGroups.reduce((total, group) => total + group.studentMap.size, 0);
+
+  // Calculate UNIQUE students across all visible date groups (prevents multiplying count by number of days, e.g. 20 students * 6 days = 120)
+  const { totalStudents, totalRegularStudents, totalReExamStudents } = useMemo(() => {
+    const regularSet = new Set();
+    const reExamSet = new Set();
+    const allSet = new Set();
+
+    visibleDateGroups.forEach((group) => {
+      group.studentMap.forEach((student, key) => {
+        allSet.add(String(key));
+        if (student.isReExam || student.isReExamSchedule) {
+          reExamSet.add(String(key));
+        } else {
+          regularSet.add(String(key));
+        }
+      });
+    });
+
+    return {
+      totalStudents: allSet.size,
+      totalRegularStudents: regularSet.size,
+      totalReExamStudents: reExamSet.size
+    };
+  }, [visibleDateGroups]);
 
   const handleRefresh = () => {
     dispatch(fetchExams());
@@ -555,7 +625,9 @@ const ExamSet = () => {
       return;
     }
 
-    const subjects = (targetSched.timeTable || []).map((t) => ({
+    const subjects = (targetSched.timeTable || [])
+      .filter((t) => !isDisciplineOrProject(getSubjectName(t)))
+      .map((t) => ({
       id: String(t.subject?._id || t.subject),
       name: getSubjectName(t),
       startTime: t.startTime || '10:00 AM',
@@ -718,6 +790,29 @@ const ExamSet = () => {
       return name.includes(term) || reg.includes(term) || mob.includes(term) || branch.includes(term) || course.includes(term);
     });
   }, [modalStudentList, modalSearchTerm, modalCourseTab]);
+
+  // Separate regular students from re-exam students for attendance modal
+  const { regularModalStudents, reExamModalStudents } = useMemo(() => {
+    const regular = [];
+    const reExam = [];
+
+    filteredModalStudents.forEach((student) => {
+      const sId = String(student._id);
+      const isRe = Boolean(
+        student.isReExam ||
+        student.isReExamSchedule ||
+        modalSchedules.some(s => (s.isReExam || s.scheduleType === 'reExam') && (s.attendees || []).some(a => String(a._id || a) === sId))
+      );
+
+      if (isRe) {
+        reExam.push(student);
+      } else {
+        regular.push(student);
+      }
+    });
+
+    return { regularModalStudents: regular, reExamModalStudents: reExam };
+  }, [filteredModalStudents, modalSchedules]);
 
   const getModalAttemptsForStudent = (studentId) => selectedSchedules.flatMap((schedule) => {
     if (!modalScheduleIds.includes(schedule._id)) return [];
@@ -886,9 +981,14 @@ const ExamSet = () => {
               <div className="text-lg font-black text-purple-700">{totalSubjects}</div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Subjects</div>
             </div>
-            <div className="rounded-xl border bg-emerald-50/60 px-3.5 py-2">
+            <div className="rounded-xl border bg-emerald-50/60 px-3 py-2 flex flex-col justify-center">
               <div className="text-lg font-black text-emerald-700">{totalStudents}</div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Students</div>
+              {totalReExamStudents > 0 && (
+                <div className="text-[9px] font-bold text-amber-700 mt-0.5">
+                  {totalRegularStudents} Reg &bull; {totalReExamStudents} Re-Exam
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1171,115 +1271,235 @@ const ExamSet = () => {
                           </div>
                         </div>
 
-                        {/* Hierarchical Course-wise Groups */}
-                        <div className="space-y-4">
-                          <div className="text-xs font-black text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-                            <Layers size={15} className="text-primary" /> Courses Scheduled in this Branch ({bGroup.courses.length})
-                          </div>
-
-                          <div className="grid grid-cols-1 gap-4">
-                            {bGroup.courses.map((cGroup) => (
-                              <div key={cGroup.courseId} className="rounded-xl border border-blue-100 bg-white overflow-hidden shadow-xs">
-                                {/* Course Header Box */}
-                                <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 px-4 py-3 border-b border-blue-100 flex flex-wrap items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2.5">
-                                    <div className="p-1.5 rounded-lg bg-blue-600 text-white shadow-xs">
-                                      <BookOpen size={16} />
-                                    </div>
-                                    <div>
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <h4 className="text-sm font-black text-gray-900">{cGroup.courseName}</h4>
-                                        {cGroup.rows.some(r => r.schedule?.isReExam || r.schedule?.scheduleType === 'reExam') && (
-                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
-                                            <RotateCcw size={10} /> Re-Exam Schedule
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-[11px] text-gray-500 font-semibold">
-                                        {cGroup.rows.length} Subject Papers Scheduled
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
-                                      {cGroup.students.length} Student(s)
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => openStudentModal(`${bGroup.branchName} &bull; ${cGroup.courseName}`, cGroup.students, formatDateLabel(dateGroup.dateKey), dateGroup.dateKey, cGroup.rows.map(r => r.schedule))}
-                                      className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs font-bold transition cursor-pointer shadow-xs"
-                                    >
-                                      <Users size={13} /> Course Attendance
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const schedules = cGroup.rows.map(r => r.schedule);
-                                        setModalSchedules(schedules);
-                                        if (cGroup.students.length === 1) {
-                                          handleOpenReschedule(cGroup.students[0]);
-                                        } else {
-                                          openStudentModal(`${bGroup.branchName} &bull; ${cGroup.courseName}`, cGroup.students, formatDateLabel(dateGroup.dateKey), dateGroup.dateKey, schedules);
-                                        }
-                                      }}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 text-xs font-bold transition cursor-pointer shadow-xs"
-                                      title="Reschedule student exam for this course"
-                                    >
-                                      <RotateCcw size={12} /> Reschedule
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {/* Course Subjects Table */}
-                                <div className="overflow-x-auto">
-                                  <table className="min-w-full text-xs">
-                                    <thead className="bg-slate-50 text-left text-[10px] font-bold uppercase tracking-wider text-gray-600 border-b border-gray-100">
-                                      <tr>
-                                        <th className="px-4 py-2.5 text-center w-12">#</th>
-                                        <th className="px-4 py-2.5">Subject / Paper Name</th>
-                                        <th className="px-4 py-2.5">Exam Timing</th>
-                                        <th className="px-4 py-2.5 text-center">Theory</th>
-                                        <th className="px-4 py-2.5 text-center">Practical</th>
-                                        <th className="px-4 py-2.5 text-center">Total Marks</th>
-                                        <th className="px-4 py-2.5 text-center">Branch Students</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100 font-medium">
-                                      {cGroup.rows.map(({ schedule, row }, idx) => (
-                                        <tr key={`${schedule._id}-${row._id || idx}`} className="hover:bg-blue-50/30 transition-colors">
-                                          <td className="px-4 py-2.5 text-center font-bold text-gray-400">{idx + 1}</td>
-                                          <td className="px-4 py-2.5 font-bold text-gray-900 text-xs">
-                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                              <span>{getSubjectName(row)}</span>
-                                              {(schedule?.isReExam || schedule?.scheduleType === 'reExam') && (
-                                                <span className="px-1.5 py-0.2 rounded text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300">
-                                                  Re-Exam
-                                                </span>
-                                              )}
-                                            </div>
-                                          </td>
-                                          <td className="px-4 py-2.5 text-gray-600 font-medium">
-                                            <span className="inline-flex items-center gap-1">
-                                              <Clock size={12} className="text-gray-400" />
-                                              {row.startTime && row.endTime ? `${row.startTime} - ${row.endTime}` : row.startTime || row.endTime || '-'}
-                                            </span>
-                                          </td>
-                                          <td className="px-4 py-2.5 text-center text-gray-700 font-semibold">{row.theory || 0}</td>
-                                          <td className="px-4 py-2.5 text-center text-gray-700 font-semibold">{row.practical || 0}</td>
-                                          <td className="px-4 py-2.5 text-center font-bold text-blue-700">{row.total || 0}</td>
-                                          <td className="px-4 py-2.5 text-center">
-                                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-indigo-50 text-indigo-700">
-                                              {cGroup.students.length}
-                                            </span>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
+                        {/* Hierarchical Course-wise Groups - Separated Regular vs Re-Exam */}
+                        <div className="space-y-6">
+                          {/* 1. REGULAR EXAM COURSES */}
+                          {bGroup.regularCourses && bGroup.regularCourses.length > 0 && (
+                            <div className="space-y-3">
+                              <div className="text-xs font-black text-gray-700 uppercase tracking-wider flex items-center justify-between">
+                                <span className="flex items-center gap-1.5 text-blue-800">
+                                  <Layers size={15} className="text-primary" /> Regular Exam Courses ({bGroup.regularCourses.length})
+                                </span>
+                                <span className="text-[11px] font-bold text-gray-500 bg-gray-100 px-2.5 py-0.5 rounded-full">
+                                  {bGroup.regularCourses.reduce((sum, c) => sum + c.students.length, 0)} Students
+                                </span>
                               </div>
-                            ))}
-                          </div>
+
+                              <div className="grid grid-cols-1 gap-4">
+                                {bGroup.regularCourses.map((cGroup) => (
+                                  <div key={cGroup.groupKey || cGroup.courseId} className="rounded-xl border border-blue-100 bg-white overflow-hidden shadow-xs">
+                                    {/* Course Header Box */}
+                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 px-4 py-3 border-b border-blue-100 flex flex-wrap items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="p-1.5 rounded-lg bg-blue-600 text-white shadow-xs">
+                                          <BookOpen size={16} />
+                                        </div>
+                                        <div>
+                                          <h4 className="text-sm font-black text-gray-900">{cGroup.courseName}</h4>
+                                          <p className="text-[11px] text-gray-500 font-semibold">
+                                            {cGroup.rows.length} Subject Papers Scheduled
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+                                          {cGroup.students.length} Student(s)
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => openStudentModal(`${bGroup.branchName} • ${cGroup.courseName}`, cGroup.students, formatDateLabel(dateGroup.dateKey), dateGroup.dateKey, cGroup.rows.map(r => r.schedule))}
+                                          className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs font-bold transition cursor-pointer shadow-xs"
+                                        >
+                                          <Users size={13} /> Course Attendance
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const schedules = cGroup.rows.map(r => r.schedule);
+                                            setModalSchedules(schedules);
+                                            if (cGroup.students.length === 1) {
+                                              handleOpenReschedule(cGroup.students[0]);
+                                            } else {
+                                              openStudentModal(`${bGroup.branchName} • ${cGroup.courseName}`, cGroup.students, formatDateLabel(dateGroup.dateKey), dateGroup.dateKey, schedules);
+                                            }
+                                          }}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 text-xs font-bold transition cursor-pointer shadow-xs"
+                                          title="Reschedule student exam for this course"
+                                        >
+                                          <RotateCcw size={12} /> Reschedule
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Course Subjects Table */}
+                                    <div className="overflow-x-auto">
+                                      <table className="min-w-full text-xs">
+                                        <thead className="bg-slate-50 text-left text-[10px] font-bold uppercase tracking-wider text-gray-600 border-b border-gray-100">
+                                          <tr>
+                                            <th className="px-4 py-2.5 text-center w-12">#</th>
+                                            <th className="px-4 py-2.5">Subject / Paper Name</th>
+                                            <th className="px-4 py-2.5">Exam Timing</th>
+                                            <th className="px-4 py-2.5 text-center">Theory</th>
+                                            <th className="px-4 py-2.5 text-center">Practical</th>
+                                            <th className="px-4 py-2.5 text-center">Total Marks</th>
+                                            <th className="px-4 py-2.5 text-center">Branch Students</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 font-medium">
+                                          {cGroup.rows.map(({ schedule, row }, idx) => (
+                                            <tr key={`${schedule._id}-${row._id || idx}`} className="hover:bg-blue-50/30 transition-colors">
+                                              <td className="px-4 py-2.5 text-center font-bold text-gray-400">{idx + 1}</td>
+                                              <td className="px-4 py-2.5 font-bold text-gray-900 text-xs">
+                                                {getSubjectName(row)}
+                                              </td>
+                                              <td className="px-4 py-2.5 text-gray-600 font-medium">
+                                                <span className="inline-flex items-center gap-1">
+                                                  <Clock size={12} className="text-gray-400" />
+                                                  {row.startTime && row.endTime ? `${row.startTime} - ${row.endTime}` : row.startTime || row.endTime || '-'}
+                                                </span>
+                                              </td>
+                                              <td className="px-4 py-2.5 text-center text-gray-700 font-semibold">{row.theory || 0}</td>
+                                              <td className="px-4 py-2.5 text-center text-gray-700 font-semibold">{row.practical || 0}</td>
+                                              <td className="px-4 py-2.5 text-center font-bold text-blue-700">{row.total || 0}</td>
+                                              <td className="px-4 py-2.5 text-center">
+                                                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-indigo-50 text-indigo-700">
+                                                  {cGroup.students.length}
+                                                </span>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 2. RE-EXAM RETAKE COURSES (SHOWN AT THE BOTTOM SEPARATELY) */}
+                          {bGroup.reExamCourses && bGroup.reExamCourses.length > 0 && (
+                            <div className="space-y-3 pt-5 border-t-2 border-dashed border-amber-300">
+                              <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="p-1.5 rounded-lg bg-amber-500 text-white shadow-xs">
+                                    <RotateCcw size={16} />
+                                  </div>
+                                  <div>
+                                    <span className="text-xs font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                                      Re-Exam Retake Papers ({bGroup.reExamCourses.length} Courses)
+                                    </span>
+                                    <p className="text-[11px] text-amber-700 font-medium">
+                                      Ye students re-exam appear kar rahe hain (Original exam walon ke sath nahi, niche alag se show ho rahe hain).
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-xs font-black bg-amber-200 text-amber-900 px-3 py-1 rounded-full border border-amber-300">
+                                  {bGroup.reExamCourses.reduce((sum, c) => sum + c.students.length, 0)} Re-Exam Students
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-1 gap-4">
+                                {bGroup.reExamCourses.map((cGroup) => (
+                                  <div key={cGroup.groupKey || cGroup.courseId} className="rounded-xl border border-amber-300 bg-amber-50/20 overflow-hidden shadow-xs">
+                                    {/* Re-Exam Course Header Box */}
+                                    <div className="bg-gradient-to-r from-amber-100/70 via-orange-50 to-amber-50 px-4 py-3 border-b border-amber-200 flex flex-wrap items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="p-1.5 rounded-lg bg-amber-600 text-white shadow-xs">
+                                          <RotateCcw size={16} />
+                                        </div>
+                                        <div>
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <h4 className="text-sm font-black text-gray-900">{cGroup.courseName}</h4>
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-200 text-amber-900 border border-amber-300 flex items-center gap-1">
+                                              <RotateCcw size={10} /> Re-Exam Retake
+                                            </span>
+                                          </div>
+                                          <p className="text-[11px] text-amber-800 font-semibold">
+                                            {cGroup.rows.length} Re-Exam Paper(s) &bull; {cGroup.students.length} Student(s) Appearing
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                                          {cGroup.students.length} Re-Exam Student(s)
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => openStudentModal(`${bGroup.branchName} • ${cGroup.courseName} (Re-Exam)`, cGroup.students, formatDateLabel(dateGroup.dateKey), dateGroup.dateKey, cGroup.rows.map(r => r.schedule))}
+                                          className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 text-xs font-bold transition cursor-pointer shadow-xs"
+                                        >
+                                          <Users size={13} /> Re-Exam Attendance
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const schedules = cGroup.rows.map(r => r.schedule);
+                                            setModalSchedules(schedules);
+                                            if (cGroup.students.length === 1) {
+                                              handleOpenReschedule(cGroup.students[0]);
+                                            } else {
+                                              openStudentModal(`${bGroup.branchName} • ${cGroup.courseName} (Re-Exam)`, cGroup.students, formatDateLabel(dateGroup.dateKey), dateGroup.dateKey, schedules);
+                                            }
+                                          }}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-100 border border-amber-300 text-amber-900 hover:bg-amber-200 text-xs font-bold transition cursor-pointer shadow-xs"
+                                          title="Reschedule student exam for this course"
+                                        >
+                                          <RotateCcw size={12} /> Reschedule
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Re-Exam Course Subjects Table */}
+                                    <div className="overflow-x-auto">
+                                      <table className="min-w-full text-xs">
+                                        <thead className="bg-amber-50/70 text-left text-[10px] font-bold uppercase tracking-wider text-amber-900 border-b border-amber-100">
+                                          <tr>
+                                            <th className="px-4 py-2.5 text-center w-12">#</th>
+                                            <th className="px-4 py-2.5">Subject / Paper Name</th>
+                                            <th className="px-4 py-2.5">Exam Timing</th>
+                                            <th className="px-4 py-2.5 text-center">Theory</th>
+                                            <th className="px-4 py-2.5 text-center">Practical</th>
+                                            <th className="px-4 py-2.5 text-center">Total Marks</th>
+                                            <th className="px-4 py-2.5 text-center">Branch Students</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-amber-100 font-medium">
+                                          {cGroup.rows.map(({ schedule, row }, idx) => (
+                                            <tr key={`${schedule._id}-${row._id || idx}`} className="hover:bg-amber-50/50 transition-colors">
+                                              <td className="px-4 py-2.5 text-center font-bold text-gray-400">{idx + 1}</td>
+                                              <td className="px-4 py-2.5 font-bold text-gray-900 text-xs">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                  <span>{getSubjectName(row)}</span>
+                                                  <span className="px-1.5 py-0.2 rounded text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                                                    Re-Exam
+                                                  </span>
+                                                </div>
+                                              </td>
+                                              <td className="px-4 py-2.5 text-gray-600 font-medium">
+                                                <span className="inline-flex items-center gap-1">
+                                                  <Clock size={12} className="text-gray-400" />
+                                                  {row.startTime && row.endTime ? `${row.startTime} - ${row.endTime}` : row.startTime || row.endTime || '-'}
+                                                </span>
+                                              </td>
+                                              <td className="px-4 py-2.5 text-center text-gray-700 font-semibold">{row.theory || 0}</td>
+                                              <td className="px-4 py-2.5 text-center text-gray-700 font-semibold">{row.practical || 0}</td>
+                                              <td className="px-4 py-2.5 text-center font-bold text-amber-800">{row.total || 0}</td>
+                                              <td className="px-4 py-2.5 text-center">
+                                                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-900">
+                                                  {cGroup.students.length}
+                                                </span>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1383,136 +1603,271 @@ const ExamSet = () => {
                 </div>
               </div>
 
-              {/* Student Table */}
-              <div className="rounded-xl border border-gray-200 shadow-xs overflow-x-auto">
-                <table className="min-w-full text-xs md:text-sm">
-                  <thead className="bg-slate-100 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 border-b border-gray-200">
-                    <tr>
-                      <th className="px-4 py-3 text-center w-12">#</th>
-                      <th className="px-4 py-3">Reg / Roll No</th>
-                      <th className="px-4 py-3">Student Name</th>
-                      <th className="px-4 py-3">Course</th>
-                      <th className="px-4 py-3">Branch</th>
-                      <th className="px-4 py-3">Contact No</th>
-                      <th className="px-4 py-3">Exam Timings</th>
-                      <th className="px-4 py-3 text-center min-w-[240px]">Exam Attendance</th>
-                      <th className="px-4 py-3 text-center w-28 sticky right-0 bg-slate-100 shadow-xs z-10">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 font-medium">
-                    {filteredModalStudents.length === 0 ? (
-                      <tr>
-                        <td colSpan="9" className="px-4 py-12 text-center text-gray-400 text-sm">
-                          No scheduled students found matching your search.
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredModalStudents.map((student, index) => {
-                        const sId = String(student._id);
-                        const currentStatus = attendanceMap[sId] || '';
-                        const studentAttempts = getModalAttemptsForStudent(sId);
+              {/* Student Tables (Separated Regular vs Re-Exam) */}
+              {filteredModalStudents.length === 0 ? (
+                <div className="rounded-xl border border-gray-200 p-12 text-center text-gray-400 text-sm bg-gray-50/50">
+                  No scheduled students found matching your search.
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* 1. REGULAR EXAM STUDENTS */}
+                  {regularModalStudents.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs font-bold text-gray-700 uppercase tracking-wider bg-slate-100 px-4 py-2 rounded-xl border border-slate-200">
+                        <span className="flex items-center gap-1.5 text-blue-800">
+                          <GraduationCap size={16} /> Regular Exam Students ({regularModalStudents.length})
+                        </span>
+                        <span className="text-[11px] font-bold text-gray-500">Original Scheduled Papers</span>
+                      </div>
+                      <div className="rounded-xl border border-gray-200 shadow-xs overflow-x-auto">
+                        <table className="min-w-full text-xs md:text-sm">
+                          <thead className="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 border-b border-gray-200">
+                            <tr>
+                              <th className="px-4 py-3 text-center w-12">#</th>
+                              <th className="px-4 py-3">Reg / Roll No</th>
+                              <th className="px-4 py-3">Student Name</th>
+                              <th className="px-4 py-3">Course</th>
+                              <th className="px-4 py-3">Branch</th>
+                              <th className="px-4 py-3">Contact No</th>
+                              <th className="px-4 py-3">Exam Timings</th>
+                              <th className="px-4 py-3 text-center min-w-[240px]">Exam Attendance</th>
+                              <th className="px-4 py-3 text-center w-28 sticky right-0 bg-slate-50 shadow-xs z-10">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 font-medium">
+                            {regularModalStudents.map((student, index) => {
+                              const sId = String(student._id);
+                              const currentStatus = attendanceMap[sId] || '';
+                              const studentAttempts = getModalAttemptsForStudent(sId);
 
-                        return (
-                          <tr key={sId || index} className="hover:bg-blue-50/40 transition">
-                            <td className="px-4 py-3 text-center font-bold text-gray-400">{index + 1}</td>
-                            <td className="px-4 py-3 font-bold text-primary font-mono">
-                              {student.regNo || student.enrollmentNo || '-'}
-                            </td>
-                            <td className="px-4 py-3 font-bold text-gray-900">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span>
-                                  {student.firstName || student.lastName
-                                    ? `${student.firstName || ''} ${student.lastName || ''}`
-                                    : student.studentName || 'Student'}
-                                </span>
-                                {(student.isReExam || currentStatus === 'Re-Exam' || modalSchedules.some(s => s.isReExam)) && (
-                                  <span className="px-1.5 py-0.2 rounded text-[10px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
-                                    Re-Exam
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 font-bold text-slate-700">
-                              {student.courseName || student.course?.name || 'Course'}
-                            </td>
-                            <td className="px-4 py-3 text-gray-600 font-semibold">
-                              {student.branchName || 'Main Branch'}
-                            </td>
-                            <td className="px-4 py-3 text-gray-600 font-medium">
-                              <span className="inline-flex items-center gap-1.5">
-                                <Phone size={13} className="text-gray-400" />
-                                {student.mobileStudent || student.mobileParent || '-'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-gray-600 font-medium whitespace-nowrap">
-                              {studentAttempts.length > 0 ? studentAttempts.map((examAttempt) => (
-                                <div key={examAttempt._id} className="space-y-0.5">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="font-bold text-emerald-700">Start:</span> {formatDateTime(examAttempt.startedAt)}
-                                    {examAttempt.isSubmitted ? (
-                                      <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded">Submitted</span>
-                                    ) : (
-                                      <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[10px] font-bold rounded">Left / Interrupted</span>
-                                    )}
-                                  </div>
-                                  <div><span className="font-bold text-blue-700">End:</span> {formatDateTime(examAttempt.expiresAt)}</div>
-                                </div>
-                              )) : <span className="text-gray-400">Not started</span>}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <div className="inline-flex rounded-xl border border-gray-300 bg-gray-50 p-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleAttendance(sId, 'Present')}
-                                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
-                                    currentStatus === 'Present'
-                                      ? 'bg-emerald-600 text-white shadow-xs'
-                                      : 'text-gray-600 hover:text-emerald-700'
-                                  }`}
-                                >
-                                  Present
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleAttendance(sId, 'Absent')}
-                                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
-                                    currentStatus === 'Absent'
-                                      ? 'bg-rose-600 text-white shadow-xs'
-                                      : 'text-gray-600 hover:text-rose-700'
-                                  }`}
-                                >
-                                  Absent
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleAttendance(sId, 'Re-Exam')}
-                                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
-                                    currentStatus === 'Re-Exam'
-                                      ? 'bg-amber-600 text-white shadow-xs'
-                                      : 'text-gray-600 hover:text-amber-700'
-                                  }`}
-                                >
-                                  Re-Exam
-                                </button>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-center sticky right-0 bg-white shadow-xs z-10">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenReschedule(student)}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 transition shadow-xs cursor-pointer whitespace-nowrap"
-                                title="Reschedule / Retake Exam with new Date and Time"
-                              >
-                                <RotateCcw size={12} /> Reschedule
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                              return (
+                                <tr key={sId || index} className="hover:bg-blue-50/40 transition">
+                                  <td className="px-4 py-3 text-center font-bold text-gray-400">{index + 1}</td>
+                                  <td className="px-4 py-3 font-bold text-primary font-mono">
+                                    {student.regNo || student.enrollmentNo || '-'}
+                                  </td>
+                                  <td className="px-4 py-3 font-bold text-gray-900">
+                                    {student.firstName || student.lastName
+                                      ? `${student.firstName || ''} ${student.lastName || ''}`
+                                      : student.studentName || 'Student'}
+                                  </td>
+                                  <td className="px-4 py-3 font-bold text-slate-700">
+                                    {student.courseName || student.course?.name || 'Course'}
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-600 font-semibold">
+                                    {student.branchName || 'Main Branch'}
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-600 font-medium">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <Phone size={13} className="text-gray-400" />
+                                      {student.mobileStudent || student.mobileParent || '-'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-600 font-medium whitespace-nowrap">
+                                    {studentAttempts.length > 0 ? studentAttempts.map((examAttempt) => (
+                                      <div key={examAttempt._id} className="space-y-0.5">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="font-bold text-emerald-700">Start:</span> {formatDateTime(examAttempt.startedAt)}
+                                          {examAttempt.isSubmitted ? (
+                                            <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded">Submitted</span>
+                                          ) : (
+                                            <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[10px] font-bold rounded">Left / Interrupted</span>
+                                          )}
+                                        </div>
+                                        <div><span className="font-bold text-blue-700">End:</span> {formatDateTime(examAttempt.expiresAt)}</div>
+                                      </div>
+                                    )) : <span className="text-gray-400">Not started</span>}
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <div className="inline-flex rounded-xl border border-gray-300 bg-gray-50 p-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleAttendance(sId, 'Present')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                          currentStatus === 'Present'
+                                            ? 'bg-emerald-600 text-white shadow-xs'
+                                            : 'text-gray-600 hover:text-emerald-700'
+                                        }`}
+                                      >
+                                        Present
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleAttendance(sId, 'Absent')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                          currentStatus === 'Absent'
+                                            ? 'bg-rose-600 text-white shadow-xs'
+                                            : 'text-gray-600 hover:text-rose-700'
+                                        }`}
+                                      >
+                                        Absent
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleAttendance(sId, 'Re-Exam')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                          currentStatus === 'Re-Exam'
+                                            ? 'bg-amber-600 text-white shadow-xs'
+                                            : 'text-gray-600 hover:text-amber-700'
+                                        }`}
+                                      >
+                                        Re-Exam
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-center sticky right-0 bg-white shadow-xs z-10">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenReschedule(student)}
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 transition shadow-xs cursor-pointer whitespace-nowrap"
+                                      title="Reschedule / Retake Exam with new Date and Time"
+                                    >
+                                      <RotateCcw size={12} /> Reschedule
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. RE-EXAM STUDENTS (SHOWN AT THE BOTTOM SEPARATELY) */}
+                  {reExamModalStudents.length > 0 && (
+                    <div className="space-y-2 pt-4 border-t-2 border-dashed border-amber-300">
+                      <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider bg-amber-50 px-4 py-2.5 rounded-xl border border-amber-200">
+                        <span className="flex items-center gap-1.5 text-amber-900">
+                          <RotateCcw size={15} className="text-amber-600" /> Re-Exam Retake Students ({reExamModalStudents.length})
+                        </span>
+                        <span className="text-[11px] font-bold text-amber-800 bg-amber-200/70 px-2.5 py-0.5 rounded-full border border-amber-300">
+                          Re-Exam List (Original ke sath nahi, niche alag se)
+                        </span>
+                      </div>
+                      <div className="rounded-xl border border-amber-200 shadow-xs overflow-x-auto bg-amber-50/15">
+                        <table className="min-w-full text-xs md:text-sm">
+                          <thead className="bg-amber-100/60 text-left text-[11px] font-bold uppercase tracking-wider text-amber-900 border-b border-amber-200">
+                            <tr>
+                              <th className="px-4 py-3 text-center w-12">#</th>
+                              <th className="px-4 py-3">Reg / Roll No</th>
+                              <th className="px-4 py-3">Student Name</th>
+                              <th className="px-4 py-3">Course</th>
+                              <th className="px-4 py-3">Branch</th>
+                              <th className="px-4 py-3">Contact No</th>
+                              <th className="px-4 py-3">Exam Timings</th>
+                              <th className="px-4 py-3 text-center min-w-[240px]">Exam Attendance</th>
+                              <th className="px-4 py-3 text-center w-28 sticky right-0 bg-amber-100/60 shadow-xs z-10">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-amber-100 font-medium">
+                            {reExamModalStudents.map((student, index) => {
+                              const sId = String(student._id);
+                              const currentStatus = attendanceMap[sId] || '';
+                              const studentAttempts = getModalAttemptsForStudent(sId);
+
+                              return (
+                                <tr key={sId || index} className="hover:bg-amber-100/40 bg-amber-50/20 transition">
+                                  <td className="px-4 py-3 text-center font-bold text-gray-400">{index + 1}</td>
+                                  <td className="px-4 py-3 font-bold text-amber-900 font-mono">
+                                    {student.regNo || student.enrollmentNo || '-'}
+                                  </td>
+                                  <td className="px-4 py-3 font-bold text-gray-900">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span>
+                                        {student.firstName || student.lastName
+                                          ? `${student.firstName || ''} ${student.lastName || ''}`
+                                          : student.studentName || 'Student'}
+                                      </span>
+                                      <span className="px-1.5 py-0.2 rounded text-[10px] font-black uppercase bg-amber-200 text-amber-900 border border-amber-300">
+                                        Re-Exam
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 font-bold text-slate-700">
+                                    {student.courseName || student.course?.name || 'Course'}
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-600 font-semibold">
+                                    {student.branchName || 'Main Branch'}
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-600 font-medium">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <Phone size={13} className="text-gray-400" />
+                                      {student.mobileStudent || student.mobileParent || '-'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-600 font-medium whitespace-nowrap">
+                                    {studentAttempts.length > 0 ? studentAttempts.map((examAttempt) => (
+                                      <div key={examAttempt._id} className="space-y-0.5">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="font-bold text-emerald-700">Start:</span> {formatDateTime(examAttempt.startedAt)}
+                                          {examAttempt.isSubmitted ? (
+                                            <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded">Submitted</span>
+                                          ) : (
+                                            <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 text-[10px] font-bold rounded">Left / Interrupted</span>
+                                          )}
+                                        </div>
+                                        <div><span className="font-bold text-blue-700">End:</span> {formatDateTime(examAttempt.expiresAt)}</div>
+                                      </div>
+                                    )) : <span className="text-gray-400">Not started</span>}
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <div className="inline-flex rounded-xl border border-gray-300 bg-white p-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleAttendance(sId, 'Present')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                          currentStatus === 'Present'
+                                            ? 'bg-emerald-600 text-white shadow-xs'
+                                            : 'text-gray-600 hover:text-emerald-700'
+                                        }`}
+                                      >
+                                        Present
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleAttendance(sId, 'Absent')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                          currentStatus === 'Absent'
+                                            ? 'bg-rose-600 text-white shadow-xs'
+                                            : 'text-gray-600 hover:text-rose-700'
+                                        }`}
+                                      >
+                                        Absent
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleAttendance(sId, 'Re-Exam')}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                          currentStatus === 'Re-Exam'
+                                            ? 'bg-amber-600 text-white shadow-xs'
+                                            : 'text-gray-600 hover:text-amber-700'
+                                        }`}
+                                      >
+                                        Re-Exam
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-center sticky right-0 bg-amber-50 shadow-xs z-10">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenReschedule(student)}
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 transition shadow-xs cursor-pointer whitespace-nowrap"
+                                      title="Reschedule / Retake Exam with new Date and Time"
+                                    >
+                                      <RotateCcw size={12} /> Reschedule
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Modal Footer */}
