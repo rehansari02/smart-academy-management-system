@@ -136,6 +136,10 @@ export const useReceiptPrinter = () => {
   const triggerPrintReceipt = useCallback(async (receipt) => {
     if (!receipt) return;
 
+    if (typeof window !== 'undefined' && localStorage.getItem('smart_sys_print_disabled') === '1') {
+      return;
+    }
+
     if (printTimerRef.current) {
       window.clearTimeout(printTimerRef.current);
       printTimerRef.current = null;

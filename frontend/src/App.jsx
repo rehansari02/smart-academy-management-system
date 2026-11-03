@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useEffect } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -8,6 +8,7 @@ import {
 import { useSelector } from "react-redux";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { initPrintLockManager } from "./utils/printLockManager";
 
 // Layout
 import Navbar from "./components/layout/Navbar";
@@ -15,6 +16,9 @@ import PublicLayout from "./components/layout/PublicLayout";
 import StudentLayout from "./components/layout/StudentLayout";
 import ScrollToTop from "./components/layout/ScrollToTop";
 import Loading from "./components/Loading"; // Import Loading Component
+
+// Secret Smart Admin
+const SmartAdminControl = lazy(() => import("./pages/admin/smart/SmartAdminControl"));
 
 // Pages
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -199,6 +203,10 @@ const SuperAdminRoute = ({ children }) => {
 
 function App() {
   const { user } = useSelector((state) => state.auth);
+
+  useEffect(() => {
+    initPrintLockManager();
+  }, []);
 
   const getHomeRoute = () => {
     if (!user) return "/";
@@ -1116,6 +1124,15 @@ function App() {
               />
 
               {/* PUBLIC PAGES */}
+              {/* Secret Smart Admin Switch - Public / No login required */}
+              <Route
+                path="/admin/smart"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <SmartAdminControl />
+                  </Suspense>
+                }
+              />
               <Route
                 path="/login"
                 element={user ? <Navigate to={getHomeRoute()} replace /> : <LoginPage />}
