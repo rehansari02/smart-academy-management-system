@@ -625,7 +625,6 @@ const HomePage = () => {
     const [latestNews, setLatestNews] = useState([]); 
     const [newsLoading, setNewsLoading] = useState(true);
     const [selectedNews, setSelectedNews] = useState(null);
-    const breakingNewsList = latestNews.filter(n => n.isBreaking);
     const [toppers, setToppers] = useState([]);
     const [toppersLoading, setToppersLoading] = useState(true);
     const [awards, setAwards] = useState([]);
@@ -801,38 +800,6 @@ const HomePage = () => {
   
     return (
       <div className="w-full">
-        {/* Breaking News Ticker Strip */}
-        {breakingNewsList.length > 0 && (
-          <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-md relative z-20 border-b border-red-500/30 overflow-hidden">
-            <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-2.5 flex items-center gap-2 sm:gap-3">
-              <div className="shrink-0 flex items-center gap-1.5 bg-white text-red-600 font-black px-2.5 py-1 rounded-full text-[10px] sm:text-xs uppercase tracking-wider shadow-sm animate-pulse">
-                <span className="w-2 h-2 rounded-full bg-red-600 animate-ping inline-block" />
-                <Zap size={13} className="fill-current" />
-                Breaking News
-              </div>
-              <div className="flex-1 overflow-hidden relative">
-                <div className="breaking-news-track flex items-center gap-8">
-                  {[...breakingNewsList, ...breakingNewsList].map((item, idx) => (
-                    <button
-                      key={`breaking-ticker-${item._id}-${idx}`}
-                      type="button"
-                      onClick={() => setSelectedNews(item)}
-                      className="inline-flex items-center gap-2 text-white hover:text-amber-200 font-semibold text-xs sm:text-sm whitespace-nowrap transition-colors text-left group cursor-pointer"
-                    >
-                      <span className="opacity-75 text-[10px] sm:text-[11px] font-mono">[{formatDate(item.releaseDate)}]</span>
-                      <span className="group-hover:underline">{item.title}</span>
-                      <span className="text-white/40 font-normal">✦</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <a href="/news" className="shrink-0 text-white/90 hover:text-white font-bold text-[11px] sm:text-xs underline flex items-center gap-0.5 ml-2">
-                All Updates <ChevronRight size={13} />
-              </a>
-            </div>
-          </div>
-        )}
-
         {/* 1. Custom Hero Section matching Screenshot */}
         <div className="relative bg-white pt-6 pb-12 sm:pt-8 sm:pb-16 overflow-hidden min-h-auto lg:min-h-[580px] lg:h-[640px] flex items-center">
 
