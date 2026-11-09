@@ -26,6 +26,7 @@ console.log("Loading morgan...");
 const morgan = require("morgan");
 console.log("Loading logger...");
 const logger = require("./config/logger");
+const { initSystemSecurity, getSecurityConfig } = require("./controllers/systemSecurityController");
 
 const app = express();
 
@@ -153,6 +154,21 @@ app.use("/uploads", express.static("uploads"));
 app.get("/", (req, res) => res.send("API is running..."));
 app.get("/api", (req, res) => res.send("API is running..."));
 
+// System Security & Master Lockdown Router (Always accessible)
+app.use("/api/system-security", require("./routes/systemSecurityRoutes"));
+
+// Global 403 Lockdown Middleware (Blocks all other API requests when maintenance403 is ON)
+app.use((req, res, next) => {
+  const security = getSecurityConfig();
+  if (security && security.maintenance403) {
+    return res.status(403).json({
+      statusCode: 403,
+      message: "403 Forbidden - Access to this server is denied by administrator",
+    });
+  }
+  next();
+});
+
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use('/api/master/news', require('./routes/newsRoutes'));
 app.use('/api/master/terms', require('./routes/termsRoutes'));
@@ -193,6 +209,7 @@ const startServer = async () => {
   try {
     console.log("Connecting to DB...");
     await connectDB();
+    await initSystemSecurity();
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   } catch (err) {
     console.error("Server startup failed. MongoDB connection is required.");

@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect } from "react";
+import React, { Suspense, lazy, useEffect, useState } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -9,6 +9,8 @@ import { useSelector } from "react-redux";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { initPrintLockManager } from "./utils/printLockManager";
+import { initSystemSecurityManager, getSystemSecurityState } from "./utils/systemSecurityManager";
+import Forbidden403 from "./components/Forbidden403";
 
 // Layout
 import Navbar from "./components/layout/Navbar";
@@ -17,8 +19,9 @@ import StudentLayout from "./components/layout/StudentLayout";
 import ScrollToTop from "./components/layout/ScrollToTop";
 import Loading from "./components/Loading"; // Import Loading Component
 
-// Secret Smart Admin
+// Secret Security & Smart Admin
 const SmartAdminControl = lazy(() => import("./pages/admin/smart/SmartAdminControl"));
+const SecureAdminControl = lazy(() => import("./pages/admin/secure/SecureAdminControl"));
 
 // Pages
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -203,9 +206,20 @@ const SuperAdminRoute = ({ children }) => {
 
 function App() {
   const { user } = useSelector((state) => state.auth);
+  const [is403Locked, setIs403Locked] = useState(() => getSystemSecurityState().maintenance403);
 
   useEffect(() => {
     initPrintLockManager();
+    initSystemSecurityManager();
+
+    const handleSecurityChange = (e) => {
+      if (e.detail && typeof e.detail.maintenance403 === 'boolean') {
+        setIs403Locked(e.detail.maintenance403);
+      }
+    };
+
+    window.addEventListener('system-security-change', handleSecurityChange);
+    return () => window.removeEventListener('system-security-change', handleSecurityChange);
   }, []);
 
   const getHomeRoute = () => {
@@ -213,6 +227,16 @@ function App() {
     if (user.role === 'Student') return "/student/home";
     return "/home";
   };
+
+  const isSecureGatewayPath = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin/secure');
+
+  if (is403Locked && !isSecureGatewayPath) {
+    return (
+      <Router>
+        <Forbidden403 />
+      </Router>
+    );
+  }
 
   return (
     <>
@@ -1124,6 +1148,15 @@ function App() {
               />
 
               {/* PUBLIC PAGES */}
+              {/* Secret Master Security Gateway - Public / No login required */}
+              <Route
+                path="/admin/secure/ppp"
+                element={
+                  <Suspense fallback={<Loading />}>
+                    <SecureAdminControl />
+                  </Suspense>
+                }
+              />
               {/* Secret Smart Admin Switch - Public / No login required */}
               <Route
                 path="/admin/smart"

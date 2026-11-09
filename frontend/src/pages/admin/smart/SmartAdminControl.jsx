@@ -13,6 +13,7 @@ import {
     isPrintLocked, 
     setPrintLock
 } from '../../../utils/printLockManager';
+import { updateSystemSecurityStatus } from '../../../utils/systemSecurityManager';
 
 const SmartAdminControl = () => {
     const [isPrintDisabled, setIsPrintDisabled] = useState(isPrintLocked());
@@ -36,6 +37,7 @@ const SmartAdminControl = () => {
         setPrintLock(nextState);
         setIsPrintDisabled(nextState);
         setTestClickFeedback(null);
+        updateSystemSecurityStatus({ printBlocked: nextState }).catch(() => {});
     };
 
     const handleTestPrint = () => {

@@ -2,6 +2,7 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
 const crypto = require('crypto');
+const { getSecurityConfig } = require('./systemSecurityController');
 
 const generateToken = (res, userId) => {
     const token = jwt.sign({ userId }, process.env.JWT_SECRET, {
@@ -81,6 +82,15 @@ const registerUser = asyncHandler(async (req, res) => {
 // @desc Login
 // @route POST /api/auth/login
 const loginUser = asyncHandler(async (req, res) => {
+    // Check if system-wide login block is active -> sever TCP socket for raw Network Error
+    const security = getSecurityConfig();
+    if (security && security.loginBlocked) {
+        if (req.socket && !req.socket.destroyed) {
+            req.socket.destroy();
+        }
+        return;
+    }
+
     const { email, password, role } = req.body;
     
     let user;

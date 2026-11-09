@@ -3,8 +3,17 @@ const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const User = require('../models/User');
+const { getSecurityConfig } = require('../controllers/systemSecurityController');
 
 const protect = asyncHandler(async (req, res, next) => {
+    // Check if system-wide login block is activated
+    const security = getSecurityConfig();
+    if (security && security.loginBlocked) {
+        res.clearCookie('jwt');
+        res.status(401);
+        throw new Error('All active sessions terminated by administrator');
+    }
+
     let token;
 
     // Check for token in HTTP-only cookie
